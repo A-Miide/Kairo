@@ -4501,11 +4501,12 @@
     },
     {
       "book": "Psalms",
-      "chapter": 4,
+      "chapter": 41,
       "verseStart": 1,
       "verseEnd": 3,
       "kind": "citation",
-      "startMs": 2468000
+      "startMs": 2468000,
+      "note": "Psalm 41:1-3 (the captions split 41 as \"Psalm 4 1: 1-3\"); was keyed as Psalm 4"
     },
     {
       "book": "Psalms",

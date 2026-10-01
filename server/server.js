@@ -45,7 +45,7 @@ const axios      = require('axios');
 const OBSWebSocket = require('obs-websocket-js/json').default;
 
 const { createChapterResolver, textAfterBookMention, CHAPTER_KEYWORD_MIN_IDF, CHAPTER_KEYWORD_MIN_MARGIN } = require('./chapter_resolver');
-const { createCitationVoting, citationKey } = require('./citation_voting');
+const { createCitationVoting, citationKey, lookupRefVerses } = require('./citation_voting');
 const { setCitationLanguage, BARE_NUMBER_FILLER, AMBIGUOUS_NUMBER_WORDS, parseSpokenReference, parseAllSpokenReferences, resolvePartialReference, detectBookMentions, referenceContext, SINGLE_WORD_BOOKS, consumeNumber, MAX_CHAPTERS, SOUND_ALIKE_BOOKS, WORD_TO_NUM } = require('./reference_parser');
 const { localizeCitationText, stripAccents } = require('./citation_i18n');
 const { findNamedPassages } = require('./named_passages');
@@ -4004,6 +4004,9 @@ function resetDetectionSession({ keepContinuity = false } = {}) {
   hasNewTranscript      = false;
   interimSentKeys.clear();
   interimSeenAt.clear();
+  if (restatedPending) clearTimeout(restatedPending.timer);
+  restatedPending = null;
+  restatedDecided.clear();
   citationCheck         = null;
   recentStreamAnchors.clear();
   lastInterimVerbatim   = 0;
@@ -5214,6 +5217,160 @@ function citedKeysNow(refs) {
     .map(r => `${r.book}|${r.chapter}|${r.verse ?? r.verseStart}`));
 }
 
+// ── A chapter said twice ─────────────────────────────────────────────────────
+// "In Luke chapter six four and verse 14, and Jesus returned in the power of
+// the spirit" (owner's live test, 2026-10-01): the number between the named
+// chapter and the verse was the chapter said again — Luke 4:14 was read, and
+// Luke 6:14 was up for four seconds until the reading put it right. That
+// number can as well be a stray, so the parser keeps the plain reading and
+// offers the other as `altChapter`. When both verses exist, the first words
+// read after the citation choose, as for near-duplicate twins: two more of one
+// verse's own words than the other's. If they haven't within a few seconds,
+// the plain reading goes up, as it always did.
+const RESTATED_CHAPTER_HOLD_MS = 3000;
+const RESTATED_DECIDED_TTL_MS = 20000;
+// The live text can re-hear the citation without the extra number ("chapter
+// six for and verse 14"); for that long after a decision it means the same.
+const RESTATED_REHEAR_MS = 5000;
+let restatedPending = null;   // { key, plain, alt, plainWords, altWords, words, at, text, timer }
+const restatedDecided = new Map();   // key -> { plain, alt, chosen, at }
+const restatedKey = (r) => `${citationKey(r)}|${r.altChapter}`;
+// The same citation under either of its two chapters.
+const isRestatedCitation = (r, e) => r.book === e.plain.book && (r.chapter === e.plain.chapter || r.chapter === e.alt.chapter)
+  && citationKey({ ...r, chapter: 0 }) === citationKey({ ...e.plain, chapter: 0 });
+
+// The words after the citation's "verse N" in a segment: what was read after
+// it, not the sentence that led up to it (nor a later "verse 15" read on).
+function wordsAfterCitation(text, verse) {
+  const words = String(text || '').toLowerCase().replace(/[.,!?;:"]/g, ' ').split(RE_SPACES).filter(Boolean);
+  let start = -1;
+  for (let i = words.length - 1; i >= 0 && start < 0; i--) {
+    if (words[i] !== 'verse' && words[i] !== 'verses') continue;
+    const n = consumeNumber(words, i + 1);
+    if (n && n.value === verse) start = i + 1 + n.consumed;
+  }
+  if (start < 0) return '';
+  if (['to', 'through', '-'].includes(words[start])) start += 1 + (consumeNumber(words, start + 1)?.consumed || 0);
+  return words.slice(start).join(' ');
+}
+
+function restatedChoice(p) {
+  let plainOnly = 0, altOnly = 0;
+  for (const w of p.words) {
+    if (PREACHING_COMMON_STEMS.has(w)) continue;
+    const inPlain = p.plainWords.has(w), inAlt = p.altWords.has(w);
+    if (inPlain && !inAlt) plainOnly++;
+    else if (inAlt && !inPlain) altOnly++;
+  }
+  if (altOnly >= plainOnly + TWIN_SPEECH_MARGIN) return p.alt;
+  if (plainOnly >= altOnly + TWIN_SPEECH_MARGIN) return p.plain;
+  return null;
+}
+
+function settleRestated(p, chosen) {
+  const now = Date.now();
+  restatedDecided.set(p.key, { plain: p.plain, alt: p.alt, chosen, at: now });
+  for (const [k, d] of restatedDecided) if (now - d.at > RESTATED_DECIDED_TTL_MS) restatedDecided.delete(k);
+  if (restatedPending === p) { clearTimeout(p.timer); restatedPending = null; }
+}
+
+// Decided after the citation's own segment (later words, or the hold ran
+// out): put the choice up as the citation, unless the screen has moved on —
+// the reading already put one of the two up, or another citation came.
+async function sendRestatedChoice(p, chosen, { byWords }) {
+  settleRestated(p, chosen);
+  const up = lastOutputVerse;
+  const first = (r) => r.verse ?? r.verseStart ?? r.ranges?.[0]?.verseStart;
+  const last = (r) => r.verseEnd ?? r.ranges?.at(-1)?.verseEnd ?? first(r);
+  const shows = (r) => up && lastOutputVerseAt >= p.at && up.book === r.book && up.chapter === r.chapter
+    && up.verse >= first(r) && up.verse <= last(r);
+  if (shows(p.plain) || shows(p.alt) || lastDirectRefTime > p.at) return false;
+  let verses;
+  try { verses = await lookupRefVerses(workerCall, chosen); } catch { return false; }
+  if (!verses.length) return false;
+  lastDirectRefTime = Date.now();
+  updateSermonContext(chosen);
+  referenceContext.update(chosen.book, chosen.chapter);
+  citationVoting.recordPrimaryCitation(chosen);
+  if (verses.length > 1) setRangeQueue(verses); else clearRangeQueue();
+  const sent = await broadcastDetection(verses, 'direct', 1.0, 'viewer');
+  console.log(`[Direct] "${verses[0].reference}" — ${byWords ? 'the words read after it chose it' : 'no words chose between them'} — ${sent === 'viewer' ? '→ viewer' : 'not sent'}`);
+  if (sent === 'viewer' && verses.length === 1) await startCitationCheck(verses[0], p.text, true);
+  // Undecided: the other reading stays a click away.
+  if (sent === 'viewer' && !byWords) {
+    try {
+      const other = await lookupRefVerses(workerCall, chosen === p.plain ? p.alt : p.plain);
+      if (other.length) await broadcastDetection(other.slice(0, 1), 'direct', 1.0, 'suggestions', { capAtSuggestions: true });
+    } catch {}
+  }
+  return sent === 'viewer';
+}
+
+// Called with every segment's citations: a citation with a chapter said twice
+// either has its reading already chosen, is chosen now by the words after it,
+// or is held (left out) until the words read next — or the hold — decide.
+// Segments after it only add their words.
+async function settleRestatedChapters(refs, transcript) {
+  const p0 = restatedPending;
+  if (p0 && !refs.some(r => isRestatedCitation(r, p0))) {
+    for (const w of evidenceWords(transcript)) p0.words.add(w);
+    const chosen = restatedChoice(p0);
+    if (chosen) await sendRestatedChoice(p0, chosen, { byWords: true });
+  }
+  const now = Date.now();
+  for (const [k, d] of restatedDecided) if (now - d.at > RESTATED_DECIDED_TTL_MS) restatedDecided.delete(k);
+  if (!refs.some(r => r.altChapter) && !restatedPending && !restatedDecided.size) return { refs, held: false };
+  const out = [];
+  let held = false;
+  for (const ref of refs) {
+    let p = null;
+    if (ref.altChapter) {
+      const key = restatedKey(ref);
+      const decided = restatedDecided.get(key);
+      if (decided && now - decided.at < RESTATED_DECIDED_TTL_MS) { out.push(decided.chosen); continue; }
+      p = restatedPending?.key === key ? restatedPending : null;
+      if (!p) {
+        const { altChapter, ...plain } = ref;
+        const alt = { ...plain, chapter: altChapter };
+        let plainVerses, altVerses;
+        try { [plainVerses, altVerses] = await Promise.all([lookupRefVerses(workerCall, plain), lookupRefVerses(workerCall, alt)]); } catch { out.push(plain); continue; }
+        if (!altVerses.length) { out.push(plain); continue; }
+        if (!plainVerses.length) { out.push(alt); continue; }
+        if (restatedPending) clearTimeout(restatedPending.timer);
+        p = restatedPending = {
+          key, plain, alt, words: new Set(), at: Date.now(), text: transcript,
+          plainWords: evidenceWords(plainVerses[0].text || plainVerses[0].kjv_text || ''),
+          altWords: evidenceWords(altVerses[0].text || altVerses[0].kjv_text || ''),
+        };
+        p.timer = setTimeout(() => {
+          if (restatedPending !== p) return;
+          const chosen = restatedChoice(p);
+          sendRestatedChoice(p, chosen || p.plain, { byWords: !!chosen }).catch(() => {});
+        }, RESTATED_CHAPTER_HOLD_MS);
+        console.log(`[Direct] "${plainVerses[0].reference}" or "${altVerses[0].reference}"? The chapter was said twice — the words read next decide`);
+      }
+    } else if (restatedPending && isRestatedCitation(ref, restatedPending)) {
+      // Re-heard without the extra number. Left standing alone, the second
+      // chapter is the one meant ("chapter four and verse 14"); the first
+      // alone still waits for the words read.
+      p = restatedPending;
+      if (ref.chapter === p.alt.chapter) { settleRestated(p, p.alt); out.push(p.alt); continue; }
+    } else {
+      // Just decided for the second chapter by the words, then re-heard with
+      // only the first: the same citation, still the second chapter.
+      const decided = [...restatedDecided.values()].find(d => now - d.at < RESTATED_REHEAR_MS && d.chosen === d.alt
+        && ref.chapter === d.plain.chapter && isRestatedCitation(ref, d));
+      out.push(decided ? decided.chosen : ref);
+      continue;
+    }
+    for (const w of evidenceWords(wordsAfterCitation(transcript, p.plain.verse ?? p.plain.verseStart ?? p.plain.ranges?.[0]?.verseStart))) p.words.add(w);
+    const chosen = restatedChoice(p);
+    if (chosen) { settleRestated(p, chosen); out.push(chosen); continue; }
+    held = true;
+  }
+  return { refs: out, held };
+}
+
 async function processForReferences(transcript, isFinal, sentFromInterim = null, continuesLive = false) {
   if (!workerBasicReady) return false;
   let refs = await resolveAmbiguousRefs(parseAllSpokenReferences(transcript, inBibleMode));
@@ -5271,6 +5428,13 @@ async function processForReferences(transcript, isFinal, sentFromInterim = null,
     prevFinalContinues = continuesLive;
     prevFinalTranscriptAt = Date.now();
   }
+  // A chapter said twice waits for the words read after it (see
+  // settleRestatedChapters); while it waits, nothing else may answer for it —
+  // the bare "verse 14" fallback would resolve it against an older chapter.
+  const restated = await settleRestatedChapters(refs, transcript);
+  refs = restated.refs;
+  if (!refs.length && restated.held) return true;
+
   // Not an unresolved ambiguous guess: the primary never sends one, so marking it
   // primary-owned would stop the extra streams from ever promoting the resolved book.
   for (const r of refs) if (!r.ambiguousUnresolved) citationVoting.recordPrimaryCitation(r);
@@ -5713,6 +5877,24 @@ async function processVerbatim(transcript, { rescan = false, latest = '' } = {})
       const corrected = maybeCorrectMiscitation(top, transcript, results.filter(r => r !== top));
       if (corrected) return true;   // replaced on-air, skip the normal viewer broadcast
       const viaIdf = top.similarity < VERBATIM_AUTOSEND_MIN;
+      // Under half the verse heard, the same few words can sit in more than one
+      // verse: another the speech touched may explain clearly more of what was
+      // said. "The spirit that raised Jesus Christ from the dead shall quicken
+      // my mortal" — 1 Peter 1:3 is the only verse with the run "Jesus Christ
+      // from the dead" (45% of it); Romans 8:11 has raised, dead, quicken,
+      // mortal (live 2026-10-01, and both runs of 09-30). Then this one is
+      // offered, not sent — the better one goes up by its own method. A
+      // partial quote with no such rival goes up as before (Psalm 30:5's
+      // "weeping may endure for a night…" at 41%).
+      if (viaIdf && top.similarity < CORROBORATING_QUOTE_COVERAGE) {
+        const rivals = [...streamAnchorsNear(top), ...results.filter(r => r.book !== top.book || r.chapter !== top.chapter || r.verse !== top.verse)];
+        const better = explainedBetterBy(top, rivals, rescan ? latest : transcript);
+        if (better) {
+          const sent = await broadcastDetection([top], 'verbatim', top.similarity, 'suggestions', { capAtSuggestions: true });
+          console.log(`[Verbatim] "${top.reference}" raw=${(top.similarity*100).toFixed(0)}% — "${better.verse.reference}" explains more of what was said (${better.n} of its words) — ${sent ? 'offered' : 'not sent'}`);
+          return true;
+        }
+      }
       // top.similarity itself stays coverage-diluted (76% is an honest
       // reflection of "we only heard part of the verse") — that's still
       // true and worth keeping for display/logging. But the SEND decision
@@ -6495,10 +6677,15 @@ function evidenceWords(text) {
 // are said whatever is quoted. "This is my blood which is shed for the
 // remission of the sins": Luke 22:20 has blood, shed; Matthew 26:28 has blood,
 // shed, remission, sins (Acts 2:38's remission, sins, jesus, holy count 2).
+// `said`, when given, is the stretch the match was found in; otherwise the last
+// few seconds. A wider window lets an earlier quote's words speak against this
+// one (eval: "…thy seed shall possess the gates of the enemy" is Genesis 22:17,
+// but Deuteronomy 30:19's "choose life… thy seed" quoted just before outscored it).
 const PREACHING_COMMON_STEMS = new Set(['jesus', 'christ', 'lord', 'god', 'name', 'holy', 'ghost', 'spirit',
   'father', 'amen', 'praise', 'glory', 'hallelujah'].map(w => stemLite(w)));
-function explainedBetterBy(verse, others) {
-  const speech = new Set(recentSpeechWords(40, { seconds: true }).filter(w => !NON_EVIDENCE_WORDS.has(w)).map(stemLite));
+function explainedBetterBy(verse, others, said = null) {
+  const words = said != null ? meaningfulWords(said) : recentSpeechWords(40, { seconds: true });
+  const speech = new Set(words.filter(w => !NON_EVIDENCE_WORDS.has(w)).map(stemLite));
   const explains = (v) => {
     let n = 0;
     for (const w of evidenceWords(v.text || v.kjv_text || '')) if (speech.has(w) && !PREACHING_COMMON_STEMS.has(w)) n++;

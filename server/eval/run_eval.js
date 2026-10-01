@@ -16,7 +16,10 @@ const fs = require('fs');
 const path = require('path');
 
 const FIXTURES_DIR = path.join(__dirname, 'fixtures');
-const RESULTS_DIR = path.join(__dirname, 'results');
+// Outside server/: the whole server folder ships inside the app (tauri.conf.json
+// resources), and run snapshots are local data, not part of it (they added
+// 15 MB to every build).
+const RESULTS_DIR = path.join(__dirname, '..', '..', 'eval-results');
 
 // Ground-truth match window — a detection landing within this many ms of
 // the ground-truth entry's own transcript position counts as a match for

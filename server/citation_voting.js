@@ -28,6 +28,29 @@ function citationKey(ref) {
 }
 function hasVerseInfo(ref) { return ref.verse != null || !!ref.verseStart || !!ref.ranges?.length; }
 
+// A parsed citation's verses, one lookup per range.
+async function lookupRefVerses(workerCall, ref) {
+  const { book, chapter, verse } = ref;
+  let { verseStart, verseEnd, ranges } = ref;
+  if (ranges?.length === 1) { verseStart = ranges[0].verseStart; verseEnd = ranges[0].verseEnd; ranges = null; }
+  if (ranges && ranges.length > 1) {
+    const out = [];
+    for (const r of ranges) {
+      const m = await workerCall('rangeLookup', { book, chapter, verseStart: r.verseStart, verseEnd: r.verseEnd }, 8000);
+      out.push(...(m.results || []));
+    }
+    return out;
+  }
+  if (verseStart && verseEnd && verseEnd !== verseStart) {
+    const m = await workerCall('rangeLookup', { book, chapter, verseStart, verseEnd }, 8000);
+    return m.results || [];
+  }
+  const v = verse ?? verseStart;
+  if (!v) return [];
+  const m = await workerCall('directLookup', { book, chapter, verse: v }, 8000);
+  return m.result ? [m.result] : [];
+}
+
 /**
  * @param {object} deps
  *   workerCall, parseAllSpokenReferences, resolveAmbiguousRefs, broadcastDetection,
@@ -53,28 +76,6 @@ function createCitationVoting(deps) {
     votes.set(k, e);
   }
 
-  async function lookupRefVerses(ref) {
-    const { book, chapter, verse } = ref;
-    let { verseStart, verseEnd, ranges } = ref;
-    if (ranges?.length === 1) { verseStart = ranges[0].verseStart; verseEnd = ranges[0].verseEnd; ranges = null; }
-    if (ranges && ranges.length > 1) {
-      const out = [];
-      for (const r of ranges) {
-        const m = await deps.workerCall('rangeLookup', { book, chapter, verseStart: r.verseStart, verseEnd: r.verseEnd }, 8000);
-        out.push(...(m.results || []));
-      }
-      return out;
-    }
-    if (verseStart && verseEnd && verseEnd !== verseStart) {
-      const m = await deps.workerCall('rangeLookup', { book, chapter, verseStart, verseEnd }, 8000);
-      return m.results || [];
-    }
-    const v = verse ?? verseStart;
-    if (!v) return [];
-    const m = await deps.workerCall('directLookup', { book, chapter, verse: v }, 8000);
-    return m.result ? [m.result] : [];
-  }
-
   async function handleSecondaryFinal(text, streamId) {
     const { workerReady, inBibleMode } = deps.isReady();
     if (!workerReady) return;
@@ -87,7 +88,10 @@ function createCitationVoting(deps) {
     secondaryPrev[streamId] = { text, at: now };
     if (!refs.length) return;
     refs = (await deps.resolveAmbiguousRefs(refs))
-      .filter(r => r.book && r.chapter && !r.ambiguousUnresolved && hasVerseInfo(r));
+      .filter(r => r.book && r.chapter && !r.ambiguousUnresolved && hasVerseInfo(r))
+      // A chapter said twice is the primary stream's to settle: it waits for
+      // the words read after it (server.js settleRestatedChapters).
+      .filter(r => !r.altChapter);
     prune(now);
     for (const ref of refs) {
       const k = citationKey(ref);
@@ -98,7 +102,7 @@ function createCitationVoting(deps) {
       const want = e.streams.size >= 2 ? 'viewer' : 'suggestions';
       if (e.sent === 'viewer' || e.sent === want) continue;
       let verses = [];
-      try { verses = await lookupRefVerses(ref); } catch {}
+      try { verses = await lookupRefVerses(deps.workerCall, ref); } catch {}
       if (!verses.length) continue;
       e.sent = want;
       if (want === 'viewer') {
@@ -145,4 +149,4 @@ function createCitationVoting(deps) {
   return { recordPrimaryCitation, handleSecondaryFinal, start, stop, reset, sendAudio };
 }
 
-module.exports = { createCitationVoting, citationKey, hasVerseInfo, CITATION_VOTE_TTL_MS };
+module.exports = { createCitationVoting, citationKey, hasVerseInfo, lookupRefVerses, CITATION_VOTE_TTL_MS };

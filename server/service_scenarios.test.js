@@ -752,6 +752,39 @@ const fresh = () => { server.resetDetectionSession(); referenceContext.reset(); 
     assert.equal(onScreen().at(-1), 'Luke 1:14', JSON.stringify(sent));
   });
 
+  await test('a few words two verses share don\'t put up the one that explains less (Romans 8:11, never 1 Peter 1:3)', async () => {
+    fresh(); server.clearRangeQueue(); await server.clearLayer('all');
+    // Live 2026-10-01 (and both runs of 2026-09-30): "the spirit that raised
+    // Jesus Christ from the dead shall quicken my mortal" — 1 Peter 1:3 alone
+    // has the run "Jesus Christ from the dead"; Romans 8:11 is what was said.
+    await read('Praise God. And when the holy ghost will overtake,');
+    await read('the spirit that raised Jesus Christ from the dead shall quicken my mortal');
+    await read('bodies. I\'m a free man. Praise the Lord.');
+    assert.ok(!onScreen().includes('1 Peter 1:3'), JSON.stringify(sent));
+    assert.equal(onScreen().at(-1), 'Romans 8:11', JSON.stringify(sent));
+  });
+
+  await test('a chapter said twice goes up as the chapter the reading is in (Luke 4:14, never 6:14)', async () => {
+    fresh(); server.clearRangeQueue(); await server.clearLayer('all');
+    // Live 2026-10-01: "In Luke chapter six four and verse 14, and Jesus
+    // returned the power of the spirit" — 6:14 was up for four seconds.
+    await read('Of the anointing. Praise the Lord.');
+    await read('In Luke chapter six four and verse 14,');
+    await read('and Jesus returned the power of the spirit.');
+    await wait(3500);
+    assert.ok(!onScreen().some(r => r.startsWith('Luke 6:')), JSON.stringify(sent));
+    assert.equal(onScreen().at(-1), 'Luke 4:14', JSON.stringify(sent));
+  });
+
+  await test('a chapter said twice with nothing read after it still goes up as said, a moment later', async () => {
+    fresh(); server.clearRangeQueue(); await server.clearLayer('all');
+    await read('In Luke chapter six four and verse 14,');
+    await read('I want you to see something here this morning.');
+    await wait(3500);
+    assert.equal(onScreen().at(-1), 'Luke 6:14', JSON.stringify(sent));
+    assert.ok(sent.some(s => s.ref === 'Luke 4:14' && s.target === 'suggestions'), JSON.stringify(sent));
+  });
+
   console.log(`\n${pass} passed, ${fail} failed`);
   // The worker finishes what it started first: exiting mid model-load aborts (server.js stopDetectionWorker).
   server.stopDetectionWorker({ timeoutMs: 30000 }).finally(() => process.exit(fail ? 1 : 0));
