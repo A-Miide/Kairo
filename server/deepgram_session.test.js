@@ -40,8 +40,11 @@ const server = require('./server');
 let pass = 0, fail = 0;
 async function test(name, fn) { try { await fn(); pass++; console.log(`✔ ${name}`); } catch (e) { fail++; console.log(`✖ ${name}\n  ${e.message}`); } }
 const wait = ms => new Promise(r => setTimeout(r, ms));
-const states = []; const transcripts = [];
-server.onBroadcast(m => { if (m.type === 'connection-state') states.push(m.state); if (m.type === 'transcript') transcripts.push(m); });
+const states = []; const transcripts = []; const errors = [];
+server.onBroadcast(m => {
+  if (m.type === 'connection-state') { states.push(m.state); if (m.state === 'error') errors.push(m); }
+  if (m.type === 'transcript') transcripts.push(m);
+});
 const frame = (amp) => { const b = Buffer.alloc(2048); for (let i = 0; i < 1024; i++) b.writeInt16LE(i % 2 ? amp : -amp, i * 2); return b; };
 const isAudio = x => Buffer.isBuffer(x);
 
@@ -126,6 +129,90 @@ async function start() {
     assert.ok(!states.includes('reconnecting'), JSON.stringify(states));
   });
 
+  // Node's own WebSocket (Deepgram SDK's transport) says only this when the
+  // handshake is refused — whatever the status was.
+  const REFUSED = { message: 'Received network error or non-101 status code.' };
+  const OUT_OF_CREDIT = '{"err_code":"ASR_PAYMENT_REQUIRED","err_msg":"Project does not have enough credits for an ASR request and does not have an overage agreement."}';
+
+  await test('no internet mid-service: a refused reconnect that cannot reach Deepgram at all keeps the session and retries', async () => {
+    server.resetDeepgramDiagnosis();
+    globalThis.fetch = async () => { throw new TypeError('fetch failed'); };
+    states.length = 0;
+    await start();
+    conns.at(-1).emit(E.Close, { code: 1006, reason: '' });
+    await wait(400);
+    const retry = conns.at(-1);
+    retry.emit(E.Error, REFUSED);
+    await wait(1500);
+    assert.ok(!states.includes('error'), JSON.stringify(states));
+    assert.notEqual(conns.at(-1), retry, 'tried again');
+    conns.at(-1).emit(E.Open);
+    await wait(20);
+    assert.equal(states.at(-1), 'connected');
+    await server.stopDeepgram();
+  });
+
+  await test('out of credit at Start: the refusal is looked up, and listening stops saying so — once, with no retry loop', async () => {
+    server.resetDeepgramDiagnosis();
+    const asked = [];
+    globalThis.fetch = async (url, opts) => {
+      asked.push({ url: String(url), auth: opts?.headers?.Authorization });
+      return { ok: false, status: 402, text: async () => OUT_OF_CREDIT };
+    };
+    states.length = 0; errors.length = 0;
+    const p = server.startDeepgram({});
+    await wait(20);
+    const c = conns.at(-1);
+    c.emit(E.Error, REFUSED);
+    c.emit(E.Close, { code: 1006, reason: '' });   // Node 24 follows with a close; 22 doesn't
+    const r = await p;
+    assert.equal(r.errorKind, 'credits');
+    assert.equal(asked.length, 1);
+    assert.match(asked[0].url, /^https:\/\/api\.deepgram\.com\/v1\/listen/);
+    assert.equal(asked[0].auth, 'Token test-key-not-real');
+    assert.equal(errors.length, 1, 'reported once: ' + JSON.stringify(errors));
+    assert.equal(errors[0].errorKind, 'credits');
+    assert.match(errors[0].error, /out of credit/i);
+    const before = conns.length;
+    await wait(1500);
+    assert.equal(conns.length, before, 'no retry');
+
+    // Start again straight away: the same answer, without asking again.
+    const p2 = server.startDeepgram({});
+    await wait(20);
+    conns.at(-1).emit(E.Error, REFUSED);
+    assert.equal((await p2).errorKind, 'credits');
+    assert.equal(asked.length, 1);
+  });
+
+  await test('credit running out mid-service: the refused reconnect stops listening instead of retrying forever', async () => {
+    states.length = 0; errors.length = 0;
+    await start();
+    const first = conns.at(-1);
+    first.emit(E.Close, { code: 1011, reason: '' });
+    await wait(400);
+    const retry = conns.at(-1);
+    assert.notEqual(retry, first);
+    retry.emit(E.Error, REFUSED);
+    await wait(50);
+    assert.equal(states.at(-1), 'error', JSON.stringify(states));
+    assert.equal(errors.at(-1).errorKind, 'credits');
+    const before = conns.length;
+    await wait(2500);
+    assert.equal(conns.length, before, 'no retry loop');
+  });
+
+  await test('a connection Deepgram closes for want of credit stops listening', async () => {
+    states.length = 0; errors.length = 0;
+    await start();
+    conns.at(-1).emit(E.Close, { code: 1008, reason: 'Payment Required' });
+    await wait(50);
+    assert.equal(states.at(-1), 'error');
+    assert.equal(errors.at(-1).errorKind, 'credits');
+    assert.ok(!states.includes('reconnecting'), JSON.stringify(states));
+  });
+
   console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
+  // The worker finishes what it started first: exiting mid model-load aborts (server.js stopDetectionWorker).
+  server.stopDetectionWorker({ timeoutMs: 30000 }).finally(() => process.exit(fail ? 1 : 0));
 })();

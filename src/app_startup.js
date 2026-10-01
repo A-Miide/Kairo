@@ -459,13 +459,9 @@ registerActionHandler('clock-message', (msg) => window.KairoService?.onClockActi
     const headerTxt = document.getElementById('external-header-status');
     if (headerDot) headerDot.className = 'bs-dot' + (connected ? ' connected' : '');
     if (headerTxt) headerTxt.textContent = connected ? 'External display connected' : 'No external display connected';
-    // Detail-panel header dot/text — only present while External Display
-    // is the SELECTED output (renderDisplayDetail). If it's showing right
-    // now, also re-render it so its screen picker's own option list picks
-    // up a display that was just plugged in/unplugged, not just the dot.
-    if (selectedOutputId === PRIMARY_DISPLAY && document.getElementById('external-detail-dot')) {
-      renderOutputsDetail();
-    }
+    // The open detail panel's dot, text and screen list — updated in place,
+    // never rebuilt under the operator (see refreshDisplayDetailInPlace).
+    refreshDisplayDetailInPlace();
   }
   refresh();
   // Real incident this fixes: a display plugged in AFTER the app was

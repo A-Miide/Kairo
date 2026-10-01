@@ -80,3 +80,28 @@ test('a slide\'s rotation, accent and photo look merge over the theme\'s; null t
   assert.equal(plain(animOverride(theme, {})), plain({ build: { type: 'fade' } }));
   assert.equal(plain(animOverride(theme, { build: null, idle: { type: 'float' } })), plain({ build: null, idle: { type: 'float' } }));
 });
+
+const { gradientCss } = sandbox.window;
+
+test('a gradient paints its stops at its angle', () => {
+  const css = gradientCss({ angle: 180, gradientStops: [{ pos: 100, color: '#003ea1' }, { pos: 0, color: '#00a3fe' }] });
+  assert.equal(css, 'linear-gradient(180deg, #00a3fe 0%, #003ea1 100%)');
+});
+
+test('a mesh gradient\'s glows paint over its base, first glow on top', () => {
+  const css = gradientCss({
+    angle: 60,
+    gradientStops: [{ pos: 0, color: '#0b97df' }, { pos: 100, color: '#5a34ec' }],
+    gradientGlows: [{ x: 0, y: 0, rx: 38, ry: 30, color: '#7d00d8' }, { x: 90, y: 95, rx: 40, ry: 25, color: '#6ae0ff' }],
+  });
+  assert.equal(css,
+    'radial-gradient(ellipse 38% 30% at 0% 0%, #7d00d8 0%, transparent 100%), '
+    + 'radial-gradient(ellipse 40% 25% at 90% 95%, #6ae0ff 0%, transparent 100%), '
+    + 'linear-gradient(60deg, #0b97df 0%, #5a34ec 100%)');
+});
+
+test('the layer\'s opacity reaches the glows as well as the stops', () => {
+  const css = gradientCss({ gradientStops: [{ pos: 0, color: '#000000' }, { pos: 100, color: '#ffffff' }], gradientGlows: [{ x: 50, y: 50, rx: 10, ry: 10, color: '#ff0000' }] }, c => `${c}80`);
+  assert.match(css, /#ff000080 0%, transparent 100%/);
+  assert.match(css, /#00000080 0%, #ffffff80 100%/);
+});

@@ -70,5 +70,6 @@ const shown = () => sent.filter(s => s.target === 'viewer').map(s => s.ref);
   });
 
   console.log(`\n${pass} passed, ${fail} failed`);
-  process.exit(fail ? 1 : 0);
+  // The worker finishes what it started first: exiting mid model-load aborts (server.js stopDetectionWorker).
+  server.stopDetectionWorker({ timeoutMs: 30000 }).finally(() => process.exit(fail ? 1 : 0));
 })();

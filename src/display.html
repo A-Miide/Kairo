@@ -179,6 +179,87 @@
         [data-binding="timer"].is-warning  { text-shadow: 0 0 14px rgba(232,166,74,0.55); }
         [data-binding="timer"].is-overtime { text-shadow: 0 0 16px rgba(237,28,36,0.6); animation: timer-otp 1s ease-in-out infinite; }
         @keyframes timer-otp { 50% { opacity: 0.55; } }
+        /* What this output shows (outputModeMap in app_outputs.js). 'text'
+           (Output Control → Text only): only the theme's words — no
+           background, shapes, pictures or media (buildLayerDOM drops the
+           rest). 'confidence': a Monitor output — the whole screen is the
+           confidence monitor below, for whoever is up front. */
+        body[data-mode="text"] #media-layer { display: none; }
+        body[data-mode="confidence"] { background: #000 !important; }
+        body[data-mode="confidence"] #stage,
+        body[data-mode="confidence"] #timer-badge,
+        body[data-mode="confidence"] #clock-badge,
+        body[data-mode="confidence"] #kairo-label { display: none !important; }
+        #confidence-view { display: none; }
+        body[data-mode="confidence"] #confidence-view { display: flex; }
+        #confidence-view {
+            position: fixed;
+            inset: 0;
+            flex-direction: column;
+            gap: 2.2vh;
+            padding: 3.2vh 4vw 3.6vh;
+            background: #000;
+            color: #fff;
+            font-family: 'Manrope', system-ui, -apple-system, sans-serif;
+        }
+        .cv-top { flex: 0 0 auto; display: flex; align-items: flex-end; justify-content: space-between; gap: 4vw; }
+        .cv-clock, .cv-timer-value { font-size: 7.4vh; font-weight: 800; line-height: 1; font-variant-numeric: tabular-nums; }
+        .cv-timer { text-align: right; }
+        .cv-timer[hidden] { display: none; }
+        .cv-timer-label, .cv-next-head {
+            display: block;
+            font-size: 2.2vh;
+            font-weight: 700;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.55);
+        }
+        .cv-timer-label { margin-bottom: 0.9vh; }
+        .cv-timer.is-warning .cv-timer-value { color: #e8a64a; }
+        .cv-timer.is-overtime .cv-timer-value { color: #ed1c24; animation: timer-otp 1s ease-in-out infinite; }
+        .cv-current {
+            flex: 1 1 auto;
+            min-height: 0;
+            display: flex;
+            flex-direction: column;
+            gap: 1.4vh;
+            padding-top: 2.4vh;
+            border-top: 1px solid rgba(255, 255, 255, 0.16);
+        }
+        .cv-ref { flex: 0 0 auto; font-size: 3.4vh; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #f5b74e; }
+        .cv-text { flex: 1 1 auto; min-height: 0; overflow: hidden; font-size: 9vh; font-weight: 600; line-height: 1.22; white-space: pre-line; }
+        .cv-text.is-empty { color: rgba(255, 255, 255, 0.3); font-weight: 500; font-style: italic; }
+        .cv-next { flex: 0 0 auto; padding-top: 1.8vh; border-top: 1px solid rgba(255, 255, 255, 0.16); color: rgba(255, 255, 255, 0.62); }
+        .cv-next[hidden] { display: none; }
+        .cv-next-head { margin-bottom: 0.8vh; }
+        .cv-next-head span { margin-left: 1.2vw; letter-spacing: 0.08em; color: rgba(245, 183, 78, 0.85); }
+        .cv-next-text {
+            font-size: 4vh;
+            font-weight: 500;
+            line-height: 1.3;
+            white-space: pre-line;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+        /* A message from the booth (Monitor message, under the preview) —
+           its own band between now and next, so it covers neither; flashes
+           as it arrives. */
+        .cv-message {
+            flex: 0 0 auto;
+            margin: 0 -4vw;
+            padding: 2vh 4vw;
+            background: #ed1c24;
+            color: #fff;
+            font-size: 5.6vh;
+            font-weight: 800;
+            line-height: 1.2;
+            text-align: center;
+        }
+        .cv-message[hidden] { display: none; }
+        .cv-message.is-new { animation: cv-flash 0.6s ease-in-out 4; }
+        @keyframes cv-flash { 50% { opacity: 0.3; } }
         #timer-badge .badge-label, #clock-badge .badge-label {
             display: block;
             font-size: 10px;
@@ -200,6 +281,22 @@
     <div id="conn-status" class="visible reconnecting">Connecting…</div>
     <div id="timer-badge" class="hidden"></div>
     <div id="clock-badge" class="hidden"></div>
+    <!-- A Monitor output: the confidence monitor (renderConfidenceView). -->
+    <div id="confidence-view">
+        <div class="cv-top">
+            <div class="cv-clock" id="cv-clock"></div>
+            <div class="cv-timer" id="cv-timer" hidden><span class="cv-timer-label" id="cv-timer-label"></span><span class="cv-timer-value" id="cv-timer-value"></span></div>
+        </div>
+        <div class="cv-current">
+            <div class="cv-ref" id="cv-ref"></div>
+            <div class="cv-text is-empty" id="cv-text">Nothing on screen</div>
+        </div>
+        <div class="cv-message" id="cv-message" hidden></div>
+        <div class="cv-next" id="cv-next" hidden>
+            <div class="cv-next-head">Next<span id="cv-next-ref"></span></div>
+            <div class="cv-next-text" id="cv-next-text"></div>
+        </div>
+    </div>
 
     <script src="client_common.js"></script>
     <script src="design_space.js"></script>
@@ -351,6 +448,10 @@
                 ...layers.filter(l => l.type !== 'background'),
             ];
         }
+        // Text only (this output's Shows setting): the words, nothing else —
+        // no background, shapes, pictures, video or motion graphics. Behind
+        // them: black, or this output's key (Keying).
+        if (outputMode === 'text') layers = layers.filter(l => l.type === 'text');
         // Only themes that actually pair a reference/translation caption with
         // a verse layer get the "no caption without a verse line" guard below
         // — a theme deliberately built with ONLY a reference/citation layer
@@ -1013,6 +1114,21 @@
     // output it represents via ?output=…; the default is the external display.
     const OUTPUT_KEY = (new URLSearchParams(location.search).get('output') || 'external').toLowerCase();
 
+    // ── What this output shows: its theme, only its words, or the Monitor view ──
+    // app_outputs.js outputModeMap: a Monitor output → 'confidence', a display
+    // with Output Control → Text only → 'text', else 'theme'. Delivered the
+    // same two ways as keying: localStorage + a look-update broadcast.
+    const OUTPUT_MODES = ['theme', 'text', 'confidence'];
+    function loadOutputMode() {
+        try {
+            const map = JSON.parse(localStorage.getItem('kairo-output-modes') || 'null');
+            if (map && OUTPUT_MODES.includes(map[OUTPUT_KEY])) return map[OUTPUT_KEY];
+        } catch {}
+        return 'theme';
+    }
+    let outputMode = loadOutputMode();
+    document.body.dataset.mode = outputMode;
+
     // ── Load this output's look from localStorage ──────────────────────────
     function loadActiveLook() {
         try {
@@ -1099,9 +1215,10 @@
         // off is the one the CURRENTLY showing content belongs to — turning
         // off Slide shouldn't blank a Bible verse that's on screen, and
         // turning off Bible shouldn't blank an announcement slide.
-        if ((currentSlideIsBible ? (prev.bible && !next.bible) : (prev.slide && !next.slide))) clearDisplay();
+        if ((currentSlideIsBible ? (prev.bible && !next.bible) : (prev.slide && !next.slide))) { clearDisplay(); noteConfidenceSlide(null); }
         if (prev.media && !next.media) renderMediaStage(null);
         if (prev.timer && !next.timer) {
+            updateConfidenceTimer({ cleared: true });
             timerBadgeEl?.classList.add('hidden');
             clockBadgeEl?.classList.add('hidden');
             if (timerLayer) timerLayer.innerHTML = '';
@@ -1224,6 +1341,7 @@
     // into its own copy on top that blurs/fades away while the new scene's
     // pieces build in underneath it.
     function renderTimerLayer(look, styleByLayerId, timerText, opts = {}) {
+        lastTimerLayerArgs = look ? [look, styleByLayerId, timerText] : null;
         const leaving = opts.transition && opts.transition !== 'cut' && timerLayer.childNodes.length
             ? liftForCrossfade(timerLayer, opts.transition) : null;
         timerLayer.innerHTML = '';
@@ -1377,6 +1495,8 @@
     // slide-type item's own image (part of the slide layer) — not the
     // independent media layer; see renderMediaStage for that.
     function renderImageStage(src, animate = true, fit = 'contain') {
+        currentImageSlide = { src, fit };
+        if (outputMode === 'text') { slideLayer.innerHTML = ''; return; }   // a picture has no words
         const look = activeLook || FALLBACK_LOOK;
         const bg = (look.layers || []).find(l => l.type === 'background' && !l.pos);
         const isTransparent = !!(bg && bg.fill === 'transparent');
@@ -1410,6 +1530,11 @@
     // this is the output the congregation sees; every control lives in the
     // operator's window and reaches here via WS (see handleMessage below).
     function renderMediaStage(src, kind, fit, motion) {
+        // Media goes out on the full theme only — and a text-only or stage
+        // screen must not play a video's sound alongside the main screen.
+        // Kept, to put back if this output goes back to its theme.
+        lastMediaArgs = src ? [src, kind, fit, motion] : null;
+        if (src && outputMode !== 'theme') { mediaLayer.innerHTML = ''; return; }
         mediaLayer.innerHTML = '';
         // The operator's transport bar (mute/play/seek/volume) only makes
         // sense while an actual <video> is showing — it used to just stay
@@ -1646,6 +1771,7 @@
     // media layer show through, the same way a cleared front layer in
     // ProPresenter reveals whatever's behind it.
     function clearDisplay() {
+        currentImageSlide = null;
         currentVerseText = '';
         currentVerseRef  = '';
         currentTranslatedText = '';
@@ -1683,10 +1809,13 @@
         if (e.key === 'kairo-output-keying' && e.newValue) {
             try { applyOutputKeying((JSON.parse(e.newValue) || {})[OUTPUT_KEY]); } catch {}
         }
+        if (e.key === 'kairo-output-modes' && e.newValue) {
+            try { applyOutputMode((JSON.parse(e.newValue) || {})[OUTPUT_KEY]); } catch {}
+        }
     });
 
     // Re-fit when the output window resizes (projector attach, fullscreen toggle).
-    window.addEventListener('resize', () => { try { fitVerse(); } catch {} });
+    window.addEventListener('resize', () => { try { fitVerse(); fitConfidenceText(); } catch {} });
 
     // ── F key → fullscreen ─────────────────────────────────────────────────
     document.addEventListener('keydown', (e) => {
@@ -1764,8 +1893,10 @@
             const verse = msg.verses && msg.verses[0];
             const isBible = !!(verse && verse.book && verse.chapter && verse.verse);
             if (isBible ? !outputLayers.bible : !outputLayers.slide) return;
+            if (verse) noteConfidenceSlide(verse, isBible, msg.next);
             if (verse) {
                 currentSlideIsBible = isBible;
+                if (!verse.image) currentImageSlide = null;
                 // A playlist item may carry its own theme (lyrics vs scripture).
                 // Anything without one falls back to this output's assigned theme.
                 applyContentLook(msg.look);
@@ -1788,7 +1919,9 @@
             if (!outputLayers.bible) return;
             const verse = msg.verses && msg.verses[0];
             if (verse) {
+                noteConfidenceSlide(verse, true, null);
                 currentSlideIsBible = true;
+                currentImageSlide = null;
                 showVerse(verse.text || verse.verse || '', verse.reference || verse.ref || '', true, verse.translatedText || '');
             } else {
                 setRangeActive(true);
@@ -1798,6 +1931,20 @@
 
         if (msg.type === 'range-end') {
             setRangeActive(false);
+            confNextRange = null;
+            renderConfidenceView();
+            return;
+        }
+
+        // The verse a range goes to next — the Monitor view's "Next".
+        if (msg.type === 'range-state') {
+            confNextRange = msg.remaining > 0 && msg.next ? msg.next : null;
+            renderConfidenceView();
+            return;
+        }
+
+        if (msg.type === 'monitor-message') {
+            setMonitorMessage(msg.text);
             return;
         }
 
@@ -1807,11 +1954,13 @@
         if (msg.type === 'clear') {
             clearDisplay();
             renderMediaStage(null);
+            noteConfidenceSlide(null);
             return;
         }
 
         if (msg.type === 'clear-layer') {
-            if (msg.layer === 'slide' || msg.layer === 'all') clearDisplay();
+            if (msg.layer === 'slide' || msg.layer === 'all') { clearDisplay(); noteConfidenceSlide(null); }
+            if (msg.layer === 'timer' || msg.layer === 'all') updateConfidenceTimer({ cleared: true });
             if (msg.layer === 'media' || msg.layer === 'all') renderMediaStage(null);
             // Cosmetic only — the server-side clear-timer/clear-all handlers
             // actually stop the live segment's trigger *before* sending this,
@@ -1903,6 +2052,7 @@
         // look-update: main window broadcasts theme assignments. Take the entry
         // for this output, or the single look in the legacy payload shape.
         if (msg.type === 'look-update') {
+            if (msg.modes && typeof msg.modes === 'object') { try { applyOutputMode(msg.modes[OUTPUT_KEY]); } catch {} }
             const mine = pickLook(msg);
             if (mine) { assignedLook = mine; try { applyLook(mine, true); } catch {} }
             const myLayers = pickLayers(msg);
@@ -1917,10 +2067,134 @@
         // not one shared slot, so both can be showing at once without
         // overwriting each other every tick.
         if (msg.type === 'action') {
+            if (msg.actionId === 'stage-timer' && outputLayers.timer) updateConfidenceTimer(msg.payload);
             handleActionBadge(msg);
             return;
         }
     }
+
+    // ── Output mode changes ────────────────────────────────────────────────
+    let currentImageSlide = null;    // { src, fit } — a picture slide is what's showing
+    let lastMediaArgs = null;        // the media layer's content, kept while it isn't shown
+    let lastTimerLayerArgs = null;   // the timer layer's theme and text, for a repaint
+    function applyOutputMode(mode) {
+        if (!OUTPUT_MODES.includes(mode)) mode = 'theme';
+        if (mode === outputMode) return;
+        outputMode = mode;
+        document.body.dataset.mode = mode;
+        if (mode === 'theme' && lastMediaArgs) renderMediaStage(...lastMediaArgs);
+        else if (mode !== 'theme') mediaLayer.innerHTML = '';
+        if (mode === 'confidence') { startConfidenceClock(); renderConfidenceView(); } else stopConfidenceClock();
+        // Repaint with (or without) everything that isn't words.
+        if (currentImageSlide) renderImageStage(currentImageSlide.src, false, currentImageSlide.fit);
+        else applyLook(activeLook, false);
+        if (lastTimerLayerArgs) renderTimerLayer(...lastTimerLayerArgs);
+    }
+
+    // ── Monitor view: the confidence monitor ───────────────────────────────
+    // A Monitor output (owner, 2026-10-01: "Caters to the minister up front.
+    // just like propresenter stage output" — "call it Monitor, not stage"):
+    // what's on screen now with the next slide right under it, the time, the
+    // segment's countdown, and a message from the booth. Words only. A single
+    // scripture called out shows just that verse. Fed by the same broadcasts
+    // as every output; "Next" is the range's next verse for scripture, or the
+    // next slide the playlist sent along (service.js nextSlideInfo).
+    const cvClock = document.getElementById('cv-clock');
+    const cvTimer = document.getElementById('cv-timer');
+    const cvTimerLabel = document.getElementById('cv-timer-label');
+    const cvTimerValue = document.getElementById('cv-timer-value');
+    const cvRef = document.getElementById('cv-ref');
+    const cvText = document.getElementById('cv-text');
+    const cvNext = document.getElementById('cv-next');
+    const cvNextRef = document.getElementById('cv-next-ref');
+    const cvNextText = document.getElementById('cv-next-text');
+    const cvMessage = document.getElementById('cv-message');
+    let confCurrent = null;     // { text, ref, image, bible }
+    let confNextSlide = null;   // the playlist's next slide, sent with this one
+    let confNextRange = null;   // the range's next verse (range-state)
+
+    function confRefOf(v) {
+        const ref = v.reference || v.ref || '';
+        return v.label ? (ref ? `${v.label} · ${ref}` : v.label) : ref;
+    }
+    function noteConfidenceSlide(verse, isBible, next) {
+        confCurrent = verse ? {
+            text: verse.image ? '' : (verse.text || verse.verse || ''),
+            ref: confRefOf(verse),
+            image: !!verse.image,
+            bible: !!isBible,
+            book: verse.book, chapter: verse.chapter, verse: verse.verse,
+        } : null;
+        confNextSlide = verse && !isBible && next ? next : null;
+        renderConfidenceView();
+    }
+    // The range's next verse belongs under this verse only when the reading
+    // goes on from it — a single scripture called out mid-range shows alone.
+    function rangeGoesOnFrom(cur) {
+        const n = confNextRange;
+        if (!n || n.book !== cur.book) return false;
+        return n.chapter === cur.chapter ? n.verse > cur.verse : n.chapter === cur.chapter + 1;
+    }
+    function renderConfidenceView() {
+        if (outputMode !== 'confidence') return;
+        const cur = confCurrent;
+        cvRef.textContent = cur ? cur.ref : '';
+        const empty = !cur || !cur.text;
+        cvText.textContent = !cur ? 'Nothing on screen' : cur.text || (cur.image ? 'Picture on screen' : 'Nothing on screen');
+        cvText.classList.toggle('is-empty', empty);
+        const next = cur ? (cur.bible ? (rangeGoesOnFrom(cur) ? confNextRange : null) : confNextSlide) : null;
+        const nextText = next ? (next.text || next.verse || (next.image ? 'Picture' : '')) : '';
+        cvNext.hidden = !next || (!nextText && !confRefOf(next));
+        cvNextRef.textContent = next ? confRefOf(next) : '';
+        cvNextText.textContent = typeof nextText === 'string' ? nextText : '';
+        fitConfidenceText();
+    }
+    // The words as large as the space allows, down to a readable floor.
+    function fitConfidenceText() {
+        if (outputMode !== 'confidence') return;
+        const box = cvText.clientHeight;
+        if (box < 20) return;
+        const vh = window.innerHeight / 100;
+        let size = 11 * vh;
+        cvText.style.fontSize = size + 'px';
+        let guard = 40;
+        while (cvText.scrollHeight > box + 1 && size > 3 * vh && guard-- > 0) {
+            size *= 0.92;
+            cvText.style.fontSize = size + 'px';
+        }
+    }
+    function updateConfidenceTimer(p) {
+        const { remainingMs, label, cleared } = p || {};
+        if (cleared || typeof remainingMs !== 'number') { cvTimer.hidden = true; return; }
+        const overtime = remainingMs < 0;
+        const warning = !overtime && remainingMs <= 60000;
+        cvTimer.hidden = false;
+        cvTimerLabel.textContent = label || 'Timer';
+        cvTimerValue.textContent = (overtime ? '+' : '') + formatMs(Math.abs(remainingMs));
+        cvTimer.classList.toggle('is-overtime', overtime);
+        cvTimer.classList.toggle('is-warning', warning);
+    }
+    function setMonitorMessage(text) {
+        const t = String(text || '').trim();
+        if (!t) { cvMessage.hidden = true; cvMessage.textContent = ''; fitConfidenceText(); return; }
+        if (cvMessage.textContent === t && !cvMessage.hidden) return;
+        cvMessage.textContent = t;
+        cvMessage.hidden = false;
+        cvMessage.classList.remove('is-new');
+        void cvMessage.offsetWidth;   // restart the arrival flash
+        cvMessage.classList.add('is-new');
+        fitConfidenceText();   // the words make room for it
+    }
+    let confidenceClockTimer = null;
+    function tickConfidenceClock() {
+        cvClock.textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+    }
+    function startConfidenceClock() {
+        tickConfidenceClock();
+        if (!confidenceClockTimer) confidenceClockTimer = setInterval(tickConfidenceClock, 1000);
+    }
+    function stopConfidenceClock() { clearInterval(confidenceClockTimer); confidenceClockTimer = null; }
+    if (outputMode === 'confidence') { startConfidenceClock(); renderConfidenceView(); }
 
     const timerBadgeEl = document.getElementById('timer-badge');
     const clockBadgeEl = document.getElementById('clock-badge');
@@ -1966,9 +2240,33 @@
     // The latest countdown tick, so a resent countdown (see 'timer-slide')
     // can pick up at the right slide.
     let lastTimerTick = null;   // { remainingMs, totalMs, at }
+    // Time's up: a countdown on the screen ends there (owner, 2026-10-01: "does
+    // the timer not supposed to clear off the screen if the preservice time is
+    // complete?") — its design, the corner badge, any {timer} text. It still
+    // counts on into overtime for the operator's own view and on Monitor
+    // outputs (updateConfidenceTimer), for whoever is up front.
+    let countdownEnded = false;
+    function endCountdownOnScreen() {
+        timerBadgeEl?.classList.add('hidden');
+        if (timerLayer) timerLayer.innerHTML = '';
+        lastTimerLayerArgs = null;
+        if (timerScenes && timerScenes.length) renderMediaStage(null);
+        timerScenes = null;
+        activeSceneIndex = -1;
+        activeSceneSlot = -1;
+        stage.querySelectorAll('[data-binding="timer"],[data-binding="timer-h"],[data-binding="timer-m"],[data-binding="timer-s"],[data-timer-template]')
+            .forEach(el => { el.textContent = ''; });
+        currentTimerText = '';
+    }
     function handleActionBadge(msg) {
         if (msg.actionId === 'stage-timer') {
             const { remainingMs, label, cleared, style, totalMs } = msg.payload || {};
+            if (!cleared && remainingMs <= 0) {
+                if (!countdownEnded) { countdownEnded = true; endCountdownOnScreen(); }
+                lastTimerTick = null;
+                return;
+            }
+            countdownEnded = false;
             lastTimerTick = !cleared && typeof totalMs === 'number' && totalMs > 0 ? { remainingMs, totalMs, at: Date.now() } : null;
             // Two independent render targets share this one tick: the fixed
             // corner badge (always available, no theme needed) and — if this

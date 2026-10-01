@@ -594,6 +594,37 @@
   // need-translation-check) as an arbitrary, unrelated theme whenever the
   // operator had reordered/deleted themes such that a different one ended
   // up at index 0.
+  // A timer segment nobody has designed yet: the plain countdown on one of the
+  // bundled gradients (gradients.js), its own per segment, so the Timer cards
+  // differ (owner, 2026-10-01: the stage-lights picture on every card was
+  // "hideous" — "for the others, just use some of the gradients we have").
+  // Cool, clean ones, like the default Bible theme's — the mesh set's soft
+  // spots read as smudges at card size ("These gradients do not look good") —
+  // none too light for white digits. Only while the countdown theme still has its stock picture — a
+  // canvas someone has changed is theirs.
+  const SEGMENT_GRADIENTS = { 'prayer': 'deep-sea', 'worship': 'velvet', 'the word': 'indigo', 'testimony': 'blue-hour', 'ministration': 'clear-sky' };
+  const SEGMENT_GRADIENT_POOL = ['deep-sea', 'velvet', 'indigo', 'blue-hour', 'clear-sky'];
+  function segmentDefaultLook(item, base) {
+    const canvas = (base?.layers || []).find(l => l.type === 'background' && !l.pos);
+    if (!canvas || canvas.fill !== 'image' || !/backgrounds\/stage\.jpg$/.test(canvas.src || '')) return base;
+    const name = String(item.name || item.title || '').trim().toLowerCase();
+    let id = SEGMENT_GRADIENTS[name];
+    if (!id) {
+      let h = 0;
+      for (const ch of String(item.id || name)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+      id = SEGMENT_GRADIENT_POOL[h % SEGMENT_GRADIENT_POOL.length];
+    }
+    const g = (window.KairoGradients || []).find(x => x.id === id);
+    if (!g) return base;
+    const gradient = {
+      ...canvas, fill: 'gradient', angle: g.angle,
+      color: g.stops[0].color, color2: g.stops[g.stops.length - 1].color,
+      gradientStops: g.stops.map(st => ({ ...st })),
+      gradientGlows: (g.glows || []).map(gl => ({ ...gl })),
+    };
+    return { ...base, layers: base.layers.map(l => (l === canvas ? gradient : l)) };
+  }
+
   function themeForItem(item) {
     const list = (typeof looks !== 'undefined' && Array.isArray(looks)) ? looks : [];
     if (!list.length) return null;
@@ -606,7 +637,7 @@
     // shows up on the real output even though Edit previewed it correctly.
     if (item.type === 'timer') {
       const timerDefault = list.find(l => l.id === 'timer-big');
-      if (timerDefault) return timerDefault;
+      if (timerDefault) return segmentDefaultLook(item, timerDefault);
     }
     if (typeof primaryOutputLook === 'function') {
       const primary = primaryOutputLook();
@@ -1054,6 +1085,27 @@
   // follow: the slides moving on because the speech matched one (the follower,
   // content lookup) — that takes the screen back from a scripture. Other
   // automatic re-sends (a theme edit re-rendering the live slide) stay under it.
+  // What comes after a slide, for a stage display's "Next" (display.html's
+  // stage view): the item's next slide, else the first slide of the next item
+  // that has one.
+  function nextSlideInfo(item, index) {
+    let slide = slidesFor(item)[index + 1], from = item;
+    if (!slide && service) {
+      const at = service.items.findIndex(i => i.id === item.id);
+      for (const later of at >= 0 ? service.items.slice(at + 1) : []) {
+        const first = slidesFor(later)[0];
+        if (first) { slide = first; from = later; break; }
+      }
+    }
+    if (!slide) return null;
+    return {
+      text: slide.text || '',
+      reference: slide.reference || '',
+      label: from.type === 'song' ? (slide.label || '') : '',
+      image: !!slide.image,
+    };
+  }
+
   async function sendSlide(item, index, { auto = false, follow = false } = {}) {
     const slide = slidesFor(item)[index];
     if (!slide) return;
@@ -1106,6 +1158,7 @@
           look,
           auto,
           follow,
+          next: nextSlideInfo(item, index),
           verse: {
             reference: slide.reference || '',
             // ProPresenter-style section annotation (Verse/Chorus/Bridge/
@@ -5332,12 +5385,15 @@
           if (p.endAtTime) return `Ends ${p.endAtTime}`;
           return 'No time set';
         })();
-    preview.appendChild(readout);
-
     const label = document.createElement('div');
     label.className = 'timer-card-label';
     label.textContent = seg.name;
-    preview.appendChild(label);
+    // Name and time share the bottom row, so a narrow card shortens the name
+    // instead of laying one chip over the other.
+    const foot = document.createElement('div');
+    foot.className = 'timer-card-foot';
+    foot.append(label, readout);
+    preview.appendChild(foot);
 
     preview.addEventListener('dblclick', () => toggleSegment(seg, preview));
     preview.addEventListener('contextmenu', (e) => {
@@ -5464,15 +5520,26 @@
   // re-rendering the whole grid every second.
   // The latest countdown tick, for a resent countdown (onTimerSlide).
   let lastPreviewTick = null;   // { remainingMs, totalMs, text, at }
+  let previewCountdownEnded = false;   // see "Time's up" below
   function onTimerAction(msg) {
     const { remainingMs, cleared, totalMs } = msg.payload || {};
     lastPreviewTick = !cleared && typeof totalMs === 'number' && totalMs > 0
       ? { remainingMs, totalMs, text: (remainingMs < 0 ? '+' : '') + formatTime(Math.abs(remainingMs) / 1000), at: Date.now() } : null;
 
-    // Tick the Monitoring panel's timer layer regardless of which view the
-    // operator is on — segmentList is only loaded when the Timer view has
-    // been opened, but the countdown must keep updating everywhere.
-    if (!cleared) {
+    // Time's up: the countdown leaves the screen — the real outputs do the
+    // same (display.html endCountdownOnScreen), so this preview of them does
+    // too, and NDI/Syphon drop it. Its card below keeps counting the overtime.
+    if (!cleared && remainingMs <= 0) {
+      if (!previewCountdownEnded) {
+        previewCountdownEnded = true;
+        onTimerSlide({ clear: true });
+        window.KairoNativeOutputs?.pushTimer('');
+      }
+    } else if (!cleared) {
+      previewCountdownEnded = false;
+      // Tick the Monitoring panel's timer layer regardless of which view the
+      // operator is on — segmentList is only loaded when the Timer view has
+      // been opened, but the countdown must keep updating everywhere.
       const ot = remainingMs < 0, wn = !ot && remainingMs <= 60000;
       const f = (ot ? '+' : '') + formatTime(Math.abs(remainingMs) / 1000);
       // Output Looks — Timer layer parity for NDI/Syphon (native, non-
@@ -6596,6 +6663,7 @@
   // paintLookLayers is also used by app.js to render the top-bar live preview
   // with the same theme a sent slide actually carries, instead of plain text.
   window.KairoService = {
+    segmentDefaultLook,
     get service() { return service; },
     slidesFor, sendSlide, cycleSectionLabel, focusInStack, openFullEdit, closeStack, closeFullEdit,
     effectiveTranslateTo, awaitTranslatedText,

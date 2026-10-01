@@ -243,7 +243,15 @@ function handleServerMessage(msg) {
       break;
 
     case 'connection-state':
-      handleConnectionState(msg.state, msg.error);
+      handleConnectionState(msg.state, msg.error, msg.errorKind);
+      break;
+
+    case 'listening-error':
+      showListeningProblem(msg.error, 'nokey');
+      break;
+
+    case 'monitor-message':
+      if (typeof showMonitorMessageState === 'function') showMonitorMessageState(msg.text);
       break;
 
     case 'transcript':
@@ -314,7 +322,43 @@ function handleServerMessage(msg) {
 }
 
 // ── Connection state ───────────────────────────────────────────────────────
-function handleConnectionState(state, error) {
+// Why listening stopped, where the operator is already looking: toast() is a
+// deliberate no-op (feedback_no_toasts), and a refused key or an account out
+// of credit used to stop listening without a word (owner, 2026-10-01: "Did we
+// include an error response to let the user know when they are out of
+// credits?"). The live-status pill says it in a word; the transcript panel
+// says it in full, with what to do. Cleared by the next connect.
+const LISTENING_PROBLEM_LABELS = { credits: 'Out of credit', auth: 'Key rejected', quota: 'Rate limited', network: 'No internet', nokey: 'No API key' };
+function showListeningProblem(message, kind) {
+  if (!message) return;
+  const dot = document.getElementById('ls-bcast-dot');
+  const lbl = document.getElementById('ls-bcast-label');
+  dot?.classList.remove('broadcasting', 'warning');
+  dot?.classList.add('error');
+  if (lbl) {
+    lbl.classList.remove('broadcasting', 'warning');
+    lbl.classList.add('error');
+    lbl.textContent = LISTENING_PROBLEM_LABELS[kind] || 'Stopped';
+    lbl.title = message;
+  }
+  if (!transcriptContent) return;
+  transcriptContent.querySelector('.transcript-problem')?.remove();
+  transcriptContent.querySelector('.empty-state-sm')?.remove();
+  const note = document.createElement('div');
+  note.className = 'transcript-problem';
+  note.setAttribute('role', 'alert');
+  note.textContent = message;
+  transcriptContent.appendChild(note);
+  note.scrollIntoView({ block: 'nearest' });
+}
+function clearListeningProblem() {
+  document.getElementById('ls-bcast-dot')?.classList.remove('error');
+  const lbl = document.getElementById('ls-bcast-label');
+  if (lbl) { lbl.classList.remove('error'); lbl.removeAttribute('title'); }
+  transcriptContent?.querySelector('.transcript-problem')?.remove();
+}
+
+function handleConnectionState(state, error, errorKind) {
   const micPill = document.querySelector('.pill-green');
   const micLabel = micPill?.querySelector('.pill-dot');
   // Left sidebar broadcasting indicator
@@ -322,6 +366,7 @@ function handleConnectionState(state, error) {
   const lsBcastLbl = document.getElementById('ls-bcast-label');
 
   if (state === 'connected') {
+    clearListeningProblem();
     isListening = true;
     if (listenText) listenText.textContent = 'Stop Listening';
     listenBtn?.classList.add('active');
@@ -363,8 +408,9 @@ function handleConnectionState(state, error) {
     clearInterval(elapsedInterval); elapsedInterval = null;   // Time keeps the length of the session just ended
     stopAudioCapture();
     window.KairoService?.setAutoFollow?.(false);
-    if (state === 'error' && error) toast(error, 'error');
+    if (state === 'error' && error) showListeningProblem(error, errorKind);
   } else if (state === 'connecting') {
+    clearListeningProblem();
     if (listenText && !isListening) listenText.textContent = 'Connecting…';
     if (lsBcastLbl) lsBcastLbl.textContent = 'Connecting…';
   } else if (state === 'reconnecting') {
@@ -2292,12 +2338,7 @@ async function loadSettings() {
     // pattern: shows a key is set without making the masked text itself
     // editable/save-able. saveCurrentSettings only sends deepgramApiKey when
     // this field is actually non-empty (i.e. the user typed a real one).
-    if (deepgramKeyInput) {
-      deepgramKeyInput.value = '';
-      deepgramKeyInput.placeholder = settings.deepgramApiKey
-        ? `Key saved (${settings.deepgramApiKey}) — leave blank to keep`
-        : 'Paste your Deepgram API key';
-    }
+    resetDeepgramKeyField();
     if (translationSettings && settings.translation) translationSettings.value = settings.translation;
     if (translationSelect && settings.translation)   translationSelect.value   = settings.translation;
     if (bibleTranslateToSelect) bibleTranslateToSelect.value = settings.bibleTranslateTo || '';
@@ -2324,6 +2365,7 @@ async function loadSettings() {
     applyOutputThemes();
     applyOutputLayers();
     applyOutputKeying();
+    applyOutputModes();
     // Language
     const sttLang = document.getElementById('stt-language');
     if (sttLang) sttLang.value = settings.sttLanguage || 'en-US';
@@ -2482,21 +2524,38 @@ async function saveFirstRunChoice() {
   const input = document.getElementById('first-run-deepgram-key');
   const key   = (input?.value || '').trim();
   if (!key) { closeFirstRunModal(); return; }
-  // Mirror into the Settings field so the rest of the app stays in sync, then
-  // persist through the same endpoint saveCurrentSettings uses.
-  if (deepgramKeyInput) deepgramKeyInput.value = key;
+  // Persisted through the same endpoint saveCurrentSettings uses. The Settings
+  // field is not filled in with it (see resetDeepgramKeyField).
   try {
     await fetch(`${SERVER}/api/settings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ ...settings, deepgramApiKey: key }),
     });
-    settings = { ...settings, deepgramApiKey: key };
+    settings = { ...settings, deepgramApiKey: maskDeepgramKey(key) };
+    if (input) input.value = '';
+    resetDeepgramKeyField();
     toast('Deepgram key saved', 'success');
   } catch {
     toast('Could not save key — try again in Settings', 'error');
   }
   closeFirstRunModal();
+}
+
+// The key field never holds a saved key: it stays empty, and the placeholder
+// says a key is saved (masked, as the server sends it — see loadSettings). A
+// key typed in used to stay in the field after saving (and the first-run
+// wizard copied its key in), so the next key pasted in went on the end of the
+// old one and saved as one long broken key (owner, 2026-10-01: the field
+// "doesn't clear the info if you put in something else"). Only the mask is
+// kept on this side.
+const maskDeepgramKey = (k) => (k ? String(k).trim().slice(0, 8) + '…' : '');
+function resetDeepgramKeyField() {
+  if (!deepgramKeyInput) return;
+  deepgramKeyInput.value = '';
+  deepgramKeyInput.placeholder = settings.deepgramApiKey
+    ? `Key saved (${settings.deepgramApiKey}) — leave blank to keep`
+    : 'Paste your Deepgram API key';
 }
 
 async function saveCurrentSettings() {
@@ -2506,7 +2565,7 @@ async function saveCurrentSettings() {
     // whatever's already saved", not "erase the key". See loadSettings for
     // why this field starts empty instead of pre-filled with the masked
     // value.
-    ...(deepgramKeyInput?.value ? { deepgramApiKey: deepgramKeyInput.value } : {}),
+    ...(deepgramKeyInput?.value.trim() ? { deepgramApiKey: deepgramKeyInput.value.trim() } : {}),
     translation:       translationSettings?.value || 'KJV',
     autoSend:          autoSendSettings?.checked  !== false,
     showConfidence:    showConfSettings?.checked   !== false,
@@ -2535,6 +2594,8 @@ async function saveCurrentSettings() {
     return;
   }
   settings = { ...settings, ...updated };
+  if (updated.deepgramApiKey) settings.deepgramApiKey = maskDeepgramKey(updated.deepgramApiKey);
+  resetDeepgramKeyField();
   if (translationSelect && updated.translation) translationSelect.value = updated.translation;
   updateAutoDeployBadge();
   // Dismiss first-run banner now that a key may have been entered.
@@ -2758,7 +2819,10 @@ pollOBSStatus();
 setInterval(pollOBSStatus, 5000);
 
 
-function closeModal() { settingsModal?.classList.add('hidden'); }
+function closeModal() {
+  settingsModal?.classList.add('hidden');
+  resetDeepgramKeyField();   // a key typed but not saved doesn't linger for the next paste
+}
 
 // ── Scripture Search ───────────────────────────────────────────────────────
 // From the 3rd word typed, verses that contain or mean the phrase appear in a

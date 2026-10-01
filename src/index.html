@@ -653,6 +653,29 @@
                 <!-- Grid mode — Main plus one live copy per output that's on
                      (renderMonitorGrid). -->
                 <div class="outputs-monitor-grid hidden" id="outputs-monitor-grid"></div>
+                <!-- Output transition — display-level (not per-theme, see
+                     display.html's outputAnimation): part of the monitor card,
+                     right under the screen it changes (owner, 2026-10-01: "more
+                     closer to the display monitor"), reachable without ever
+                     opening Theme Studio. -->
+                <div class="rs-transition-bar" id="rs-transition-bar">
+                    <span class="rs-transition-label">Transition</span>
+                    <!-- Icon-only, same square-button style as Theme Studio's
+                         align row (.ts-align-btn, already icon-only) rather
+                         than text chips — the tooltip (title) carries the name. -->
+                    <div class="ts-align-group" id="rs-anim-picker">
+                        <button class="ts-align-btn" data-anim="fade" title="Fade">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6" stroke-dasharray="2.5 2.5"/></svg>
+                        </button>
+                        <button class="ts-align-btn" data-anim="slide-up" title="Slide">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="15" y2="12"/><polyline points="11 7 16 12 11 17"/><line x1="20" y1="5" x2="20" y2="19"/></svg>
+                        </button>
+                        <button class="ts-align-btn" data-anim="cut" title="Cut (instant)">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 3 5 13 11 13 9 21 19 11 13 11 13 3"/></svg>
+                        </button>
+                    </div>
+                    <input type="range" id="rs-anim-speed" class="ts-anim-speed-slider" min="0.3" max="2.5" step="0.1" value="1" title="Transition speed">
+                </div>
                 <!-- Range navigation -->
                 <div id="range-nav-bar" class="range-nav-bar" style="display:none">
                     <div class="range-nav-left">
@@ -675,27 +698,25 @@
                 </div>
             </div>
 
-            <!-- Output transition — display-level (not per-theme, see
-                 display.html's outputAnimation), so it lives right under the
-                 one "viewer" that actually shows the output, reachable
-                 without ever opening Theme Studio. -->
-            <div class="rs-transition-bar" id="rs-transition-bar">
-                <span class="rs-transition-label">Transition</span>
-                <!-- Icon-only, same square-button style as Theme Studio's
-                     align row (.ts-align-btn, already icon-only) rather
-                     than text chips — the tooltip (title) carries the name. -->
-                <div class="ts-align-group" id="rs-anim-picker">
-                    <button class="ts-align-btn" data-anim="fade" title="Fade">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6" stroke-dasharray="2.5 2.5"/></svg>
-                    </button>
-                    <button class="ts-align-btn" data-anim="slide-up" title="Slide">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="15" y2="12"/><polyline points="11 7 16 12 11 17"/><line x1="20" y1="5" x2="20" y2="19"/></svg>
-                    </button>
-                    <button class="ts-align-btn" data-anim="cut" title="Cut (instant)">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 3 5 13 11 13 9 21 19 11 13 11 13 3"/></svg>
+            <!-- Monitor message — a line from the booth to every Monitor output
+                 (display.html's confidence view). Shown only while there is
+                 one (refreshMonitorMessageBar, app_outputs.js). -->
+            <div class="monitor-message-bar hidden" id="monitor-message-bar">
+                <!-- Clear sits up here, right above Show — the box keeps Show
+                     as its only button (owner, 2026-10-01). -->
+                <div class="monitor-message-head">
+                    <span class="monitor-message-label">Monitor message</span>
+                    <button type="button" id="monitor-message-clear" class="rs-clear-btn" title="Take the message down" disabled>
+                        <svg width="8" height="8" viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+                        <span>Clear</span>
                     </button>
                 </div>
-                <input type="range" id="rs-anim-speed" class="ts-anim-speed-slider" min="0.3" max="2.5" step="0.1" value="1" title="Transition speed">
+                <div class="monitor-message-row">
+                    <input type="text" id="monitor-message-input" class="monitor-message-input" placeholder="e.g. 5 minutes left" maxlength="200" autocomplete="off" aria-label="Message to the Monitor">
+                    <button type="button" id="monitor-message-send" class="rs-layer-clear-btn monitor-message-btn" title="Show on the Monitor" aria-label="Show on the Monitor">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+                    </button>
+                </div>
             </div>
 
             <!-- Candidates — context (fingerprint/IDF) suggestions only.
@@ -1205,7 +1226,7 @@
                             <button class="toggle-btn active" data-engine="deepgram">Deepgram</button>
                             <button class="toggle-btn" data-engine="browser">Offline</button>
                         </div>
-                        <p class="setting-hint" id="speech-engine-hint">Higher accuracy, requires an API key. 12,000 free minutes/month.</p>
+                        <p class="setting-hint" id="speech-engine-hint">Higher accuracy, requires an API key. New Deepgram accounts start with $200 of free credit — about 370 hours of listening.</p>
                     </div>
 
                     <!-- Offline model installer — shown only when "Offline" engine is selected.
@@ -1653,6 +1674,7 @@
                     <div class="svc-popover-label">Add Output</div>
                     <div class="svc-popover-list">
                         <button type="button" class="svc-popover-item" data-add-type="display">Display / Projector</button>
+                        <button type="button" class="svc-popover-item" data-add-type="monitor">Monitor<span class="svc-popover-item-hint">Confidence monitor for whoever is up front</span></button>
                         <button type="button" class="svc-popover-item" data-add-type="ndi" title="Requires the free NDI Tools runtime — ndi.video/tools">NDI<span class="svc-popover-item-hint">Requires NDI Tools installation</span></button>
                         <button type="button" class="svc-popover-item" id="add-output-syphon-btn" data-add-type="syphon">Syphon<span class="svc-popover-item-hint">macOS only</span></button>
                     </div>
@@ -1918,7 +1940,7 @@
             var keyGrp  = document.getElementById('deepgram-key-group');
             if (!group) return;
             var HINTS = {
-                'deepgram': 'Higher accuracy, requires an API key. 12,000 free minutes/month.',
+                'deepgram': 'Higher accuracy, requires an API key. New Deepgram accounts start with $200 of free credit — about 370 hours of listening.',
                 'browser':  'Runs entirely on this Mac — no internet, no API key. Accuracy is lower than Deepgram.',
             };
             function apply(value) {
@@ -2125,6 +2147,7 @@
     <script src="word_split.js"></script>
     <script src="color_utils.js"></script>
     <script src="layer_geometry.js"></script>
+    <script src="gradients.js"></script>
     <script src="backgrounds/backgrounds.js"></script>
     <script src="motion_graphics.js"></script>
     <script src="announcement_pack.js"></script>

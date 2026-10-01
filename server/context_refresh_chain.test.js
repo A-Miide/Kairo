@@ -111,7 +111,8 @@ async function main() {
 
   console.log(`\n${pass} passed, ${fail} failed`);
   fs.rmSync(appDataDir, { recursive: true, force: true });
-  process.exit(fail === 0 ? 0 : 1);
+  // The worker finishes what it started first: exiting mid model-load aborts (server.js stopDetectionWorker).
+  server.stopDetectionWorker({ timeoutMs: 30000 }).finally(() => process.exit(fail === 0 ? 0 : 1));
 }
 
-main().catch(err => { console.error(err); process.exit(1); });
+main().catch(err => { console.error(err); server.stopDetectionWorker({ timeoutMs: 30000 }).finally(() => process.exit(1)); });

@@ -84,8 +84,8 @@ await test('non-ambiguous refs pass through resolveAmbiguousRefs unchanged', asy
 });
 
 console.log(`\n${pass} passed, ${fail} failed`);
-process.exit(fail === 0 ? 0 : 1);
-
+// The worker finishes what it started first: exiting mid model-load aborts (server.js stopDetectionWorker).
+server.stopDetectionWorker({ timeoutMs: 30000 }).finally(() => process.exit(fail === 0 ? 0 : 1));
 }
 
 main();
