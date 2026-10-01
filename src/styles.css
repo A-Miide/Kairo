@@ -2328,12 +2328,6 @@ body > .lyric-follow-hud { position: fixed; left: 14px; bottom: 14px; z-index: 4
 .svc-live-tag {
   position: absolute;
   top: 6px; right: 6px;
-  background: var(--brand);
-  color: #fff;
-  font-size: 9px; font-weight: 800;
-  letter-spacing: 0.1em;
-  padding: 2px 6px;
-  border-radius: 3px;
 }
 
 /* In the Slides header row itself now (owner feedback: "search should be
@@ -4694,14 +4688,38 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
   display: flex; align-items: center;
 }
 /* "Live" is the one state that keeps the brand color — orange is reserved
-   for the brand mark and on-air indicators, everything else went neutral. */
-.timer-card-status.is-live { color: var(--brand); }
-.timer-card-status.is-live::before {
-  content: '';
-  display: inline-block; width: 5px; height: 5px; border-radius: 999px;
-  background: var(--brand); margin-right: 4px;
-  animation: pulse-osp 1.4s ease-in-out infinite;
+   for the brand mark and on-air indicators, everything else went neutral.
+   One LIVE badge everywhere (owner, 2026-10-01: Timer's was "inconsistent"
+   with the Bible tab's and the monitor's): a filled pill with a pulsing white
+   dot, the monitor's own (.live-screen-badge). Slides' tag too. */
+.timer-card-status.is-live,
+.svc-live-tag {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: 20px;
+  background: var(--brand);
+  color: #fff;
+  font-family: var(--font-head);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
 }
+.timer-card-status.is-live::before,
+.svc-live-tag::before {
+  content: '';
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #fff;
+  flex-shrink: 0;
+  animation: dot-pulse 1.8s ease-in-out infinite;
+}
+/* The pill stays white on brand in warning/overtime — the time chip says it. */
+.timer-card-preview.is-warning .timer-card-status.is-live,
+.timer-card-preview.is-overtime .timer-card-status.is-live { color: #fff; }
 
 /* The card face is just the thumbnail + this one button now — set time/
    rename/style/delete all moved to right-click, matching how a Slides

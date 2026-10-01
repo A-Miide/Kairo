@@ -9,6 +9,7 @@
 //
 //   node scripts/make-backgrounds.js            all of them
 //   node scripts/make-backgrounds.js midnight   just one
+//   node scripts/make-backgrounds.js --list     only rewrite the list
 'use strict';
 
 const fs = require('fs');
@@ -288,6 +289,19 @@ const RECIPES = [
   } },
 ];
 
+// Artwork the owner chose, cut from a mesh gradient pack (2026-10-01: "I gave
+// you some samples so you could just replicate 1:1") — the pack's own render,
+// not repainted here: each tile rendered from its vector file, fitted to
+// 1920×1080, copied in as JPEG with a thumbnail. Listed so a re-run keeps them.
+const PACK = [
+  { id: 'mesh-ember-glow', name: 'Ember Glow', tone: 'dark', tags: ['mesh', 'magenta', 'gold'], color: '#83136f' },
+  { id: 'mesh-nebula', name: 'Nebula', tone: 'dark', tags: ['mesh', 'violet', 'blue'], color: '#5840e0' },
+  { id: 'mesh-northern-lights', name: 'Northern Lights', tone: 'dark', tags: ['mesh', 'blue', 'green'], color: '#4236cf' },
+  { id: 'mesh-lagoon', name: 'Lagoon', tone: 'light', tags: ['mesh', 'aqua', 'blue'], color: '#18a5f5' },
+  { id: 'mesh-tropical', name: 'Tropical', tone: 'dark', tags: ['mesh', 'pink', 'orange'], color: '#e83079' },
+  { id: 'mesh-twilight', name: 'Twilight', tone: 'dark', tags: ['mesh', 'violet', 'gold'], color: '#8532a4' },
+];
+
 function main() {
   const only = process.argv[2];
   fs.mkdirSync(path.join(OUT, 'thumbs'), { recursive: true });
@@ -314,8 +328,8 @@ function main() {
     console.log(`${r.id}: ${(fs.statSync(jpg).size / 1024).toFixed(0)} KB in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   }
   // The list the app reads.
-  const entries = RECIPES.map(r => ({ id: r.id, name: r.name, tone: r.tone, tags: r.tags, color: colors[r.id],
-    src: `backgrounds/${r.id}.jpg`, thumb: `backgrounds/thumbs/${r.id}.jpg` }));
+  const entries = [...RECIPES.map(r => ({ id: r.id, name: r.name, tone: r.tone, tags: r.tags, color: colors[r.id] })), ...PACK]
+    .map(e => ({ ...e, src: `backgrounds/${e.id}.jpg`, thumb: `backgrounds/thumbs/${e.id}.jpg` }));
   fs.writeFileSync(path.join(OUT, 'backgrounds.js'),
     `// KAIRO — the bundled background pool: original abstract backgrounds that ship\n`
     + `// with the app (src/backgrounds/), reusable by any theme or slide. Written by\n`
