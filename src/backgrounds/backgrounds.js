@@ -184,6 +184,84 @@
       "color": "#dce4ec",
       "src": "backgrounds/mist.jpg",
       "thumb": "backgrounds/thumbs/mist.jpg"
+    },
+    {
+      "id": "mesh-ember-glow",
+      "name": "Ember Glow",
+      "tone": "dark",
+      "tags": [
+        "mesh",
+        "magenta",
+        "gold"
+      ],
+      "color": "#83136f",
+      "src": "backgrounds/mesh-ember-glow.jpg",
+      "thumb": "backgrounds/thumbs/mesh-ember-glow.jpg"
+    },
+    {
+      "id": "mesh-nebula",
+      "name": "Nebula",
+      "tone": "dark",
+      "tags": [
+        "mesh",
+        "violet",
+        "blue"
+      ],
+      "color": "#5840e0",
+      "src": "backgrounds/mesh-nebula.jpg",
+      "thumb": "backgrounds/thumbs/mesh-nebula.jpg"
+    },
+    {
+      "id": "mesh-northern-lights",
+      "name": "Northern Lights",
+      "tone": "dark",
+      "tags": [
+        "mesh",
+        "blue",
+        "green"
+      ],
+      "color": "#4236cf",
+      "src": "backgrounds/mesh-northern-lights.jpg",
+      "thumb": "backgrounds/thumbs/mesh-northern-lights.jpg"
+    },
+    {
+      "id": "mesh-lagoon",
+      "name": "Lagoon",
+      "tone": "light",
+      "tags": [
+        "mesh",
+        "aqua",
+        "blue"
+      ],
+      "color": "#18a5f5",
+      "src": "backgrounds/mesh-lagoon.jpg",
+      "thumb": "backgrounds/thumbs/mesh-lagoon.jpg"
+    },
+    {
+      "id": "mesh-tropical",
+      "name": "Tropical",
+      "tone": "dark",
+      "tags": [
+        "mesh",
+        "pink",
+        "orange"
+      ],
+      "color": "#e83079",
+      "src": "backgrounds/mesh-tropical.jpg",
+      "thumb": "backgrounds/thumbs/mesh-tropical.jpg"
+    },
+    {
+      "id": "mesh-twilight",
+      "name": "Twilight",
+      "tone": "dark",
+      "tags": [
+        "mesh",
+        "violet",
+        "gold"
+      ],
+      "color": "#8532a4",
+      "src": "backgrounds/mesh-twilight.jpg",
+      "thumb": "backgrounds/thumbs/mesh-twilight.jpg"
     }
   ];
   root.KairoBackgrounds = BACKGROUNDS;
