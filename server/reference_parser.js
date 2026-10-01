@@ -425,8 +425,15 @@ const isListNumber = (w) => /^\d+$/.test(w) || (WORD_TO_NUM[w.toLowerCase()] !==
 // 8:28, I mean 8:29", "3:7… 3:17, sorry" — keeps only what the preacher
 // settled on.
 const CORRECTION_MARKERS = [['i', 'mean'], ['or', 'rather'], ['sorry'], ['rather'], ['correction']];
+// The numbers are read without their colons ("3 : 7" is "3 7"); a sentence
+// with nothing corrected keeps them.
 function applySelfCorrections(lc) {
   if (!/\b(sorry|mean|rather|correction)\b/.test(lc)) return lc;
+  const plain = lc.replace(/ : /g, ' ');
+  const out = correctInPlace(plain);
+  return out === plain ? lc : out;
+}
+function correctInPlace(lc) {
   const w = lc.split(' ');
   const numberEndingAt = (end) => {                 // number phrase ending right before index `end`
     for (let st = Math.max(0, end - 3); st < end; st++) {
@@ -448,14 +455,14 @@ function applySelfCorrections(lc) {
       const before2 = next2 ? numberEndingAt(before1.st) : null;
       const from = before2 ? before2.st : before1.st;
       w.splice(from, after - from);
-      return applySelfCorrections(w.join(' '));
+      return correctInPlace(w.join(' '));
     }
     // "3 7 3 17 sorry": the same chapter restated with a new verse just before the marker.
     const v2 = before1, c2 = numberEndingAt(v2.st), v1 = c2 && numberEndingAt(c2.st), c1 = v1 && numberEndingAt(v1.st);
     if (c1 && c1.value === c2.value) {
       w.splice(m, marker.length);
       w.splice(c1.st, c2.st - c1.st);
-      return applySelfCorrections(w.join(' '));
+      return correctInPlace(w.join(' '));
     }
   }
   return lc;
@@ -482,7 +489,7 @@ function splitNumberPunctuation(text) {
       const u = plainNumber(unit);
       return u >= 1 && u <= 9 ? `${tens}${u}` : m;
     })
-    .replace(/\b([a-z0-9]+)\s*:\s*([a-z0-9]+)\b/gi, (m, a, b) => (plainNumber(a) != null && plainNumber(b) != null ? `${a} ${b}` : m))
+    .replace(/\b([a-z0-9]+)\s*:\s*([a-z0-9]+)\b/gi, (m, a, b) => (plainNumber(a) != null && plainNumber(b) != null ? `${a} : ${b}` : m))
     .replace(/\b([a-z]+)-([a-z]+)\b/gi, (m, a, b) => {
       const x = plainNumber(a), y = plainNumber(b);
       if (x == null || y == null) return m;
@@ -496,13 +503,18 @@ function cleanReferenceText(text) {
   if (citationLanguage !== 'en') text = localizeCitationText(text, citationLanguage);
   text = dropPossessives(text)
     // Captions split a two-digit verse: "Proverbs 3:2 7" is 3:27.
-    .replace(/\b(\d{1,3}):(\d) (\d)(?![\d:])(?!\s+\d)/g, '$1:$2$3');
+    .replace(/\b(\d{1,3}):(\d) (\d)(?![\d:])(?!\s+\d)/g, '$1:$2$3')
+    // …and a two-digit chapter: "Psalm 4 1: 1-3" is 41:1-3 (eval, Kingdom Law).
+    .replace(/(?<![\d:]\s?)\b(\d) (\d):(?=\s*\d)/g, '$1$2:');
   text = splitNumberPunctuation(text);
   text = text.replace(/([\w-]+)\s*,\s*(?=([\w-]+))/g, (m, a, b) => isListNumber(a) && isListNumber(b) ? `${a} and ` : m);
   return applySelfCorrections(normalizeOrdinalForms(text
     .replace(/[.,!?;]/g, ' ')
     .replace(/\bcolon\b/gi, ':')
-    .replace(/(\d)\s*:\s*(\d)/g, '$1 $2')
+    // The colon stays a word of its own: it says which number is the verse.
+    // "Psalm 8:4" read as "Psalm 8 4" lost its verse to the "Psalm one one…"
+    // (still becoming 110) guard, and "2 John 1:7" became 2 John 1:1.
+    .replace(/(\d)\s*:\s*(\d)/g, '$1 : $2')
     .replace(/(\d)\s*-\s*(\d)/g, '$1 to $2')
     .replace(/([a-z])-([a-z])/gi, '$1 $2')
     .replace(/\s+/g, ' ').trim().toLowerCase()
@@ -903,6 +915,7 @@ function parseSpokenReference(text, inBibleMode = false) {
 
     let vRes = consumeNumber(words, idx);
     let lookAheadRepositioned = false;
+    let restatedChapter = null;
 
     // Real incidents (2026-09-24): "Psalm one twenty five FOR | one and two"
     // (Deepgram's mishearing of "verse") sent Psalms 125:4 to the screen, and
@@ -945,6 +958,12 @@ function parseSpokenReference(text, inBibleMode = false) {
         lookIdx++;
         const explicitVRes = consumeNumber(words, lookIdx);
         if (explicitVRes) {
+          // With "chapter" and "verse" both said, the bare number between them
+          // is a stray or the chapter said again: "In Luke chapter six four and
+          // verse 14, and Jesus returned…" was Luke 4:14 (owner's live test,
+          // 2026-10-01). Kept as the alternative; the caller lets the words
+          // read next choose.
+          if (skippedChapterKw && vRes.value !== chapter && vRes.value <= maxCh) restatedChapter = vRes.value;
           vRes = explicitVRes;
           idx = lookIdx + explicitVRes.consumed;
           hasVerseKeyword = true;
@@ -1082,10 +1101,11 @@ function parseSpokenReference(text, inBibleMode = false) {
       const prev = collectedRanges[r - 1], cur = collectedRanges[r];
       if (cur.verseStart === prev.verseEnd + 1) { prev.verseEnd = Math.max(prev.verseEnd, cur.verseEnd); collectedRanges.splice(r, 1); }
     }
-    if (collectedRanges.length > 1) return { book: bookName, chapter, ranges: collectedRanges };
+    const alt = restatedChapter ? { altChapter: restatedChapter } : {};
+    if (collectedRanges.length > 1) return { book: bookName, chapter, ranges: collectedRanges, ...alt };
     const only = collectedRanges[0];
-    if (only.verseEnd !== only.verseStart) return { book: bookName, chapter, verseStart: only.verseStart, verseEnd: only.verseEnd };
-    return { book: bookName, chapter, verse: verseStart };
+    if (only.verseEnd !== only.verseStart) return { book: bookName, chapter, verseStart: only.verseStart, verseEnd: only.verseEnd, ...alt };
+    return { book: bookName, chapter, verse: verseStart, ...alt };
   }
   return null;
 }

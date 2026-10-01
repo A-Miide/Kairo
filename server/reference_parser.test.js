@@ -447,3 +447,32 @@ test('an ordinal right after a chapter is not its verse: "Matthew eleven second 
   assert.deepEqual(f('Genesis one second verse'), ['Genesis 1:2']);     // and so is "the second verse"
 });
 
+
+test('a number between a named chapter and a named verse is kept as the other chapter it may be ("Luke chapter six four and verse 14")', () => {
+  const f = (t) => parseAllSpokenReferences(t).map(r => `${r.book} ${r.chapter}:${r.verse ?? r.verseStart}${r.altChapter ? ` or ${r.altChapter}` : ''}`);
+  // Live 2026-10-01: the preacher read Luke 4:14. The plain reading stays first;
+  // the server lets the words read next choose.
+  assert.deepEqual(f('In Luke chapter six four and verse 14, and Jesus returned'), ['Luke 6:14 or 4']);
+  // Only with "chapter" said: "Psalm 45 5 and verse 6" (eval, Kingdom Law) is 45:6.
+  assert.deepEqual(f('Psalm 45 5 and verse 6'), ['Psalms 45:6']);
+  // Not a chapter the book has, or the same chapter said again: nothing to weigh.
+  assert.deepEqual(f('Romans chapter eight twenty eight and verse 31'), ['Romans 8:31']);
+  assert.deepEqual(f('John chapter three three and verse 16'), ['John 3:16']);
+});
+
+test('a colon between chapter and verse says which number is the verse ("Psalm 8:4", "2 John 1:7")', () => {
+  const f = (t) => parseAllSpokenReferences(t).map(r => `${r.book} ${r.chapter}:${r.verse ?? r.verseStart ?? ''}${r.verseEnd && r.verseEnd !== r.verseStart ? '-' + r.verseEnd : ''}`);
+  // Psalms 1–9 with a verse under 10 lost the verse: "Psalm 8 4" looked like
+  // "Psalm one one…" still becoming 110 (Bible-wide parser sweep, 2026-10-01).
+  assert.deepEqual(f('Psalm 8:4'), ['Psalms 8:4']);
+  assert.deepEqual(f('Psalm 1:1.'), ['Psalms 1:1']);
+  assert.deepEqual(f('Psalm one one'), ['Psalms 1:']);           // spoken digits still wait
+  // A one-chapter book's "1:" is its chapter, not verse 1.
+  assert.deepEqual(f('2 John 1:7'), ['2 John 1:7']);
+  assert.deepEqual(f('3 John 1:2'), ['3 John 1:2']);
+  // Captions split a two-digit chapter like they split a verse.
+  assert.deepEqual(f('able Psalm 4 1: 1-3 he will not deliver'), ['Psalms 41:1-3']);
+  // A correction in the same breath still lands on the corrected verse.
+  assert.deepEqual(f('the temple of God 1 Corinthians 3:7 3:17 sorry we are'), ['1 Corinthians 3:17']);
+  assert.deepEqual(f('Romans 8:28, I mean 8:29'), ['Romans 8:29']);
+});
