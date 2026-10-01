@@ -428,13 +428,21 @@ class EvidenceLedger {
   static verseKey(c) { return `${c.book}|${c.chapter}|${c.verse}`; }
   static chapterKey(c) { return `${c.book}|${c.chapter}`; }
 
-  /** Record a detection hit; call once per candidate per detection pass. */
-  record(candidate, method, now) {
+  /**
+   * Record a detection hit; call once per candidate per detection pass.
+   * `landed`: the hit was worth showing somewhere (screen or Possible
+   * Matches). Every hit counts toward the agreement/repeat bonuses; only a
+   * landed one counts as corroboration (hasCorroboration) — a near-miss too
+   * weak to show anywhere is the same few words matched again, not a second
+   * opinion.
+   */
+  record(candidate, method, now, landed = true) {
     this.prune(now);
     const vKey = EvidenceLedger.verseKey(candidate);
     let v = this._byVerse.get(vKey);
-    if (!v) { v = { methods: new Set(), count: 0, lastSeenAt: now }; this._byVerse.set(vKey, v); }
+    if (!v) { v = { methods: new Set(), landed: new Set(), count: 0, lastSeenAt: now }; this._byVerse.set(vKey, v); }
     v.methods.add(method);
+    if (landed) v.landed.add(method);
     v.count++;
     v.lastSeenAt = now;
 
@@ -477,7 +485,8 @@ class EvidenceLedger {
 
   /**
    * True when 2+ DISTINCT methods have independently hit this exact verse
-   * within the window — the same test agreementBonus already uses, exposed
+   * within the window, each with a hit that landed (see record) — the same
+   * test agreementBonus uses, exposed
    * on its own for decideTarget's semantic-corroboration exemption (see
    * there for why). Call this BEFORE record()-ing the current candidate, so
    * it reflects prior independent evidence, not the candidate corroborating
@@ -485,7 +494,7 @@ class EvidenceLedger {
    */
   hasCorroboration(candidate) {
     const v = this._byVerse.get(EvidenceLedger.verseKey(candidate));
-    return !!v && v.methods.size >= 2;
+    return !!v && v.landed.size >= 2;
   }
 
   prune(now) {

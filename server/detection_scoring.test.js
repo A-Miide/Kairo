@@ -622,6 +622,21 @@ test('Semantic + genuine cross-method corroboration clears the viewer bar', () =
   assert.equal(decideTarget(finalScore, 'semantic', { corroborated }), 'viewer');
 });
 
+test('A near-miss too weak to show anywhere is not a second opinion — only hits that landed corroborate', () => {
+  const ledger = new EvidenceLedger();
+  const candidate = { book: '1 Peter', chapter: 1, verse: 3 };
+  // The same few words, matched again by a second method below the floor
+  // (dropped): still counted toward the agreement bonus, but not as
+  // corroboration (eval 2026-10-01: such near-misses released thin stream
+  // matches — Genesis 28:14, Luke 22:20).
+  ledger.record(candidate, 'stream', T0 - 3000, true);
+  ledger.record(candidate, 'verbatim', T0 - 2000, false);
+  assert.equal(ledger.hasCorroboration(candidate), false);
+  assert.ok(ledger.agreementBonus(candidate) > 0);
+  ledger.record(candidate, 'semantic', T0 - 1000, true);
+  assert.equal(ledger.hasCorroboration(candidate), true);
+});
+
 test('Semantic alone (no corroboration) still never reaches viewer, even with a contrived high score — the ceiling holds without agreement', () => {
   // Score high enough to clear VIEWER_MIN_SCORE on raw arithmetic alone
   // (not realistically reachable by B(semantic) alone today, but the

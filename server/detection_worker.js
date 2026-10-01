@@ -181,6 +181,14 @@ const ALIGN_EXTENSION_MIN_IDF = 2.0;
 // A word with this much identifying weight is more than glue ("the", "into",
 // "saying" all sit below it; "able", "enter", "world", "raised" above).
 const STREAM_WEIGHTY_IDF = 3.0;
+// …measured over the Bible, where "Jesus", "Christ", "name", "glory" are
+// fairly rare (IDF 3.5–6). In preaching they are the commonest words there
+// are, said whatever is being quoted — so they never make a match weighty:
+// "…darkness will start giving way to you in the name of Jesus Christ" put
+// Acts 2:38 up on three of them (offline engine, Enough is Enough, real time).
+// They still count toward a match's IDF; a real quote has words of its own.
+const PREACHING_COMMON_WORDS = new Set(['jesus', 'christ', 'lord', 'god', 'name', 'holy', 'ghost', 'spirit',
+  'father', 'amen', 'praise', 'glory', 'hallelujah']);
 // IDF floor for confirmation, on top of the word-count floor above — found
 // necessary from a real false-positive: liturgical/prayer language ("in the
 // name of Jesus", "we give you the glory", "receive our thanks") is dense
@@ -265,6 +273,17 @@ const STT_HEAL = {
 
   // fulness (KJV) vs. fullness (modern/STT) — same word, not a suffix issue.
   fulness: 'fullness',
+
+  // The articles are one word to the matchers: preachers swap them reading
+  // from memory, and speech engines swap them hearing — "affliction shall not
+  // rise again a second time" for "...the second time" (Nahum 1:9) was never
+  // matched (offline engine, Enough is Enough). They identify nothing either way.
+  a: 'the', an: 'the',
+
+  // Words that sound the same, which a speech engine can only guess between —
+  // "for by the profit the law brought Israel" (Hosea 12:13, offline engine).
+  profit: 'prophet', profits: 'prophets',
+  wholly: 'holy', prey: 'pray', sole: 'soul', soles: 'souls',
 };
 
 // English irregulars — every entry here is a verb whose forms differ enough
@@ -1079,7 +1098,7 @@ function streamWord(raw) {
       // How many of the aligned words carry real weight (see STREAM_WEIGHTY_IDF)
       // — server.js asks for three before a match nothing points at goes up alone.
       let weightyWords = 0;
-      for (const w of cand.contributedWords) if ((idfMap.get(w) || 0) >= STREAM_WEIGHTY_IDF) weightyWords++;
+      for (const w of cand.contributedWords) if ((idfMap.get(w) || 0) >= STREAM_WEIGHTY_IDF && !PREACHING_COMMON_WORDS.has(w)) weightyWords++;
       confirmed.push({ verseIdx: cand.idx, matched: cand.matched, matchedIdf: cand.matchedIdf, viaBackwardExtension, weightyWords });
     }
     kept.push(cand);
