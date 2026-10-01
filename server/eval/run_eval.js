@@ -218,7 +218,9 @@ async function main() {
   const args = process.argv.slice(2);
   const runsIdx = args.indexOf('--runs');
   const runs = runsIdx >= 0 ? Math.max(1, parseInt(args[runsIdx + 1], 10) || 1) : 1;
-  const requested = args.filter((a, i) => a !== '--runs' && i !== runsIdx + 1);
+  // (Without --runs, runsIdx + 1 is 0: the first fixture name was dropped and
+  // every fixture ran.)
+  const requested = args.filter((a, i) => runsIdx < 0 || (i !== runsIdx && i !== runsIdx + 1));
   const names = requested.length ? requested : fs.readdirSync(FIXTURES_DIR).filter(f => f.endsWith('.json'));
 
   const perRun = [];

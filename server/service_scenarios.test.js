@@ -708,6 +708,50 @@ const fresh = () => { server.resetDetectionSession(); referenceContext.reset(); 
     assert.equal(onScreen().at(-1), 'Isaiah 58:8', JSON.stringify(sent));
   });
 
+  await test('a chapter named with no verse doesn\'t put back a verse the reading has already passed (Ephesians 1:17, 1:18)', async () => {
+    fresh(); server.clearRangeQueue(); await server.clearLayer('all');
+    // Live 2026-10-01: "verse 17" heard as "of our 17" — the chapter was named
+    // with no verse; the quote and the reading put 1:17 then 1:18 up, and the
+    // still-pending chapter then matched 1:17 again over 1:18.
+    await read('God will be dropping down wisdom. Now the wisdom');
+    await read('we can see in Ephesians chapter one of our 17, it said that the God of our Lord Jesus Christ,');
+    await read('the father of glory, may give unto you the spirit of wisdom');
+    await read('and revelation in the knowledge of him. The eyes of your understanding being enlightened.');
+    await read('That he may know what is the hope and his calling, what are the riches');
+    await read('of his glory.');
+    await read('Of his inheritance in the saints.');
+    const seen = onScreen();
+    const at18 = seen.indexOf('Ephesians 1:18');
+    assert.ok(at18 >= 0, JSON.stringify(sent));
+    assert.ok(!seen.slice(at18).includes('Ephesians 1:17'), JSON.stringify(sent));
+  });
+
+  await test('a chapter re-heard in the live text doesn\'t flash up over the verse being read (Luke 4:14, not 1:14)', async () => {
+    fresh(); server.clearRangeQueue(); await server.clearLayer('all');
+    // Live 2026-10-01: Deepgram's live text had "Luke chapter four verse 14",
+    // then re-heard "chapter one"; Luke 1:14 was up until the reading put 4:14 back.
+    await read('a platform for eruption of the anointing as we saw with Christ.');
+    const seg = async (t, fin, ms) => { await server.handleTranscriptSegment(t, fin, 0.95, fin); await wait(ms); };
+    await seg('In Luke chapter four verse 14', false, 300);
+    await seg('In Luke chapter four verse 14, it', false, 300);
+    await seg('In Luke chapter one verse 14, it said', false, 300);
+    await seg('In Luke chapter one verse 14, it said, and Jesus returned', false, 300);
+    await seg('In Luke chapter one verse 14, it said, and Jesus returned in the power of the holy spirit.', true, 2500);
+    assert.ok(!onScreen().includes('Luke 1:14'), JSON.stringify(sent));
+    assert.equal(onScreen().at(-1), 'Luke 4:14', JSON.stringify(sent));
+  });
+
+  await test('a chapter really corrected in the same breath still goes up when the reading is that chapter (Luke 1:14)', async () => {
+    fresh(); server.clearRangeQueue(); await server.clearLayer('all');
+    await read('and the angel spoke of the joy to come.');
+    const seg = async (t, fin, ms) => { await server.handleTranscriptSegment(t, fin, 0.95, fin); await wait(ms); };
+    await seg('In Luke chapter four verse 14', false, 300);
+    await seg('In Luke chapter four verse 14, sorry', false, 300);
+    await seg('In Luke chapter four verse 14, sorry, chapter one verse 14', false, 300);
+    await seg('In Luke chapter four verse 14, sorry, chapter one verse 14, and thou shalt have joy and gladness; and many shall rejoice at his birth.', true, 2500);
+    assert.equal(onScreen().at(-1), 'Luke 1:14', JSON.stringify(sent));
+  });
+
   console.log(`\n${pass} passed, ${fail} failed`);
   // The worker finishes what it started first: exiting mid model-load aborts (server.js stopDetectionWorker).
   server.stopDetectionWorker({ timeoutMs: 30000 }).finally(() => process.exit(fail ? 1 : 0));
