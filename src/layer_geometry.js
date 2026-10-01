@@ -270,7 +270,17 @@ function gradientStops(layer) {
 function gradientCss(layer, colorFn) {
   const fn = colorFn || (c => c);
   const stops = gradientStops(layer).map(s => `${fn(s.color)} ${s.pos}%`).join(', ');
-  return `linear-gradient(${layer.angle ?? 135}deg, ${stops})`;
+  const base = `linear-gradient(${layer.angle ?? 135}deg, ${stops})`;
+  // Glows: soft spots of colour over the base — what a mesh gradient's blobs
+  // are (the bundled mesh gradients, gradients.js), each fading out over its
+  // own reach (rx/ry, % of the box) from its centre (x/y). Listed first, so
+  // painted on top.
+  const glows = Array.isArray(layer.gradientGlows) ? layer.gradientGlows : [];
+  if (!glows.length) return base;
+  return [
+    ...glows.map(g => `radial-gradient(ellipse ${g.rx}% ${g.ry}% at ${g.x}% ${g.y}%, ${fn(g.color)} 0%, transparent 100%)`),
+    base,
+  ].join(', ');
 }
 window.gradientStops = gradientStops;
 window.gradientCss   = gradientCss;

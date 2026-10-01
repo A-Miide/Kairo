@@ -125,7 +125,40 @@ function poolCanvas(id) {
     fill: 'image', src: `backgrounds/${id}.jpg`, color: poolColor(id), opacity: 100, color2: '#1c1c30', angle: 160 };
 }
 
+// A built-in theme's canvas filled with one of the bundled gradients
+// (gradients.js) — its stops, angle and glows; color/color2 its ends, for
+// the Solid fill and anything that only reads one colour.
+function gradientCanvas(id) {
+  const p = (window.KairoGradients || []).find(gr => gr.id === id);
+  const stops = p ? p.stops.map(st => ({ ...st })) : [{ pos: 0, color: '#0b97df' }, { pos: 100, color: '#5a34ec' }];
+  return { id: 'bg', type: 'background', name: 'Canvas', visible: true,
+    fill: 'gradient', color: stops[0].color, color2: stops[stops.length - 1].color, opacity: 100, angle: p ? p.angle : 60,
+    gradientStops: stops, ...(p?.glows ? { gradientGlows: p.glows.map(gl => ({ ...gl })) } : {}) };
+}
+
 const DEFAULT_LOOKS = [
+  {
+    // The default Bible theme (first, so a fresh install's outputs start on
+    // it): a cool gradient from the bundled set — Blue Hour, cyan into blue
+    // and violet with a violet glow, dark enough under white verse text
+    // (2026-10-01: "a default bible theme with a sweet gradient, something
+    // cool, not warm"). Same text layout as Full — Background.
+    id: 'full-gradient', name: 'Full — Gradient', layout: 'fullscreen', animation: 'fade',
+    groupId: 'grp-bible', groupName: 'Bible',
+    layers: [
+      gradientCanvas('blue-hour'),
+      { id: 'verse', type: 'text', name: 'Verse', visible: true, binding: 'verse', customText: '',
+        pos: { x: 210, y: 80, w: 1500, h: 700 },
+        font: { family: 'Manrope', size: 64, weight: 500, italic: false, lineHeight: 1.35, letterSpacing: 0, transform: 'none' },
+        color: '#ffffff', opacity: 100, align: 'center',
+        shadow: { ...TXT_SHADOW_SOFT }, outline: { ...NO_OUTLINE } },
+      { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '',
+        pos: { x: 210, y: 820, w: 1500, h: 0 },
+        font: { family: 'Manrope', size: 28, weight: 600, italic: false, lineHeight: 1.2, letterSpacing: 4, transform: 'uppercase' },
+        color: '#ffffff', opacity: 70, align: 'center',
+        shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
+    ],
+  },
   {
     id: 'full-bg', name: 'Full — Background', layout: 'fullscreen', animation: 'fade',
     groupId: 'grp-bible', groupName: 'Bible',
@@ -1469,10 +1502,16 @@ function renderLayersList() {
     // the old text-only filter used to live), and any reorder there is
     // persisted per-slide via __layerOrder (see writeItemSlideStyleFromSynthetic/
     // buildSyntheticLook) rather than touching the theme's own order.
+    // The canvas is the artboard: always at the bottom, never dragged — a lock
+    // where its grip would be (2026-10-01: "canvas should always be locked in
+    // the layer panel, users shouldn't be able to turn off or reorder the
+    // canvas").
     const grip = document.createElement('div');
-    grip.className = 'ts-layer-grip';
-    grip.title = 'Drag to reorder';
-    grip.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/></svg>`;
+    grip.className = 'ts-layer-grip' + (isBg ? ' is-locked' : '');
+    grip.title = isBg ? 'The canvas stays at the bottom — it\'s the artboard' : 'Drag to reorder';
+    grip.innerHTML = isBg
+      ? `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`
+      : `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/></svg>`;
 
     row.appendChild(grip);
     row.appendChild(visBtn);
@@ -1480,8 +1519,9 @@ function renderLayersList() {
     row.appendChild(name);
     row.appendChild(delBtn);
 
-    row.draggable = true;
+    row.draggable = !isBg;
     row.addEventListener('dragstart', (e) => {
+      if (isBg) { e.preventDefault(); return; }
       tsDragLayerId = layer.id;
       row.classList.add('ts-layer-dragging');
       e.dataTransfer.effectAllowed = 'move';
@@ -1498,7 +1538,8 @@ function renderLayersList() {
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
       const r = row.getBoundingClientRect();
-      const after = (e.clientY - r.top) > r.height / 2;
+      // Onto the canvas row: always just above it — nothing goes under the artboard.
+      const after = !isBg && (e.clientY - r.top) > r.height / 2;
       row.classList.toggle('ts-layer-drop-after', after);
       row.classList.toggle('ts-layer-drop-before', !after);
     });
@@ -1553,6 +1594,8 @@ let tsDragLayerId = null;
 // i.e. earlier in the underlying paint array.
 function reorderLayer(draggedId, targetId, after) {
   if (!activeLook || !draggedId || draggedId === targetId) return;
+  const canvas = baseBgLayer();
+  if (canvas && draggedId === canvas.id) return;   // the artboard never moves
   const layers = activeLook.layers;
   const from = layers.findIndex(l => l.id === draggedId);
   const to   = layers.findIndex(l => l.id === targetId);
@@ -1564,6 +1607,8 @@ function reorderLayer(draggedId, targetId, after) {
   let idx = layers.findIndex(l => l.id === targetId);
   if (!after) idx += 1;          // visually above → later in paint order
   layers.splice(Math.max(0, Math.min(layers.length, idx)), 0, moved);
+  // …and stays the bottom of the paint order, whatever was dropped where.
+  if (canvas && layers.indexOf(canvas) > 0) { layers.splice(layers.indexOf(canvas), 1); layers.unshift(canvas); }
 
   renderLayersList();
   renderPreview();
@@ -4520,8 +4565,41 @@ function gradientEditorRows(layer, onChange) {
   bar.className = 'ts-gradient-bar';
   let selected = 0;
 
+  // The bundled gradients (gradients.js), Photoshop's preset swatches: one
+  // click sets the stops, the angle and any glows, all editable after.
+  const sameStops = (a, b) => a.length === b.length && a.every((s, i) => s.pos === b[i].pos && s.color === b[i].color);
+  const presets = document.createElement('div');
+  presets.className = 'ts-gradient-presets';
+  const markPreset = () => {
+    const now = gradientStops(layer);
+    presets.querySelectorAll('.ts-gradient-preset').forEach(b => {
+      const p = (window.KairoGradients || []).find(x => x.id === b.dataset.id);
+      b.classList.toggle('active', !!p && sameStops(now, p.stops) && (layer.angle ?? 135) === p.angle);
+    });
+  };
+  (window.KairoGradients || []).forEach(p => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'ts-gradient-preset';
+    b.dataset.id = p.id;
+    b.title = p.name;
+    b.setAttribute('aria-label', p.name);
+    b.style.background = gradientCss({ angle: p.angle, gradientStops: p.stops, gradientGlows: p.glows });
+    b.addEventListener('click', () => {
+      layer.gradientStops = p.stops.map(st => ({ ...st }));
+      layer.angle = p.angle;
+      if (p.glows) layer.gradientGlows = p.glows.map(gl => ({ ...gl })); else delete layer.gradientGlows;
+      selected = 0;
+      const angleInput = angleField.querySelector('input');
+      if (angleInput) angleInput.value = p.angle;
+      paint(); renderFields(); renderGlows(); markPreset(); onChange();
+    });
+    presets.appendChild(b);
+  });
+
   const paint = () => {
     const stops = gradientStops(layer);
+    markPreset();
     bar.style.background = `linear-gradient(90deg, ${stops.map(s => `${s.color} ${s.pos}%`).join(', ')})`;
     bar.querySelectorAll('.ts-gradient-stop').forEach(el => el.remove());
     stops.forEach((s, i) => {
@@ -4615,11 +4693,45 @@ function gradientEditorRows(layer, onChange) {
     });
     fieldsRow.appendChild(del);
   }
-  paint(); renderFields();
+  // A mesh gradient's glows (the soft spots of colour over the base): each
+  // one's colour, and a way to drop them for a plain sweep.
+  const glowsRow = document.createElement('div');
+  glowsRow.className = 'ts-gradient-glows';
+  function renderGlows() {
+    glowsRow.innerHTML = '';
+    const glows = Array.isArray(layer.gradientGlows) ? layer.gradientGlows : [];
+    glowsRow.hidden = !glows.length;
+    if (!glows.length) return;
+    const label = document.createElement('span');
+    label.className = 'ts-gradient-glows-label';
+    label.textContent = 'Glows';
+    glowsRow.appendChild(label);
+    glows.forEach((gl, i) => {
+      const sw = makeColor(gl.color, v => {
+        layer.gradientGlows = layer.gradientGlows.map((x, j) => (j === i ? { ...x, color: v } : x));
+        onChange();
+      });
+      sw.className = 'ts-swatch-mini';
+      sw.title = 'This glow\'s colour';
+      glowsRow.appendChild(sw);
+    });
+    const off = document.createElement('button');
+    off.type = 'button';
+    off.className = 'ts-row-icon';
+    off.title = 'Remove the glows — a plain sweep';
+    off.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
+    off.addEventListener('click', () => { delete layer.gradientGlows; renderGlows(); markPreset(); onChange(); });
+    glowsRow.appendChild(off);
+  }
+
+  const angleField = numField('Angle', layer.angle ?? 135, { min: 0, max: 360, unit: '°', onChange: v => { layer.angle = v ?? 0; markPreset(); onChange(); } });
+  paint(); renderFields(); renderGlows(); markPreset();
   return [
+    presets,
     fieldRow([bar]),
     fieldsRow,
-    fieldRow([numField('Angle', layer.angle ?? 135, { min: 0, max: 360, unit: '°', onChange: v => { layer.angle = v ?? 0; onChange(); } })], { cols: 2 }),
+    glowsRow,
+    fieldRow([angleField], { cols: 2 }),
   ];
 }
 
@@ -5655,7 +5767,12 @@ function resolveItemBaseLook(item) {
   // Edit opened on a blank canvas with nothing showing what the countdown
   // would even look like. 'timer-big' always exists (a DEFAULT_LOOKS
   // entry, never deletable) so this never itself falls through to null.
-  if (item.type === 'timer') return looks.find(l => l.id === 'timer-big') || primaryOutputLook() || looks[0] || null;
+  if (item.type === 'timer') {
+    const countdown = looks.find(l => l.id === 'timer-big');
+    // Its own gradient, the same one its card and the screen show (service.js).
+    if (countdown) return window.KairoService?.segmentDefaultLook?.(item, countdown) || countdown;
+    return primaryOutputLook() || looks[0] || null;
+  }
   return primaryOutputLook() || looks[0] || null;
 }
 
@@ -6149,9 +6266,11 @@ function selectAllLayers() {
   renderLayersList();
 }
 function copyLayers() {
-  const toCopy = multiSelectedLayerIds.size
+  // The canvas is the artboard — there's only ever the one (deleteLayer
+  // refuses it the same way).
+  const toCopy = (multiSelectedLayerIds.size
     ? activeLook.layers.filter(l => multiSelectedLayerIds.has(l.id))
-    : (activeLayer ? [activeLayer] : []);
+    : (activeLayer ? [activeLayer] : [])).filter(l => l !== baseBgLayer());
   if (!toCopy.length) return;
   layerClipboard = deepClone(toCopy);
   toast(`Copied ${toCopy.length} layer${toCopy.length === 1 ? '' : 's'}`, 'success');
@@ -6185,9 +6304,9 @@ document.addEventListener('keydown', (e) => {
 // A copy of the selection right above it, selected — Photoshop's Layer via
 // Copy. The clipboard is left as it was.
 function duplicateLayers() {
-  const src = multiSelectedLayerIds.size
+  const src = (multiSelectedLayerIds.size
     ? activeLook.layers.filter(l => multiSelectedLayerIds.has(l.id))
-    : (activeLayer ? [activeLayer] : []);
+    : (activeLayer ? [activeLayer] : [])).filter(l => l !== baseBgLayer());
   if (!src.length) return;
   const copies = deepClone(src).map((l, i) => {
     l.id = `layer-${Date.now()}-${i}-${Math.random().toString(36).slice(2, 7)}`;
@@ -7381,7 +7500,7 @@ newLookBtn?.addEventListener('click', () => {
   if (canvasFill) {
     canvasFill.fillBefore = 'solid';
     Object.assign(canvasFill, { fill: 'transparent', color: '#000000', color2: '#1c1c30', angle: 160 });
-    delete canvasFill.src;
+    delete canvasFill.src; delete canvasFill.gradientStops; delete canvasFill.gradientGlows;
   }
   looks.push(base);
   activeLook  = base;

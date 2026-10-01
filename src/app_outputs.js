@@ -96,6 +96,7 @@ function outputScreenMap() {
 function setOutputScreen(outputId, screen) {
   const map = { ...outputScreenMap() };
   if (screen) map[outputId] = screen; else delete map[outputId];
+  if (screen && noScreenNoticeFor === outputId) noScreenNoticeFor = null;
   settings.outputScreens = map;
   saveSettingsPatch({ outputScreens: map });
   // A display is "on" when it has a screen — the monitor shows only outputs
@@ -103,7 +104,13 @@ function setOutputScreen(outputId, screen) {
   if (typeof refreshMonitor === 'function') refreshMonitor();
 }
 
+// Which screens are connected, as one comparable string.
+function screensSignature() {
+  return cachedScreens.map(s => `${s.index}:${s.width}x${s.height}@${s.left},${s.top}${s.isPrimary ? 'p' : ''}`).join('|');
+}
+
 function populateScreenOptions(sel, outputId) {
+  sel.dataset.screensSig = screensSignature();
   const current = outputScreenMap()[outputId];
   const prevValue = sel.value;
   sel.innerHTML = '';
@@ -148,6 +155,7 @@ function logDisplayLifecycleFallback(where, detail) {
 function buildScreenSelect(outputId) {
   const sel = document.createElement('select');
   sel.className = 'setting-input output-screen-select';
+  sel.dataset.outputId = outputId;
   populateScreenOptions(sel, outputId);
   sel.addEventListener('change', () => {
     // Real incident: `Number('')` evaluates to 0 in JS (not NaN) — the
@@ -169,9 +177,37 @@ function buildScreenSelect(outputId) {
     } else {
       logDisplayLifecycleFallback('buildScreenSelect', { outputId, reason: 'closeDisplayWindow not a function' });
     }
+    // The list's on/off switch and the panel's own header follow the pick.
+    renderOutputsList();
+    if (selectedOutputId === outputId) renderOutputsDetail();
   });
   return sel;
 }
+
+// The 3 s screen poll (wireExternalDisplayStatus) keeps an open detail panel
+// current IN PLACE. It used to rebuild the whole panel every tick, and a
+// rebuilt <select> takes its open menu with it: "None" in the Physical screen
+// menu only took if it was picked before the next tick (owner, 2026-10-01: "I
+// try to change it to none, it never works"). A screen list only changes when
+// a display is plugged in or out, and a control under the operator's hand is
+// left alone even then.
+function refreshDisplayDetailInPlace() {
+  const connected = cachedScreens.length > 1;
+  document.getElementById('external-detail-dot')?.classList.toggle('connected', connected);
+  const status = document.getElementById('external-detail-status');
+  if (status?.lastChild?.nodeType === Node.TEXT_NODE) {
+    status.lastChild.textContent = connected ? 'External display connected' : 'No external display connected';
+  }
+  const sig = screensSignature();
+  document.querySelectorAll('select.output-screen-select').forEach(sel => {
+    if (sel === document.activeElement || sel.dataset.screensSig === sig) return;
+    populateScreenOptions(sel, sel.dataset.outputId);
+  });
+}
+
+// Set when switching a display on found no external screen to open on — its
+// detail panel says why instead of the switch just springing back.
+let noScreenNoticeFor = null;
 
 // Briefly numbers the given screen (Identify Displays, now wired per-row
 // inside the Outputs master-detail's display detail panel — see
@@ -342,7 +378,7 @@ let selectedOutputId = null;
 function allConfiguredOutputs() {
   const list = [];
   for (const d of displayOutputs()) {
-    list.push({ id: d.id, type: 'display', name: d.name, primary: d.id === PRIMARY_DISPLAY });
+    list.push({ id: d.id, type: 'display', name: d.name, primary: d.id === PRIMARY_DISPLAY, monitor: d.kind === 'monitor' });
   }
   for (const o of ndiOutputs())    list.push({ id: o.id, type: 'ndi', name: o.name, raw: o });
   for (const o of syphonOutputs()) list.push({ id: o.id, type: 'syphon', name: o.name, raw: o });
@@ -441,7 +477,7 @@ function renderOutputsList() {
     nameEl.textContent = o.name;
     const typeEl = document.createElement('span');
     typeEl.className = 'outputs-list-item-type';
-    typeEl.textContent = outputTypeLabel(o.type);
+    typeEl.textContent = o.monitor ? 'Monitor' : outputTypeLabel(o.type);
     info.appendChild(nameEl);
     info.appendChild(typeEl);
     // A per-row Bible/Slide/Media/Timer summary used to render here too —
@@ -523,8 +559,21 @@ function buildOutputRowToggle(o) {
     input.checked = isOutputEnabled(o);
     input.addEventListener('change', () => {
       if (input.checked) {
-        const s = outputScreenMap()[o.id] || cachedScreens[0];
-        if (!s) { input.checked = false; toast('No display connected to open on', 'error'); return; }
+        // The screen it was given before, else the first EXTERNAL screen.
+        // With nothing plugged in it used to take cachedScreens[0] — this
+        // Mac's own screen — and open there fullscreen and always on top,
+        // over Kairo itself (owner, 2026-10-01: "it defaults to my mac
+        // display because nothing is connected"). This Mac's screen is
+        // still there to pick, deliberately, under Physical screen.
+        const s = outputScreenMap()[o.id] || cachedScreens.find(x => !x.isPrimary);
+        if (!s) {
+          input.checked = false;
+          noScreenNoticeFor = o.id;
+          selectedOutputId = o.id;
+          renderOutputsList();
+          renderOutputsDetail();
+          return;
+        }
         setOutputScreen(o.id, { width: s.width, height: s.height, left: s.left, top: s.top });
         if (typeof openDisplayOutput === 'function') openDisplayOutput({ id: o.id, name: o.id });
       } else {
@@ -678,6 +727,14 @@ function renderDisplayDetail(host, o) {
   }
   host.appendChild(detailTitle(o.name, statusEl, buildOutputRowToggle(o)));
 
+  if (noScreenNoticeFor === o.id && !outputScreenMap()[o.id]) {
+    const note = document.createElement('p');
+    note.className = 'setting-hint outputs-detail-notice';
+    note.setAttribute('role', 'status');
+    note.textContent = 'No external display is connected, so nothing was opened. Plug one in and switch this on again — or pick This Mac’s screen under Physical screen to see the output here.';
+    host.appendChild(note);
+  }
+
   // Renameable — the primary display included (owner: "users should be
   // able to rename each output"), stored separately from extras since it
   // isn't itself an entry in the extraDisplays array.
@@ -711,19 +768,26 @@ function renderDisplayDetail(host, o) {
   identifyBtn.className = 'modal-btn secondary';
   identifyBtn.textContent = 'Identify Display';
   identifyBtn.style.marginBottom = '4px';
-  identifyBtn.addEventListener('click', () => identifyScreen(Number(screenSel.value)));
+  identifyBtn.addEventListener('click', () => identifyScreen(screenSel.value === '' ? null : Number(screenSel.value)));
   host.appendChild(identifyBtn);
 
-  host.appendChild(detailInlineGroup('Theme', buildThemeSelect(o.id)));
-  host.appendChild(detailInlineGroup('Keying', buildKeyingSelect(o.id)));
-
+  if (o.monitor) {
+    // Its own layout, words only — no theme or key to choose.
+    const about = document.createElement('p');
+    about.className = 'setting-hint';
+    about.textContent = 'For whoever is up front: what’s on screen now with the next slide right under it, the time, the segment countdown, and any message you send from Monitor message under the preview. A single scripture called out shows on its own.';
+    host.appendChild(about);
+  } else {
+    host.appendChild(detailInlineGroup('Theme', buildThemeSelect(o.id)));
+    host.appendChild(detailInlineGroup('Keying', buildKeyingSelect(o.id)));
+  }
   appendOutputLayersSection(host, o.id);
 
   if (!o.primary) {
     const del = document.createElement('button');
     del.type = 'button';
     del.className = 'modal-btn secondary display-output-del';
-    del.textContent = 'Remove this display';
+    del.textContent = o.monitor ? 'Remove this monitor' : 'Remove this display';
     del.addEventListener('click', () => {
       settings.extraDisplays = extraDisplays().filter(x => x.id !== o.id);
       const screens = { ...outputScreenMap() }; delete screens[o.id];
@@ -733,7 +797,7 @@ function renderDisplayDetail(host, o) {
       settings.outputThemes = themes; settings.outputLayers = layers;
       saveSettingsPatch({ extraDisplays: settings.extraDisplays, outputScreens: screens, outputThemes: themes, outputLayers: layers });
       selectedOutputId = PRIMARY_DISPLAY;
-      applyOutputThemes(); applyOutputLayers();
+      applyOutputThemes(); applyOutputLayers(); applyOutputModes();
       renderOutputsList(); renderOutputsDetail();
     });
     host.appendChild(del);
@@ -985,11 +1049,19 @@ function wireOutputsAddMenu() {
       menu.classList.add('hidden');
       if (type === 'display') {
         const list = extraDisplays();
-        const next = [...list, { id: `display-${Date.now().toString(36)}`, name: `Display ${list.length + 2}` }];
+        const next = [...list, { id: `display-${Date.now().toString(36)}`, name: `Display ${list.filter(d => d.kind !== 'monitor').length + 2}` }];
         settings.extraDisplays = next;
         saveSettingsPatch({ extraDisplays: next });
         selectedOutputId = next[next.length - 1].id;
         applyOutputThemes();
+      } else if (type === 'monitor') {
+        const list = extraDisplays();
+        const n = list.filter(d => d.kind === 'monitor').length;
+        const next = [...list, { id: genOutputId('monitor'), name: n ? `Monitor ${n + 1}` : 'Monitor', kind: 'monitor' }];
+        settings.extraDisplays = next;
+        saveSettingsPatch({ extraDisplays: next });
+        selectedOutputId = next[next.length - 1].id;
+        applyOutputModes();
       } else {
         const outputsFn = type === 'ndi' ? ndiOutputs : syphonOutputs;
         const list = outputsFn();
@@ -1104,6 +1176,104 @@ async function verifyDisplayWindowOpened(label) {
     logDisplayLifecycleFallback('verifyDisplayWindowOpened threw', { label, error: String(err) });
   }
 }
+
+// ── Monitor outputs, and Text only ─────────────────────────────────────────
+// A Monitor is its own output, added from the Outputs list (owner, 2026-10-01:
+// "a confidence monitor ... Caters to the minister up front. just like
+// propresenter stage output" — "stage should be an output option, in output",
+// "call it Monitor, not stage"): a screen showing what's on screen now with
+// the next slide right under it, the time, the segment countdown and messages
+// from Monitor message under the preview — words only (display.html's
+// confidence view). Kept with the extra displays (kind: 'monitor'): a screen
+// and a window like any display.
+// Text only (Output Control): a display shows just its theme's words — no
+// background, shapes, pictures or media.
+function isMonitorOutput(id) { return extraDisplays().some(d => d.id === id && d.kind === 'monitor'); }
+function monitorOutputs() { return extraDisplays().filter(d => d.kind === 'monitor'); }
+function outputTextOnlyMap() {
+  const src = settings.outputTextOnly && typeof settings.outputTextOnly === 'object' ? settings.outputTextOnly : {};
+  const map = {};
+  for (const d of displayOutputs()) if (d.kind !== 'monitor') map[d.id] = src[d.id] === true;
+  return map;
+}
+function setOutputTextOnly(outputId, on) {
+  settings.outputTextOnly = { ...outputTextOnlyMap(), [outputId]: !!on };
+  saveSettingsPatch({ outputTextOnly: settings.outputTextOnly });
+  applyOutputModes();
+  renderOutputsList();   // the Output Control matrix too
+  if (selectedOutputId === outputId) {
+    const cb = document.querySelector('.output-layer-checks input[data-text-only]');
+    if (cb && cb.checked !== !!on) cb.checked = !!on;
+    const hint = document.querySelector('.outputs-layers-hint');
+    if (hint) hint.textContent = buildOutputLayersHint(outputId).textContent;
+  }
+}
+// What each display window renders (display.html's outputMode).
+function outputModeMap() {
+  const textOnly = outputTextOnlyMap();
+  const map = {};
+  for (const d of displayOutputs()) map[d.id] = d.kind === 'monitor' ? 'confidence' : textOnly[d.id] ? 'text' : 'theme';
+  return map;
+}
+async function applyOutputModes() {
+  const map = outputModeMap();
+  localStorage.setItem('kairo-output-modes', JSON.stringify(map));
+  refreshMonitorMessageBar();
+  try {
+    await fetch(`${SERVER}/api/look/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ modes: map }),
+    });
+  } catch (err) {
+    console.warn('[Look] per-output mode broadcast failed:', err.message);
+  }
+}
+
+// ── Monitor message — a line from the booth to the Monitor outputs ─────────
+// Under the preview while there is a Monitor output.
+function refreshMonitorMessageBar() {
+  document.getElementById('monitor-message-bar')?.classList.toggle('hidden', !monitorOutputs().length);
+}
+function showMonitorMessageState(text) {
+  const bar = document.getElementById('monitor-message-bar');
+  if (!bar) return;
+  const live = !!String(text || '').trim();
+  bar.classList.toggle('is-live', live);
+  const clear = document.getElementById('monitor-message-clear');
+  if (clear) clear.disabled = !live;
+  const send = document.getElementById('monitor-message-send');
+  if (send) {
+    send.title = live ? 'Update the message on the Monitor' : 'Show on the Monitor';
+    send.setAttribute('aria-label', send.title);
+  }
+  // What's up on the Monitor stays in view (and editable) — unless being typed over.
+  const input = document.getElementById('monitor-message-input');
+  if (input && document.activeElement !== input) input.value = live ? String(text).trim() : '';
+}
+async function sendMonitorMessage(text) {
+  try {
+    await fetch(`${SERVER}/api/monitor-message`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+  } catch (err) {
+    console.warn('[Monitor] message failed:', err.message);
+  }
+}
+(function wireMonitorMessageBar() {
+  const input = document.getElementById('monitor-message-input');
+  const send = document.getElementById('monitor-message-send');
+  const clear = document.getElementById('monitor-message-clear');
+  if (!input || !send || !clear) return;
+  const show = () => { const t = input.value.trim(); if (t) sendMonitorMessage(t); };
+  send.addEventListener('click', show);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); show(); }
+  });
+  clear.addEventListener('click', () => { sendMonitorMessage(''); input.value = ''; });
+})();
 
 // ── Keying — how a display output's background keys out for a mixer ───────
 // Each display window's own choice; the theme never carries it, so one theme
@@ -1268,13 +1438,17 @@ function buildOutputLayersSummary(outputId, map) {
 // alongside buildLayerChecksRow, same element tree).
 function buildOutputLayersHint(outputId, map) {
   const want = (map || outputLayerMap())[outputId] || DEFAULT_OUTPUT_LAYERS;
-  const on  = OUTPUT_LAYER_KEYS.filter(([k]) => want[k]).map(([, l]) => l);
-  const off = OUTPUT_LAYER_KEYS.filter(([k]) => !want[k]).map(([, l]) => l);
+  // Words only (a Monitor, or Text only): media never goes out there.
+  const wordsOnly = isMonitorOutput(outputId) || !!outputTextOnlyMap()[outputId];
+  const keys = wordsOnly ? OUTPUT_LAYER_KEYS.filter(([k]) => k !== 'media') : OUTPUT_LAYER_KEYS;
+  const on  = keys.filter(([k]) => want[k]).map(([, l]) => l);
+  const off = keys.filter(([k]) => !want[k]).map(([, l]) => l);
   const hint = document.createElement('p');
   hint.className = 'setting-hint outputs-layers-hint';
-  if (!off.length) hint.textContent = 'Everything is going out on this output: Bible, Slide, Media, and Timer.';
+  if (!off.length) hint.textContent = wordsOnly ? `Going out on this output: ${on.join(', ')}.` : 'Everything is going out on this output: Bible, Slide, Media, and Timer.';
   else if (!on.length) hint.textContent = 'Nothing is going out on this output right now — every layer is hidden.';
   else hint.textContent = `Going out on this output: ${on.join(', ')}. Hidden: ${off.join(', ')}.`;
+  if (wordsOnly && on.length) hint.textContent += isMonitorOutput(outputId) ? ' Words only.' : ' Text only — just the words: no background, shapes, pictures or media.';
   return hint;
 }
 
@@ -1339,6 +1513,7 @@ function buildLayerChecksRow(outputId, map) {
   const row = document.createElement('div');
   row.className = 'output-layer-checks';
   const want = (map || outputLayerMap())[outputId];
+  const monitor = isMonitorOutput(outputId);
   OUTPUT_LAYER_KEYS.forEach(([layerKey, label]) => {
     const wrap = document.createElement('label');
     wrap.className = 'output-layer-check';
@@ -1346,11 +1521,30 @@ function buildLayerChecksRow(outputId, map) {
     cb.type = 'checkbox';
     cb.checked = want[layerKey] !== false;
     cb.dataset.layerKey = layerKey;
-    cb.addEventListener('change', () => setOutputLayer(outputId, layerKey, cb.checked));
+    if (monitor && layerKey === 'media') { cb.checked = false; cb.disabled = true; wrap.title = 'A Monitor shows words only'; }
+    else cb.addEventListener('change', () => setOutputLayer(outputId, layerKey, cb.checked));
     wrap.appendChild(cb);
     wrap.appendChild(document.createTextNode(label));
     row.appendChild(wrap);
   });
+  // Text only — display outputs (NDI/Syphon render natively and don't offer
+  // it; a Monitor is always words only).
+  if (displayOutputs().some(d => d.id === outputId)) {
+    const wrap = document.createElement('label');
+    wrap.className = 'output-layer-check';
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.dataset.textOnly = '1';
+    if (monitor) { cb.checked = true; cb.disabled = true; wrap.title = 'A Monitor shows words only'; }
+    else {
+      cb.checked = !!outputTextOnlyMap()[outputId];
+      wrap.title = 'Just the words — no background, shapes, pictures or media';
+      cb.addEventListener('change', () => setOutputTextOnly(outputId, cb.checked));
+    }
+    wrap.appendChild(cb);
+    wrap.appendChild(document.createTextNode('Text only'));
+    row.appendChild(wrap);
+  }
   return row;
 }
 
@@ -1398,7 +1592,7 @@ function renderOutputControlMatrix() {
   outputs.forEach(o => {
     const th = document.createElement('th');
     th.textContent = o.name;
-    th.title = outputTypeLabel(o.type);
+    th.title = o.monitor ? 'Monitor' : outputTypeLabel(o.type);
     headRow.appendChild(th);
   });
   thead.appendChild(headRow);
@@ -1417,12 +1611,35 @@ function renderOutputControlMatrix() {
       cb.type = 'checkbox';
       cb.checked = map[o.id]?.[layerKey] !== false;
       cb.title = `${label} on ${o.name}`;
-      cb.addEventListener('change', () => setOutputLayer(o.id, layerKey, cb.checked));
+      if (o.monitor && layerKey === 'media') { cb.checked = false; cb.disabled = true; cb.title = 'A Monitor shows words only'; }
+      else cb.addEventListener('change', () => setOutputLayer(o.id, layerKey, cb.checked));
       td.appendChild(cb);
       tr.appendChild(td);
     });
     tbody.appendChild(tr);
   });
+  // Text only: just the theme's words — display outputs (see setOutputTextOnly).
+  const textOnly = outputTextOnlyMap();
+  const tr = document.createElement('tr');
+  const rowHead = document.createElement('th');
+  rowHead.scope = 'row';
+  rowHead.textContent = 'Text only';
+  tr.appendChild(rowHead);
+  outputs.forEach(o => {
+    const td = document.createElement('td');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    if (o.monitor) { cb.checked = true; cb.disabled = true; cb.title = 'A Monitor shows words only'; }
+    else if (o.type !== 'display') { cb.disabled = true; cb.title = `Not available for ${outputTypeLabel(o.type)}`; }
+    else {
+      cb.checked = !!textOnly[o.id];
+      cb.title = `Text only on ${o.name}`;
+      cb.addEventListener('change', () => setOutputTextOnly(o.id, cb.checked));
+    }
+    td.appendChild(cb);
+    tr.appendChild(td);
+  });
+  tbody.appendChild(tr);
   table.appendChild(tbody);
   host.appendChild(table);
 }

@@ -635,16 +635,16 @@ async function init() {
   // header comment. Failure is non-fatal (missing/not-yet-built embeddings
   // file, e.g. a fresh install before build_verse_embeddings.mjs has run) —
   // semanticSearch calls just no-op via isReady() until this succeeds.
-  const semantic = semanticEngine.ensureLoaded()
+  const semantic = track(semanticEngine.ensureLoaded()
     .then(() => parentPort.postMessage({ type: 'semanticReady' }))
-    .catch(err => console.warn('[DetectionWorker] Semantic layer unavailable:', err.message));
+    .catch(err => console.warn('[DetectionWorker] Semantic layer unavailable:', err.message)));
 
   // Reranker loads in the background too, same non-fatal-failure shape —
   // missing/not-yet-installed model just means rerank() calls no-op via
   // isReady() until a fresh install runs (see reranker_installer.js).
-  const reranker = rerankerEngine.ensureLoaded()
+  const reranker = track(rerankerEngine.ensureLoaded()
     .then(() => parentPort.postMessage({ type: 'rerankerReady' }))
-    .catch(err => console.warn('[DetectionWorker] Reranker unavailable:', err.message));
+    .catch(err => console.warn('[DetectionWorker] Reranker unavailable:', err.message)));
 
   // Building the indexes grew the heap well past what they keep (~130 MB),
   // and the model loads leave their files' read buffers behind; V8 would
@@ -1940,7 +1940,30 @@ function quoteShare(text, nearIdx) {
   return best;
 }
 
-parentPort.on('message', async (msg) => {
+// ── Stopping cleanly ──────────────────────────────────────────────────────
+// Ended while onnxruntime is loading a model or running one, this thread takes
+// the whole process down (the binding throws a C++ Napi::Error it can't hand to
+// JS mid-teardown). 'shutdown' (server.js stopDetectionWorker) lets everything
+// already started finish — requests, the background model loads — takes no
+// new work, then ends the thread from inside.
+const inflight = new Set();
+let stopping = false;
+function track(p) {
+  inflight.add(p);
+  p.then(() => inflight.delete(p), () => inflight.delete(p));
+  return p;
+}
+parentPort.on('message', (msg) => {
+  if (msg && msg.type === 'shutdown') {
+    if (stopping) return;
+    stopping = true;
+    Promise.allSettled([...inflight]).then(() => process.exit(0));
+    return;
+  }
+  if (!stopping) track(handleMessage(msg));
+});
+
+async function handleMessage(msg) {
   try {
     switch (msg.type) {
       case 'directLookup': {
@@ -2336,9 +2359,9 @@ parentPort.on('message', async (msg) => {
     console.error('[DetectionWorker] Error:', err.message);
     parentPort.postMessage({ type: 'error', id: msg.id, error: err.message });
   }
-});
+}
 
-init().catch(err => {
+track(init().catch(err => {
   console.error('[DetectionWorker] Init failed:', err.message);
   parentPort.postMessage({ type: 'initError', error: err.message });
-});
+}));

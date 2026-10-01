@@ -1155,6 +1155,16 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
   z-index: 1;
 }
 .live-screen-themed.hidden { display: none; }
+/* With a theme or media up, the screen shows what the output shows: the
+   output's own black (display.html) behind a theme with no background of its
+   own, not this panel's resting gradient, top glow and vignette — those are
+   for "Nothing on display". A no-background theme read as a grey-to-black
+   gradient here while the output was plain black (2026-10-01: "let the
+   monitor be true to the set theme"). */
+.live-screen:has(> .live-screen-themed:not(.hidden)),
+.live-screen:has(> .live-screen-media:not(.hidden)) { background: #000; }
+.live-screen:has(> .live-screen-themed:not(.hidden))::before,
+.live-screen:has(> .live-screen-media:not(.hidden))::before { display: none; }
 
 /* Mirrors #media-layer on the real output — sits behind the slide/text
    layer above (same z-order), so this preview reads the same as what's
@@ -3687,6 +3697,66 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
    this app — see feedback_no_toasts). */
 .ls-bcast-dot.warning { background: var(--orange); animation: dot-pulse 1s ease-in-out infinite; }
 .ls-bcast-label.warning { color: var(--orange); }
+/* Listening stopped for a reason retrying can't fix (out of credit, key
+   rejected, no key) — showListeningProblem, app.js. */
+/* Monitor message under the preview (app_outputs.js wireMonitorMessageBar). */
+.monitor-message-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.monitor-message-bar.hidden { display: none; }
+.monitor-message-bar.is-live { border-color: rgba(237,28,36,0.55); }
+.monitor-message-label {
+  font-family: var(--font-head);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.monitor-message-bar.is-live .monitor-message-label { color: var(--red); }
+.monitor-message-head { display: flex; align-items: center; justify-content: space-between; min-height: 22px; }
+.monitor-message-head .rs-clear-btn:disabled { opacity: 0.4; cursor: default; background: transparent; border-color: var(--border); color: var(--text-3); }
+.monitor-message-row { display: flex; gap: 6px; align-items: center; }
+.monitor-message-input {
+  flex: 1;
+  min-width: 0;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg-panel);
+  color: var(--text);
+  font-size: 12px;
+}
+.monitor-message-input:focus { outline: none; border-color: var(--text-3); }
+.monitor-message-row .monitor-message-btn {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+/* Switching a display on with no external screen to open on (app_outputs.js). */
+.outputs-detail-notice { color: var(--orange); margin: 2px 0 10px; }
+.ls-bcast-dot.error { background: var(--red); }
+.ls-bcast-label.error { color: var(--red); cursor: help; }
+.transcript-problem {
+  margin: 10px 0 4px;
+  padding: 10px 12px;
+  border: 1px solid rgba(237,28,36,0.45);
+  border-radius: 8px;
+  background: var(--red-dim);
+  color: var(--text);
+  font-size: 12.5px;
+  line-height: 1.45;
+}
 
 /* Compact 4-cell metrics bar */
 .ls-metrics-bar {
@@ -4559,19 +4629,40 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
   z-index: 0;
   pointer-events: none;
 }
-.timer-card-readout {
-  position: relative;
+/* The time sits in its own chip in the corner, like the name and status —
+   over the middle it collided with the segment's own design (owner,
+   2026-10-01: "the timer overlap"). */
+.timer-card-foot {
+  position: absolute;
   z-index: 1;
-  font-family: var(--mono);
-  font-size: 22px;
-  font-weight: 700;
-  color: rgba(255, 255, 255, 0.85);
-  letter-spacing: 0.04em;
-  /* Readable over an arbitrary themed background now that .timer-card-bg
-     can put a busy photo behind it, not just flat black. */
-  text-shadow: 0 1px 4px rgba(0,0,0,0.8), 0 0 12px rgba(0,0,0,0.5);
+  left: 8px;
+  right: 8px;
+  bottom: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  pointer-events: none;
 }
-.timer-card-preview.is-pending .timer-card-readout { color: rgba(255, 255, 255, 0.25); font-size: 13px; font-weight: 600; }
+.timer-card-foot .timer-card-rename-input { pointer-events: auto; flex: 1 1 auto; min-width: 0; }
+.timer-card-readout {
+  flex: 0 3 auto;   /* the name keeps its room first; the time shortens */
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.65);
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.4;
+  color: var(--text);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.timer-card-preview.is-pending .timer-card-readout { color: var(--text-2); font-weight: 600; }
 /* Overtime/warning — matches display.html's #timer-badge treatment, so the
    operator's own card agrees with what's on the real output. */
 .timer-card-preview.is-overtime .timer-card-readout { color: var(--red); }
@@ -4579,10 +4670,8 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
 .timer-card-preview.is-warning .timer-card-readout { color: #e8a64a; }
 .timer-card-preview.is-warning .timer-card-status { color: #e8a64a; }
 .timer-card-label {
-  position: absolute;
-  z-index: 1;
-  left: 8px;
-  bottom: 7px;
+  flex: 0 1 auto;
+  min-width: 3.5em;
   padding: 2px 8px;
   border-radius: 4px;
   background: rgba(0, 0, 0, 0.65);
@@ -4590,6 +4679,9 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
   font-weight: 700;
   color: var(--text);
   line-height: 1.4;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   pointer-events: none; /* clicks pass through to .timer-card-preview — rename is a right-click action now, not a direct click on the label */
 }
 .timer-card-status {
@@ -5292,6 +5384,8 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
   flex-shrink: 0;
 }
 .rs-transition-bar .ts-anim-speed-slider { flex: 1; min-width: 40px; }
+/* Part of the monitor card, under the screen. */
+.rs-preview-card .rs-transition-bar { margin-top: 0; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: transparent; }
 /* A bit more breathing room than the Layout tab's own tightly-packed
    6-icon align row (.ts-align-group's shared 2px) — only 3 buttons here,
    so they read as separate choices rather than one fused block. */
@@ -5680,6 +5774,8 @@ body.ts-dragging-guide-h, body.ts-dragging-guide-h * { cursor: row-resize !impor
   padding-right: 2px;
 }
 .ts-layer-row:hover .ts-layer-grip { color: var(--text-2); }
+/* The canvas's lock in place of a grip — it doesn't move. */
+.ts-layer-grip.is-locked, .ts-layer-row:hover .ts-layer-grip.is-locked { cursor: default; color: var(--text-3); opacity: 0.7; }
 .ts-layer-dragging { opacity: 0.4; }
 .ts-layer-drop-before { box-shadow: inset 0 2px 0 0 var(--blue); }
 .ts-layer-drop-after  { box-shadow: inset 0 -2px 0 0 var(--blue); }
@@ -7538,6 +7634,29 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 }
 .ts-gradient-stop:active { cursor: grabbing; }
 .ts-gradient-stop.active { border-color: var(--red); box-shadow: 0 0 0 1px var(--red), 0 1px 4px rgba(0,0,0,0.5); z-index: 3; }
+
+/* The bundled gradients (gradients.js) as preset swatches above the bar —
+   Photoshop's gradient presets. The one the fill matches is outlined. */
+.ts-gradient-presets {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(26px, 1fr));
+  gap: 5px;
+  margin-bottom: 8px;
+}
+.ts-gradient-preset {
+  aspect-ratio: 1;
+  padding: 0;
+  border-radius: 5px;
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  cursor: pointer;
+  transition: transform var(--trans), box-shadow var(--trans);
+}
+.ts-gradient-preset:hover { transform: scale(1.08); }
+.ts-gradient-preset.active { box-shadow: 0 0 0 2px var(--bg-panel, #1a1a1c), 0 0 0 3.5px var(--red); }
+/* A mesh gradient's glows: one swatch each, and a remove. */
+.ts-gradient-glows { display: flex; align-items: center; gap: 6px; margin: 2px 0 6px; }
+.ts-gradient-glows[hidden] { display: none; }
+.ts-gradient-glows-label { font-size: 11px; color: var(--text-3); margin-right: 2px; }
 
 /* The bundled backgrounds: a grid of thumbnails in the canvas's Picture
    section, and tiles in the Background gallery. */

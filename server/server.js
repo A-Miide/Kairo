@@ -510,6 +510,7 @@ function spawnDetectionWorker() {
   // flip the ready flag and respawn. Without this, every workerCall rejects
   // after its timeout and references are lost with only a console warn.
   detectionWorker.on('exit', (code) => {
+    if (detectionWorkerFinalStop) { detectionWorker = null; return; }   // shutting down: stays stopped
     console.warn(`[Server] Detection worker exited (code=${code}) — respawning`);
     workerBasicReady = false;
     workerSemanticReady = false;
@@ -522,6 +523,28 @@ function spawnDetectionWorker() {
     detectionWorker = null;
     broadcast({ type: 'worker-error', error: `exit(${code})` });
     setTimeout(spawnDetectionWorker, 500);
+  });
+}
+
+// Stopping the detection worker. Terminated while ONNX is loading a model or
+// mid-inference, it takes the whole process down: onnxruntime's binding throws
+// a C++ Napi::Error it can't hand to JS while the thread is torn down
+// ("libc++abi: terminating due to uncaught exception of type Napi::Error") —
+// on a quit or a translation change soon after launch, and at the end of half
+// the test runs (the semantic and reranker models load in the background after
+// 'ready'). 'shutdown' lets what the worker already started finish, starts
+// nothing new, and the worker ends itself; terminate() only if it hasn't
+// within timeoutMs. respawn: the exit handler starts a fresh one (a translation
+// change); otherwise it stays stopped (the server is closing).
+let detectionWorkerFinalStop = false;
+function stopDetectionWorker({ respawn = false, timeoutMs = 8000 } = {}) {
+  const w = detectionWorker;
+  if (!w) return Promise.resolve();
+  if (!respawn) detectionWorkerFinalStop = true;
+  return new Promise((resolve) => {
+    const timer = setTimeout(() => { w.terminate().catch(() => {}).finally(resolve); }, timeoutMs);
+    w.once('exit', () => { clearTimeout(timer); resolve(); });
+    try { w.postMessage({ type: 'shutdown' }); } catch { w.terminate().catch(() => {}); }
   });
 }
 
@@ -681,6 +704,10 @@ wss.on('connection', (ws, req) => {
   if (lastSlideBroadcast) ws.send(JSON.stringify(lastSlideBroadcast));
   if (lastMediaBroadcast) ws.send(JSON.stringify(lastMediaBroadcast));
   if (lastTimerBroadcast) ws.send(JSON.stringify(lastTimerBroadcast));
+  // A Monitor output opened mid-reading needs the range's next verse and any
+  // message already up (display.html's Monitor view).
+  if (lastRangeState) ws.send(JSON.stringify(lastRangeState));
+  if (monitorMessage) ws.send(JSON.stringify({ type: 'monitor-message', text: monitorMessage }));
 
   // Forward binary audio frames to whichever engine is active.
   // - Deepgram: streamed straight to the WS connection (Deepgram does endpointing)
@@ -745,6 +772,8 @@ function onBroadcast(fn) { _broadcastListeners.push(fn); }
 let lastSlideBroadcast = null; // last 'detection'(target:'viewer') or 'range-active'
 let lastMediaBroadcast = null; // last 'media'
 let lastTimerBroadcast = null; // last 'timer-slide'
+let lastRangeState     = null; // last 'range-state' (the range's next verse)
+let monitorMessage     = '';   // the message up on Monitor outputs, or ''
 
 // ── Back: undo the last change to what's on screen ────────────────────────
 // Every change to the slide/Bible layer (a verse or slide going up, or the
@@ -777,6 +806,12 @@ function broadcast(data) {
     lastMediaBroadcast = data;
   } else if (data.type === 'timer-slide') {
     lastTimerBroadcast = data.clear ? null : data;
+  } else if (data.type === 'range-state') {
+    lastRangeState = data.remaining > 0 ? data : null;
+  } else if (data.type === 'action' && data.actionId === 'stage-timer' && data.payload?.remainingMs <= 0) {
+    // Time's up: the countdown has left the audience screens (display.html
+    // endCountdownOnScreen) — a screen connecting now doesn't put it back.
+    lastTimerBroadcast = null;
   } else if (data.type === 'clear-layer') {
     if (data.layer === 'slide' || data.layer === 'all') lastSlideBroadcast = null;
     if (data.layer === 'media' || data.layer === 'all') lastMediaBroadcast = null;
@@ -2245,7 +2280,7 @@ app.post('/api/settings', async (req, res) => {
   // against — restart it (the exit handler respawns it with the new setting).
   if (matchingTranslation() !== matchingBefore && detectionWorker) {
     console.log(`[Server] Translation changed — reloading detection to match ${matchingTranslation() || 'KJV/NLT'}`);
-    detectionWorker.terminate();
+    stopDetectionWorker({ respawn: true });
   }
   const obsChanged = req.body.obsEnabled !== undefined || req.body.obsUrl !== undefined || req.body.obsPassword !== undefined;
   if (obsChanged) connectOBS().catch(err => console.warn('[OBS] Reconnect-on-settings-change failed:', err.message));
@@ -2313,10 +2348,22 @@ app.post('/api/theme/import-protheme', (req, res) => {
 // Send a playlist slide — broadcasts to every display window (plus NDI/
 // Syphon), and carries an optional per-item `look` so a song can render on
 // the lyrics theme while scripture stays on the output's own theme.
+// The slide after this one, for a Monitor output's "Next" (service.js
+// nextSlideInfo) — words only, bounded.
+function cleanNextSlide(next) {
+  if (!next || typeof next !== 'object') return null;
+  return {
+    text: String(next.text || '').slice(0, 2000),
+    reference: String(next.reference || '').slice(0, 200),
+    label: String(next.label || '').slice(0, 60),
+    image: !!next.image,
+  };
+}
+
 app.post('/api/service/send', async (req, res) => {
-  const { verse, look, auto, follow } = req.body;
+  const { verse, look, auto, follow, next } = req.body;
   if (!verse) return res.status(400).json({ error: 'No slide provided' });
-  const landed = await sendServiceSlide(verse, look, { auto: !!auto, follow: !!follow });
+  const landed = await sendServiceSlide(verse, look, { auto: !!auto, follow: !!follow, next: cleanNextSlide(next) });
   res.json({ ok: true, underBible: landed === 'under-bible', skipped: landed === 'scripture-slide' ? 'scripture' : null });
 });
 
@@ -2363,7 +2410,7 @@ async function isScriptureSlide(verse) {
 // follower or content lookup) — the preacher has moved on from the scripture,
 // so the slide takes the screen (owner, live test). Any other automatic
 // re-send (a theme edit re-rendering the live slide) stays underneath.
-async function sendServiceSlide(verse, look, { auto = false, follow = false } = {}) {
+async function sendServiceSlide(verse, look, { auto = false, follow = false, next = null } = {}) {
   // A slide that is itself scripture (the sermon's verses put on slides) is
   // never sent by the follower: Bible detection puts the verse up as it's
   // read, in the church's translation and theme (owner). An operator's own
@@ -2375,7 +2422,7 @@ async function sendServiceSlide(verse, look, { auto = false, follow = false } = 
   if (verse.book) {
     setBibleOnTop(true);
   } else {
-    slideUnderneath = { verse, look };
+    slideUnderneath = { verse, look, next };
     if (bibleOnTop && auto && !follow) { broadcastLayerState(); return 'under-bible'; }
     setBibleOnTop(false);
   }
@@ -2395,6 +2442,7 @@ async function sendServiceSlide(verse, look, { auto = false, follow = false } = 
     type: 'detection', target: 'viewer', method: 'service',
     verses: [verse], topScore: 1,
     look: look || null,
+    next,
     timestamp: Date.now(),
   });
   try { await sendToOutputs(verse); } catch (err) {
@@ -2705,7 +2753,7 @@ async function clearLayer(layer) {
   if (layer === 'bible') {
     setBibleOnTop(false);
     if (slideUnderneath) {
-      await sendServiceSlide(slideUnderneath.verse, slideUnderneath.look);
+      await sendServiceSlide(slideUnderneath.verse, slideUnderneath.look, { next: slideUnderneath.next });
       return { restored: true };
     }
     broadcast({ type: 'clear-layer', target: 'viewer', layer: 'slide' });
@@ -2803,7 +2851,12 @@ app.post('/api/lang/install', async (req, res) => {
 // route/message type, since display.html already has one message handler
 // for "the main window just pushed output configuration."
 app.post('/api/look/apply', (req, res) => {
-  const { look, themes, layers, keying } = req.body;
+  const { look, themes, layers, keying, modes } = req.body;
+  // modes-only call (applyOutputModes) — { [outputId]: 'theme'|'text'|'confidence' }.
+  if (modes && typeof modes === 'object' && !look && !themes) {
+    broadcast({ type: 'look-update', modes });
+    return res.json({ ok: true, outputs: Object.keys(modes).length });
+  }
   const layersOut = layers && typeof layers === 'object' ? layers : null;
   if (themes && typeof themes === 'object') {
     currentOutputThemes = themes;
@@ -2824,6 +2877,14 @@ app.post('/api/look/apply', (req, res) => {
   if (!look || typeof look !== 'object') return res.status(400).json({ error: 'No look provided' });
   broadcast({ type: 'look-update', look, layers: layersOut });
   res.json({ ok: true });
+});
+
+// Monitor message: a line from the booth to every Monitor output (display.html's
+// Monitor view), like ProPresenter's stage message. Empty text takes it down.
+app.post('/api/monitor-message', (req, res) => {
+  monitorMessage = String(req.body?.text || '').replace(/\s+/g, ' ').trim().slice(0, 200);
+  broadcast({ type: 'monitor-message', text: monitorMessage });
+  res.json({ ok: true, text: monitorMessage });
 });
 
 app.get('/api/obs/test', async (_, res) => {
@@ -3986,6 +4047,70 @@ function resetDetectionSession({ keepContinuity = false } = {}) {
 }
 
 // ── Deepgram ──────────────────────────────────────────────────────────────
+// ── Why Deepgram refused ───────────────────────────────────────────────────
+// Out of credit is its own case (owner, 2026-10-01: "Did we include an error
+// response to let the user know when they are out of credits?"): Deepgram
+// answers an account with no balance left with 402 Payment Required
+// (ASR_PAYMENT_REQUIRED, "Project does not have enough credits..."). It used to
+// fall through as "unknown" — fatal only on the very first connect, and
+// mid-service a reconnect loop against an account that can't transcribe.
+const DEEPGRAM_MESSAGES = {
+  auth:    'Deepgram rejected the API key. Open Settings → paste a valid key.',
+  credits: 'Your Deepgram account is out of credit, so listening stopped. Add credit at console.deepgram.com — or switch the Speech Engine to Offline in Settings to keep going without it.',
+  quota:   'Deepgram is turning away requests from this account for now (rate limit). Wait a minute, then press Start again.',
+  network: 'Network error reaching Deepgram. Check your internet connection.',
+};
+function classifyDeepgramFailure(code, text) {
+  const lc = String(text || '').toLowerCase();
+  if (code === 401 || code === 403 || lc.includes('unauthorized') || lc.includes('invalid api key') || lc.includes('invalid credentials') || lc.includes('forbidden')) return 'auth';
+  if (code === 402 || lc.includes('payment required') || lc.includes('asr_payment_required') || lc.includes('enough credits')
+      || lc.includes('out of credit') || /insufficient (credit|fund|balance)/.test(lc)) return 'credits';
+  if (code === 429 || lc.includes('quota') || lc.includes('rate limit') || lc.includes('insufficient')) return 'quota';
+  // Node's WebSocket on a refused handshake: "Received network error or
+  // non-101 status code." — it doesn't know which (diagnoseDeepgramRefusal).
+  if (lc.includes('non-101')) return 'unknown';
+  if (lc.includes('enotfound') || lc.includes('econnrefused') || lc.includes('etimedout') || lc.includes('network') || lc.includes('getaddrinfo')) return 'network';
+  return 'unknown';
+}
+
+// Node's own WebSocket (the SDK's transport on Node 22) reports a refused
+// handshake as just "non-101 status code" — not which one, so a bad key, no
+// credit and a passing network fault all read the same. The REST API says why:
+// a tenth of a second of silence, the smallest real request (a fraction of a
+// cent at most, and only after a refusal), answers 401/403 for the key, 402 for
+// the credit, 429 for the rate — and not answering at all is the network.
+const SILENT_WAV = (() => {
+  const n = 3200, b = Buffer.alloc(44 + n);   // 16 kHz, 16-bit mono
+  b.write('RIFF', 0); b.writeUInt32LE(36 + n, 4); b.write('WAVE', 8); b.write('fmt ', 12);
+  b.writeUInt32LE(16, 16); b.writeUInt16LE(1, 20); b.writeUInt16LE(1, 22); b.writeUInt32LE(16000, 24);
+  b.writeUInt32LE(32000, 28); b.writeUInt16LE(2, 32); b.writeUInt16LE(16, 34); b.write('data', 36); b.writeUInt32LE(n, 40);
+  return b;
+})();
+// One answer is reused for 20 s (same key): a second Start straight after an
+// out-of-credit stop says so again rather than the raw "non-101", and an
+// outage's quick retries don't each send a request.
+let lastDeepgramDiagnosis = null;   // { at, key, result: Promise<kind|null> }
+function diagnoseDeepgramRefusal(key) {
+  const now = Date.now();
+  if (lastDeepgramDiagnosis && lastDeepgramDiagnosis.key === key && now - lastDeepgramDiagnosis.at < 20000) return lastDeepgramDiagnosis.result;
+  lastDeepgramDiagnosis = { at: now, key, result: askDeepgramWhy(key) };
+  return lastDeepgramDiagnosis.result;
+}
+async function askDeepgramWhy(key) {
+  let res;
+  try {
+    res = await fetch('https://api.deepgram.com/v1/listen?model=nova-3', {
+      method: 'POST', headers: { Authorization: `Token ${key}`, 'Content-Type': 'audio/wav' },
+      body: SILENT_WAV, signal: AbortSignal.timeout(6000),
+    });
+  } catch { return 'network'; }
+  let body = '';
+  try { body = await res.text(); } catch {}
+  const kind = res.ok ? null : classifyDeepgramFailure(res.status, body);
+  console.log(`[Deepgram] Refusal checked over REST: HTTP ${res.status}${kind && kind !== 'unknown' ? ` — ${kind}` : ''}`);
+  return kind === 'auth' || kind === 'credits' || kind === 'quota' ? kind : null;
+}
+
 async function startDeepgram(config = {}, { reconnect = false } = {}) {
   if (connectionState === 'connected' || connectionState === 'connecting') {
     return { error: 'Already listening' };
@@ -4002,7 +4127,7 @@ async function startDeepgram(config = {}, { reconnect = false } = {}) {
   // rejection instead of the clear, actionable message right here.
   const key = (settings.deepgramApiKey || '').trim();
   if (!key) {
-    broadcast({ type: 'listening-error', error: 'No Deepgram API key configured' });
+    broadcast({ type: 'listening-error', error: 'No Deepgram API key yet. Paste one in Settings → Audio, or switch the Speech Engine to Offline.' });
     return { error: 'No Deepgram API key' };
   }
 
@@ -4053,8 +4178,10 @@ async function startDeepgram(config = {}, { reconnect = false } = {}) {
     const myConnection = deepgramConnection = dg.listen.live(dgConfig);
 
     return await new Promise((resolve) => {
+      let opened = false;   // a refusal is a handshake that never opened
       myConnection.on(LiveTranscriptionEvents.Open, () => {
         if (deepgramConnection !== myConnection) return; // superseded — stale connection, ignore
+        opened = true;
         connectionState = 'connected';
         broadcast({ type: 'connection-state', state: 'connected' });
         deepgramLastTranscriptAt = Date.now();
@@ -4149,30 +4276,26 @@ async function startDeepgram(config = {}, { reconnect = false } = {}) {
         }
       });
 
-      myConnection.on(LiveTranscriptionEvents.Error, (err) => {
+      myConnection.on(LiveTranscriptionEvents.Error, async (err) => {
         if (deepgramConnection !== myConnection) return; // superseded — stale connection, ignore
         const rawMsg = err?.message || err?.reason || err?.description
           || (typeof err === 'string' ? err : JSON.stringify(err));
         const code = err?.code || err?.statusCode || err?.status;
-        const lc   = (rawMsg || '').toLowerCase();
-        let kind = 'unknown';
-        let friendly = rawMsg;
-        if (code === 401 || code === 403 || lc.includes('unauthorized') || lc.includes('invalid api key') || lc.includes('forbidden')) {
-          kind = 'auth';
-          friendly = 'Deepgram rejected the API key. Open Settings → paste a valid key.';
-        } else if (code === 429 || lc.includes('quota') || lc.includes('rate limit') || lc.includes('insufficient')) {
-          kind = 'quota';
-          friendly = 'Deepgram quota or rate limit reached. Check your Deepgram balance.';
-        } else if (lc.includes('enotfound') || lc.includes('econnrefused') || lc.includes('etimedout') || lc.includes('network') || lc.includes('getaddrinfo')) {
-          kind = 'network';
-          friendly = 'Network error reaching Deepgram. Check your internet connection.';
+        let kind = classifyDeepgramFailure(code, rawMsg);
+        // A refused handshake that didn't say why (see diagnoseDeepgramRefusal).
+        // Its Close follows straight behind — that waits for this answer.
+        if (kind === 'unknown' && !opened) {
+          myConnection.__refusal = true;
+          kind = (await diagnoseDeepgramRefusal(key)) || 'unknown';
+          if (deepgramConnection !== myConnection) return;   // stopped meanwhile
         }
+        const friendly = DEEPGRAM_MESSAGES[kind] || `Deepgram didn't accept the connection (${rawMsg}). Press Start to try again.`;
         console.error(`[Deepgram] Error (${kind}):`, rawMsg);
-        // Only a problem retrying can't fix (bad key, no quota), or a failure
-        // on the very first connect of a Start, ends the listening session.
-        // Anything else mid-session is a transient drop: keep the session and
-        // reconnect.
-        const fatal = kind === 'auth' || kind === 'quota' || (connectionState === 'connecting' && !reconnect);
+        // Only a problem retrying can't fix (bad key, no credit or quota), or a
+        // failure on the very first connect of a Start, ends the listening
+        // session. Anything else mid-session is a transient drop: keep the
+        // session and reconnect.
+        const fatal = kind === 'auth' || kind === 'credits' || kind === 'quota' || (connectionState === 'connecting' && !reconnect);
         if (fatal) {
           endDeepgramSession(myConnection);
           connectionState = 'error';
@@ -4186,9 +4309,21 @@ async function startDeepgram(config = {}, { reconnect = false } = {}) {
 
       myConnection.on(LiveTranscriptionEvents.Close, (evt) => {
         if (deepgramConnection !== myConnection) return; // superseded, or Stop already closed it — expected
+        if (myConnection.__refusal) return;   // its Error is finding out why — and decides
         const closeCode   = (evt && typeof evt === 'object' && 'code' in evt) ? evt.code : evt;
         const closeReason = (evt && typeof evt === 'object' && evt.reason) ? evt.reason : '';
         const closeDesc   = closeReason ? `${closeCode} "${closeReason}"` : String(closeCode);
+        // Closed mid-stream because the key or the credit gave out: retrying
+        // can't help.
+        const closeKind = classifyDeepgramFailure(null, closeReason);
+        if (closeKind === 'auth' || closeKind === 'credits') {
+          console.error(`[Deepgram] Closed (${closeKind}): ${closeDesc}`);
+          endDeepgramSession(myConnection);
+          connectionState = 'error';
+          broadcast({ type: 'connection-state', state: 'error', error: DEEPGRAM_MESSAGES[closeKind], errorKind: closeKind });
+          resolve({ error: DEEPGRAM_MESSAGES[closeKind], errorKind: closeKind });
+          return;
+        }
         if (connectionState === 'connecting' && !reconnect) {
           // The first connect of a Start never opened — report it; no session yet.
           const msg = `Deepgram closed before connecting (code ${closeDesc})`;
@@ -4206,7 +4341,8 @@ async function startDeepgram(config = {}, { reconnect = false } = {}) {
       });
 
       setTimeout(() => {
-        if (deepgramConnection === myConnection && connectionState === 'connecting') {
+        // (A refusal whose reason is still being looked up is its Error's to decide.)
+        if (deepgramConnection === myConnection && connectionState === 'connecting' && !myConnection.__refusal) {
           if (reconnect) { reconnectDeepgram(myConnection, 'connect timeout'); resolve({ error: 'timeout', reconnecting: true }); }
           else {
             endDeepgramSession(myConnection);
@@ -7318,6 +7454,8 @@ if (require.main === module) {
     // reconstruct real garbled ASR text that happens to score exactly right
     // through the full worker pipeline.
     broadcastDetection,
+    resetDeepgramDiagnosis: () => { lastDeepgramDiagnosis = null; },
+    stopDetectionWorker,
   };
 }
 
@@ -7332,15 +7470,16 @@ function gracefulShutdown(signal) {
   }
   if (deepgramKeepAliveTimer)  { clearInterval(deepgramKeepAliveTimer);  deepgramKeepAliveTimer  = null; }
   if (deepgramSilenceWatchdog) { clearInterval(deepgramSilenceWatchdog); deepgramSilenceWatchdog = null; }
-  if (detectionWorker) {
-    try { detectionWorker.terminate(); } catch {}
-  }
-  server.close(() => {
-    console.log('[KAIRO] Server closed. Goodbye.');
-    process.exit(0);
+  // The worker first (see stopDetectionWorker): exiting while it loads a model
+  // aborts the process.
+  stopDetectionWorker({ timeoutMs: 6000 }).finally(() => {
+    server.close(() => {
+      console.log('[KAIRO] Server closed. Goodbye.');
+      process.exit(0);
+    });
+    // Force-exit if graceful close hangs beyond 3s
+    setTimeout(() => process.exit(0), 3000).unref();
   });
-  // Force-exit if graceful close hangs beyond 3s
-  setTimeout(() => process.exit(0), 3000).unref();
 }
 
 process.on('SIGINT',  () => gracefulShutdown('SIGINT'));
