@@ -36,13 +36,15 @@ test('a model is present only when its own files are', () => {
   } finally { fs.rmSync(base, { recursive: true, force: true }); }
 });
 
-test('the other-languages download has a mirror, an upstream fallback and a checksum', () => {
-  const m = inst.MODELS.multi;
-  assert.match(m.url, /Kairo-live\/Kairo\/releases\/download\/offline-model-multi-v1\//);
-  assert.match(m.fallbackUrl, /k2-fsa\/sherpa-onnx\/releases\/download\/asr-models\//);
-  assert.equal(path.basename(m.url), path.basename(m.fallbackUrl), 'the same file under both names');
-  assert.match(m.sha256, /^[0-9a-f]{64}$/);
-  assert.ok(path.basename(m.url).startsWith(m.topDir));
+test('both downloads have a mirror, an upstream fallback and a checksum', () => {
+  for (const [key, release] of [['en', 'offline-model-v1'], ['multi', 'offline-model-multi-v1']]) {
+    const m = inst.MODELS[key];
+    assert.ok(m.url.includes(`Kairo-live/Kairo/releases/download/${release}/`), key);
+    assert.match(m.fallbackUrl, /k2-fsa\/sherpa-onnx\/releases\/download\/asr-models\//, key);
+    assert.equal(path.basename(m.url), path.basename(m.fallbackUrl), `${key}: the same file under both names`);
+    assert.match(m.sha256, /^[0-9a-f]{64}$/, key);
+    assert.ok(path.basename(m.url).startsWith(m.topDir), key);
+  }
 });
 
 test('sha256File matches the real digest', async () => {

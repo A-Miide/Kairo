@@ -128,14 +128,76 @@ function loadAltTranslation() {
     altTextByIdx = null;
   }
 }
+// The modern versions preachers quote most besides the KJV are the NLT and
+// the NIV (owner, 2026-10-02: KJV, NKJV, NIV, NLT, TPT, MSG — NKJV quotes land
+// on the KJV's own wording), so an English service matches both, whatever the
+// church shows: at a KJV church, 4 of 8 well-known verses quoted in the NIV's
+// wording reached the screen while only the NLT was matched, 8 of 8 when the
+// NIV was. MATCH_ALSO names them in order; the NLT is map.json's own
+// nlt_text, anything else a file in translations/. One the church already
+// reads isn't added twice. A non-English service matches its language's Bible
+// only. (workerData.matchAlso replaces the list — for comparing against the
+// single-wording worker this replaced.)
+const MATCH_ALSO = ['NLT', 'NIV'];
+let extraTexts = [];   // [{ code, byIdx: Map<verseIdx, text> }] — matched as well as the church's own
+function loadMatchAlso() {
+  extraTexts = [];
+  const own = workerData?.altTranslation || null;
+  const list = Array.isArray(workerData?.matchAlso) ? workerData.matchAlso
+    : (String(own || '').startsWith('pack:') ? [] : MATCH_ALSO);
+  for (const code of list) {
+    if (code === own) continue;
+    const byIdx = new Map();
+    if (code === 'NLT') {
+      for (let i = 0; i < verseMetadata.length; i++) if (verseMetadata[i].nlt_text) byIdx.set(i, verseMetadata[i].nlt_text);
+    } else {
+      try {
+        const data = JSON.parse(fs.readFileSync(path.join(DATA_DIR, 'translations', `${code}.json`), 'utf8'));
+        const byRef = new Map(data.verses.map(v => [`${v.book}|${v.chapter}|${v.verse}`, v.text]));
+        for (let i = 0; i < verseMetadata.length; i++) {
+          const v = verseMetadata[i];
+          const t = byRef.get(`${v.book}|${v.chapter}|${v.verse}`);
+          if (t) byIdx.set(i, t);
+        }
+      } catch (err) {
+        console.warn(`[DetectionWorker] Could not load ${code} for matching:`, err.message);
+        continue;
+      }
+    }
+    extraTexts.push({ code, byIdx });
+    if (code !== 'NLT') console.log(`[DetectionWorker] Matching ${code} as well (${byIdx.size} verses).`);
+  }
+}
+// Only the church's own wording goes into the stream index (under slot ids,
+// see buildAnchorIndex). The ones matched for everyone stay out and are
+// matched by phrase only: their everyday modern 4-grams fire on ordinary
+// preaching — with the NIV's in it, "for some time you want to be established"
+// put up 2 Samuel 3:17 ("For some time you have wanted…") and "they sang a new
+// song" Revelation 14:3; seven wrong sends across the eval sermons, all from
+// those 4-grams, against eight of eight NIV quotes caught by phrase alone.
 const slotToVerse = (slot) => (slot >= ALT_SLOT_BASE ? slot - ALT_SLOT_BASE : slot);
-let verseNormNlt         = null;   // Map<idx, string> — pre-computed norm(nlt_text)
+
+// Every wording a verse is matched in besides the KJV, in the order tried: the
+// church's own (or the service language's Bible), then MATCH_ALSO.
+// Each holds the same four per-verse forms the KJV has (normalized text, its
+// stemmed form, and both pre-split) — see init().
+let altWordings = [];   // [{ code, byIdx, own, norm, stem, normWords, stemWords }]
+// The first of them — the church's own, else the NLT: the one other wording
+// that weighs words (IDF), picks a verse's identifying words and counts as
+// evidence that speech is a verse's own wording, as the single second text
+// always did. The NIV matched for everyone finds quotes but is never evidence:
+// its everyday modern words turn up in any English speech.
+let firstWording = null;
+// The first other wording a verse has, as written — the modern text the
+// cross-encoder reads beside the KJV. The church's own, else the NLT, else the
+// NIV (the Psalms, which the NLT text lacks).
+function modernText(i) {
+  for (const w of altWordings) { const t = w.byIdx.get(i); if (t) return t; }
+  return verseMetadata[i].nlt_text || '';
+}
 let verseStemText        = null;   // Map<idx, string> — verseNormText with every word healWord()'d
-let verseStemNlt         = null;   // Map<idx, string> — verseNormNlt with every word healWord()'d
 let verseNormWords       = null;   // Map<idx, string[]> — verseNormText pre-split, avoids re-splitting per search call
-let verseNormNltWords    = null;   // Map<idx, string[]> — verseNormNlt pre-split
 let verseStemWords       = null;   // Map<idx, string[]> — verseStemText pre-split
-let verseStemNltWords    = null;   // Map<idx, string[]> — verseStemNlt pre-split
 
 // ── Streaming 4-gram anchors ─────────────────────────────────────────────
 // Every distinctive verse 4-gram, keyed by its words. As STT words arrive one
@@ -515,20 +577,24 @@ async function init() {
 
   // Pre-compute normalized text for every verse (avoids re-normalizing in hot loops)
   verseNormText = new Map();
-  verseNormNlt  = new Map();
   loadAltTranslation();
+  loadMatchAlso();
+  altWordings = [];
+  if (altTextByIdx) altWordings.push({ code: workerData.altTranslation, byIdx: altTextByIdx, own: true });
+  for (const x of extraTexts) altWordings.push({ code: x.code, byIdx: x.byIdx, own: false });
+  for (const w of altWordings) Object.assign(w, { norm: new Map(), stem: new Map(), normWords: new Map(), stemWords: new Map() });
+  firstWording = altWordings[0] || null;
   for (let i = 0; i < verseMetadata.length; i++) {
     const v = verseMetadata[i];
     verseNormText.set(i, norm(v.kjv_text.replace(RE_HEADING, ' ')));
-    // The second text verbatim matches against: the translation the church
-    // reads (NKJV/NIV/ESV/NASB) when one is selected, else NLT. (The *_nlt
-    // map names are historical — this slot is "the other translation".)
-    const second = altTextByIdx ? altTextByIdx.get(i) : v.nlt_text;
-    if (second) verseNormNlt.set(i, norm(second.replace(RE_HEADING, ' ')));
+    for (const w of altWordings) {
+      const t = w.byIdx.get(i);
+      if (t) w.norm.set(i, norm(t.replace(RE_HEADING, ' ')));
+    }
   }
 
-  // Stemmed text for every verse — same content as verseNormText/verseNormNlt
-  // but every word run through healWord() first. Built once here so
+  // Stemmed text for every verse — same content as verseNormText (and each
+  // other wording's norm) but every word run through healWord() first. Built once here so
   // verbatimSearch can compare tense/inflection-normalized text directly
   // instead of raw words: a spoken "kept"/"keeping"/"keepeth" all collapse to
   // the same stem the KJV's own wording collapses to, so STT tense drift no
@@ -537,7 +603,7 @@ async function init() {
   // tense mismatch still forced the match down to the much looser 4-gram
   // fallback tier, which is where wrong-verse noise creeps in).
   //
-  // Word-array forms (verseNormWords/verseStemWords, + their NLT twins) are
+  // Word-array forms (verseNormWords/verseStemWords, + each wording's own) are
   // cached alongside the joined-string forms — verbatimSearch needs both
   // (`.includes()` substring checks want the string; IDF lookups and n-gram
   // windows want the array by position) and re-splitting the same static
@@ -548,11 +614,8 @@ async function init() {
   // sharedWords): split() and healWord() would otherwise leave a separate
   // little string behind for each of the ~3 million word occurrences.
   verseStemText     = new Map();
-  verseStemNlt      = new Map();
   verseNormWords    = new Map();
-  verseNormNltWords = new Map();
   verseStemWords    = new Map();
-  verseStemNltWords = new Map();
   const words = sharedWords();
   for (let i = 0; i < verseMetadata.length; i++) {
     const normWords = words.split(verseNormText.get(i));
@@ -561,24 +624,21 @@ async function init() {
     verseStemWords.set(i, stemWords);
     verseStemText.set(i, stemWords.join(' '));
 
-    const nltN = verseNormNlt.get(i);
-    if (nltN) {
-      const nltNormWords = words.split(nltN);
-      verseNormNltWords.set(i, nltNormWords);
-      const nltStemWords = nltNormWords.map(words.heal);
-      verseStemNltWords.set(i, nltStemWords);
-      verseStemNlt.set(i, nltStemWords.join(' '));
+    for (const w of altWordings) {
+      const n = w.norm.get(i);
+      if (!n) continue;
+      const altNormWords = words.split(n);
+      w.normWords.set(i, altNormWords);
+      const altStemWords = altNormWords.map(words.heal);
+      w.stemWords.set(i, altStemWords);
+      w.stem.set(i, altStemWords.join(' '));
     }
   }
 
   const tempIndex = new Map(); // word → Set<idx> (unique per verse)
   for (let i = 0; i < verseMetadata.length; i++) {
-    const kjvN = verseNormText.get(i);
-    const nltN = verseNormNlt.get(i);
-    const words = new Set([
-      ...kjvN.split(' '),
-      ...(nltN ? nltN.split(' ') : []),
-    ]);
+    const words = new Set(verseNormText.get(i).split(' '));
+    for (const w of altWordings) { const n = w.norm.get(i); if (n) for (const x of n.split(' ')) words.add(x); }
     for (const w of words) {
       if (w.length < 3) continue;
       if (!tempIndex.has(w)) tempIndex.set(w, []);
@@ -610,10 +670,24 @@ async function init() {
   // IDF map — log((N - df + 0.5) / (df + 0.5) + 1)
   // High IDF = rare/distinctive word (e.g. "meditate" ≈ 7.6)
   // Low IDF  = very common word (e.g. "lord" ≈ 1.2)
+  //
+  // Counted over the KJV and the first other wording only (the church's own,
+  // else the NLT), as it always was: the wordings matched for everyone use
+  // everyday words in thousands more verses, and counting them made those
+  // words weigh less in every KJV reading — confirmations the stream layer had
+  // made (John 14:6, Proverbs 3:5) fell short of their bar (eval 2026-10-02).
+  // A word only those wordings use is weighed by how many verses use it.
   const N = verseMetadata.length;
+  const baseDf = new Map();   // word -> verses whose KJV or first other wording has it
+  for (let i = 0; i < verseMetadata.length; i++) {
+    const words = new Set(verseNormText.get(i).split(' '));
+    const n = firstWording ? firstWording.norm.get(i) : null;
+    if (n) for (const x of n.split(' ')) words.add(x);
+    for (const w of words) if (w.length >= 3) baseDf.set(w, (baseDf.get(w) || 0) + 1);
+  }
   idfMap = new Map();
   for (const [word, indices] of verbatimIndex.entries()) {
-    const df  = indices.length;
+    const df  = baseDf.get(word) ?? indices.length;
     const idf = Math.log((N - df + 0.5) / (df + 0.5) + 1);
     idfMap.set(word, idf);
   }
@@ -626,9 +700,12 @@ async function init() {
   const IDF_FLOOR = 1.5;
   verseSignatures      = new Map();
   verseSignatureWeight = new Map();
+  // From the KJV and the first other wording (the church's own, else the NLT)
+  // only: a verse keeps just SIGNATURE_SIZE identifying words, and a third
+  // wording's would crowd out the ones a KJV reading is recognised by.
   for (let i = 0; i < verseMetadata.length; i++) {
     const kjvN  = verseNormText.get(i);
-    const nltN  = verseNormNlt.get(i);
+    const nltN  = firstWording ? firstWording.norm.get(i) : null;
     const words = [...new Set([
       ...kjvN.split(' '),
       ...(nltN ? nltN.split(' ') : []),
@@ -714,22 +791,23 @@ function buildAnchorIndex(words) {
 
   // The church's translation (if any) is indexed too, under slot ids; DF
   // always counts REAL verses, so a verse's two wordings never make its own
-  // 4-grams look shared.
+  // 4-grams look shared. (Not the wordings matched for everyone — see
+  // slotToVerse.)
   const slots = [];
   for (let i = 0; i < verseMetadata.length; i++) slots.push(i);
-  if (altTextByIdx) for (const i of altTextByIdx.keys()) slots.push(i + ALT_SLOT_BASE);
+  const own = altWordings.find(w => w.own) || null;
+  if (own) for (const i of own.stemWords.keys()) slots.push(i + ALT_SLOT_BASE);
   for (const slot of slots) {
     const i = slotToVerse(slot);
     if (slot === i) {
       // The KJV's healed words are exactly its stemmed words (both are
-      // healWord over verseNormText's words), so the two share one array.
+      // healWord over verseNormText's words), so the two share one array —
+      // and likewise the church's own wording's.
       verseHealedWords.set(slot, verseStemWords.get(i));
       continue;
     }
-    const raw = norm(altTextByIdx.get(i).replace(/\[[^\]]*\]/g, ' '));
-    const normWords = words.split(raw);
-    verseHealedWords.set(slot, normWords.map(words.heal));
-    verseNormWords.set(slot, normWords);   // IDF lookups during alignment
+    verseHealedWords.set(slot, own.stemWords.get(i));
+    verseNormWords.set(slot, own.normWords.get(i));   // IDF lookups during alignment
   }
   const gramsOf = (slot, each) => {
     const w = verseHealedWords.get(slot);
@@ -1201,15 +1279,18 @@ function formatVerse(v, similarity, method) {
 }
 
 // ── Text search ───────────────────────────────────────────────────────────
-// Reuses the verseNormText/verseNormNlt maps built once in init() instead of
-// re-lowercasing all ~31k verses' kjv_text/nlt_text on every call.
+// Reuses the normalized texts built once in init() (the KJV's and every other
+// wording's) instead of re-lowercasing all ~31k verses on every call.
+function inAnyWording(i, has) {
+  for (const w of altWordings) { const n = w.norm.get(i); if (n && has(n)) return true; }
+  return false;
+}
 function textSearch(query, limit = 8) {
   const q = norm(query);
   const results = [];
   for (let i = 0; i < verseMetadata.length; i++) {
     const kjvN = verseNormText.get(i);
-    const nltN = verseNormNlt.get(i);
-    if ((kjvN && kjvN.includes(q)) || (nltN && nltN.includes(q))) {
+    if ((kjvN && kjvN.includes(q)) || inAnyWording(i, n => n.includes(q))) {
       results.push(formatVerse(verseMetadata[i], 0.9, 'text'));
       if (results.length >= limit) break;
     }
@@ -1288,7 +1369,7 @@ function verbatimSearch(transcript, minWords = 6, limit = 3) {
   const tWords = tNorm.split(' ').filter(Boolean);
   if (tWords.length < minWords) return [];
 
-  // Stemmed transcript words — matched against verseStemText/verseStemNlt
+  // Stemmed transcript words — matched against verseStemText (and each wording's stem)
   // below instead of the raw verse text, so a spoken tense/inflection that
   // differs from the KJV's own wording ("keeping" vs "kept") still lines up.
   // Word count is unaffected by stemming, so every length/coverage
@@ -1336,7 +1417,9 @@ function verbatimSearch(transcript, minWords = 6, limit = 3) {
   for (const idx of candidates) {
     if (seen.has(idx)) continue;
     const kjvS = verseStemText.get(idx);
-    const nltS = verseStemNlt.get(idx) || '';
+    // The verse's other wordings, tried in order when the KJV lacks a phrase.
+    const others = [];
+    for (const w of altWordings) { const st = w.stem.get(idx); if (st) others.push({ text: st, raw: w.normWords.get(idx) }); }
     // Verses longer than the 12-word window cap are handled entirely by the
     // long-verse pass below, which searches windows up to the verse's real
     // length — letting this pass claim them first at a capped, worse score
@@ -1345,13 +1428,12 @@ function verbatimSearch(transcript, minWords = 6, limit = 3) {
     if (verseStemWords.get(idx).length > 12) continue;
     const v         = verseMetadata[idx];
     const rawKjv    = verseNormWords.get(idx);   // same length/order as kjvS's words — for IDF lookup
-    const rawNlt    = nltS ? verseNormNltWords.get(idx) : null;
     for (const phrase of phrases) {
       let charIdx = kjvS.indexOf(phrase);
       let sourceText = kjvS, sourceRaw = rawKjv;
-      if (charIdx === -1 && nltS) {
-        charIdx = nltS.indexOf(phrase);
-        sourceText = nltS; sourceRaw = rawNlt;
+      for (let o = 0; charIdx === -1 && o < others.length; o++) {
+        charIdx = others[o].text.indexOf(phrase);
+        sourceText = others[o].text; sourceRaw = others[o].raw;
       }
       if (charIdx === -1) continue;
 
@@ -1405,20 +1487,24 @@ function verbatimSearch(transcript, minWords = 6, limit = 3) {
       if (seen.has(idx)) continue;
       const verseWordsArr = verseStemWords.get(idx);
       if (verseWordsArr.length <= 12) continue;   // fast pass above already covers these fully
-      const nltWordsArr = verseStemNltWords.get(idx) || [];
       const searchStart = Math.min(verseWordsArr.length, LONG_VERSE_SCAN_MAX);
       const rawKjv = verseNormWords.get(idx);   // same length/order as verseWordsArr — for IDF lookup
-      const rawNlt = nltWordsArr.length ? verseNormNltWords.get(idx) : null;
 
       // Longest run of this verse's words present in the transcript — one
       // O(V*T) pass (verse_window.js) instead of building every window as a
-      // string, which was ~96% of this function's time. KJV wins ties; NLT
-      // wins only with a strictly longer run (same order as before).
+      // string, which was ~96% of this function's time. KJV wins ties; another
+      // wording wins only with a strictly longer run, and between two others
+      // the earlier one (same order as before). Each with the KJV's length cap.
+      let best = longestWindow(verseWordsArr, tWordsStemmed, minWords, searchStart);
+      let bestRaw = best ? rawKjv : null;
+      for (const w of altWordings) {
+        const altWordsArr = w.stemWords.get(idx);
+        if (!altWordsArr || !altWordsArr.length) continue;
+        const hit = longestWindow(altWordsArr, tWordsStemmed, minWords, searchStart);
+        if (hit && (!best || hit.len > best.len)) { best = hit; bestRaw = w.normWords.get(idx); }
+      }
       let matchedLen = 0, matchedStart = -1, matchedRaw = null;
-      const kjvHit = longestWindow(verseWordsArr, tWordsStemmed, minWords, searchStart);
-      const nltHit = nltWordsArr.length ? longestWindow(nltWordsArr, tWordsStemmed, minWords, searchStart) : null;   // same length cap as KJV, as before
-      if (kjvHit && (!nltHit || kjvHit.len >= nltHit.len)) { matchedLen = kjvHit.len; matchedStart = kjvHit.start; matchedRaw = rawKjv; }
-      else if (nltHit) { matchedLen = nltHit.len; matchedStart = nltHit.start; matchedRaw = rawNlt; }
+      if (best) { matchedLen = best.len; matchedStart = best.start; matchedRaw = bestRaw; }
 
       if (matchedLen) {
         const v              = verseMetadata[idx];
@@ -1763,7 +1849,7 @@ function sharedIdentifyingWeight(text, idx) {
   const said = new Set(norm(text).split(' ').filter(w => w.length >= 3 && !STOP_WORDS.has(w)).map(healWord));
   const seen = new Set();
   let idfSum = 0, hits = 0;
-  for (const words of [verseNormWords.get(idx), verseNormNltWords.get(idx)]) {
+  for (const words of [verseNormWords.get(idx), firstWording?.normWords.get(idx)]) {
     for (const w of words || []) {
       if (w.length < 3 || STOP_WORDS.has(w)) continue;
       const stem = healWord(w);
@@ -1789,11 +1875,11 @@ async function paraphraseSearch(windows, limit = 8) {
   if (englishText && rerankerEngine.isReady() && top.length) {
     // Scored against the KJV (rr — what every decision is calibrated on) and,
     // separately, a modern wording (rrModern: the church's translation, else
-    // the NLT) — a preacher quoting from memory often uses modern words ("plans
+    // the NLT, else the NIV) — a preacher quoting from memory often uses modern words ("plans
     // to prosper you": KJV 0.30, modern 0.999). Kept apart: folding the modern
     // score into rr lifted runner-up verses too and cost screen sends on the
     // benchmark; decideParaphrase uses rrModern only to offer.
-    const modern = (i) => altTextByIdx?.get(i) || verseMetadata[i].nlt_text || '';
+    const modern = modernText;
     const queries = [], passages = [];
     for (const c of top) {
       queries.push(windows[c.w], windows[c.w]);
@@ -1822,6 +1908,13 @@ const SUGGEST_MIN_PHRASE_IDF = 5;
 const SUGGEST_MAX_MEANING_ONLY = 3;
 const SUGGEST_CLOSE_TO_BEST = 0.1;
 const SUGGEST_MAX_TIED = 3;
+// A runner-up the cross-encoder judges to say what was typed as surely as the
+// best one isn't "loosely related" — it is offered too, a little further off.
+// "cast your cares on him" is the NIV's Psalm 55:22 ("Cast your cares on the
+// LORD") and 1 Peter 5:7 ("cast all your anxiety on him") alike; the in-order
+// bonus alone put the Psalm 0.11 ahead and the operator never saw 1 Peter.
+const SUGGEST_SURE_RR = 0.99;
+const SUGGEST_SURE_GAP = 0.2;
 function versesWithWord(w) {
   const out = new Set(verbatimIndex.get(w) || []);
   for (const i of stemIndex.get(healWord(w)) || []) out.add(i);
@@ -1839,8 +1932,8 @@ async function suggestPhrase(query, limit = 6) {
   const needle = ' ' + q;
   let exactCount = 0;
   for (let i = 0; i < verseMetadata.length && exactCount <= SUGGEST_EXACT_SCAN_CAP; i++) {
-    const a = verseNormText.get(i), b = verseNormNlt.get(i);
-    if ((a && (' ' + a).includes(needle)) || (b && (' ' + b).includes(needle))) { exactCount++; get(i).exact = true; }
+    const a = verseNormText.get(i);
+    if ((a && (' ' + a).includes(needle)) || inAnyWording(i, b => (' ' + b).includes(needle))) { exactCount++; get(i).exact = true; }
   }
   // Common words in a rare order ("be still and know") still identify a verse;
   // common words in a common order ("the lord is") identify nothing yet.
@@ -1872,7 +1965,7 @@ async function suggestPhrase(query, limit = 6) {
   // Judged against both wordings — a phrase typed from the NIV/NLT reads
   // nothing like the KJV of the same verse.
   if (rerankerEngine.isReady() && ranked.length) {
-    const texts = ranked.flatMap(c => [verseMetadata[c.idx].kjv_text || '', altTextByIdx?.get(c.idx) || verseMetadata[c.idx].nlt_text || verseMetadata[c.idx].kjv_text || '']);
+    const texts = ranked.flatMap(c => [verseMetadata[c.idx].kjv_text || '', modernText(c.idx) || verseMetadata[c.idx].kjv_text || '']);
     const scores = await rerankerEngine.scorePairs(texts.map(() => query), texts);
     ranked.forEach((c, i) => { c.rr = Math.max(scores[2 * i] ?? 0, scores[2 * i + 1] ?? 0); });
   }
@@ -1888,7 +1981,7 @@ async function suggestPhrase(query, limit = 6) {
   const qStems = qWords.map(healWord);
   for (const c of keep) {
     let best = 0;
-    for (const vw of [verseNormWords.get(c.idx), verseNormNltWords.get(c.idx)]) {
+    for (const vw of [verseNormWords.get(c.idx), ...altWordings.map(a => a.normWords.get(c.idx))]) {
       if (!vw) continue;
       const v = vw.map(healWord);
       const prev = new Array(v.length + 1).fill(0);
@@ -1912,8 +2005,12 @@ async function suggestPhrase(query, limit = 6) {
   // best one. Many equally good matches and no exact phrase means the words
   // typed don't pick out a verse yet ("thank you Jesus") — show nothing.
   const best = score(keep[0]);
-  const close = keep.filter(c => score(c) >= best - SUGGEST_CLOSE_TO_BEST);
-  if (close.length > SUGGEST_MAX_TIED && !keep[0].exact) return [];
+  const tied = keep.filter(c => score(c) >= best - SUGGEST_CLOSE_TO_BEST);
+  if (tied.length > SUGGEST_MAX_TIED && !keep[0].exact) return [];
+  const sure = (c) => c.keywords && (c.rr ?? 0) >= SUGGEST_SURE_RR;
+  const close = sure(keep[0])
+    ? keep.filter(c => tied.includes(c) || (sure(c) && score(c) >= best - SUGGEST_SURE_GAP))
+    : tied;
   let meaningOnly = 0;
   const out = [];
   for (const c of close) {
@@ -1942,8 +2039,8 @@ async function semanticSearchScoped(transcript, chapters, limit = 5) {
 
 // ── Message handler ───────────────────────────────────────────────────────
 // How much of a sentence is one of the verses nearest it in meaning: the
-// share of its content words (stemmed) that verse also has — in the KJV, the
-// second translation, or the church's own. Meaning alone can't tell a verse
+// share of its content words (stemmed) that verse also has — in the KJV or
+// the first other wording (the church's own, else the NLT). Meaning alone can't tell a verse
 // being read from preaching about it (to this model, all Bible-flavoured
 // speech is close); shared wording can.
 function quoteShare(text, nearIdx) {
@@ -1951,7 +2048,7 @@ function quoteShare(text, nearIdx) {
   if (!words.length || !nearIdx || !nearIdx.length) return 0;
   let best = 0;
   for (const idx of nearIdx) {
-    const have = new Set([...(verseStemWords.get(idx) || []), ...(verseStemNltWords.get(idx) || []), ...(verseHealedWords.get(idx + ALT_SLOT_BASE) || [])]);
+    const have = new Set([...(verseStemWords.get(idx) || []), ...(firstWording?.stemWords.get(idx) || [])]);
     let hit = 0;
     for (const w of words) if (have.has(w)) hit++;
     best = Math.max(best, hit / words.length);
@@ -2039,12 +2136,13 @@ async function handleMessage(msg) {
         // The wording(s) a preacher reads a verse in: KJV, plus the church's
         // translation or the service language's Bible when one is set —
         // normalized the way speech is. For comparing speech with verses.
-        // Not the NLT fallback: its everyday modern words turn up in any
-        // English speech and would make unrelated wording look like evidence.
+        // Not the NLT or the NIV matched for everyone: their everyday modern
+        // words turn up in any English speech and would make unrelated wording
+        // look like evidence.
         const texts = (msg.keys || []).map(k => {
           const i = idxByKey.get(k);
           if (i == null) return '';
-          return [verseNormText.get(i), altTextByIdx ? verseNormNlt.get(i) : null].filter(Boolean).join(' ');
+          return [verseNormText.get(i), altTextByIdx ? altWordings[0].norm.get(i) : null].filter(Boolean).join(' ');
         });
         parentPort.postMessage({ type: 'matchTextsResult', id: msg.id, texts });
         break;
@@ -2067,8 +2165,8 @@ async function handleMessage(msg) {
         const englishText = !(workerData?.altTranslation || '').startsWith('pack:');
         if (englishText && rerankerEngine.isReady() && texts.length) {
           // Scored against the KJV and a modern wording (the church's
-          // translation, else the NLT) — preachers paraphrase in modern English.
-          const wordings = idxs.flatMap(i => (i == null ? ['', ''] : [verseMetadata[i].kjv_text || '', altTextByIdx?.get(i) || verseMetadata[i].nlt_text || verseMetadata[i].kjv_text || '']));
+          // translation, else the NLT, else the NIV) — preachers paraphrase in modern English.
+          const wordings = idxs.flatMap(i => (i == null ? ['', ''] : [verseMetadata[i].kjv_text || '', modernText(i) || verseMetadata[i].kjv_text || '']));
           const queries = [], passages = [];
           for (const t of texts) for (const w of wordings) { queries.push(t); passages.push(w); }
           const scores = await rerankerEngine.scorePairs(queries, passages);

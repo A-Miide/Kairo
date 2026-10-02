@@ -72,10 +72,18 @@ const VERSION_MARKER_FILE = '.kairo-model-version';
 // https://github.com/Kairo-live/Kairo/releases/tag/offline-model-multi-v1.
 //
 // `url` is our own mirror; `fallbackUrl` is NVIDIA's file as k2-fsa/sherpa-onnx
-// publishes it, used until the mirror release exists (a 404 on `url`). Either way
-// the download must match `sha256` before it is extracted.
+// publishes it, used when the mirror answers 404 — not published yet, or the
+// repository made private (owner, 2026-10-02: "put a hold on the public
+// visibility"; a private repository's release files 404 for anyone not signed
+// in). Either way the download must match `sha256` before it is extracted, so
+// it is the same file every time.
 const MODELS = {
-  en: { url: MODEL_URL, topDir: ARCHIVE_TOP_DIR, dir: CANONICAL_DIR, approxMB: APPROX_MB, version: MODEL_VERSION, archive: 'sherpa-en.tar.bz2' },
+  en: {
+    url: MODEL_URL,
+    fallbackUrl: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25.tar.bz2',
+    sha256: '78e2b79fcf7271553a74402a76b771b09ea40117a39566a79f52235b23db6358',
+    topDir: ARCHIVE_TOP_DIR, dir: CANONICAL_DIR, approxMB: APPROX_MB, version: MODEL_VERSION, archive: 'sherpa-en.tar.bz2',
+  },
   multi: {
     url: 'https://github.com/Kairo-live/Kairo/releases/download/offline-model-multi-v1/sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-560ms-int8-2026-06-11.tar.bz2',
     fallbackUrl: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-560ms-int8-2026-06-11.tar.bz2',

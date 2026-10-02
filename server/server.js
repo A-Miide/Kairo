@@ -422,11 +422,13 @@ async function loadTwinTable() {
 let _resolveWorkerReady;
 const workerReadyPromise = new Promise((resolve) => { _resolveWorkerReady = resolve; });
 
-// The second text the detection worker matches readings against. For a
-// non-English service, the Bible in the language being spoken (a preacher
+// The texts the detection worker matches readings against besides the KJV. For
+// a non-English service, the Bible in the language being spoken (a preacher
 // preaching in Spanish reads Reina-Valera, not the KJV). Otherwise the
 // translation the church reads, when it has its own text file (KJV and NLT
-// are already in the detection corpus itself).
+// are already in the detection corpus itself). The worker adds the NLT and the
+// NIV for every English service itself — the modern versions preachers quote
+// most, whatever the church shows (detection_worker.js MATCH_ALSO).
 const MATCHABLE_TRANSLATIONS = new Set(['NKJV', 'NIV', 'ESV', 'NASB']);
 function speechLanguage() { return String(settings.sttLanguage || 'en').slice(0, 2).toLowerCase(); }
 function matchingTranslation() {
