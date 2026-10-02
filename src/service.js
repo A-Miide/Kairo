@@ -595,28 +595,35 @@
   // operator had reordered/deleted themes such that a different one ended
   // up at index 0.
   // A timer segment nobody has designed yet: the plain countdown on one of the
-  // mesh gradient backgrounds the owner chose (backgrounds/mesh-*.jpg — the
-  // pack's own artwork, 1:1), its own per segment, so the Timer cards differ
-  // (owner, 2026-10-01: the stage-lights picture on every card was "hideous";
-  // CSS imitations of the gradients didn't hold up either). Dark enough for
-  // white digits. Only while the countdown theme still has its stock picture —
-  // a canvas someone has changed is theirs.
-  const SEGMENT_BACKGROUNDS = { 'prayer': 'mesh-nebula', 'worship': 'mesh-ember-glow', 'the word': 'mesh-northern-lights', 'testimony': 'mesh-tropical', 'ministration': 'mesh-twilight' };
-  const SEGMENT_BACKGROUND_POOL = ['mesh-nebula', 'mesh-ember-glow', 'mesh-northern-lights', 'mesh-tropical', 'mesh-twilight'];
+  // Night gradients (gradients.js), its own per segment, so the Timer cards
+  // differ and still read as one set (owner, 2026-10-01: the mesh pictures
+  // "lack the visual balance, and it's very stimulating to the eye"; before
+  // them the stage-lights picture on every card was "hideous"). A real
+  // gradient fill, not a picture, so the canvas opens on Gradient and its
+  // colours can be changed ("it should be gradient"). Only while the countdown
+  // theme still has its stock picture — a canvas someone has changed is theirs.
+  const SEGMENT_GRADIENTS = { 'prayer': 'night-indigo', 'worship': 'night-raspberry', 'the word': 'night-teal', 'testimony': 'night-ember', 'ministration': 'night-violet' };
+  const SEGMENT_GRADIENT_POOL = ['night-indigo', 'night-raspberry', 'night-teal', 'night-ember', 'night-violet', 'night-ocean'];
   function segmentDefaultLook(item, base) {
     const canvas = (base?.layers || []).find(l => l.type === 'background' && !l.pos);
     if (!canvas || canvas.fill !== 'image' || !/backgrounds\/stage\.jpg$/.test(canvas.src || '')) return base;
     const name = String(item.name || item.title || '').trim().toLowerCase();
-    let id = SEGMENT_BACKGROUNDS[name];
+    let id = SEGMENT_GRADIENTS[name];
     if (!id) {
       let h = 0;
       for (const ch of String(item.id || name)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-      id = SEGMENT_BACKGROUND_POOL[h % SEGMENT_BACKGROUND_POOL.length];
+      id = SEGMENT_GRADIENT_POOL[h % SEGMENT_GRADIENT_POOL.length];
     }
-    const bg = (window.KairoBackgrounds || []).find(x => x.id === id);
-    if (!bg) return base;
-    const mesh = { ...canvas, src: bg.src, color: bg.color || canvas.color };
-    return { ...base, layers: base.layers.map(l => (l === canvas ? mesh : l)) };
+    const p = (window.KairoGradients || []).find(x => x.id === id);
+    if (!p) return base;
+    const { src, ...rest } = canvas;
+    const fill = {
+      ...rest, fill: 'gradient', angle: p.angle,
+      color: p.stops[0].color, color2: p.stops[p.stops.length - 1].color,
+      gradientStops: p.stops.map(st => ({ ...st })),
+      ...(p.glows ? { gradientGlows: p.glows.map(gl => ({ ...gl })) } : {}),
+    };
+    return { ...base, layers: base.layers.map(l => (l === canvas ? fill : l)) };
   }
 
   function themeForItem(item) {

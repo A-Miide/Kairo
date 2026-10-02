@@ -185,7 +185,11 @@ function imageFillCss(layer, opts = {}) {
 // FILL_OVERRIDE_KEYS: a background layer's fill. LAYER_OVERRIDE_KEYS: any
 // layer's rotation, accent colour, photo look and blend mode. (Build-in and idle motion
 // travel the same way — see animOverride.)
-const FILL_OVERRIDE_KEYS = ['fill', 'color', 'color2', 'angle', 'opacity', 'src', 'dim'];
+// gradientStops/gradientGlows too: a gradient is its points, not just its two
+// end colours — without them a gradient changed on one slide or timer segment
+// went back to the theme's as soon as it was saved (owner, 2026-10-01: "when
+// you change the gradient, it doesn't save").
+const FILL_OVERRIDE_KEYS = ['fill', 'color', 'color2', 'angle', 'opacity', 'src', 'dim', 'gradientStops', 'gradientGlows'];
 const LAYER_OVERRIDE_KEYS = ['rotation', 'accentColor', 'grayscale', 'fade', 'blendMode'];
 function withLayerOverride(layer, ov, keys = LAYER_OVERRIDE_KEYS) {
   if (!ov) return layer;
