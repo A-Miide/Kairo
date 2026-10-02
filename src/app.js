@@ -104,6 +104,12 @@ let sessionTranscriptParts = [];   // [{ time: HH:MM:SS, text }] — final fragm
 let confidenceSum   = 0;
 let confidenceCount = 0;
 let rangeRefs      = new Set(); // references belonging to the active verse range
+// The passage that just finished. The server can say "passage over" a moment
+// before it sends the passage's last verse (a step through it, "previous
+// verse", Back) — that verse's card stays where it is, in reading order,
+// instead of being treated as a new send and moved to the top (recording,
+// 2026-10-02: "John 18:4-6" ended as 18:6, 18:4, 18:5).
+let finishedRangeRefs = new Set();
 
 // ── DOM ────────────────────────────────────────────────────────────────────
 const listenBtn          = document.getElementById('listen-btn');
@@ -1160,7 +1166,11 @@ function showInViewer(verses, method, topScore, correctedFrom = null, look = nul
     if (rangeRefs.has(v.reference)) {
       // Range verse auto-advancing — just shift the highlight
       handleRangeActive(v.reference);
+    } else if (finishedRangeRefs.has(v.reference) && currentDisplayCard.querySelector(`[data-ref="${CSS.escape(v.reference)}"]`)) {
+      // The last verse of the passage that just finished: its card stays put
+      // (see finishedRangeRefs); the LIVE mark follows it there.
     } else {
+      finishedRangeRefs = new Set();
       // Regular sent verse — full-list dedup (not just top card)
       const existing = currentDisplayCard.querySelector(`[data-ref="${CSS.escape(v.reference)}"]`);
       if (existing) {
@@ -1439,6 +1449,7 @@ function handleRangeState({ remaining, total, next }) {
       // Strip the blue range badge tint so it looks like a normal history card
       el.querySelector('.range-book-badge')?.classList.remove('range-book-badge');
     });
+    finishedRangeRefs = rangeRefs;
     rangeRefs = new Set();
     return;
   }
@@ -1471,6 +1482,7 @@ function handleRangeVerses({ verses, activeRef }) {
 
   // Mark all range refs so showInViewer dedup doesn't fight us
   rangeRefs = new Set(verses.map(v => v.reference));
+  finishedRangeRefs = new Set();
 
   // Clear placeholders
   currentDisplayCard.querySelectorAll('.display-empty, .cs-queue-empty').forEach(el => el.remove());
@@ -3035,6 +3047,7 @@ clearLockedBtn?.addEventListener('click', async () => {
     currentDisplayCard.innerHTML = '<div class="cs-queue-empty">Sent verses and range queues appear here…</div>';
   }
   rangeRefs = new Set();
+  finishedRangeRefs = new Set();
   renderPreviewScreen('Nothing on display', '', null);
   await fetch(`${SERVER}/api/propresenter/clear`, { method: 'POST' }).catch(err => console.warn('[KAIRO] propresenter/clear request failed:', err.message));
 });
