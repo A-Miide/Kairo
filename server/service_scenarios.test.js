@@ -785,6 +785,83 @@ const fresh = () => { server.resetDetectionSession(); referenceContext.reset(); 
     assert.ok(sent.some(s => s.ref === 'Luke 4:14' && s.target === 'suggestions'), JSON.stringify(sent));
   });
 
+  // ── A spoken change of translation ("switch to the NLT") ──
+  // KJV and NLT only: both are in the detection corpus itself, so nothing here
+  // depends on a licensed translation's text file, and the worker is not reloaded.
+  const wordsOf = (t) => String(t || '').replace(/\s+/g, ' ').trim();
+  const lookup = async (book, chapter, verse) => (await server.workerCall('directLookup', { book, chapter, verse }, 3000)).result;
+  const shown = [];   // every detection message that reached the screen, in full
+  server.onBroadcast(m => { if (m.type === 'detection' && m.target === 'viewer') shown.push(m); });
+  const changes = []; // translation-changed messages
+  server.onBroadcast(m => { if (m.type === 'translation-changed') changes.push(m); });
+
+  await test('"switch to the NLT" shows the verse on screen again in the NLT, and the next verse goes up in it (John 3:16, Romans 8:28)', async () => {
+    fresh(); server.clearRangeQueue(); await server.clearLayer('all'); server.setTranslationForTest('KJV');
+    shown.length = 0; changes.length = 0;
+    const kjv = await lookup('John', 3, 16);
+    assert.ok(kjv.nlt_text && wordsOf(kjv.nlt_text) !== wordsOf(kjv.text), 'the corpus has an NLT wording of John 3:16');
+    await say('Turn with me to John chapter three verse sixteen.');
+    await wait(600);
+    assert.equal(wordsOf(shown.at(-1).verses[0].text), wordsOf(kjv.text), 'up in the KJV first');
+    const before = shown.length;
+    await say("Alright, let's switch to the New Living Translation.");
+    await wait(600);
+    assert.equal(server.getTranslation(), 'NLT');
+    assert.equal(changes.length, 1, JSON.stringify(changes));
+    assert.equal(changes[0].translation, 'NLT');
+    assert.equal(shown.length, before + 1, 'the verse on screen is shown once more');
+    const again = shown.at(-1);
+    assert.equal(again.retranslated, true);
+    assert.equal(again.verses[0].reference, 'John 3:16');
+    assert.equal(wordsOf(again.verses[0].text), wordsOf(kjv.nlt_text), 'John 3:16 in the NLT');
+    // The next verse is sent in it, with no further command.
+    await say('And Romans chapter eight verse twenty eight says.');
+    await wait(600);
+    const romans = await lookup('Romans', 8, 28);
+    const last = shown.at(-1);
+    assert.equal(last.verses[0].reference, 'Romans 8:28', JSON.stringify(shown.map(m => m.verses[0].reference)));
+    assert.equal(wordsOf(last.verses[0].text), wordsOf(romans.nlt_text), 'Romans 8:28 in the NLT');
+  });
+
+  await test('"switch back to the King James" returns the verse on screen to the KJV text', async () => {
+    // Continues from the NLT test: Romans 8:28 is up, in the NLT.
+    const romans = await lookup('Romans', 8, 28);
+    const before = shown.length;
+    await say('Okay, switch back to the King James.');
+    await wait(600);
+    assert.equal(server.getTranslation(), 'KJV');
+    assert.equal(shown.length, before + 1);
+    assert.equal(shown.at(-1).retranslated, true);
+    assert.equal(wordsOf(shown.at(-1).verses[0].text), wordsOf(romans.text), 'Romans 8:28 in the KJV again');
+  });
+
+  await test('talking about a translation does not change it', async () => {
+    fresh(); server.clearRangeQueue(); await server.clearLayer('all'); server.setTranslationForTest('KJV');
+    changes.length = 0;
+    for (const t of [
+      'In the New Living Translation it says that God so loved the world.',
+      'If you go to the NLT, the wording is a little different.',
+      'Some of you use the NLT and some of you use the King James.',
+      'You can switch to the NLT if you want to follow along.',
+      "The King James is the one I grew up on.",
+    ]) { await say(t); await wait(150); }
+    assert.equal(server.getTranslation(), 'KJV');
+    assert.equal(changes.length, 0, JSON.stringify(changes));
+  });
+
+  await test('a citation in the same breath as the command goes up in the new translation ("switch to the NLT. Philippians 4:13")', async () => {
+    fresh(); server.clearRangeQueue(); await server.clearLayer('all'); server.setTranslationForTest('KJV');
+    shown.length = 0;
+    const ph = await lookup('Philippians', 4, 13);
+    assert.ok(ph.nlt_text && wordsOf(ph.nlt_text) !== wordsOf(ph.text), 'the corpus has an NLT wording of Philippians 4:13');
+    await say("Let's switch to the NLT. Philippians chapter four verse thirteen.");
+    await wait(600);
+    const last = shown.at(-1);
+    assert.equal(last.verses[0].reference, 'Philippians 4:13', JSON.stringify(shown.map(m => m.verses[0].reference)));
+    assert.equal(wordsOf(last.verses[0].text), wordsOf(ph.nlt_text));
+    server.setTranslationForTest('KJV');
+  });
+
   console.log(`\n${pass} passed, ${fail} failed`);
   // The worker finishes what it started first: exiting mid model-load aborts (server.js stopDetectionWorker).
   server.stopDetectionWorker({ timeoutMs: 30000 }).finally(() => process.exit(fail ? 1 : 0));

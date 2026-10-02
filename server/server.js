@@ -46,6 +46,7 @@ const OBSWebSocket = require('obs-websocket-js/json').default;
 
 const { createChapterResolver, textAfterBookMention, CHAPTER_KEYWORD_MIN_IDF, CHAPTER_KEYWORD_MIN_MARGIN } = require('./chapter_resolver');
 const { createCitationVoting, citationKey, lookupRefVerses } = require('./citation_voting');
+const { detectTranslationCommand } = require('./translation_commands');
 const { setCitationLanguage, BARE_NUMBER_FILLER, AMBIGUOUS_NUMBER_WORDS, parseSpokenReference, parseAllSpokenReferences, resolvePartialReference, detectBookMentions, referenceContext, SINGLE_WORD_BOOKS, consumeNumber, MAX_CHAPTERS, SOUND_ALIKE_BOOKS, WORD_TO_NUM } = require('./reference_parser');
 const { localizeCitationText, stripAccents } = require('./citation_i18n');
 const { findNamedPassages } = require('./named_passages');
@@ -435,9 +436,15 @@ function matchingTranslation() {
   return MATCHABLE_TRANSLATIONS.has(t) ? t : null;
 }
 
+// The second text the detection worker was spawned with. A change of translation
+// by voice moves settings.translation at once, but the worker is only reloaded at a
+// quiet moment (scheduleAltTranslationReload), so the two can differ for a while.
+let workerAltTranslation = null;
+
 function spawnDetectionWorker() {
+  workerAltTranslation = matchingTranslation();
   detectionWorker = new Worker(path.join(__dirname, 'detection_worker.js'), {
-    workerData: { dataDir: DATA_DIR, altTranslation: matchingTranslation() },
+    workerData: { dataDir: DATA_DIR, altTranslation: workerAltTranslation },
     // Captured (not left to pass through to the real fd) so its own
     // console.log/warn/error — a separate console from this thread's, see
     // teeConsoleToFile's comment — reaches server.log too. Still re-emitted to
@@ -1472,6 +1479,130 @@ async function attachBibleTranslations(verses) {
   return verses;
 }
 
+// ── Spoken translation change ("switch to the NIV") ──────────────────────────
+// translation_commands.js decides what counts as a command (only a clause that
+// starts with one — never a bare mention). Here it is applied: the setting moves
+// at once, so the next verse goes up in it; the verse and range on screen are
+// shown again in it, so the command visibly worked; and the detection worker —
+// which matches readings against the church's own translation (NKJV, NIV, ESV,
+// NASB) and has no detection for ~4 s while it reloads — is reloaded at a quiet
+// moment, not mid-sentence: a citation spoken right after "switch to the ESV" is
+// the one most likely to be lost. KJV and NLT are in the corpus itself and need
+// no reload.
+const VOICE_TRANSLATION_COOLDOWN_MS = 2000;
+const WORKER_RELOAD_QUIET_MS = 4000;
+let lastVoiceTranslationAt = 0;
+let altReloadTimer = null;
+
+function quietForWorkerReload() {
+  const listening = connectionState === 'connected' || connectionState === 'connecting' || connectionState === 'reconnecting';
+  if (!listening) return true;
+  const lastFinalAt = transcriptBuffer.length ? transcriptBuffer[transcriptBuffer.length - 1].time : 0;
+  const now = Date.now();
+  return now - lastFinalAt >= WORKER_RELOAD_QUIET_MS && !currentInterimText && now - lastDirectRefTime >= 6000;
+}
+
+function scheduleAltTranslationReload() {
+  if (process.env.KAIRO_EVAL_MODE || altReloadTimer) return;
+  altReloadTimer = setInterval(() => {
+    if (!detectionWorker || matchingTranslation() === workerAltTranslation) {
+      clearInterval(altReloadTimer); altReloadTimer = null; return;
+    }
+    if (!quietForWorkerReload()) return;
+    clearInterval(altReloadTimer); altReloadTimer = null;
+    console.log(`[Server] Translation changed by voice — reloading detection to match ${matchingTranslation() || 'KJV/NLT'}`);
+    stopDetectionWorker({ respawn: true });
+  }, 2000);
+  altReloadTimer.unref?.();
+}
+
+// The verse on screen (and the cited range) in the translation now set. A verse
+// object that was sent has lost its KJV text to applyTranslation, so each is
+// looked up again.
+async function retranslateLive() {
+  const keyOf = (v) => `${v.book}|${v.chapter}|${v.verse}`;
+  // Not a verse the operator put up from the service plan: that text is theirs.
+  const live = bibleOnTop && screenNow?.method !== 'service' && screenNow?.verses?.[0]?.book ? screenNow : null;
+  const wanted = new Map();
+  for (const v of live?.verses || []) wanted.set(keyOf(v), v);
+  for (const v of [...rangeAllVerses, ...rangeQueue]) if (v?.book) wanted.set(keyOf(v), v);
+  if (!wanted.size) return;
+  const keys = [...wanted.keys()].slice(0, 80);   // a very long range is not looked up all at once
+  const looked = await Promise.all(keys.map(k => {
+    const v = wanted.get(k);
+    return workerCall('directLookup', { book: v.book, chapter: v.chapter, verse: v.verse }, 3000).then(m => m.result).catch(() => null);
+  }));
+  const fresh = new Map();
+  looked.forEach((v, i) => { if (v) fresh.set(keys[i], v); });
+  if (!fresh.size) return;
+  const list = [...fresh.values()];
+  applyTranslation(list);
+  applyScriptureLanguage(list);
+  await attachBibleTranslations(list);
+  const swap = (v) => (v?.book && fresh.get(keyOf(v))) || v;
+
+  if (rangeAllVerses.length) {
+    rangeAllVerses = rangeAllVerses.map(swap);
+    rangeQueue = rangeQueue.map(swap);
+    if (rangeCurrentVerse) rangeCurrentVerse = swap(rangeCurrentVerse);
+    broadcastRangeState();
+    broadcast({ type: 'range-verses', verses: rangeAllVerses, activeRef: rangeCurrentVerse?.reference || null, retranslated: true });
+  }
+  if (!live || !bibleOnTop || screenNow !== live) return;   // the screen moved on while looking up
+  const verses = live.verses.map(swap);
+  const msg = { ...live, verses, retranslated: true, timestamp: Date.now() };
+  // The same verse in another translation is not a new thing on screen: no entry
+  // in the Back history, and nothing counted as sent.
+  restoringScreen = true;
+  try { broadcast(msg); } finally { restoringScreen = false; }
+  screenNow = msg;
+  const top = swap(lastOutputVerse);
+  if (top && lastOutputVerse && keyOf(top) === keyOf(lastOutputVerse)) {
+    const at = lastOutputVerseAt;
+    lastOutputVerse = top;
+    await sendToOutputs(top).catch(() => {});
+    lastOutputVerseAt = at;
+  }
+}
+
+async function applyTranslationByVoice(code, heard) {
+  const now = Date.now();
+  const current = String(settings.translation || 'KJV').toUpperCase();
+  if (code === current || now - lastVoiceTranslationAt < VOICE_TRANSLATION_COOLDOWN_MS) return false;
+  if (code !== 'KJV' && code !== 'NLT' && !loadTranslationPack(code)) {
+    console.log(`[Translation] "${heard}" — no text for ${code} on this install, staying on ${current}`);
+    return false;
+  }
+  lastVoiceTranslationAt = now;
+  console.log(`[Translation] "${heard}" → ${code} (was ${current})`);
+  settings = { ...settings, translation: code };
+  // The eval harness and the tests run on real sermon words in the developer's
+  // own settings folder; a command heard there must not rewrite it.
+  if (!process.env.KAIRO_EVAL_MODE) saveSettings(settings).catch(err => console.warn('[Settings] Save failed:', err.message));
+  broadcast({ type: 'translation-changed', translation: code, from: current, byVoice: true, heard });
+  if (detectionWorker && matchingTranslation() !== workerAltTranslation) scheduleAltTranslationReload();
+  await retranslateLive().catch(err => console.warn('[Translation] re-showing the verse failed:', err.message));
+  return true;
+}
+
+// Final segments only, before the citations in the same words are processed, so
+// "let's switch to the NIV, Romans 8:28" sends Romans 8:28 in the NIV. English
+// only: the names of the translations are English ones.
+async function maybeHandleTranslationCommand(transcript) {
+  if (speechLanguage() !== 'en') return false;
+  let cmd = detectTranslationCommand(transcript);
+  if (!cmd && prevFinalTranscript && Date.now() - prevFinalTranscriptAt < PREV_FINAL_JOIN_WINDOW_MS) {
+    // "…let's switch to" | "the NIV": the pause fell inside the command.
+    const tail = prevFinalTranscript.split(RE_SPACES).slice(-6).join(' ');
+    if (!detectTranslationCommand(tail)) cmd = detectTranslationCommand(`${tail} ${transcript}`);
+  }
+  if (!cmd) return false;
+  try { return await applyTranslationByVoice(cmd.code, cmd.heard); } catch (err) {
+    console.warn('[Translation] voice change failed:', err.message);
+    return false;
+  }
+}
+
 let rangeQueue        = [];    // remaining verses not yet displayed
 let rangeQueueTotal   = 0;    // total verses in this range (for UI display)
 let rangeAllVerses    = [];   // all verses in range (sent + queued) — for UI display
@@ -2289,12 +2420,13 @@ app.post('/api/settings', async (req, res) => {
   }
   const updated = { ...settings, ...incoming };
   await saveSettings(updated).catch(err => console.warn('[Settings] Save failed:', err.message));
-  const matchingBefore = matchingTranslation();
   settings = updated;
   setCitationLanguage(settings.sttLanguage);
   // A different church translation changes what the detection worker matches
   // against — restart it (the exit handler respawns it with the new setting).
-  if (matchingTranslation() !== matchingBefore && detectionWorker) {
+  // Compared with what the worker was spawned with, not with the setting just
+  // before: a spoken change moves the setting first and reloads later.
+  if (matchingTranslation() !== workerAltTranslation && detectionWorker) {
     console.log(`[Server] Translation changed — reloading detection to match ${matchingTranslation() || 'KJV/NLT'}`);
     stopDetectionWorker({ respawn: true });
   }
@@ -3348,37 +3480,47 @@ function startNdjsonStream(res) {
 // as a progress bar. One install at a time — second call returns 409
 // instead of double-downloading.
 const offlineInstaller = require('./sherpa_installer');
-let offlineInstallInProgress = false;
+// Per model: English ('en') and every other language ('multi') are separate
+// downloads (sherpa_installer.js MODELS), installable side by side.
+const offlineInstallInProgress = new Set();
+const offlineModelKey = (q) => (q === 'multi' ? 'multi' : 'en');
 
-app.get('/api/offline/status', (_req, res) => {
+app.get('/api/offline/status', (req, res) => {
+  const model = offlineModelKey(req.query.model);
   res.json({
-    installed: offlineInstaller.isModelPresent(),
+    model,
+    installed: offlineInstaller.isModelPresent(undefined, model),
     // True when a model IS installed but it's not the current MODEL_VERSION
     // (see sherpa_installer.js's own comment on how a real update reaches an
     // existing install) — the Settings UI shows a distinct "update
     // available" state for this rather than either "not installed" or a
     // plain checkmark.
-    needsUpdate: offlineInstaller.needsUpdate(),
-    modelPath: offlineInstaller.modelPath(),
-    installing: offlineInstallInProgress,
+    needsUpdate: offlineInstaller.needsUpdate(undefined, model),
+    modelPath: offlineInstaller.modelPath(undefined, model),
+    installing: offlineInstallInProgress.has(model),
+    approxMB: offlineInstaller.approxMB(model),
+    // Which model the spoken language set in Settings runs on, so the panel
+    // can say which download Offline needs.
+    needed: loadOfflineMod().speechModelFor(settings.sttLanguage).model,
   });
 });
 
-app.post('/api/offline/install', async (_req, res) => {
-  if (offlineInstallInProgress) {
+app.post('/api/offline/install', async (req, res) => {
+  const model = offlineModelKey(req.query.model);
+  if (offlineInstallInProgress.has(model)) {
     return res.status(409).json({ error: 'install already in progress' });
   }
-  offlineInstallInProgress = true;
+  offlineInstallInProgress.add(model);
 
   const send = startNdjsonStream(res);
 
   try {
-    await offlineInstaller.installSherpaModel({ onProgress: send });
+    await offlineInstaller.installSherpaModel({ onProgress: send, model });
     send({ phase: 'complete', ok: true });
   } catch (err) {
     send({ phase: 'complete', ok: false, error: err.message || String(err) });
   } finally {
-    offlineInstallInProgress = false;
+    offlineInstallInProgress.delete(model);
     res.end();
   }
 });
@@ -3725,6 +3867,7 @@ async function handleTranscriptSegment(transcript, isFinal, confidence, speechFi
   interimSentKeys.clear();
   maybeHandleNextVerseTrigger(transcript).catch(() => {});
   markVerseEndIfJustFinished(transcript);
+  await maybeHandleTranslationCommand(transcript);
 
   accumulateTopicWords(transcript);
   maybeRebuildTopicLibrary();
@@ -3935,12 +4078,17 @@ async function startOffline() {
     connectionState = 'connecting';
     broadcast({ type: 'connection-state', state: 'connecting', engine: 'offline' });
 
-    const { OfflineEngine, defaultModelPath } = loadOfflineMod();
+    const { OfflineEngine, defaultModelPath, speechModelFor } = loadOfflineMod();
     offlineLastPartial = '';
+    // English runs on the English model, any other spoken language on the
+    // multilingual one (sherpa_engine.js speechModelFor).
+    const spoken = settings.sttLanguage || 'en-US';
+    const { model } = speechModelFor(spoken);
+    const override = model === 'multi' ? process.env.KAIRO_OFFLINE_MODEL_MULTI : process.env.KAIRO_OFFLINE_MODEL;
     offlineEngine = new OfflineEngine({
-      modelPath: process.env.KAIRO_OFFLINE_MODEL || defaultModelPath(),
+      modelPath: override || defaultModelPath(model),
       gpu: true,
-      language: 'en',
+      language: spoken,
       utteranceEndMs: UTTERANCE_END_MS,
       onPartial: (text) => {
         const t = (text || '').trim();
@@ -3966,8 +4114,11 @@ async function startOffline() {
     offlineActive = false;
     offlineEngine = null;
     connectionState = 'error';
+    const multi = loadOfflineMod().speechModelFor(settings.sttLanguage).model === 'multi';
     const friendly = err.code === 'OFFLINE_MODEL_MISSING'
-      ? 'Offline model missing. Open Settings → Speech Engine → Offline and hit "Download offline model", or wait for the startup download to finish.'
+      ? (multi
+        ? 'Offline listening in this language needs the other-languages model. Open Settings → Speech Engine → Offline and hit "Download other languages", or set Spoken language to English.'
+        : 'Offline model missing. Open Settings → Speech Engine → Offline and hit "Download offline model", or wait for the startup download to finish.')
       : err.code === 'OFFLINE_BINDING_MISSING'
       ? 'Offline engine not installed. Run "npm install" in the server folder.'
       : `Offline engine failed to start: ${err.message}`;
@@ -7786,6 +7937,10 @@ if (require.main === module) {
     broadcastDetection,
     resetDeepgramDiagnosis: () => { lastDeepgramDiagnosis = null; },
     stopDetectionWorker,
+    // For tests of the spoken translation change.
+    workerCall,
+    getTranslation: () => String(settings.translation || 'KJV').toUpperCase(),
+    setTranslationForTest: (code) => { settings = { ...settings, translation: code }; lastVoiceTranslationAt = 0; },
   };
 }
 

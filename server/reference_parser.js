@@ -498,9 +498,30 @@ function splitNumberPunctuation(text) {
     });
 }
 
+// A chapter or verse written in Roman numerals — the multilingual offline
+// model writes "Juan capítulo III" the way Spanish print does (2026-10-01).
+// Only right after "chapter"/"verse" (every language's word for them is
+// English by then, citation_i18n.js), and never a lone "I": "the verse I
+// love" is English, not verse 1.
+const ROMAN_NUMERAL = /^(c{0,1})(xc|xl|l?x{0,3})(ix|iv|v?i{0,3})$/;
+function romanValue(r) {
+  const v = { i: 1, v: 5, x: 10, l: 50, c: 100 };
+  let n = 0;
+  for (let k = 0; k < r.length; k++) n += v[r[k]] < (v[r[k + 1]] || 0) ? -v[r[k]] : v[r[k]];
+  return n;
+}
+function romanChapterVerse(text) {
+  return text.replace(/\b(chapter|chapters|verse|verses)(\s+)([ivxlc]+)\b/gi, (m, kw, sp, r) => {
+    const low = r.toLowerCase();
+    if (low === 'i' || !ROMAN_NUMERAL.test(low)) return m;
+    return `${kw}${sp}${romanValue(low)}`;
+  });
+}
+
 function cleanReferenceText(text) {
   if (typeof text !== 'string') return '';
   if (citationLanguage !== 'en') text = localizeCitationText(text, citationLanguage);
+  text = romanChapterVerse(text);
   text = dropPossessives(text)
     // Captions split a two-digit verse: "Proverbs 3:2 7" is 3:27.
     .replace(/\b(\d{1,3}):(\d) (\d)(?![\d:])(?!\s+\d)/g, '$1:$2$3')

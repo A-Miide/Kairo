@@ -4,7 +4,7 @@
 // what the engine heard and what went to the screen or Possible Matches. For
 // A/B-ing the offline engine against Deepgram on identical audio: run it once
 // per engine.
-//   KAIRO_EVAL_MODE=1 node server/eval/ab_audio.js <file> offline|deepgram
+//   KAIRO_EVAL_MODE=1 [KAIRO_STT_LANG=es] node server/eval/ab_audio.js <file> offline|deepgram
 // Uses the installed app's settings (Deepgram key, translation, auto-send) and
 // offline model. The settings are copied into a scratch folder, so nothing of
 // the app's is written.
@@ -19,8 +19,16 @@ const APP_DATA = path.join(os.homedir(), 'Library', 'Application Support', 'com.
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kairo-ab-'));
 process.on('exit', () => fs.rmSync(dir, { recursive: true, force: true }));
 fs.copyFileSync(path.join(APP_DATA, 'settings.json'), path.join(dir, 'settings.json'));
+// KAIRO_STT_LANG plays it as a church whose Spoken language is set to that
+// ("es", "pt-BR", "multi"…): offline, anything but English runs on the
+// other-languages model (KAIRO_OFFLINE_MODEL_MULTI).
+if (process.env.KAIRO_STT_LANG) {
+  const p = path.join(dir, 'settings.json');
+  fs.writeFileSync(p, JSON.stringify({ ...JSON.parse(fs.readFileSync(p, 'utf8')), sttLanguage: process.env.KAIRO_STT_LANG }));
+}
 process.env.KAIRO_APP_DATA_DIR = dir;
 process.env.KAIRO_OFFLINE_MODEL ||= path.join(APP_DATA, 'models', 'sherpa-streaming-en');
+process.env.KAIRO_OFFLINE_MODEL_MULTI ||= path.join(APP_DATA, 'models', 'sherpa-streaming-multi');
 
 // 16 kHz mono int16, what the app's capture worker sends, in its 64 ms frames.
 const pcm = execFileSync('ffmpeg', ['-v', 'error', '-i', file, '-vn', '-ac', '1', '-ar', '16000', '-f', 's16le', '-'], { maxBuffer: 1 << 30 });
