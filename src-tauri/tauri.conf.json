@@ -1,6 +1,6 @@
 {
   "productName": "Kairo",
-  "version": "3.2.10",
+  "version": "3.2.11",
   "identifier": "com.kairo.scripture",
   "build": {
     "beforeDevCommand": "npm run server",
@@ -52,6 +52,7 @@
     ],
     "resources": {
       "../server": "server",
+      "../package.json": "package.json",
       "../src": "src",
       "../databases/bibles/map.json": "databases/bibles/map.json",
       "../databases/bibles/kjv.json": "databases/bibles/kjv.json",

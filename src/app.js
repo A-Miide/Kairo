@@ -2325,6 +2325,7 @@ async function loadSettings() {
   try {
     const r = await fetch(`${SERVER}/api/settings`);
     settings = await r.json();
+    if (typeof seedMonitorOutput === 'function') seedMonitorOutput();
     const versionEl = document.getElementById('settings-nav-version');
     if (versionEl) versionEl.textContent = settings.appVersion ? `v${settings.appVersion}` : '';
     // Populate UI
