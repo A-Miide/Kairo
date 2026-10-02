@@ -40,5 +40,26 @@
     g('electric', 'Electric', 100, [[0, '#5a2be3'], [50, '#3a62e6'], [100, '#0d93e1']],
       [[100, 0, 60, 20, '#ed0d64']]),
     g('candy', 'Candy', 90, [[0, '#7a1bf0'], [65, '#b821ca'], [100, '#f0256f']]),
+
+    // ── Night set — the Timer's own ──
+    // Side by side in the Timer grid, the mesh pictures fought each other
+    // (owner, 2026-10-01: "it lacks the visual balance, and it's very
+    // stimulating to the eye"). Each of these keeps a mesh's colour (Indigo
+    // ← Nebula, Raspberry ← Ember Glow, Teal ← Northern Lights, Ember ←
+    // Tropical, Violet ← Twilight, Ocean ← Lagoon) as a deep jewel tone, all
+    // running the same way into the same navy, with one soft glow where the
+    // light comes from — so the set reads as one family under white digits.
+    g('night-indigo', 'Indigo Night', 150, [[0, '#3d217d'], [52, '#1d1759'], [100, '#101741']],
+      [[24, 30, 56, 48, '#482cba']]),
+    g('night-raspberry', 'Raspberry Night', 150, [[0, '#7b2460'], [52, '#3d1858'], [100, '#101741']],
+      [[24, 30, 56, 48, '#b82e65']]),
+    g('night-teal', 'Teal Night', 150, [[0, '#1e6680'], [52, '#16345a'], [100, '#101741']],
+      [[24, 30, 56, 48, '#30acb5']]),
+    g('night-ember', 'Ember Night', 150, [[0, '#7d2143'], [52, '#491759'], [100, '#101741']],
+      [[24, 30, 56, 48, '#ba482c']]),
+    g('night-violet', 'Violet Night', 150, [[0, '#572678'], [52, '#271958'], [100, '#101741']],
+      [[24, 30, 56, 48, '#9f37ae']]),
+    g('night-ocean', 'Ocean Night', 150, [[0, '#185a86'], [52, '#142e5d'], [100, '#101741']],
+      [[24, 30, 56, 48, '#2796be']]),
   ];
 })();

@@ -5842,8 +5842,10 @@ function buildSyntheticLook(item, slideIndex) {
     if (ov.graphic) layer.graphic = deepClone(ov.graphic);
     // Rotation, accent colour, photo look, a background's fill, build-in and
     // idle motion — the same merge every renderer does (layer_geometry.js).
-    Object.assign(layer, withLayerOverride(layer, ov, [...LAYER_OVERRIDE_KEYS, ...(layer.type === 'background' ? FILL_OVERRIDE_KEYS : [])]));
-    LAYER_OVERRIDE_KEYS.forEach(k => { if (ov[k] === null) delete layer[k]; });
+    const ovKeys = [...LAYER_OVERRIDE_KEYS, ...(layer.type === 'background' ? FILL_OVERRIDE_KEYS : [])];
+    Object.assign(layer, withLayerOverride(layer, ov, ovKeys));
+    // null: the slide took the setting away (glows switched off, say).
+    ovKeys.forEach(k => { if (ov[k] === null) delete layer[k]; });
     ['build', 'idle'].forEach(k => {
       if (ov[k] === null) delete layer[k];
       else if (ov[k] !== undefined) layer[k] = deepClone(ov[k]);
