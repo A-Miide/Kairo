@@ -30,21 +30,24 @@ const OUTPUT_DEFS = [
   { key: 'obs',           label: 'OBS' },
 ];
 
-// Extra screens beyond the primary one. Stored in settings. Every install
-// starts with a Monitor among them, off until it's given a screen — the way
-// NDI and Syphon each start with one (owner, 2026-10-01: "setting has no
-// monitor"; it was only under + Add Output, and the Monitor message bar stays
-// hidden without one). Seeded once, after the saved settings have loaded
-// (appVersion only comes from the server): a Monitor deleted stays deleted.
+// Extra screens beyond the primary one. Stored in settings.
 function extraDisplays() {
-  if (!settings.monitorSeeded && settings.appVersion) {
-    const list = Array.isArray(settings.extraDisplays) ? settings.extraDisplays : [];
-    if (!list.some(d => d.kind === 'monitor')) settings.extraDisplays = [...list, { id: genOutputId('monitor'), name: 'Monitor', kind: 'monitor' }];
-    settings.monitorSeeded = true;
-    saveSettingsPatch({ extraDisplays: settings.extraDisplays || list, monitorSeeded: true });
-  }
   const list = settings.extraDisplays;
   return Array.isArray(list) ? list : [];
+}
+
+// Every install has a Monitor among them — the basic one, off until it's
+// given a screen, always there the way External Display is (owner,
+// 2026-10-01: "setting has no monitor" — it was only under + Add Output, and
+// the Monitor message bar stays hidden without one — and "They can add more,
+// but there should be the basic output"). More come from + Add Output; the
+// last one has no Remove, and loadSettings calls this once the saved
+// settings are in, to put one back if none is left.
+function seedMonitorOutput() {
+  const list = extraDisplays();
+  if (list.some(d => d.kind === 'monitor')) return;
+  settings.extraDisplays = [...list, { id: genOutputId('monitor'), name: 'Monitor', kind: 'monitor' }];
+  saveSettingsPatch({ extraDisplays: settings.extraDisplays });
 }
 
 // Every screen, primary first — used for theme assignment and broadcasting.
@@ -794,7 +797,8 @@ function renderDisplayDetail(host, o) {
   }
   appendOutputLayersSection(host, o.id);
 
-  if (!o.primary) {
+  // The last Monitor is the basic one (see seedMonitorOutput): it stays.
+  if (!o.primary && !(o.monitor && monitorOutputs().length <= 1)) {
     const del = document.createElement('button');
     del.type = 'button';
     del.className = 'modal-btn secondary display-output-del';

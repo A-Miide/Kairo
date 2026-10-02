@@ -3,7 +3,7 @@
 // free abstract backgrounds for themes and slides: soft light, stage beams,
 // bokeh, stars, paper. Each is drawn in linear light at 1920×1080 from a short
 // recipe below, dithered so smooth gradients don't band on a projector, then
-// written as PNG and converted to JPEG (and a 320×180 thumbnail) with macOS's
+// written as PNG and converted to JPEG (and a 720×405 thumbnail) with macOS's
 // own `sips`. The list the app shows lives in src/backgrounds/backgrounds.js,
 // written from the same recipes.
 //
@@ -292,7 +292,9 @@ const RECIPES = [
 // Artwork the owner chose, cut from a mesh gradient pack (2026-10-01: "I gave
 // you some samples so you could just replicate 1:1") — the pack's own render,
 // not repainted here: each tile rendered from its vector file, fitted to
-// 1920×1080, copied in as JPEG with a thumbnail. Listed so a re-run keeps them.
+// 1920×1080, copied in as JPEG. Their thumbnails are the 720×405 tiles of the
+// preview the owner approved, byte for byte ("I want the exact same gradients
+// as the html you shared"). Listed so a re-run keeps them.
 const PACK = [
   { id: 'mesh-ember-glow', name: 'Ember Glow', tone: 'dark', tags: ['mesh', 'magenta', 'gold'], color: '#83136f' },
   { id: 'mesh-nebula', name: 'Nebula', tone: 'dark', tags: ['mesh', 'violet', 'blue'], color: '#5840e0' },
@@ -323,7 +325,10 @@ function main() {
     fs.writeFileSync(tmp, png(rgb));
     const jpg = path.join(OUT, `${r.id}.jpg`);
     execFileSync('sips', ['-s', 'format', 'jpeg', '-s', 'formatOptions', '86', tmp, '--out', jpg], { stdio: 'ignore' });
-    execFileSync('sips', ['-Z', '320', '-s', 'format', 'jpeg', '-s', 'formatOptions', '80', jpg, '--out', path.join(OUT, 'thumbs', `${r.id}.jpg`)], { stdio: 'ignore' });
+    // 720 wide: a card up to 360 points across takes the thumbnail, which is 720
+    // pixels on a Retina screen — at 320 the Timer grid's gradients came out soft
+    // and banded (owner, 2026-10-01: "They do not look good in the grid view").
+    execFileSync('sips', ['-Z', '720', '-s', 'format', 'jpeg', '-s', 'formatOptions', '85', jpg, '--out', path.join(OUT, 'thumbs', `${r.id}.jpg`)], { stdio: 'ignore' });
     fs.unlinkSync(tmp);
     console.log(`${r.id}: ${(fs.statSync(jpg).size / 1024).toFixed(0)} KB in ${((Date.now() - t0) / 1000).toFixed(1)} s`);
   }
