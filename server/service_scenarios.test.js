@@ -785,6 +785,25 @@ const fresh = () => { server.resetDetectionSession(); referenceContext.reset(); 
     assert.ok(sent.some(s => s.ref === 'Luke 4:14' && s.target === 'suggestions'), JSON.stringify(sent));
   });
 
+  // ── A verse quoted in the NIV's wording at a KJV church ──
+  // The NLT and the NIV are matched for every English service, whatever the
+  // church shows (detection_worker.js loadMatchAlso). Both of these were
+  // missed when only the NLT was: the NIV shares too little wording with it.
+  const nivFile = path.join(__dirname, '..', 'databases', 'bibles', 'translations', 'NIV.json');
+  if (fs.existsSync(nivFile)) {
+    const niv = new Map(JSON.parse(fs.readFileSync(nivFile, 'utf8')).verses.map(v => [v.reference, v.text]));
+    for (const ref of ['2 Corinthians 5:17', 'Philippians 4:6']) {
+      await test(`a verse quoted in the NIV's wording goes up at a KJV church, no citation said (${ref})`, async () => {
+        fresh(); server.clearRangeQueue(); await server.clearLayer('all');
+        await say('And I want you to hear this this morning.');
+        await say(niv.get(ref).replace(/\s+/g, ' ').trim());
+        await wait(600);
+        assert.ok(onScreen().includes(ref), JSON.stringify(sent));
+        assert.deepEqual(onScreen().filter(r => r !== ref), [], 'nothing else went up');
+      });
+    }
+  }
+
   // ── A spoken change of translation ("switch to the NLT") ──
   // KJV and NLT only: both are in the detection corpus itself, so nothing here
   // depends on a licensed translation's text file, and the worker is not reloaded.

@@ -37,7 +37,6 @@ const FIRST = [
   ['be still and know', 'Psalms 46:10'],               // common words, rare order
   ['I can do all', 'Philippians 4:13'],
   ['the lord is my shepherd', 'Psalms 23:1'],
-  ['cast your cares on him', '1 Peter 5:7'],           // paraphrase
 ];
 for (const [q, want] of FIRST) {
   test(`"${q}" suggests ${want} first`, async () => {
@@ -45,6 +44,14 @@ for (const [q, want] of FIRST) {
     assert.equal(got[0], want, JSON.stringify(got));
   });
 }
+
+// Two verses say it: the NIV's Psalm 55:22 ("Cast your cares on the LORD") and
+// 1 Peter 5:7 ("cast all your anxiety on him"; KJV "casting all your care upon
+// him") — the NIV is matched for every church, so both are offered.
+test('"cast your cares on him" offers both 1 Peter 5:7 and Psalm 55:22', async () => {
+  const got = await suggest('cast your cares on him');
+  assert.ok(got.includes('1 Peter 5:7') && got.includes('Psalms 55:22'), JSON.stringify(got));
+});
 
 test('a clear winner is shown alone, not with loosely related verses', async () => {
   assert.deepEqual(await suggest('the lord is my shepherd'), ['Psalms 23:1']);
