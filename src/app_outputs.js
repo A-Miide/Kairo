@@ -30,8 +30,19 @@ const OUTPUT_DEFS = [
   { key: 'obs',           label: 'OBS' },
 ];
 
-// Extra screens beyond the primary one. Stored in settings; empty by default.
+// Extra screens beyond the primary one. Stored in settings. Every install
+// starts with a Monitor among them, off until it's given a screen — the way
+// NDI and Syphon each start with one (owner, 2026-10-01: "setting has no
+// monitor"; it was only under + Add Output, and the Monitor message bar stays
+// hidden without one). Seeded once, after the saved settings have loaded
+// (appVersion only comes from the server): a Monitor deleted stays deleted.
 function extraDisplays() {
+  if (!settings.monitorSeeded && settings.appVersion) {
+    const list = Array.isArray(settings.extraDisplays) ? settings.extraDisplays : [];
+    if (!list.some(d => d.kind === 'monitor')) settings.extraDisplays = [...list, { id: genOutputId('monitor'), name: 'Monitor', kind: 'monitor' }];
+    settings.monitorSeeded = true;
+    saveSettingsPatch({ extraDisplays: settings.extraDisplays || list, monitorSeeded: true });
+  }
   const list = settings.extraDisplays;
   return Array.isArray(list) ? list : [];
 }
