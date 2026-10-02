@@ -262,6 +262,10 @@ function handleServerMessage(msg) {
       handleDetection(msg);
       break;
 
+    case 'translation-changed':
+      handleTranslationChanged(msg);
+      break;
+
     case 'range-state':
       handleRangeState(msg);
       break;
@@ -557,6 +561,16 @@ function handleDetection(msg) {
   const { verses, method, target, topScore, correctedFrom, look } = msg;
   if (!verses?.length) return;
 
+  // The same verse shown again in another translation (a spoken "switch to the
+  // NIV", server retranslateLive): repaint, and put the new words in its cards,
+  // without counting a new send.
+  if (msg.retranslated) {
+    const v = verses[0];
+    renderPreviewScreen(cleanVerseText(v.text), v.reference, look, v.translatedText || '', v.image || null, v.fit || 'contain', v.slideStyle || {}, v.timerText || '', v.label || '');
+    refreshVerseCardText(verses);
+    return;
+  }
+
   // Back (server screenBack) re-sends what was on screen before: repaint and
   // move its card back to the top, without counting it as a new send.
   if (msg.restoredByBack) {
@@ -572,6 +586,42 @@ function handleDetection(msg) {
     if (method !== 'service') noteTranscriptSend(verses[0].reference);
   } else {
     showInSuggestions(verses, method);
+  }
+}
+
+// New words in the cards already listed for these verses (live queue, range,
+// Possible Matches) after a change of translation.
+function refreshVerseCardText(verses) {
+  for (const v of verses || []) {
+    if (!v?.reference) continue;
+    const sel = `[data-ref="${CSS.escape(v.reference)}"] .lvc-text`;
+    document.querySelectorAll(sel).forEach(el => { el.textContent = cleanVerseText(v.text || v.kjv_text || ''); });
+  }
+}
+
+// The translation was changed by voice: the toolbar and Settings selects follow,
+// the toolbar select flashes, and the line being spoken gets a chip saying what
+// changed it (toast() is a no-op — this is the feedback).
+function handleTranslationChanged({ translation, heard }) {
+  if (!translation) return;
+  settings.translation = translation;
+  if (translationSettings) translationSettings.value = translation;
+  if (translationSelect) {
+    translationSelect.value = translation;
+    translationSelect.title = `Changed by voice: “${heard || translation}”`;
+    translationSelect.classList.remove('translation-flash');
+    void translationSelect.offsetWidth;
+    translationSelect.classList.add('translation-flash');
+    setTimeout(() => translationSelect.classList.remove('translation-flash'), 2400);
+  }
+  const line = transcriptDiv?.querySelectorAll('.transcript-final');
+  const last = line && line[line.length - 1];
+  if (last && !last.querySelector('.transcript-translation-chip')) {
+    const chip = document.createElement('span');
+    chip.className = 'transcript-sent-chip transcript-translation-chip';
+    chip.textContent = `Translation → ${translation}`;
+    chip.title = `Switched by voice: “${heard || translation}”`;
+    last.appendChild(chip);
   }
 }
 
@@ -3205,6 +3255,11 @@ populateAudioOutputDevices();
 // (its own engine choice, not just Settings) without duplicating any of the
 // NDJSON-streaming logic below — only the element ids differ per instance.
 function wireOfflineModelInstaller(ids) {
+  // ids.model: 'en' (English) or 'multi' (every other spoken language) — the
+  // two offline downloads (sherpa_installer.js MODELS); ids.name: what the
+  // status line calls it.
+  const model = ids.model === 'multi' ? 'multi' : 'en';
+  const name = ids.name || 'Offline model';
   const group       = document.getElementById(ids.group);
   const statusLine  = document.getElementById(ids.statusLine);
   const installBtn  = document.getElementById(ids.installBtn);
@@ -3222,7 +3277,7 @@ function wireOfflineModelInstaller(ids) {
 
   async function refreshStatus() {
     try {
-      const r = await fetch(`${SERVER}/api/offline/status`);
+      const r = await fetch(`${SERVER}/api/offline/status?model=${model}`);
       const s = await r.json();
       if (s.installing) {
         statusLine.textContent = 'Install in progress…';
@@ -3232,16 +3287,18 @@ function wireOfflineModelInstaller(ids) {
         // MODEL_VERSION this build ships (see sherpa_installer.js's own
         // comment). Distinct from "not installed" so it doesn't read as a
         // fresh operator never having set this up at all.
-        statusLine.textContent = 'Update available for the offline model.';
+        statusLine.textContent = `Update available for ${name.toLowerCase()}.`;
         statusLine.style.color = '';
-        installBtn.textContent = 'Update offline model';
+        installBtn.textContent = `Update ${name.toLowerCase()}`;
         installBtn.style.display = '';
       } else if (s.installed) {
-        statusLine.textContent = '✓ Offline model installed';
+        statusLine.textContent = `✓ ${name} installed`;
         statusLine.style.color = 'var(--accent)';
         installBtn.style.display = 'none';
       } else {
-        statusLine.textContent = 'Offline model not installed.';
+        statusLine.textContent = s.needed === model && model === 'multi'
+          ? `${name} not installed — the spoken language set in Settings needs it.`
+          : `${name} not installed.`;
         statusLine.style.color = '';
         installBtn.textContent = downloadLabel;
         installBtn.style.display = '';
@@ -3277,7 +3334,7 @@ function wireOfflineModelInstaller(ids) {
 
     let res;
     try {
-      res = await fetch(`${SERVER}/api/offline/install`, { method: 'POST' });
+      res = await fetch(`${SERVER}/api/offline/install?model=${model}`, { method: 'POST' });
     } catch (err) {
       progressText.textContent = `Failed: ${err.message}`;
       installBtn.style.display = '';
@@ -3308,6 +3365,9 @@ function wireOfflineModelInstaller(ids) {
         if (evt.phase === 'download' && typeof evt.pct === 'number') {
           progressBar.style.width = evt.pct + '%';
           progressText.textContent = `Downloading… ${evt.pct}%`;
+        } else if (evt.phase === 'verify') {
+          progressBar.style.width = '100%';
+          progressText.textContent = 'Checking the download…';
         } else if (evt.phase === 'extract') {
           progressBar.style.width = '100%';
           progressText.textContent = 'Extracting…';
@@ -3331,6 +3391,12 @@ function wireOfflineModelInstaller(ids) {
 wireOfflineModelInstaller({
   group: 'offline-installer-group', statusLine: 'offline-status-line', installBtn: 'offline-install-btn',
   progressWrap: 'offline-progress-wrap', progressBar: 'offline-progress-bar', progressText: 'offline-progress-text',
+  engineToggle: 'speech-engine-toggle',
+});
+wireOfflineModelInstaller({
+  model: 'multi', name: 'Other languages',
+  group: 'offline-multi-installer-group', statusLine: 'offline-multi-status-line', installBtn: 'offline-multi-install-btn',
+  progressWrap: 'offline-multi-progress-wrap', progressBar: 'offline-multi-progress-bar', progressText: 'offline-multi-progress-text',
   engineToggle: 'speech-engine-toggle',
 });
 wireOfflineModelInstaller({

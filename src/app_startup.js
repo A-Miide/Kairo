@@ -521,13 +521,20 @@ async function bootstrapStartup() {
 
     if (engine === 'offline' || engine === 'browser') {
       try {
-        const st = await (await fetch(`${SERVER}/api/offline/status`)).json();
+        // The model the spoken language runs on: English, or the other-
+        // languages one (server's /api/offline/status reports which).
+        const needed = (await (await fetch(`${SERVER}/api/offline/status`)).json()).needed === 'multi' ? 'multi' : 'en';
+        const st = await (await fetch(`${SERVER}/api/offline/status?model=${needed}`)).json();
         if (!st.installed) {
-          fetch(`${SERVER}/api/offline/install`, { method: 'POST' }).catch(() => {});
+          fetch(`${SERVER}/api/offline/install?model=${needed}`, { method: 'POST' }).catch(() => {});
           for (let i = 0; i < 600; i++) {          // up to ~10 min — the offline (sherpa-onnx) model is a sizable download
             await new Promise(r => setTimeout(r, 1000));
-            const s2 = await (await fetch(`${SERVER}/api/offline/status`)).json().catch(() => ({}));
+            const s2 = await (await fetch(`${SERVER}/api/offline/status?model=${needed}`)).json().catch(() => ({}));
             if (s2.installed) break;
+            // The download stopped without installing (no internet, file
+            // missing): Start says what's needed — no point holding the splash
+            // for the rest of the ten minutes.
+            if (i >= 3 && s2.installing === false) break;
           }
         }
       } catch { /* model status unavailable — proceed; Start will surface any real error */ }

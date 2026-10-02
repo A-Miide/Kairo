@@ -476,3 +476,17 @@ test('a colon between chapter and verse says which number is the verse ("Psalm 8
   assert.deepEqual(f('the temple of God 1 Corinthians 3:7 3:17 sorry we are'), ['1 Corinthians 3:17']);
   assert.deepEqual(f('Romans 8:28, I mean 8:29'), ['Romans 8:29']);
 });
+
+test('a chapter or verse in Roman numerals, as the multilingual offline model writes them ("Juan capítulo III")', () => {
+  const { setCitationLanguage } = require('./reference_parser');
+  const f = (t) => parseAllSpokenReferences(t).map(r => `${r.book} ${r.chapter}:${r.verse ?? r.verseStart ?? ''}`);
+  try {
+    setCitationLanguage('es');
+    assert.deepEqual(f('en Juan capitulo III versiculo XVI'), ['John 3:16']);
+    assert.deepEqual(f('Salmos capitulo CXIX versiculo CV'), ['Psalms 119:105']);
+  } finally { setCitationLanguage('en'); }
+  assert.deepEqual(f('Romans chapter VIII verse XXVIII'), ['Romans 8:28']);
+  // A lone "I" is the word, not chapter or verse 1.
+  assert.deepEqual(f('a verse I learned'), []);
+  assert.deepEqual(f('the verse I love is John 3:16'), ['John 3:16']);
+});

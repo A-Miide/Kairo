@@ -13,6 +13,7 @@
 const fs    = require('fs');
 const path  = require('path');
 const https = require('https');
+const crypto = require('crypto');
 const { execFile } = require('child_process');
 const { checkDiskSpace } = require('./disk_space');
 
@@ -56,6 +57,35 @@ const MODEL_VERSION = 'v1';
 // than immediately reporting "already installed" and doing nothing.
 const VERSION_MARKER_FILE = '.kairo-model-version';
 
+// The two offline models. English speech runs on Nemotron Speech Streaming
+// (above). Every other spoken language Settings offers runs on NVIDIA's
+// multilingual Nemotron 3.5 ASR Streaming — 40 language-locales, the same
+// 560 ms chunks and transducer files, told the language per stream
+// (sherpa_engine.js). Measured 2026-10-01 on three of the owner's sermons: as
+// fast (7.4-8.1× real time) and lighter (0.74-0.92 GB) than the English model,
+// but 3-4 points behind it on English words, so English keeps its own model
+// (owner: "it has to be multilingual if we are supporting multilingual with
+// deepgram"). Mirrored the same way — byte-identical to upstream
+// k2-fsa/sherpa-onnx asr-models, SHA-256
+// c6bf5e0df765f9d5b43bc9e0536d4b4b3e7d40bdf5ecf13e45f134c51c05ae3a (matches
+// GitHub's own digest), NVIDIA's OpenMDW-1.1 licence; see the release notes at
+// https://github.com/Kairo-live/Kairo/releases/tag/offline-model-multi-v1.
+//
+// `url` is our own mirror; `fallbackUrl` is NVIDIA's file as k2-fsa/sherpa-onnx
+// publishes it, used until the mirror release exists (a 404 on `url`). Either way
+// the download must match `sha256` before it is extracted.
+const MODELS = {
+  en: { url: MODEL_URL, topDir: ARCHIVE_TOP_DIR, dir: CANONICAL_DIR, approxMB: APPROX_MB, version: MODEL_VERSION, archive: 'sherpa-en.tar.bz2' },
+  multi: {
+    url: 'https://github.com/Kairo-live/Kairo/releases/download/offline-model-multi-v1/sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-560ms-int8-2026-06-11.tar.bz2',
+    fallbackUrl: 'https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-560ms-int8-2026-06-11.tar.bz2',
+    sha256: 'c6bf5e0df765f9d5b43bc9e0536d4b4b3e7d40bdf5ecf13e45f134c51c05ae3a',
+    topDir: 'sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-560ms-int8-2026-06-11',
+    dir: 'sherpa-streaming-multi', approxMB: 475, version: 'v1', archive: 'sherpa-multi.tar.bz2',
+  },
+};
+const spec = (model) => MODELS[model] || MODELS.en;
+
 // The four files sherpa_engine.js requires (must match its MODEL_FILES).
 const REQUIRED_FILES = [
   'encoder.int8.onnx',
@@ -76,18 +106,18 @@ function modelsDir(base) {
     : path.join(__dirname, 'models'));
 }
 
-function modelDir(base) {
-  return path.join(modelsDir(base), CANONICAL_DIR);
+function modelDir(base, model = 'en') {
+  return path.join(modelsDir(base), spec(model).dir);
 }
 
 // server.js's /api/offline/status returns this — it's a directory here.
-function modelPath(base) {
-  return modelDir(base);
+function modelPath(base, model = 'en') {
+  return modelDir(base, model);
 }
 
-function isModelPresent(base) {
+function isModelPresent(base, model = 'en') {
   try {
-    const dir = modelDir(base);
+    const dir = modelDir(base, model);
     for (const f of REQUIRED_FILES) if (!fs.existsSync(path.join(dir, f))) return false;
     return fs.statSync(path.join(dir, 'encoder.int8.onnx')).size > 5_000_000;
   } catch {
@@ -98,9 +128,9 @@ function isModelPresent(base) {
 // Absent for every install that predates this version-tracking change —
 // treated as "some unknown older version," which correctly reports
 // needsUpdate()=true rather than silently assuming it's current.
-function installedVersion(base) {
+function installedVersion(base, model = 'en') {
   try {
-    return fs.readFileSync(path.join(modelDir(base), VERSION_MARKER_FILE), 'utf8').trim() || null;
+    return fs.readFileSync(path.join(modelDir(base, model), VERSION_MARKER_FILE), 'utf8').trim() || null;
   } catch {
     return null;
   }
@@ -109,8 +139,8 @@ function installedVersion(base) {
 // A model is present AND it's the current MODEL_VERSION. See MODEL_VERSION's
 // own comment above for how a real update actually reaches an existing
 // install via this check.
-function needsUpdate(base) {
-  return isModelPresent(base) && installedVersion(base) !== MODEL_VERSION;
+function needsUpdate(base, model = 'en') {
+  return isModelPresent(base, model) && installedVersion(base, model) !== spec(model).version;
 }
 
 const DOWNLOAD_IDLE_TIMEOUT_MS = 30_000;
@@ -183,6 +213,17 @@ function download(url, dest, onProgress, { maxRedirects = 5, startByte = 0, tota
   });
 }
 
+// SHA-256 of a file, streamed (the archive is ~475 MB).
+function sha256File(file) {
+  return new Promise((resolve, reject) => {
+    const h = crypto.createHash('sha256');
+    const rs = fs.createReadStream(file);
+    rs.on('data', (c) => h.update(c));
+    rs.on('error', reject);
+    rs.on('end', () => resolve(h.digest('hex')));
+  });
+}
+
 function extractTarBz2(archivePath, intoDir) {
   return new Promise((resolve, reject) => {
     // `tar` with bzip2 support is present on macOS (bsdtar), Linux (GNU tar),
@@ -194,32 +235,40 @@ function extractTarBz2(archivePath, intoDir) {
   });
 }
 
-async function installSherpaModel({ modelsDir: base, onProgress } = {}) {
+async function installSherpaModel({ modelsDir: base, onProgress, model = 'en' } = {}) {
+  const m = spec(model);
   // Only short-circuit when the CURRENT version is already installed — a
   // present-but-outdated model (needsUpdate()=true) falls through and
   // re-downloads for real, which is the whole point of version-tracking
   // this at all (see MODEL_VERSION's own comment). Explicitly re-checked
   // here rather than just calling needsUpdate() so the "nothing to do" path
   // still reads as one clear condition.
-  if (isModelPresent(base) && installedVersion(base) === MODEL_VERSION) {
-    onProgress?.({ phase: 'done', already: true, modelPath: modelDir(base) });
-    return { alreadyPresent: true, modelPath: modelDir(base) };
+  if (isModelPresent(base, model) && installedVersion(base, model) === m.version) {
+    onProgress?.({ phase: 'done', already: true, modelPath: modelDir(base, model) });
+    return { alreadyPresent: true, modelPath: modelDir(base, model) };
   }
   const dir = modelsDir(base);
   fs.mkdirSync(dir, { recursive: true });
-  checkDiskSpace(dir, APPROX_MB * 2);   // download + extracted, transiently
+  checkDiskSpace(dir, m.approxMB * 2);   // download + extracted, transiently
 
-  const archive = path.join(dir, 'sherpa-en.tar.bz2');
+  const archive = path.join(dir, m.archive);
   onProgress?.({ phase: 'download', pct: 0 });
 
-  let total = 0;
-  try { total = await headContentLength(MODEL_URL); } catch { /* fall back to stream's own length */ }
+  // Our mirror first; NVIDIA's own file when the mirror isn't published (404).
+  let url = m.url, total = 0;
+  try { total = await headContentLength(url); } catch (err) {
+    if (m.fallbackUrl && /HTTP 404/.test(err.message)) {
+      url = m.fallbackUrl;
+      try { total = await headContentLength(url); } catch { /* fall back to stream's own length */ }
+    }
+    /* else: fall back to the stream's own length */
+  }
 
   let lastErr;
   for (let attempt = 1; attempt <= DOWNLOAD_MAX_ATTEMPTS; attempt++) {
     const startByte = fs.existsSync(archive) ? fs.statSync(archive).size : 0;
     try {
-      await download(MODEL_URL, archive, onProgress, { startByte, total });
+      await download(url, archive, onProgress, { startByte, total });
       lastErr = null;
       break;
     } catch (err) {
@@ -232,8 +281,17 @@ async function installSherpaModel({ modelsDir: base, onProgress } = {}) {
   }
   if (lastErr) throw new Error(`Download failed after ${DOWNLOAD_MAX_ATTEMPTS} attempts: ${lastErr.message}`);
 
+  if (m.sha256) {
+    onProgress?.({ phase: 'verify' });
+    const got = await sha256File(archive);
+    if (got !== m.sha256) {
+      try { fs.unlinkSync(archive); } catch {}
+      throw new Error('The downloaded file did not match the expected one (checksum). Nothing was installed — try again.');
+    }
+  }
+
   onProgress?.({ phase: 'extract' });
-  const extractedTop = path.join(dir, ARCHIVE_TOP_DIR);
+  const extractedTop = path.join(dir, m.topDir);
   try { fs.rmSync(extractedTop, { recursive: true, force: true }); } catch {}
   await extractTarBz2(archive, dir);
   if (!fs.existsSync(extractedTop)) {
@@ -244,17 +302,17 @@ async function installSherpaModel({ modelsDir: base, onProgress } = {}) {
   for (const f of PRUNE) {
     try { fs.rmSync(path.join(extractedTop, f), { recursive: true, force: true }); } catch {}
   }
-  const finalDir = modelDir(base);
+  const finalDir = modelDir(base, model);
   try { fs.rmSync(finalDir, { recursive: true, force: true }); } catch {}
   fs.renameSync(extractedTop, finalDir);
   try { fs.unlinkSync(archive); } catch {}
 
-  if (!isModelPresent(base)) {
+  if (!isModelPresent(base, model)) {
     throw new Error('Model files missing after extraction — the archive layout may have changed.');
   }
   // Record what got installed so a future run (possibly after MODEL_VERSION
   // bumps in a later app update) can tell this is now current.
-  try { fs.writeFileSync(path.join(finalDir, VERSION_MARKER_FILE), MODEL_VERSION); } catch {}
+  try { fs.writeFileSync(path.join(finalDir, VERSION_MARKER_FILE), m.version); } catch {}
   onProgress?.({ phase: 'done', already: false, modelPath: finalDir });
   return { alreadyPresent: false, modelPath: finalDir };
 }
@@ -269,5 +327,7 @@ module.exports = {
   modelDir,
   MODEL_URL,
   MODEL_VERSION,
-  approxMB: () => APPROX_MB,
+  MODELS,
+  sha256File,
+  approxMB: (model = 'en') => spec(model).approxMB,
 };

@@ -93,13 +93,28 @@ const MODEL_FILES = {
 // mismatch here silently feeds the encoder garbage, so it's load-bearing.
 const FEATURE_DIM = 128;
 
-function defaultModelDir() {
+function defaultModelDir(model = 'en') {
   const base = process.env.KAIRO_APP_DATA_DIR
     ? path.join(process.env.KAIRO_APP_DATA_DIR, 'models')
     : path.join(__dirname, 'models');
   // Engine-neutral dir name so a future model swap doesn't need a rename.
-  return path.join(base, 'sherpa-streaming-en');
+  return path.join(base, model === 'multi' ? 'sherpa-streaming-multi' : 'sherpa-streaming-en');
 }
+
+// Which model a spoken language runs on, and what the multilingual one is told.
+// English (any locale) keeps the English model — 3-4 points better on English
+// words (sherpa_installer.js MODELS). Everything else Settings → Language offers
+// runs on Nemotron 3.5, pinned to its language by the stream's 'language'
+// option (its own prompt codes: "en", "es", "pt-BR", "ja-JP"…), or left to
+// detect it for Auto-detect.
+const MULTI_LANGUAGE = { multi: 'auto', id: 'id-ID', ja: 'ja-JP', zh: 'zh-CN' };
+function speechModelFor(sttLanguage) {
+  const lang = String(sttLanguage || 'en-US');
+  if (/^en(-|$)/i.test(lang)) return { model: 'en', language: null };
+  return { model: 'multi', language: MULTI_LANGUAGE[lang] || lang };
+}
+// Auto-detect writes the language it heard after a sentence ("<en-US>").
+const LANGUAGE_TAG = /\s*<[a-z]{2,3}(?:-[A-Za-z]{2,4})?>/g;
 
 // A model dir is "present" when all four required files exist and the encoder
 // (the big one) is a plausible size — guards a half-finished extraction the
@@ -188,7 +203,8 @@ function releaseRecognizerSoon() {
 class SherpaEngine {
   // opts:
   //   modelDir  — dir holding the extracted streaming-zipformer model files
-  //   language  — accepted for parity; the en model is monolingual so unused
+  //   language  — Settings' spoken language: English runs on the English
+  //               model, anything else on the multilingual one (speechModelFor)
   //   onPartial(text)  — the live tail: words not locked yet
   //   onFinal(text, { speechFinal })
   //                    — words locked, in the order they were said; without
@@ -197,8 +213,11 @@ class SherpaEngine {
   constructor(opts = {}) {
     // `modelPath` accepted as an alias so server.js's
     // `new OfflineEngine({ modelPath, ... })` call needs no further change.
-    this.modelDir = opts.modelDir || opts.modelPath || defaultModelDir();
     this.language = opts.language || 'en';
+    // The multilingual model is told the language per stream (null: English
+    // model, which has no such option).
+    this.speech = speechModelFor(this.language);
+    this.modelDir = opts.modelDir || opts.modelPath || defaultModelDir(this.speech.model);
     this.utteranceEndMs = opts.utteranceEndMs || 1200;
     this.onPartial = opts.onPartial || (() => {});
     this.onFinal   = opts.onFinal   || (() => {});
@@ -230,6 +249,7 @@ class SherpaEngine {
     this._recognizer = await acquireRecognizer(OnlineRecognizer, this.modelDir, { utteranceEndMs: this.utteranceEndMs });
     try {
       this._stream = this._recognizer.createStream();
+      this._pinLanguage();
     } catch (err) {
       // No session after all: the model mustn't stay loaded waiting for one.
       this._recognizer = null;
@@ -251,13 +271,17 @@ class SherpaEngine {
     }
   }
 
+  _pinLanguage() {
+    if (this.speech.language && this._stream?.setOption) this._stream.setOption('language', this.speech.language);
+  }
+
   _pump() {
     if (!this._running || !this._recognizer || !this._stream) return;
     const rec = this._recognizer, st = this._stream;
     try {
       while (rec.isReady(st)) rec.decode(st);
 
-      const text = (rec.getResult(st).text || '').trim();
+      const text = (rec.getResult(st).text || '').replace(LANGUAGE_TAG, '').trim();
       const words = text ? text.split(/\s+/) : [];
       if (words.length < this._locked) this._locked = words.length;   // never expected; stay consistent
 
@@ -269,6 +293,7 @@ class SherpaEngine {
         this._locked = words.length;
         if (words.length >= RESET_AFTER_WORDS) {
           rec.reset(st);
+          this._pinLanguage();
           this._locked = 0;
         }
         return;
@@ -301,7 +326,7 @@ class SherpaEngine {
         const rec = this._recognizer, st = this._stream;
         this._stream.inputFinished?.();
         while (rec.isReady(st)) rec.decode(st);
-        const text = (rec.getResult(st).text || '').trim();
+        const text = (rec.getResult(st).text || '').replace(LANGUAGE_TAG, '').trim();
         const rest = (text ? text.split(/\s+/) : []).slice(this._locked).join(' ');
         if (rest) this.onFinal(rest, { speechFinal: true });
       }
@@ -315,7 +340,7 @@ class SherpaEngine {
   }
 }
 
-function defaultModelPath() { return defaultModelDir(); }
+function defaultModelPath(model = 'en') { return defaultModelDir(model); }
 
 module.exports = {
   SherpaEngine,
@@ -325,5 +350,6 @@ module.exports = {
   isModelPresent,
   pcm16ToFloat32,
   recognizerConfig,
+  speechModelFor,
   MODEL_FILES,
 };

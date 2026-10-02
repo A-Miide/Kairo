@@ -7714,3 +7714,15 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 /* A long set of choices (motion kinds, line shapes) wraps onto a second row
    inside the panel instead of running off its edge. */
 .ts-chip-group { flex-wrap: wrap; max-width: 100%; row-gap: 2px; }
+
+
+/* A spoken "switch to the NIV": the toolbar's translation select says so. */
+.cs-translation-select.translation-flash {
+  animation: translation-flash 2.4s ease-out;
+}
+@keyframes translation-flash {
+  0%   { box-shadow: 0 0 0 0 var(--brand); background-color: var(--brand-dim, rgba(255, 90, 54, .18)); }
+  25%  { box-shadow: 0 0 0 3px var(--brand); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.transcript-translation-chip { cursor: default; }
