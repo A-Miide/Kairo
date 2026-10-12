@@ -1,11 +1,11 @@
 {
   "productName": "Kairo",
-  "version": "3.2.15",
+  "version": "4.0.0",
   "identifier": "com.kairo.scripture",
   "build": {
     "beforeDevCommand": "npm run server",
     "devUrl": "http://localhost:7777",
-    "beforeBuildCommand": "cargo run --release --manifest-path src-tauri/Cargo.toml -p kairo-eval --bin verse-index",
+    "beforeBuildCommand": "cargo run --release --manifest-path src-tauri/Cargo.toml -p kairo-eval --bin bundle-data",
     "frontendDist": "http://localhost:7777"
   },
   "app": {
