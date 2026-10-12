@@ -46,7 +46,7 @@ pub fn meaning(embedder: &str, reranker: Option<&str>, index_codes: &[&str]) -> 
     let embedder = Embedder::load(ecfg).expect("embedder");
     let cache_dir = root().join("eval-results/semantic-cache");
     let index_path = cache_dir.join(format!("{}.{}.kvx", embedder.config().name, index_codes.join("+")));
-    let index = VerseIndex::load(&index_path).unwrap_or_else(|_| {
+    let index = VerseIndex::load(&index_path).ok().filter(|i| i.len() == corpus.len()).unwrap_or_else(|| {
         let kjv = corpus.kjv().clone();
         let pick = |c: &str| match c {
             "KJV" => kjv.clone(),

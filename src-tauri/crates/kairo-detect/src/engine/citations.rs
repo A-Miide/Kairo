@@ -162,6 +162,49 @@ pub(crate) struct CitationState {
     restated: Option<Restated>,
     decided: Vec<RestatedDecided>,
     seq: u32,
+    bare: Option<BareCitation>,
+}
+
+/// "17 verse seven to eight" with no book heard (dropped, or misheard): the
+/// numbers wait for a quote of a verse they fit to name the book.
+#[derive(Clone, Copy, Debug)]
+struct BareCitation {
+    chapter: u16,
+    from: u16,
+    to: u16,
+    at: u64,
+}
+
+const BARE_CITATION_MS: u64 = 30_000;
+const BARE_RANGE_MAX: i64 = 6;
+
+/// The chapter and verses of "<n> verse <n> [to|through|and <n>]".
+fn bare_citation(text: &str) -> Option<(u16, u16, u16)> {
+    let words = tokens(text);
+    let w: Vec<&str> = words.iter().map(String::as_str).collect();
+    for i in 1..w.len() {
+        if w[i] != "verse" && w[i] != "verses" {
+            continue;
+        }
+        // The longest number ending just before "verse" ("one twenty five").
+        let Some(chapter) = (1..=3).rev().filter_map(|back| i.checked_sub(back)).find_map(|j| consume_number(&w, j, Some(150)).filter(|n| j + n.consumed == i)) else {
+            continue;
+        };
+        let Some(from) = consume_number(&w, i + 1, Some(176)) else { continue };
+        let mut to = from.value;
+        let k = i + 1 + from.consumed;
+        if matches!(w.get(k), Some(&("to" | "through" | "and"))) {
+            if let Some(n) = consume_number(&w, k + 1, Some(176)) {
+                if n.value > from.value && n.value - from.value <= BARE_RANGE_MAX {
+                    to = n.value;
+                }
+            }
+        }
+        if chapter.value >= 1 && from.value >= 1 {
+            return Some((chapter.value as u16, from.value as u16, to as u16));
+        }
+    }
+    None
 }
 
 /// The same citation under either of its two chapters.
@@ -417,7 +460,34 @@ impl Engine {
 
     /// No citation: a bare book mention is context; a chapter waiting for its
     /// verse tries again with what's been said since.
+    /// A text match of a verse the numbers just cited without a book fit:
+    /// the quote names the book, and the citation goes up as said.
+    pub(crate) fn bare_citation_quoted(&mut self, c: &Candidate, now: u64) -> Option<Candidate> {
+        let b = self.cites.bare.filter(|b| now.saturating_sub(b.at) < BARE_CITATION_MS)?;
+        let r = c.verses.iter().map(|v| self.r(*v)).find(|r| r.chapter == b.chapter && (b.from..=b.to).contains(&r.verse))?;
+        let verses: Vec<VerseId> = (b.from..=b.to).filter_map(|n| self.k.id(VerseRef::new(r.book, b.chapter, n))).collect();
+        if verses.is_empty() {
+            return None;
+        }
+        self.cites.bare = None;
+        self.note(|_| format!("{} quotes {} {}:{}–{}, cited without its book", c.method.wire(), r.book.name(), b.chapter, b.from, b.to));
+        if verses.len() > 1 {
+            self.set_range(verses.clone(), now);
+        } else {
+            self.clear_range(now);
+        }
+        self.note_cited(r.book, Some(b.chapter), Some(b.from), true, now);
+        self.reading.update(r.book, Some(b.chapter as u32), now);
+        Some(Candidate::new(verses, Method::Direct, 1.0, Target::Screen))
+    }
+
     fn no_citation(&mut self, text: &str, is_final: bool, now: u64) -> bool {
+        if is_final {
+            if let Some((chapter, from, to)) = bare_citation(text) {
+                self.cites.bare = Some(BareCitation { chapter, from, to, at: now });
+                self.note(|_| format!("chapter {chapter} verses {from}–{to} cited without a book"));
+            }
+        }
         let books = book_mentions(text, self.k.books, self.cfg.lang);
         if let Some(&book) = books.last() {
             let a = self.active(now);
@@ -801,6 +871,19 @@ pub(crate) fn book_is_announced(tokens: &[String], book: Book) -> bool {
         }
     }
     !found
+}
+
+#[cfg(test)]
+mod bare_tests {
+    use super::bare_citation;
+
+    #[test]
+    fn numbers_without_a_book() {
+        assert_eq!(bare_citation("17 verse seven to eight."), Some((17, 7, 8)));
+        assert_eq!(bare_citation("chapter one twenty five verse one and two"), Some((125, 1, 2)));
+        assert_eq!(bare_citation("in verse seven he said"), None);
+        assert_eq!(bare_citation("three verses later"), None);
+    }
 }
 
 #[cfg(test)]

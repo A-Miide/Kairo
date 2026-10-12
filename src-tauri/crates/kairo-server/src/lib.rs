@@ -14,7 +14,7 @@ mod media;
 mod import;
 mod installer;
 pub mod notes;
-mod offline;
+pub mod offline;
 mod obs;
 mod pdf;
 mod pdf_metrics;
@@ -265,7 +265,10 @@ fn load_meaning(app: &Shared) {
         }
     };
     let built = app.cfg.app_data_dir.join("models").join(&index_name);
-    let index = match VerseIndex::load(&db.join(&index_name)).or_else(|_| VerseIndex::load(&built)) {
+    let verses = app.bible.get().map_or(0, |b| b.k.corpus.len());
+    // An index built for another numbering of the Bible would point at the wrong verses.
+    let fits = |i: VerseIndex| if i.len() == verses { Ok(i) } else { Err(()) };
+    let index = match VerseIndex::load(&db.join(&index_name)).map_err(|_| ()).and_then(fits).or_else(|_| VerseIndex::load(&built).map_err(|_| ()).and_then(fits)) {
         Ok(i) => i,
         Err(_) => {
             let Some(bible) = app.bible.get() else { return };

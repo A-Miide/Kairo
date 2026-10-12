@@ -24,11 +24,33 @@ const ON_SCREEN_GUARD_MAX_COVERAGE: f32 = 0.8;
 /// A chapter just named holds text matches elsewhere this long.
 const CHAPTER_NAMED_HOLD_MS: u64 = 30_000;
 const VERBATIM_AUTOSEND_MIN: f32 = 0.95;
+/// Matched wording this identifying is a quote, not a coincidence ("no
+/// respecter of persons" 15.8, "our light affliction" 15.1; "in the name of
+/// Jesus Christ" 10.6, "all the days of our life" 12.4). On the dev sermons'
+/// dropped offers: 12 of 13 real at or above, 3 of 16 below.
+const DISTINCTIVE_WORDING_IDF: f32 = 14.5;
+
+fn distinctive_wording(c: &Candidate) -> bool {
+    let e = &c.evidence;
+    let weight = match c.method {
+        Method::Verbatim => e.matched_idf,
+        Method::Stream => e.matched_idf.or(e.idf),
+        _ => None,
+    };
+    weight.is_some_and(|w| w >= DISTINCTIVE_WORDING_IDF)
+}
 
 impl Engine {
     /// Decides a candidate and applies the decision. Returns where it landed.
     pub(crate) fn decide(&mut self, mut c: Candidate, now: u64) -> Target {
         let Some(&top) = c.verses.first() else { return Target::Drop };
+
+        // 0. A quote of a verse just cited by its numbers alone names the book.
+        if c.method.is_text_match() {
+            if let Some(cited) = self.bare_citation_quoted(&c, now) {
+                return self.decide(cited, now);
+            }
+        }
 
         // 1. A cited range's next verse moves the range, from any method.
         match self.try_range_advance_by_detection(&c, now) {
@@ -116,9 +138,13 @@ impl Engine {
         // 7b. Part of a verse's wording (a phrase, a fragment of a quote) is
         // offered only where the sermon supports it: its passage is in play, it
         // belongs to what the sermon is about, or another method agrees. A
-        // near-complete quote stands on its own.
-        if target == Target::Suggestions && self.partial_text_match(&c) && !corroborated && !self.context_supports(top, now) {
-            self.note(|e| format!("{} offer of {} dropped: partial wording, nothing in the sermon points at it", c.method.wire(), e.label(top)));
+        // near-complete quote, or wording found almost nowhere else, stands on
+        // its own.
+        if target == Target::Suggestions && self.partial_text_match(&c) && distinctive_wording(&c) && !corroborated && !self.context_supports(top, now) {
+            self.note(|e| format!("{} offer of {} stands on its distinctive wording «{}»", c.method.wire(), e.label(top), c.source.as_deref().unwrap_or("")));
+        }
+        if target == Target::Suggestions && self.partial_text_match(&c) && !distinctive_wording(&c) && !corroborated && !self.context_supports(top, now) {
+            self.note(|e| format!("{} offer of {} dropped: partial wording, nothing in the sermon points at it [{:?}] «{}»", c.method.wire(), e.label(top), c.evidence, c.source.as_deref().unwrap_or("")));
             return Target::Drop;
         }
 

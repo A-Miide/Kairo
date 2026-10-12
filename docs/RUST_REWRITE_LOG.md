@@ -193,3 +193,60 @@ Compressing the Bible text and tokenizer would bring it to about 330 MB.
 5. Export → Sermon notes / transcript / verses.
 6. Replays: `cargo run --release -p kairo-eval --bin replay` (dev sermons,
    real timing, with `--verbose`, `--noise`, `--trace a..b`).
+
+## First live test (2026-10-12)
+
+The owner's test service played the "identity in Christ" clip; three
+recordings of it are in `parity/golden` and now have an answer key
+(`server/eval/fixtures/2026-09-26-identity-in-christ-*.json`).
+
+### Fixed
+- **"John four verse four" with 1 John's words read** stayed John 4:4: the
+  citation check switched only when the cross-encoder scored the sibling at
+  0.5 or more (it scored 0.45). It now also switches when the cited verse
+  plainly isn't what's said (cross-encoder ≤ 0.1) and the sibling's rare
+  words and meaning both are; and when the cross-encoder is sure (≥ 0.9) the
+  embedding needs only to agree in direction, not lead by 0.1.
+- **A citation without its book** ("17 verse seven to eight", the book
+  dropped by the recogniser) is kept for 30 s; a quote of a verse those
+  numbers fit names the book, and it goes up as cited (Jeremiah 17:7–8; Psalm
+  1:3, which shares "a tree planted by the", no longer goes up instead).
+- **"Someone 25 verse one"** is "Psalm one twenty-five" — Node's parser rule,
+  missing from the port.
+- **The offline engine's short locked segments** ("I am he" / "and they fell
+  backward") were too short for "the reading skipped ahead": that check now
+  takes at least 10 words, so it sees what Deepgram's sentences show it.
+- **Distinctive partial quotes are offered.** Rule 7b dropped every partial
+  quote the sermon didn't point at; the answer keys list mostly cited verses,
+  so real uncited quotes counted as noise. Read by hand, the dropped offers
+  whose matched wording weighs ≥ 14.5 were real 12 times in 13 ("no respecter
+  of persons", "our light affliction", "Christ our passover is sacrificed for
+  us"), those below 3 in 16 ("in the name of Jesus Christ", "all the days of
+  our life"). Checked, not tuned, on the held-out sermons: 4–5 right of 6.
+  Paraphrases didn't separate (6 right of 9 at the same scores) and still need
+  the sermon's support.
+- **The bundled KJV was misnumbered** — the current app shows the same wrong
+  text. Six verses were missing (Matthew 2:16, 22:1, 26:38; Mark 4:40, 7:11,
+  8:8: every later verse in those chapters carried the next one's text — "let
+  this cup pass from me" showed as Matthew 26:38) and four split (1 Samuel
+  20:42, 1 Kings 22:43, 3 John 14, Revelation 12:17/13:1).
+  `scripts/fix-kjv-versification.py` restores the standard 31,102 verses;
+  wording checked against the KJV. The NLT (aligned by reference) now lines up
+  at those verses; it has no text for the last verse of the six chapters. The
+  verse index is rebuilt, and an index built for another numbering is refused.
+- Double-clicking a transcript line no longer fills the Bible search.
+- The server prints each decision (`[Detect] John 3:16 → screen (direct 0.93)`).
+
+### Offline, tested like Deepgram
+`kairo-eval --bin offline-transcribe <audio> <name>` runs a recording through
+the offline engine exactly as a live session does (the transcriber is shared
+with the app), faster than real time; `replay --offline <name>` scores it.
+Enough is Enough: offline 20/25, Deepgram 20/25 (the one "wrong" offline send
+is Mark 11:23, which was quoted — the key lacks it). Live, 15 minutes through
+each engine: both sent Romans 8:28 and Mark 9:23, both right, nothing else.
+
+### Still missed
+Quotes and paraphrases the sermon gives no pointer to and whose wording isn't
+distinctive ("I am that I am", "Thou shalt serve the Lord and he shall bless",
+the everlasting mountains of Habakkuk 3:6); "In Romans, whosoever call upon
+the name…" with no chapter (Node misses it too).

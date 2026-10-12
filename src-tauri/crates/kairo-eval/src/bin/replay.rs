@@ -8,6 +8,9 @@
 //! - `--clock golden`: the compressed wall clock the Node recording ran at,
 //!   for comparing decision by decision with Node (`--parity`).
 //!
+//! `--offline` replays the offline engine's transcriptions instead
+//! (`parity/offline/*.json`, made by `offline-transcribe`), on their own clock.
+//!
 //! Scoring follows `server/eval/run_eval.js`: a ground-truth verse counts
 //! when it reaches the screen within 30 s of where it was said; a verse sent
 //! that the sermon never cites is a wrong send (verses of a chapter cited
@@ -189,7 +192,10 @@ fn score(k: &Knowledge, gt: &[GroundTruth], decisions: &[Decision], last_ms: i64
 }
 
 /// Each recorded input at its time on the chosen clock.
-fn timeline(golden: &Value, audio: bool) -> Vec<(u64, usize, String, bool)> {
+/// One input: when, which cue, the text, final, utterance end, continues live.
+type Input = (u64, usize, String, bool, bool, bool);
+
+fn timeline(golden: &Value, audio: bool) -> Vec<Input> {
     let cues = golden["cues"].as_array().unwrap();
     let inputs = golden["inputs"].as_array().unwrap();
     // Cue start and end on the audio clock (synthesised from word counts where there's no audio).
@@ -208,7 +214,12 @@ fn timeline(golden: &Value, audio: bool) -> Vec<(u64, usize, String, bool)> {
             let cue = x["cue"].as_u64().unwrap() as usize;
             let text = x["text"].as_str().unwrap().to_string();
             let fin = x["isFinal"].as_bool().unwrap();
-            let t = if audio {
+            let speech_final = x["speechFinal"].as_bool().unwrap_or(fin);
+            let continues = x["continues"].as_bool().unwrap_or(false);
+            // Recorded on the audio clock already (an offline transcription).
+            let t = if let Some(t) = x["audioMs"].as_u64() {
+                t
+            } else if audio {
                 let total = cues[cue]["text"].as_str().unwrap_or("").split_whitespace().count().max(1) as f64;
                 let said = text.split_whitespace().count() as f64;
                 let (a, b) = spans[cue];
@@ -216,7 +227,7 @@ fn timeline(golden: &Value, audio: bool) -> Vec<(u64, usize, String, bool)> {
             } else {
                 x["t"].as_u64().unwrap()
             };
-            (t, cue, text, fin)
+            (t, cue, text, fin, speech_final, continues)
         })
         .collect()
 }
@@ -246,7 +257,7 @@ fn trace_range() -> Option<(usize, usize)> {
 
 fn replay(k: &Arc<Knowledge>, golden: &Value, audio: bool, m: Option<&MeaningService>, thresholds: MeaningThresholds) -> (Vec<Decision>, f64) {
     let trace = trace_range();
-    let mut engine = Engine::new(k.clone(), Config { explain: trace.is_some(), meaning: m.is_some(), meaning_thresholds: thresholds, ..Config::default() });
+    let mut engine = Engine::new(k.clone(), Config { explain: trace.is_some(), meaning: m.is_some(), meaning_thresholds: thresholds, offline: golden["offline"].as_bool().unwrap_or(false), ..Config::default() });
     let cue_at = cue_ms(golden);
     let mut out = Vec::new();
     let mut wakes: Vec<(u64, Event)> = Vec::new();
@@ -262,7 +273,7 @@ fn replay(k: &Arc<Knowledge>, golden: &Value, audio: bool, m: Option<&MeaningSer
             }
         }
     };
-    for (t, cue, text, fin) in timeline(golden, audio) {
+    for (t, cue, text, fin, speech_final, continues_live) in timeline(golden, audio) {
         // Timers due before this input fire first.
         wakes.sort_by_key(|w| w.0);
         while wakes.first().is_some_and(|w| w.0 <= t) {
@@ -274,7 +285,7 @@ fn replay(k: &Arc<Knowledge>, golden: &Value, audio: bool, m: Option<&MeaningSer
         if traced {
             println!("  [{cue} t={t}] {} \"{text}\"", if fin { "FINAL" } else { "interim" });
         }
-        let o = engine.handle(Event::Speech(Segment { text, is_final: fin, speech_final: fin, continues_live: false }), t);
+        let o = engine.handle(Event::Speech(Segment { text, is_final: fin, speech_final, continues_live }), t);
         if traced {
             for n in &o.notes {
                 println!("      .. {n}");
@@ -329,6 +340,8 @@ fn main() {
     let parity = args.iter().any(|a| a == "--parity");
     let verbose = args.iter().any(|a| a == "--verbose");
     let held_out = args.iter().any(|a| a == "--held-out");
+    // Transcribed by the offline engine (`offline-transcribe`) instead of Deepgram.
+    let offline = args.iter().any(|a| a == "--offline");
     const TAKES_VALUE: &[&str] = &["--clock", "--trace", "--meaning", "--index", "--reranker", "--thresholds"];
     let names: Vec<&str> = args
         .iter()
@@ -361,14 +374,16 @@ fn main() {
     let mut parity_totals = (0usize, 0usize, 0usize);
     println!("{:<34} {:>13} {:>9} {:>9} {:>9}   {:>13} {:>9} {:>9} {:>9}", "", "Rust found", "wrong", "offered", "sugg/h", "Node found", "wrong", "offered", "sugg/h");
     for name in chosen {
-        let golden_path = root().join("parity/golden").join(format!("{name}.json"));
+        let golden_path = root().join(if offline { "parity/offline" } else { "parity/golden" }).join(format!("{name}.json"));
         let Ok(raw) = std::fs::read_to_string(&golden_path) else {
             eprintln!("[replay] no recording for {name}");
             continue;
         };
         let golden: Value = serde_json::from_str(&raw).unwrap();
         let (decisions, secs) = replay(&k, &golden, audio, m.as_ref(), thresholds);
-        let fixture_path = root().join("server/eval/fixtures").join(format!("{name}.json"));
+        // "enough-is-enough.beam": a variant transcription of the same sermon.
+        let sermon = name.split('.').next().unwrap_or(name);
+        let fixture_path = root().join("server/eval/fixtures").join(format!("{sermon}.json"));
         let fixture: Option<Value> = std::fs::read_to_string(&fixture_path).ok().and_then(|s| serde_json::from_str(&s).ok());
         let cue_at = cue_ms(&golden);
         let last_ms = *cue_at.last().unwrap_or(&0);

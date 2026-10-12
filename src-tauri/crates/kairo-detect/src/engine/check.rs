@@ -24,6 +24,8 @@ const MAX_SIBLINGS: usize = 4;
 const RR_FITS: f32 = 0.5;
 const RR_NOT: f32 = 0.1;
 const COS_LEAD: f32 = 0.1;
+/// The cross-encoder this sure needs the embedding only to agree.
+const RR_SURE: f32 = 0.9;
 /// "world" 4.3, "greater" 5.5, "knee" 8.5; "God" 1.9, "Lord" 1.5.
 const WORD_MIN_IDF: f32 = 3.5;
 const BEFORE_MS: u64 = 8_000;
@@ -159,6 +161,7 @@ impl Engine {
     pub(crate) fn check_citation_siblings(&mut self, text: &str, is_final: bool, just_started: bool, now: u64) {
         let Some(mut c) = self.check.take() else { return };
         if now.saturating_sub(c.at) > CHECK_MS || self.screen.last_detected.map(|(v, _, _)| v) != Some(c.verse) {
+            self.note(|e| format!("citation check of {} closed", e.label(c.verse)));
             return;
         }
         let r = self.r(c.verse);
@@ -224,13 +227,24 @@ impl Engine {
         let Some(&(heard_cos, heard_rr)) = scores.first() else { return };
         let siblings = c.siblings.clone();
         let reading = c.reading;
+        let cited = c.verse;
+        self.note(|e| {
+            let all: Vec<String> = std::iter::once(cited)
+                .chain(siblings.iter().map(|s| s.verse))
+                .zip(scores)
+                .map(|(v, (cos, rr))| format!("{} cos {:.2} rr {:.2}", e.label(v), cos.unwrap_or(0.0), rr.unwrap_or(-1.0)))
+                .collect();
+            format!("citation check \"{text}\": {}; words pick {:?}", all.join(", "), by_words.map(|(v, s, h)| (e.label(v), s, h)))
+        });
         match heard_rr {
             Some(heard_rr) => {
                 let mut pick: Option<(VerseId, f32)> = None;
                 for (i, s) in siblings.iter().enumerate() {
                     let Some(&(cos, rr)) = scores.get(i + 1) else { continue };
                     let Some(rr) = rr else { continue };
-                    if rr >= RR_FITS && heard_rr <= RR_NOT && cos.unwrap_or(0.0) >= heard_cos.unwrap_or(0.0) + COS_LEAD && pick.is_none_or(|(_, p)| rr > p) {
+                    let lead = cos.unwrap_or(0.0) - heard_cos.unwrap_or(0.0);
+                    let agrees = lead >= COS_LEAD || (rr >= RR_SURE && lead > 0.0);
+                    if rr >= RR_FITS && heard_rr <= RR_NOT && agrees && pick.is_none_or(|(_, p)| rr > p) {
                         pick = Some((s.verse, rr));
                     }
                 }
@@ -238,10 +252,15 @@ impl Engine {
                     self.switch_citation_to_sibling(v, &text, now);
                     return;
                 }
-                // Both read as said (a phrase they share): the rare words decide.
                 if let Some((v, _, _)) = by_words {
                     let i = siblings.iter().position(|s| s.verse == v).unwrap_or(0);
-                    if !reading && heard_rr >= RR_FITS && scores.get(i + 1).and_then(|s| s.1).is_some_and(|rr| rr >= RR_FITS) {
+                    let (cos, rr) = scores.get(i + 1).copied().unwrap_or((None, None));
+                    // Both read as said (a phrase they share): the rare words decide.
+                    let both_fit = !reading && heard_rr >= RR_FITS && rr.is_some_and(|rr| rr >= RR_FITS);
+                    // The cited verse plainly isn't what's said, and the sibling's
+                    // words and meaning both are.
+                    let only_sibling = heard_rr <= RR_NOT && cos.unwrap_or(0.0) >= heard_cos.unwrap_or(0.0) + COS_LEAD;
+                    if both_fit || only_sibling {
                         self.switch_citation_to_sibling(v, &text, now);
                     }
                 }

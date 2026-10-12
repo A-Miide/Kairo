@@ -659,24 +659,6 @@ function sendReferenceToScreen(reference) {
     body: JSON.stringify({ query: reference }),
   }).catch(err => console.warn('[KAIRO] Send failed:', err.message));
 }
-document.addEventListener('dblclick', (e) => {
-  if (e.target.closest?.('.transcript-sent-chip')) return;
-  const line = e.target.closest?.('.transcript-final');
-  if (!line || !scriptureSearchInput) return;
-  // textContent alone would also pull in the sent-chip's "→ Reference" label;
-  // strip it from a clone rather than filtering to text nodes only, since a
-  // highlighted .transcript-ref span (see highlightScriptureRefs) is itself an
-  // element node and would otherwise be silently dropped from the search text.
-  const clone = line.cloneNode(true);
-  clone.querySelectorAll('.transcript-sent-chip').forEach(el => el.remove());
-  const words = clone.textContent
-    .split(/\s+/).filter(Boolean).slice(-14).join(' ');
-  if (!words) return;
-  window.getSelection?.()?.removeAllRanges();
-  scriptureSearchInput.value = words;
-  scriptureSearchInput.focus();
-  scriptureSearchInput.dispatchEvent(new Event('input', { bubbles: true }));
-});
 
 // Render the live preview screen. A sent item can carry its own theme (e.g. a
 // ProPresenter import via Send/Flow) — when it does, paint it with the exact

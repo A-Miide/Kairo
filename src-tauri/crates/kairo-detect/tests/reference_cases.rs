@@ -62,6 +62,10 @@ fn continuation_text_is_not_a_second_verse() {
 fn ranges_and_lists() {
     assert_eq!(all("Luke chapter 10 from verse one to two and seventeen to nineteen"), ["Luke 10:1-2+17-19"]);
     assert_eq!(all("psalm chapter one and verse one to three"), ["Psalms 1:1-3"]);
+    // "Psalm one twenty-five" heard as "someone 25".
+    assert_eq!(all("Someone 25, verse one and two, he say"), ["Psalms 125:1-2"]);
+    assert_eq!(all("someone 19 verse 105"), ["Psalms 119:105"]);
+    assert!(all("someone 25 years ago I was in Lagos").is_empty());
     assert_eq!(all("genesis chapter one verse one, verse three"), ["Genesis 1:1+3"]);
     assert_eq!(all("Romans 8 verses 28, 29 and 30"), ["Romans 8:28-30"]);
     assert_eq!(all("Psalm 91 from verse 14 to the end"), ["Psalms 91:14-16"]);
