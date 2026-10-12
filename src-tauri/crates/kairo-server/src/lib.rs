@@ -5,10 +5,12 @@
 
 pub mod bible;
 pub mod config;
+mod deepgram;
 pub mod detect;
 pub mod hub;
 mod routes;
 pub mod settings;
+mod vocabulary;
 mod ws;
 
 use std::sync::{Arc, OnceLock, RwLock};
@@ -39,6 +41,36 @@ pub struct App {
     pub presentation: Arc<RwLock<Presentation>>,
     /// Where microphone audio goes while a speech engine is listening.
     pub audio: tokio::sync::Mutex<Option<tokio::sync::mpsc::Sender<bytes::Bytes>>>,
+    pub listening: tokio::sync::Mutex<Option<Listening>>,
+    pub(crate) keep_awake: std::sync::Mutex<Option<KeepAwake>>,
+}
+
+/// The speech engine that's listening.
+pub enum Listening {
+    Deepgram(deepgram::Session),
+}
+
+/// Keeps the Mac awake while listening (a service mustn't sleep mid-sermon).
+pub(crate) struct KeepAwake(Option<std::process::Child>);
+
+impl KeepAwake {
+    pub(crate) fn hold() -> KeepAwake {
+        #[cfg(target_os = "macos")]
+        {
+            let pid = std::process::id().to_string();
+            return KeepAwake(std::process::Command::new("caffeinate").args(["-di", "-w", &pid]).spawn().ok());
+        }
+        #[allow(unreachable_code)]
+        KeepAwake(None)
+    }
+}
+
+impl Drop for KeepAwake {
+    fn drop(&mut self) {
+        if let Some(c) = self.0.as_mut() {
+            let _ = c.kill();
+        }
+    }
 }
 
 pub type Shared = Arc<App>;
@@ -78,6 +110,8 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         detector: OnceLock::new(),
         presentation: Arc::new(RwLock::new(Presentation::default())),
         audio: tokio::sync::Mutex::new(None),
+        listening: tokio::sync::Mutex::new(None),
+        keep_awake: std::sync::Mutex::new(None),
     });
     app.refresh_presentation().await;
 

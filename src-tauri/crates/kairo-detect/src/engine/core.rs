@@ -215,6 +215,14 @@ impl Engine {
             }
             Event::RangeClear => self.clear_range(now),
             Event::Reset => self.reset(),
+            Event::UtteranceEnd => {
+                if let Some(chunk) = self.t.sentence.flush() {
+                    self.t.last_fingerprint = now;
+                    self.process_verbatim(&chunk, false, "", now);
+                    self.process_fingerprint(&chunk, now);
+                }
+            }
+            Event::Reconnected => self.forget_utterance(),
             Event::Timer(TimerId::RestatedChapter(id)) => self.on_restated_timer(id, now),
             Event::Answer(Answer::Compare { id, scores }) => self.on_compare(id, &scores, now),
             Event::Answer(Answer::Paraphrase { id, candidates }) => self.on_paraphrase(id, candidates, now),
@@ -225,6 +233,25 @@ impl Engine {
             self.decide(c, now);
         }
         std::mem::take(&mut self.out)
+    }
+
+    /// What belongs to the utterance being heard, not the sermon.
+    fn forget_utterance(&mut self) {
+        self.t.interim.clear();
+        self.t.interim_sent.clear();
+        self.t.interim_seen.clear();
+        self.t.stream_watermark = 0;
+        self.t.utterance_start = None;
+        self.t.sentence = Default::default();
+        self.t.last_interim_verbatim = 0;
+        self.t.last_fingerprint = 0;
+        self.stream.reset();
+        self.check = None;
+        self.cites = Default::default();
+        self.range.heard.clear();
+        self.range.heard_open.clear();
+        self.range.spent = 0;
+        self.screen.last_citation_at = 0;
     }
 
     fn reset(&mut self) {
