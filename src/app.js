@@ -3312,14 +3312,22 @@ function wireOfflineModelInstaller(ids) {
   // so without this listener the panel stayed hidden (and the download
   // button with it) any time Offline was already the saved engine when
   // Settings was opened, not just when the operator toggled it live.
+  // Only the model the spoken language needs shows: English, or the other-
+  // languages one — never both, so the two never read as the same download
+  // twice. (The first-run wizard's copy is always English: it runs before a
+  // spoken language is chosen.)
   function syncVisibility() {
     const active = engineToggle?.querySelector('.toggle-btn.active');
     const isOffline = active?.dataset.engine === 'browser';
-    group.style.display = isOffline ? '' : 'none';
-    if (isOffline) refreshStatus();
+    const spoken = String(document.getElementById('stt-language')?.value || settings.sttLanguage || 'en-US').toLowerCase();
+    const needed = ids.alwaysEnglish || (model === 'multi') !== spoken.startsWith('en');
+    const show = isOffline && needed;
+    group.style.display = show ? '' : 'none';
+    if (show) refreshStatus();
   }
   engineToggle?.addEventListener('click', () => setTimeout(syncVisibility, 0));
   engineToggle?.addEventListener('toggle-change', syncVisibility);
+  document.getElementById('stt-language')?.addEventListener('change', syncVisibility);
   syncVisibility();
 
   installBtn.addEventListener('click', async () => {
@@ -3390,7 +3398,7 @@ wireOfflineModelInstaller({
   engineToggle: 'speech-engine-toggle',
 });
 wireOfflineModelInstaller({
-  model: 'multi', name: 'Other languages',
+  model: 'multi', name: 'Offline model for other languages',
   group: 'offline-multi-installer-group', statusLine: 'offline-multi-status-line', installBtn: 'offline-multi-install-btn',
   progressWrap: 'offline-multi-progress-wrap', progressBar: 'offline-multi-progress-bar', progressText: 'offline-multi-progress-text',
   engineToggle: 'speech-engine-toggle',
@@ -3398,7 +3406,7 @@ wireOfflineModelInstaller({
 wireOfflineModelInstaller({
   group: 'first-run-offline-group', statusLine: 'first-run-offline-status-line', installBtn: 'first-run-offline-install-btn',
   progressWrap: 'first-run-offline-progress-wrap', progressBar: 'first-run-offline-progress-bar', progressText: 'first-run-offline-progress-text',
-  engineToggle: 'first-run-engine-toggle',
+  engineToggle: 'first-run-engine-toggle', alwaysEnglish: true,
 });
 
 // ── Local translation-model installer UI ─────────────────────────────────
@@ -3455,28 +3463,23 @@ translationSelect?.addEventListener('change', () => {
   saveSettingsPatch({ translation: settings.translation });
 });
 
+// One compact row per language: what it is, its size and state, one action
+// — Download (the brand's primary action), or Ready with Remove to free the
+// space (2026-10-12: the old cards were twice the height for the same).
 function renderMtModelList() {
   const host = document.getElementById('mt-model-list');
   if (!host) return;
   host.innerHTML = '';
   MT_LANGUAGES.forEach(({ code, name }) => {
     const row = document.createElement('div');
-    row.className = 'lang-pack-row';
-
-    const meta = document.createElement('div');
-    meta.className = 'lang-pack-meta';
-    meta.innerHTML = `<div class="lang-pack-name">${name}</div><div class="lang-pack-sub" id="mt-sub-${code}">Checking…</div>`;
-
+    row.className = 'dl-row';
+    row.innerHTML = `<span class="dl-name">${name}</span><span class="dl-sub" id="mt-sub-${code}">Checking…</span>`;
     const btn = document.createElement('button');
-    btn.className = 'modal-btn secondary';
     btn.id = `mt-btn-${code}`;
     btn.style.display = 'none';
-    btn.addEventListener('click', () => installMtModel(code));
-
-    row.appendChild(meta);
+    btn.addEventListener('click', () => (btn.dataset.action === 'remove' ? removeMtModel(code) : installMtModel(code)));
     row.appendChild(btn);
     host.appendChild(row);
-
     refreshMtStatus(code);
   });
 }
@@ -3486,28 +3489,48 @@ async function refreshMtStatus(code) {
   const btn = document.getElementById(`mt-btn-${code}`);
   if (!sub || !btn) return;
   try {
-    const r = await fetch(`${SERVER}/api/translate-model/status?lang=${code}`);
-    const s = await r.json();
+    const s = await fetch(`${SERVER}/api/translate-model/status?lang=${code}`).then(r => r.json());
+    const size = s.approxMB ? `${s.approxMB} MB` : '';
     if (s.installed) {
-      sub.textContent = '✓ Installed';
-      sub.style.color = 'var(--accent)';
-      btn.style.display = 'none';
+      sub.textContent = `Ready${size ? ' · ' + size : ''}`;
+      sub.classList.add('is-ready');
+      btn.className = 'modal-btn secondary dl-btn';
+      btn.textContent = 'Remove';
+      btn.dataset.action = 'remove';
+      btn.style.display = '';
       clearInterval(_mtPollTimers[code]); delete _mtPollTimers[code];
     } else if (s.installing) {
-      sub.textContent = 'Downloading in the background…';
-      sub.style.color = '';
+      sub.textContent = 'Downloading…';
+      sub.classList.remove('is-ready');
       btn.style.display = 'none';
       if (!_mtPollTimers[code]) _mtPollTimers[code] = setInterval(() => refreshMtStatus(code), 2000);
     } else {
-      sub.textContent = `Not downloaded${s.approxMB ? ` (~${s.approxMB}MB)` : ''}`;
-      sub.style.color = '';
+      sub.textContent = size;
+      sub.classList.remove('is-ready');
+      btn.className = 'modal-btn primary dl-btn';
       btn.textContent = 'Download';
+      btn.dataset.action = 'download';
       btn.style.display = '';
       clearInterval(_mtPollTimers[code]); delete _mtPollTimers[code];
     }
   } catch {
-    sub.textContent = 'Cannot reach server.';
+    sub.textContent = 'Cannot reach the server.';
   }
+}
+
+async function removeMtModel(code) {
+  const btn = document.getElementById(`mt-btn-${code}`);
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch(`${SERVER}/api/translate-model/remove`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lang: code }),
+    });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+  } catch (err) {
+    toast(`Could not remove it: ${err.message}`, 'error');
+  }
+  if (btn) btn.disabled = false;
+  refreshMtStatus(code);
 }
 
 // Core NDJSON-install-stream reader, shared by the Settings row above and

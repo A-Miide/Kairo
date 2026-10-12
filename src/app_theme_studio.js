@@ -161,8 +161,8 @@ const DEFAULT_LOOKS = [
         shadow: { ...TXT_SHADOW_SOFT }, outline: { ...NO_OUTLINE } },
       { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '', follows: 'verse',
         pos: { x: 210, y: 820, w: 1500, h: 0 },
-        font: { family: 'Manrope', size: 28, weight: 600, italic: false, lineHeight: 1.2, letterSpacing: 4, transform: 'uppercase' },
-        color: '#ffffff', opacity: 60, align: 'center',
+        font: { family: 'Manrope', size: 28, weight: 700, italic: false, lineHeight: 1.2, letterSpacing: 4, transform: 'uppercase' },
+        color: '#ffffff', opacity: 90, align: 'center',
         shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
     ],
   },
@@ -182,8 +182,8 @@ const DEFAULT_LOOKS = [
         shadow: { ...TXT_SHADOW_SOFT }, outline: { ...NO_OUTLINE } },
       { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '', follows: 'verse',
         pos: { x: 210, y: 820, w: 1500, h: 0 },
-        font: { family: 'Manrope', size: 28, weight: 600, italic: false, lineHeight: 1.2, letterSpacing: 4, transform: 'uppercase' },
-        color: '#ffffff', opacity: 70, align: 'center',
+        font: { family: 'Manrope', size: 28, weight: 700, italic: false, lineHeight: 1.2, letterSpacing: 4, transform: 'uppercase' },
+        color: '#ffffff', opacity: 90, align: 'center',
         shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
     ],
   },
@@ -205,7 +205,7 @@ const DEFAULT_LOOKS = [
       { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '', follows: 'verse',
         pos: { x: 210, y: 820, w: 1500, h: 0 },
         font: { family: 'Manrope', size: 28, weight: 700, italic: false, lineHeight: 1.2, letterSpacing: 4, transform: 'uppercase' },
-        color: '#ffffff', opacity: 85, align: 'center',
+        color: '#ffffff', opacity: 90, align: 'center',
         shadow: { enabled: true, color: '#000000', opacity: 85, blur: 10, x: 0, y: 2 },
         outline: { ...NO_OUTLINE } },
     ],
@@ -284,7 +284,7 @@ const DEFAULT_LOOKS = [
       { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '', follows: 'verse',
         pos: { x: 88, y: 762, w: 784, h: 0 },
         font: { family: 'Manrope', size: 22, weight: 700, italic: false, lineHeight: 1.2, letterSpacing: 5, transform: 'uppercase' },
-        color: '#ffffff', opacity: 65, align: 'center',
+        color: '#ffffff', opacity: 90, align: 'center',
         shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
     ],
   },
@@ -306,7 +306,7 @@ const DEFAULT_LOOKS = [
       { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '', follows: 'verse',
         pos: { x: 1048, y: 762, w: 784, h: 0 },
         font: { family: 'Manrope', size: 22, weight: 700, italic: false, lineHeight: 1.2, letterSpacing: 5, transform: 'uppercase' },
-        color: '#ffffff', opacity: 65, align: 'center',
+        color: '#ffffff', opacity: 90, align: 'center',
         shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
     ],
   },
@@ -338,7 +338,7 @@ const DEFAULT_LOOKS = [
       { id: 'ref', type: 'text', name: 'Reference (source)', visible: true, binding: 'reference', customText: '', follows: 'verse',
         pos: { x: 88, y: 762, w: 784, h: 0 },
         font: { family: 'Manrope', size: 20, weight: 700, italic: false, lineHeight: 1.2, letterSpacing: 5, transform: 'uppercase' },
-        color: '#ffffff', opacity: 65, align: 'center',
+        color: '#ffffff', opacity: 90, align: 'center',
         shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
       { id: 'verse-translated', type: 'text', name: 'Verse (translated)', visible: true, binding: 'verse_translated', customText: '',
         pos: { x: 1048, y: 325, w: 784, h: 430 },
@@ -348,7 +348,7 @@ const DEFAULT_LOOKS = [
       { id: 'ref-translated', type: 'text', name: 'Reference (translated)', visible: true, binding: 'reference', customText: '', follows: 'verse-translated',
         pos: { x: 1048, y: 762, w: 784, h: 0 },
         font: { family: 'Manrope', size: 20, weight: 700, italic: false, lineHeight: 1.2, letterSpacing: 5, transform: 'uppercase' },
-        color: '#ffffff', opacity: 65, align: 'center',
+        color: '#ffffff', opacity: 90, align: 'center',
         shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
     ],
   },
@@ -716,8 +716,8 @@ const DEFAULT_LOOKS = [
         shadow: { ...TXT_SHADOW_SOFT }, outline: { ...NO_OUTLINE } },
       { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '', follows: 'verse',
         pos: { x: 210, y: 820, w: 1500, h: 0 },
-        font: { family: 'Manrope', size: 28, weight: 600, italic: false, lineHeight: 1.2, letterSpacing: 4, transform: 'uppercase' },
-        color: '#ffffff', opacity: 65, align: 'center',
+        font: { family: 'Manrope', size: 28, weight: 700, italic: false, lineHeight: 1.2, letterSpacing: 4, transform: 'uppercase' },
+        color: '#ffffff', opacity: 90, align: 'center',
         shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
     ],
   },
@@ -826,7 +826,7 @@ let looks = (function loadLooks() {
     // once, and only touches a stored theme whose verse box is STILL
     // sitting at the exact old shipped default — an operator who already
     // deliberately resized it keeps their own choice untouched.
-    // References now follow their verse, the pair centred, with the verse box
+    // References now sit just under their verse, bolder, with the verse box
     // centred on the screen; Lower Third's text is centred (2026-10-12). Only a
     // stored built-in still at its shipped layout changes — gated and
     // force-persisted like the migrations above.
@@ -936,6 +936,9 @@ let looks = (function loadLooks() {
           if (wasFull || wasSplit) {
             verse.pos.y = shippedV.pos.y;
             ref.follows = shippedR.follows;
+            // Bolder, for contrast (2026-10-12) — unless already restyled heavier.
+            if (ref.font && shippedR.font && (ref.font.weight ?? 0) < shippedR.font.weight) ref.font.weight = shippedR.font.weight;
+            if ((ref.opacity ?? 100) < shippedR.opacity) ref.opacity = shippedR.opacity;
             followMigrated = true;
           }
         }
@@ -3626,7 +3629,7 @@ function followVerseToggle(layer) {
   return toggleField('Follows the verse', layer.follows === lead.id, on => {
     if (on) layer.follows = lead.id; else delete layer.follows;
     up();
-  }, 'Sits just under the verse, the two centred together — moving it places it yourself');
+  }, 'Sits just under the verse, wherever its text ends — moving it places it yourself');
 }
 
 function toggleField(label, on, onChange, title = '') {
@@ -5427,8 +5430,8 @@ function renderTextProps(panel, layer) {
     tsMode !== 'item' && layer.binding === 'verse_translated' && prop('Language', makeSelect([
       { label: 'None', value: '' }, { label: 'French', value: 'fr' }, { label: 'Spanish', value: 'es' }, { label: 'Portuguese', value: 'pt' },
     ], activeLook.translateTo || '', v => { activeLook.translateTo = v || null; renderPreview(); scheduleThemeAutosave(); })),
-    // A reference (or translation) that sits just under the verse wherever
-    // the verse's text ends, the pair centred — instead of its own fixed box.
+    // A reference that sits just under the verse wherever the verse's text
+    // ends — instead of its own fixed box.
     layer.binding === 'reference' && followVerseToggle(layer),
   ].filter(Boolean)));
 

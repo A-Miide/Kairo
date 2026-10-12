@@ -2760,6 +2760,28 @@ body > .lyric-follow-hud { position: fixed; left: 14px; bottom: 14px; z-index: 4
    longer language name (found live: "Portuguese" ran into "Install"). */
 .lang-pack-row .modal-btn { padding: 5px 10px; font-size: var(--fs-xs); flex-shrink: 0; white-space: nowrap; }
 .lang-pack-remove { color: var(--red) !important; border-color: rgba(237,28,36,0.3) !important; }
+
+/* Optional downloads (Settings → Language → Slide translation): one compact
+   row each — name, size or state, one action. A single bordered list, not
+   a card per item. */
+.dl-list {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.dl-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 44px;
+  padding: 6px 8px 6px 14px;
+}
+.dl-row + .dl-row { border-top: 1px solid var(--border); }
+.dl-name { font-size: var(--fs-md); font-weight: 600; color: var(--text); flex: none; min-width: 96px; }
+.dl-sub { font-size: var(--fs-xs); color: var(--text-3); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dl-sub.is-ready { color: var(--green); }
+.dl-row .dl-btn { padding: 5px 14px; font-size: var(--fs-xs); flex: none; white-space: nowrap; }
+.scripture-credits { margin-top: 4px; opacity: 0.8; }
 .settings-pane { display: none; }
 .settings-pane.active {
   display: flex;
@@ -2928,8 +2950,16 @@ select {
   cursor: pointer; transition: all var(--trans);
 }
 
-.modal-btn.primary { background: var(--selected-solid); color: white; padding: 8px 24px; }
-.modal-btn.primary:hover { background: var(--blue-slide); }
+/* Primary actions — the one thing a panel is asking for (Save, Get Started,
+   Download the offline model) — in the brand colours (2026-10-12: "primary
+   actions like download offline model should use the branded colors");
+   secondary ones stay neutral, so the orange still says "this one". */
+.modal-btn.primary, .btn-brand { background: var(--brand-gradient); color: #fff; border-color: transparent; }
+.modal-btn.primary { padding: 8px 24px; }
+.modal-btn.primary:hover, .btn-brand:hover { background: var(--brand-gradient); filter: brightness(1.08); }
+.modal-btn.primary:disabled, .btn-brand:disabled { filter: grayscale(0.6) brightness(0.8); cursor: default; }
+/* A download button laid out like a settings field. */
+.setting-input.btn-brand { font-weight: 600; text-align: center; }
 .modal-btn.secondary { background: transparent; color: var(--text-2); border: 1px solid var(--border-md); }
 .modal-btn.secondary:hover { background: var(--bg-hover); color: var(--text); }
 

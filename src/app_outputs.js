@@ -277,89 +277,38 @@ function outputThemeMap() {
 // that doesn't exist yet. `hasPack: true` means real bundled verse text;
 // it does not mean "detects speech in this language."
 const LANG_PACKS = [
-  { code: 'en', name: 'English',    translations: 'KJV · NIV · NLT · ESV · NASB · NKJV', bundled: true },
-  { code: 'es', name: 'Spanish',    translations: 'Reina-Valera 1909 (public domain)', hasPack: true },
-  { code: 'pt', name: 'Portuguese', translations: 'Almeida Atualizada 1911 (GPL)', hasPack: true },
-  { code: 'fr', name: 'French',     translations: 'Louis Segond 1910 (public domain)', hasPack: true },
-  { code: 'de', name: 'German',     translations: 'Luther 1545 (public domain)', hasPack: true },
-  { code: 'yo', name: 'Yoruba',     translations: 'Bíbélì Mímọ́ (Biblica, CC BY-SA 4.0)', hasPack: true },
-  { code: 'ig', name: 'Igbo',       translations: 'Baịbụl Nsọ (Biblica, CC BY-SA 4.0)', hasPack: true },
-  { code: 'ha', name: 'Hausa',      translations: 'Littafi Mai Tsarki (Biblica, CC BY-SA 4.0)', hasPack: true },
-  { code: 'sw', name: 'Swahili',    translations: 'New Testament only (public domain)', hasPack: true },
+  { code: 'en', name: 'English',    translations: 'KJV · NIV · NLT · ESV · NASB · NKJV' },
+  { code: 'es', name: 'Spanish',    translations: 'Reina-Valera 1909 (public domain)' },
+  { code: 'pt', name: 'Portuguese', translations: 'Almeida Atualizada 1911 (GPL)' },
+  { code: 'fr', name: 'French',     translations: 'Louis Segond 1910 (public domain)' },
+  { code: 'de', name: 'German',     translations: 'Luther 1545 (public domain)' },
+  { code: 'yo', name: 'Yoruba',     translations: 'Bíbélì Mímọ́ (Biblica, CC BY-SA 4.0)' },
+  { code: 'ig', name: 'Igbo',       translations: 'Baịbụl Nsọ (Biblica, CC BY-SA 4.0)' },
+  { code: 'ha', name: 'Hausa',      translations: 'Littafi Mai Tsarki (Biblica, CC BY-SA 4.0)' },
+  { code: 'sw', name: 'Swahili',    translations: 'New Testament only (public domain)' },
 ];
 
-function installedLangs() {
-  const v = settings.installedLangs;
-  return Array.isArray(v) && v.length ? v : ['en'];
-}
-
+// Every Bible above comes with the app (databases/bibles/packs) — there is
+// nothing to install, so the menu offers them all (2026-10-12: the old
+// per-language "Install" buttons only flipped a setting, and read as nine
+// downloads). Display only: live detection follows the Spoken language.
 function renderLangPacks() {
-  const host = document.getElementById('lang-pack-list');
   const bibleSel = document.getElementById('bible-language');
-  if (!host) return;
-  const installed = installedLangs();
-
-  host.innerHTML = '';
-  LANG_PACKS.forEach(p => {
-    const row = document.createElement('div');
-    row.className = 'lang-pack-row';
-
-    const meta = document.createElement('div');
-    meta.className = 'lang-pack-meta';
-    meta.innerHTML = `<div class="lang-pack-name">${p.name}</div><div class="lang-pack-sub">${p.translations}</div>`;
-
-    const btn = document.createElement('button');
-    btn.className = 'modal-btn secondary';
-    const isIn = installed.includes(p.code);
-    if (p.bundled) {
-      btn.textContent = 'Included';
-      btn.disabled = true;
-    } else if (isIn) {
-      btn.textContent = 'Remove';
-      btn.classList.add('lang-pack-remove');
-      btn.addEventListener('click', () => {
-        settings.installedLangs = installed.filter(c => c !== p.code);
-        if (settings.bibleLanguage === p.code) settings.bibleLanguage = 'en';
-        saveSettingsPatch({ installedLangs: settings.installedLangs, bibleLanguage: settings.bibleLanguage });
-        renderLangPacks();
-      });
-    } else if (p.hasPack) {
-      // Real verse text now, bundled in the app (databases/bibles/packs/,
-      // sourced 2026-09-13 — see LANG_PACKS' own comment for exactly what
-      // this does and doesn't cover) rather than a remote download, so
-      // there's no real fetch to wait on — "installing" just switches it
-      // on locally. Still true, and still worth saying out loud: live
-      // audio DETECTION stays English-only; this only changes what a
-      // resolved verse displays as.
-      btn.textContent = 'Install';
-      btn.title = 'Adds real verse text for this language. Live audio detection still only listens for English.';
-      btn.addEventListener('click', () => {
-        settings.installedLangs = [...new Set([...installed, p.code])];
-        saveSettingsPatch({ installedLangs: settings.installedLangs });
-        renderLangPacks();
-      });
-    } else {
-      // No real source found/verified for this language yet — be honest
-      // rather than showing a button that would just fail or fake it.
-      btn.textContent = 'Coming soon';
-      btn.disabled = true;
-      btn.title = 'No verified scripture-text source found for this language yet.';
-    }
-
-    row.appendChild(meta); row.appendChild(btn);
-    host.appendChild(row);
-  });
-
-  // Scripture-language dropdown lists only what's actually installed.
   if (bibleSel) {
     const want = settings.bibleLanguage || 'en';
     bibleSel.innerHTML = '';
-    LANG_PACKS.filter(p => installed.includes(p.code)).forEach(p => {
+    LANG_PACKS.forEach(p => {
       const o = document.createElement('option');
-      o.value = p.code; o.textContent = p.name;
+      o.value = p.code;
+      o.textContent = p.code === 'en' ? 'English' : `${p.name} — ${p.translations.replace(/\s*\(.*\)$/, '')}`;
       if (p.code === want) o.selected = true;
       bibleSel.appendChild(o);
     });
+  }
+  const credits = document.getElementById('scripture-credits');
+  if (credits) {
+    const licensed = LANG_PACKS.filter(p => /CC BY|GPL/.test(p.translations));
+    credits.textContent = 'Sources: ' + licensed.map(p => `${p.name} ${p.translations}`).join(' · ') + ' · the others public domain.';
   }
 }
 

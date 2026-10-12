@@ -168,6 +168,23 @@ pub async fn install_route(State(app): State<Shared>, Json(b): Json<Value>) -> R
     ndjson_stream(rx)
 }
 
+/// POST /api/translate-model/remove {lang} — frees its disk space; the
+/// language downloads again if chosen later.
+pub async fn remove_route(State(app): State<Shared>, Json(b): Json<Value>) -> Response {
+    let Some(m) = b["lang"].as_str().and_then(model) else {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "Unknown language" }))).into_response();
+    };
+    if installing(m.lang) {
+        return (StatusCode::CONFLICT, Json(json!({ "error": "install in progress" }))).into_response();
+    }
+    app.translator.forget_model(m.lang);
+    match tokio::fs::remove_dir_all(dir_of(&app, m)).await {
+        Ok(()) => Json(json!({ "ok": true })).into_response(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Json(json!({ "ok": true })).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() }))).into_response(),
+    }
+}
+
 async fn install(app: &Shared, m: &'static Model, progress: &Progress) -> Result<(), String> {
     let dir = dir_of(app, m);
     if present(&dir, m) {
