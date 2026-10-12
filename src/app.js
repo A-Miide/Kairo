@@ -1395,7 +1395,8 @@ setInterval(() => {
 }, 10000);
 
 function updateSuggestionCount() {
-  const count = queueList?.children.length ?? 0;
+  // Suggestions only — not the empty-state line the list shows when there are none.
+  const count = queueList?.querySelectorAll(':scope > :not(.display-empty)').length ?? 0;
   if (suggestionCount) suggestionCount.textContent = count;
   const badge = document.getElementById('suggestion-count-badge');
   if (badge) badge.textContent = count;
