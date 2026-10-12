@@ -143,7 +143,29 @@ duplicate `kjv.json`, other platforms' native binaries.
 Models live in a versioned directory so app updates don't re-download them
 unless a model actually changes.
 
+## Generalization rule (owner, 2026-10-11)
+
+The Node engine was tuned incident by incident and leans on the verses in its
+tests. The rewrite keeps each lesson as a general rule and drops the tuning:
+
+- No logic special-cases a verse, chapter or book. Limits and lists come from
+  the corpus (chapter/verse counts, a chapter's last verse, verses sharing
+  wording) or from the structure of speech, not from incidents.
+- Mishearings are handled by general mechanisms (sound-based book matching in
+  a citation-shaped slot, number words heard as near-homophones), not by
+  lists of specific slips. The only hand-kept vocabulary is linguistic (book
+  names that are everyday English words, the words for "chapter"/"verse").
+- Comments state the principle, not the incident or the verse.
+- Tests are generated across the whole Bible (random verses in many spoken
+  forms; ordinary sermon speech as negatives). Two of the five recorded
+  sermons are held out and only used for the final accuracy check.
+
 ## Parity
+
+Parity means no loss of accuracy, not identical decisions — identical would
+carry the overfitting over. The golden logs show every place the two engines
+differ; each difference is checked against ground truth and either fixed or
+listed in `docs/RUST_REWRITE_DIFFS.md` as an intended change.
 
 1. Record a golden log from the current Node engine for every fixture in
    `server/eval/fixtures/` and `server/eval/live_runs/`: every `detection`

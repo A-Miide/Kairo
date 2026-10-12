@@ -1,0 +1,14 @@
+[package]
+name = "kairo-semantic"
+description = "Meaning-based verse search: ONNX embedder, quantized verse index, reranker"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+kairo-bible = { path = "../kairo-bible" }
+ort = "=2.0.0-rc.13"
+tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
+ndarray = "0.17"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true

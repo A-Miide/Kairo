@@ -1,0 +1,6 @@
+{
+  "name": "gemma-legacy",
+  "model": "databases/bibles/model/onnx-community/embeddinggemma-300m-ONNX/onnx/model_q4.onnx",
+  "tokenizer": "databases/bibles/model/onnx-community/embeddinggemma-300m-ONNX/tokenizer.json",
+  "pooling": { "kind": "mean" }
+}

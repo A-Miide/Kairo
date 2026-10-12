@@ -17,6 +17,34 @@ with the reason and, where it applies, the measurement behind it.
 - No bolted-on code: Pewbeam's ideas become first-class parts of one design.
 - Full autonomy to make anything significantly better.
 
+### Reference parser (kairo-detect::reference) — decisions
+- **Rebuilt as normalization → book matching → a citation grammar**, each a
+  module with its rules listed at the top. Every limit comes from the corpus
+  (chapters per book, a chapter's last verse, the most verses any chapter has).
+- **"N to the end"** now resolves to the chapter's real last verse (the Node
+  engine substituted 176, Psalm 119's length).
+- **Mishearing lists removed.** "proverbate", "naha", "philippine", "profit
+  chapter", … are covered by one rule: in a citation-shaped slot, a word that
+  is spelled within one or two letters of a book name, or sounds the same
+  (consonant skeleton of 4+ sounds, at most one sound apart), is that book.
+  Spelling matches rank above sound-only matches.
+- **Sound-alike books are computed**, not listed: same opening sound, similar
+  consonant skeleton, used only when the heard book lacks the chapter.
+- **Dropped:** "someone 25" → Psalm 125 (one recognition slip, special-cased),
+  and the "digit digit zero digit" rewrite (it could turn "Psalm one one zero
+  one…" into Psalm 11). Both to be re-checked against the dev sermons.
+- **Fixed an inherited bug:** "forty thirteen" composed to 53. A tens word now
+  only takes a units word.
+- **Kept as linguistic vocabulary** (not incident lists): book names that are
+  everyday words or people's names, words that introduce a book ("turn to"),
+  filler before a bare verse number, everyday words one letter from a book
+  name. The "ambiguous books" list exists in two forms (Node's, and a
+  principled one: every everyday-word book and every person-named book); the
+  dev sermons decide which ships.
+- **Tests:** the Node suite's cases ported as behaviour tests (30), plus a
+  whole-Bible generator — 4,000 random verses × 13 spoken forms (~44,000
+  citations), all reading back exactly.
+
 ### Executive decisions
 - **Work happens on branch `rust-rewrite`.** Nothing is pushed or merged
   without the owner.

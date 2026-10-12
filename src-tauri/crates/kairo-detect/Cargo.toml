@@ -1,0 +1,12 @@
+[package]
+name = "kairo-detect"
+description = "Kairo's detection engine: spoken references, lexical and meaning-based matching, one scorer"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+kairo-bible = { path = "../kairo-bible" }
+regex = "1"
+fancy-regex = "0.19"
+serde.workspace = true
+serde_json.workspace = true

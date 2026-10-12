@@ -51,6 +51,7 @@ pub struct Corpus {
 
 /// One translation's cleaned text, one slot per corpus verse. `None` where the
 /// translation has no text for that verse (versification differences, gaps).
+#[derive(Clone)]
 pub struct Translation {
     pub code: String,
     texts: Vec<Option<Box<str>>>,
