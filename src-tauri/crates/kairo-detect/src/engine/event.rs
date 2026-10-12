@@ -41,6 +41,11 @@ pub enum Event {
     Timer(TimerId),
     /// A model request has been answered.
     Answer(Answer),
+    /// The recogniser heard the end of an utterance.
+    UtteranceEnd,
+    /// The recogniser reconnected mid-service: forget the half-heard
+    /// utterance, keep the sermon's context.
+    Reconnected,
     /// A new service: forget everything about the last one.
     Reset,
 }
