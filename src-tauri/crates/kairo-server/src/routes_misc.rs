@@ -21,6 +21,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/lang/status", get(lang_status))
         .route("/api/translate/languages", get(translate_languages))
         .route("/api/service/import", post(service_import))
+        .route("/api/export", post(export))
         .route("/api/theme/import-protheme", post(theme_import))
 }
 
@@ -167,4 +168,55 @@ async fn lang_status(State(app): State<Shared>) -> Json<Value> {
 
 async fn translate_languages() -> Json<Value> {
     Json(json!({ "languages": crate::translate::LANGUAGES.iter().map(|(code, name)| json!({ "code": code, "name": name })).collect::<Vec<_>>() }))
+}
+
+/// A file name safe on every system: no separators or control characters, at most 80 characters.
+fn safe_file_name(t: &str) -> String {
+    let s: String = t.chars().map(|c| if "\\/:*?\"<>|".contains(c) || c.is_control() { ' ' } else { c }).collect();
+    s.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(80).collect()
+}
+
+/// `name` in `dir`, numbered if it's taken: "x (2).txt".
+fn unique_path(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
+    let p = std::path::Path::new(name);
+    let (stem, ext) = (p.file_stem().and_then(|s| s.to_str()).unwrap_or("file"), p.extension().and_then(|e| e.to_str()));
+    let with = |n: Option<u32>| {
+        let base = match n { Some(n) => format!("{stem} ({n})"), None => stem.to_string() };
+        dir.join(match ext { Some(e) => format!("{base}.{e}"), None => base })
+    };
+    let mut c = with(None);
+    let mut i = 2;
+    while c.exists() {
+        c = with(Some(i));
+        i += 1;
+    }
+    c
+}
+
+async fn export(Json(b): Json<Value>) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let date = chrono::Local::now().format("%Y-%m-%d").to_string();
+    let list = |k: &str| b[k].as_array().cloned().unwrap_or_default();
+    let s = |v: &Value, k: &str| v[k].as_str().unwrap_or("").to_string();
+    let (filename, data) = match b["kind"].as_str() {
+        Some("transcript") => (format!("KAIRO transcript — {date}.txt"), list("transcript").iter().map(|p| format!("[{}] {}", s(p, "time"), s(p, "text"))).collect::<Vec<_>>().join("\n") + "\n"),
+        Some("verses") => (format!("KAIRO verses — {date}.txt"), list("verses").iter().map(|v| format!("{}  {}\n{}\n", s(v, "time"), s(v, "ref"), s(v, "text"))).collect::<Vec<_>>().join("\n")),
+        Some("notes") => return (axum::http::StatusCode::NOT_IMPLEMENTED, Json(json!({ "error": "Sermon notes export isn't available in this build yet" }))).into_response(),
+        _ => return (axum::http::StatusCode::BAD_REQUEST, Json(json!({ "error": "Unknown export" }))).into_response(),
+    };
+    let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) else {
+        return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "No home folder" }))).into_response();
+    };
+    let dir = std::path::PathBuf::from(home).join("Downloads");
+    let _ = std::fs::create_dir_all(&dir);
+    let file = unique_path(&dir, &safe_file_name(&filename));
+    if let Err(e) = std::fs::write(&file, data) {
+        eprintln!("[Export] failed: {e}");
+        return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() }))).into_response();
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let _ = std::process::Command::new("open").arg(&file).spawn();
+    }
+    Json(json!({ "ok": true, "path": file, "file": file.file_name().and_then(|n| n.to_str()) })).into_response()
 }

@@ -2360,6 +2360,7 @@ dependencies = [
  "kairo-bible",
  "kairo-detect",
  "kairo-semantic",
+ "kairo-server",
  "serde_json",
 ]
 
