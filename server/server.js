@@ -7917,6 +7917,10 @@ if (require.main === module) {
     // ONLY, no port bound (a real dev server may already be running on
     // 7777), so it calls this directly instead.
     spawnDetectionWorker,
+    // The background layers arrive seconds after workerReadyPromise; the
+    // parity recorder waits for both so every run starts with the same layers.
+    isSemanticReady: () => workerSemanticReady,
+    isRerankerReady: () => workerRerankerReady,
     resolveAmbiguousRefs,
     maybeCorrectMiscitation,
     setRangeQueue,

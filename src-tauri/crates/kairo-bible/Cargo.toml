@@ -1,0 +1,10 @@
+[package]
+name = "kairo-bible"
+description = "Kairo's Bible corpus: canonical books, verse text cleaning, translations aligned to KJV versification"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
