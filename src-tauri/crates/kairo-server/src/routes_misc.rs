@@ -25,6 +25,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/semantic-model/install", post(bundled_install))
         .route("/api/reranker-model/install", post(bundled_install))
         .route("/api/translate-model/install", post(crate::mt::install_route))
+        .route("/api/translate-model/remove", post(crate::mt::remove_route))
         .route("/api/theme/import-protheme", post(theme_import))
 }
 

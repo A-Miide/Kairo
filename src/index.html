@@ -1235,7 +1235,7 @@
                     <div class="setting-group" id="offline-installer-group" style="display:none;">
                         <label class="setting-label">Offline Model</label>
                         <div id="offline-status-line" style="font-size:12px;color:var(--text-3);margin-bottom:8px;">Checking…</div>
-                        <button id="offline-install-btn" class="setting-input" style="cursor:pointer;display:none;">Download offline model (~465MB)</button>
+                        <button id="offline-install-btn" class="setting-input btn-brand" style="cursor:pointer;display:none;">Download offline model (~465MB)</button>
                         <div id="offline-progress-wrap" style="display:none;margin-top:6px;">
                             <div style="background:var(--surface-2);height:6px;border-radius:3px;overflow:hidden;">
                                 <div id="offline-progress-bar" style="background:var(--accent);height:100%;width:0%;transition:width .2s;"></div>
@@ -1248,16 +1248,16 @@
                          (sherpa_installer.js MODELS.multi) — a second download,
                          needed only when the Spoken language isn't English. -->
                     <div class="setting-group" id="offline-multi-installer-group" style="display:none;">
-                        <label class="setting-label">Other Languages</label>
+                        <label class="setting-label">Offline Model</label>
                         <div id="offline-multi-status-line" style="font-size:12px;color:var(--text-3);margin-bottom:8px;">Checking…</div>
-                        <button id="offline-multi-install-btn" class="setting-input" style="cursor:pointer;display:none;">Download other languages (~475MB)</button>
+                        <button id="offline-multi-install-btn" class="setting-input btn-brand" style="cursor:pointer;display:none;">Download offline model for other languages (~475MB)</button>
                         <div id="offline-multi-progress-wrap" style="display:none;margin-top:6px;">
                             <div style="background:var(--surface-2);height:6px;border-radius:3px;overflow:hidden;">
                                 <div id="offline-multi-progress-bar" style="background:var(--accent);height:100%;width:0%;transition:width .2s;"></div>
                             </div>
                             <div id="offline-multi-progress-text" style="font-size:11px;color:var(--text-3);margin-top:4px;">Starting…</div>
                         </div>
-                        <p class="setting-hint">Spanish, French, Portuguese, German, Korean and more, offline. Needed when Language → Spoken language isn't English.</p>
+                        <p class="setting-hint">Listens offline in the language set under Language → Spoken language — Spanish, French, Portuguese, German, Korean and more.</p>
                     </div>
 
                     <div class="setting-group" id="deepgram-key-group">
@@ -1561,14 +1561,17 @@
             </section>
 
             <section class="settings-pane" data-pane="language">
-                <!-- ── LANGUAGE ───────────────────────────────────── -->
-                <div class="settings-section">
-                    <div class="settings-section-label">Language</div>
-
-                    <div class="setting-row-2col">
-                        <div class="setting-group">
-                            <label class="setting-label">Spoken language</label>
-                            <select id="stt-language" class="setting-input">
+            <!-- ── LANGUAGE ───────────────────────────────────────
+                 Three short groups (2026-10-12: the old pane read as nine
+                 things to download — scripture packs are part of the app,
+                 nothing to install): what the preacher speaks, what the
+                 screen shows, and the optional slide-translation models,
+                 the only real downloads here. -->
+            <div class="settings-section">
+                <div class="settings-section-label">Listening</div>
+                <div class="setting-group">
+                    <label class="setting-label" for="stt-language">Spoken language</label>
+                    <select id="stt-language" class="setting-input">
                                 <option value="en-US">English (US)</option>
                                 <option value="en-GB">English (UK)</option>
                                 <option value="en-AU">English (Australia)</option>
@@ -1590,42 +1593,33 @@
                                 <option value="zh">Chinese (Mandarin)</option>
                                 <option value="multi">Auto-detect (multilingual)</option>
                             </select>
-                            <p class="setting-hint">What the preacher speaks. Drives live transcription — set this before the service starts.</p>
-                        </div>
-
-                        <div class="setting-group">
-                            <label class="setting-label">Scripture language</label>
-                            <select id="bible-language" class="setting-input">
-                                <option value="en">English</option>
-                            </select>
-                            <p class="setting-hint" id="bible-language-hint">Which language a matched verse displays in. Detection follows the Spoken language — citations and readings in Spanish, Portuguese, French and German are recognized. Additional languages install as scripture packs below.</p>
-                        </div>
-                    </div>
-
-                    <div class="setting-group">
-                        <label class="setting-label" for="custom-keyterms">Church vocabulary</label>
-                        <textarea id="custom-keyterms" class="setting-input" rows="3" placeholder="Pastor Mensah&#10;Grace Chapel&#10;Shiloh"></textarea>
-                        <p class="setting-hint">Names and words your services use that transcription may miss — the pastor, the church, local places. One per line or separated by commas (up to 40). English and auto-detect services; applies from the next Start Listening.</p>
-                    </div>
-
-                    <div class="setting-group">
-                        <label class="setting-label">Scripture packs</label>
-                        <div id="lang-pack-list" class="lang-pack-list"></div>
-                        <p class="setting-hint">Each pack adds a language with its translations, downloaded once and stored locally for offline use.</p>
-                    </div>
-
-                    <!-- Bundled Multi-Language translation models. Real Bible verses never
-                         need this — they use the scripture packs above. This is only for
-                         translating non-scripture slide/sermon text, and works with zero
-                         setup once downloaded (no Ollama, no API key). One small model per
-                         language, downloaded independently the first time that language is
-                         actually used — a French-only operator never pays for Portuguese. -->
-                    <div class="setting-group" id="mt-model-group">
-                        <label class="setting-label">Slide Translation Models</label>
-                        <div id="mt-model-list" class="lang-pack-list"></div>
-                        <p class="setting-hint">Translates non-scripture slide text for the Multi-Language theme. Each downloads once, then works fully offline.</p>
-                    </div>
+                    <p class="setting-hint">What the preacher speaks. Drives live transcription — set it before the service starts.</p>
                 </div>
+                <div class="setting-group">
+                    <label class="setting-label" for="custom-keyterms">Church vocabulary</label>
+                    <textarea id="custom-keyterms" class="setting-input" rows="3" placeholder="Pastor Mensah&#10;Grace Chapel&#10;Shiloh"></textarea>
+                        <p class="setting-hint">Names and words your services use that transcription may miss — the pastor, the church, local places. One per line or separated by commas (up to 40). English and auto-detect services; applies from the next Start Listening.</p>
+                </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-label">On screen</div>
+                <div class="setting-group">
+                    <label class="setting-label" for="bible-language">Scripture language</label>
+                    <select id="bible-language" class="setting-input"></select>
+                    <p class="setting-hint">Which language a matched verse shows in. Every Bible listed comes with Kairo and works offline.</p>
+                    <p class="setting-hint scripture-credits" id="scripture-credits"></p>
+                </div>
+            </div>
+
+            <!-- The bundled translation models (mt.rs): one per language,
+                 downloaded the first time it's used — only for slide text,
+                 never scripture, which uses the Bibles above. -->
+            <div class="settings-section" id="mt-model-group">
+                <div class="settings-section-label">Slide translation</div>
+                <div id="mt-model-list" class="dl-list"></div>
+                <p class="setting-hint">Translates slide text that isn't scripture, for the Multi-Language theme — on this computer, no account. Each language downloads once.</p>
+            </div>
             </section>
 
             <section class="settings-pane" data-pane="outputs">
@@ -1763,7 +1757,7 @@
                     <div id="first-run-offline-group" style="display:none;">
                         <label style="display:block;margin-bottom:6px;font-size:12px;font-weight:600;">Offline Model</label>
                         <div id="first-run-offline-status-line" style="font-size:12px;color:var(--text-3);margin-bottom:8px;">Checking…</div>
-                        <button id="first-run-offline-install-btn" class="setting-input" style="cursor:pointer;display:none;width:100%;text-align:left;">Download offline model</button>
+                        <button id="first-run-offline-install-btn" class="setting-input btn-brand" style="cursor:pointer;display:none;width:100%;">Download offline model</button>
                         <div id="first-run-offline-progress-wrap" style="display:none;margin-top:6px;">
                             <div style="background:var(--surface-2);height:6px;border-radius:3px;overflow:hidden;">
                                 <div id="first-run-offline-progress-bar" style="background:var(--accent);height:100%;width:0%;transition:width .2s;"></div>

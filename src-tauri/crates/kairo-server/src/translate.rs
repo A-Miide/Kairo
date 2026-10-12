@@ -50,6 +50,15 @@ impl Translator {
         t
     }
 
+    /// A removed language's model, out of memory too.
+    pub fn forget_model(&self, lang: &str) {
+        let mut model = self.model.lock().unwrap_or_else(|p| p.into_inner());
+        if model.as_ref().is_some_and(|m| m.lang() == lang) {
+            *model = None;
+        }
+        self.cache.lock().unwrap_or_else(|p| p.into_inner()).retain(|k, _| !k.starts_with(&format!("{lang}|")));
+    }
+
     fn on_this_machine(&self, app: &Shared, lang: &str, text: &str) -> Result<String, String> {
         // A model that failed mid-translation is dropped and loaded afresh.
         let mut model = self.model.lock().unwrap_or_else(|poisoned| {
