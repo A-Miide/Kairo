@@ -2442,7 +2442,8 @@ async function loadSettings() {
 // the tour once, since the tour is about the whole app, not just that one
 // step. Re-openable anytime from Settings → Help ("Take the tour again").
 let firstRunDismissed = false;
-const ONBOARDING_STEP_COUNT = 7; // steps 0..6, see the step panels' data-step
+const ONBOARDING_STEP_COUNT = 4; // see the step panels' data-step: welcome, listening, inside, ready
+const ONBOARDING_LISTEN_STEP = 1;
 let onboardingStep = 0;
 
 function showFirstRunBannerIfNeeded(s) {
@@ -2459,42 +2460,78 @@ function showFirstRunBannerIfNeeded(s) {
 function openOnboardingWizard() {
   const modal = document.getElementById('first-run-modal');
   if (!modal) return;
+  // The brand lockup, from the loading screen — one copy of the artwork.
+  const brand = document.getElementById('ob-brand');
+  const mark = document.querySelector('.bootstrap-mark');
+  if (brand && mark && !brand.firstChild) brand.appendChild(mark.cloneNode(true));
   modal.classList.remove('hidden');
   const input = document.getElementById('first-run-deepgram-key');
   if (input) input.value = '';
-  syncToggleGroup('first-run-engine-toggle', 'engine', 'deepgram'); // always starts on the Deepgram tab
+  syncToggleGroup('first-run-engine-toggle', 'engine', 'deepgram'); // always starts on Deepgram
   goToOnboardingStep(0);
-  // Defer focus so the overlay has laid out before we focus inside it.
-  setTimeout(() => input?.focus(), 50);
+  setTimeout(() => document.getElementById('onboarding-next')?.focus(), 50);
 }
-
-const ONBOARDING_STEP_TITLES = [
-  'Welcome to KAIRO', 'Playlist', 'Slides', 'Timer', 'Themes', 'Outputs', "You're all set",
-];
 
 function renderOnboardingProgress() {
   const host = document.getElementById('onboarding-progress');
   if (!host) return;
   host.innerHTML = '';
   for (let i = 0; i < ONBOARDING_STEP_COUNT; i++) {
-    const dot = document.createElement('span');
-    dot.style.cssText = `height:4px;flex:1;border-radius:2px;background:${i <= onboardingStep ? 'var(--accent,#6aa6ff)' : 'var(--surface-2)'};`;
-    host.appendChild(dot);
+    const seg = document.createElement('span');
+    if (i <= onboardingStep) seg.className = 'is-done';
+    host.appendChild(seg);
   }
 }
+
+// The last step dims the app and rings the real Start Listening button, the
+// step's card sitting just under it.
+function placeOnboardingSpotlight() {
+  const modal = document.getElementById('first-run-modal');
+  const spot = document.getElementById('ob-spot');
+  const target = document.getElementById('listen-btn');
+  if (!modal || !spot || !target || !modal.classList.contains('is-spotlight')) return;
+  const r = target.getBoundingClientRect();
+  const pad = 6;
+  Object.assign(spot.style, { left: `${r.left - pad}px`, top: `${r.top - pad}px`, width: `${r.width + pad * 2}px`, height: `${r.height + pad * 2}px` });
+  modal.style.setProperty('--ob-card-top', `${r.bottom + 18}px`);
+}
+window.addEventListener('resize', placeOnboardingSpotlight);
+
+// The input picker on the last step mirrors Settings → Audio's own list (the
+// one capture reads), so choosing here is choosing there.
+async function syncOnboardingMicList() {
+  const pick = document.getElementById('first-run-mic');
+  if (!pick || !audioSourceSettings) return;
+  await populateAudioDevices();
+  pick.innerHTML = '';
+  // Real devices only (the list's "Loading devices…" placeholder has no id).
+  [...audioSourceSettings.options].filter(o => o.value).forEach(o => pick.appendChild(new Option(o.textContent, o.value, false, o.selected)));
+  if (!pick.options.length) pick.appendChild(new Option('No input yet — allow microphone access, or choose one in Settings → Audio', ''));
+}
+document.getElementById('first-run-mic')?.addEventListener('change', (e) => {
+  if (!audioSourceSettings || !e.target.value) return;
+  audioSourceSettings.value = e.target.value;
+  audioSourceSettings.dispatchEvent(new Event('change'));
+});
 
 function goToOnboardingStep(n) {
   onboardingStep = Math.max(0, Math.min(ONBOARDING_STEP_COUNT - 1, n));
   document.querySelectorAll('.onboarding-step').forEach(el => {
     el.classList.toggle('hidden', Number(el.dataset.step) !== onboardingStep);
   });
-  const title = document.getElementById('onboarding-step-title');
-  if (title) title.textContent = ONBOARDING_STEP_TITLES[onboardingStep] || 'Welcome to KAIRO';
   renderOnboardingProgress();
-  document.getElementById('onboarding-back')?.classList.toggle('hidden', onboardingStep === 0);
   const isLast = onboardingStep === ONBOARDING_STEP_COUNT - 1;
-  document.getElementById('onboarding-next')?.classList.toggle('hidden', isLast);
+  document.getElementById('onboarding-back')?.classList.toggle('hidden', onboardingStep === 0);
+  const next = document.getElementById('onboarding-next');
+  if (next) {
+    next.classList.toggle('hidden', isLast);
+    next.textContent = onboardingStep === 0 ? 'Get started' : 'Next';
+  }
   document.getElementById('first-run-save')?.classList.toggle('hidden', !isLast);
+  const modal = document.getElementById('first-run-modal');
+  modal?.classList.toggle('is-spotlight', isLast);
+  if (isLast) { placeOnboardingSpotlight(); syncOnboardingMicList(); }
+  if (onboardingStep === ONBOARDING_LISTEN_STEP) setTimeout(() => document.getElementById('first-run-deepgram-key')?.focus(), 60);
 }
 
 // Real, non-blocking validation on the way OUT of the speech-engine step —
@@ -2536,7 +2573,9 @@ async function markOnboardingComplete() {
 
 function closeFirstRunModal() {
   firstRunDismissed = true;
-  document.getElementById('first-run-modal')?.classList.add('hidden');
+  const modal = document.getElementById('first-run-modal');
+  modal?.classList.add('hidden');
+  modal?.classList.remove('is-spotlight');
   markOnboardingComplete();
 }
 
@@ -2663,12 +2702,21 @@ document.querySelector('.modal-overlay')?.addEventListener('click', closeModal);
 document.getElementById('first-run-save')?.addEventListener('click', saveFirstRunChoice);
 document.getElementById('first-run-skip')?.addEventListener('click', closeFirstRunModal);
 document.getElementById('close-first-run')?.addEventListener('click', closeFirstRunModal);
-document.querySelector('#first-run-modal .modal-overlay')?.addEventListener('click', closeFirstRunModal);
+document.addEventListener('keydown', (e) => {
+  const modal = document.getElementById('first-run-modal');
+  if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) closeFirstRunModal();
+});
 document.getElementById('first-run-deepgram-key')?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') document.getElementById('onboarding-next')?.click();
 });
 document.getElementById('onboarding-next')?.addEventListener('click', async () => {
-  if (onboardingStep === 0) await checkOnboardingSpeechSetup();
+  // Leaving the listening step with neither engine ready shows the gentle
+  // nudge and stays put once, so it's actually read.
+  if (onboardingStep === ONBOARDING_LISTEN_STEP) {
+    await checkOnboardingSpeechSetup();
+    const warning = document.getElementById('onboarding-speech-warning');
+    if (warning && !warning.classList.contains('hidden') && !warning.dataset.seen) { warning.dataset.seen = '1'; return; }
+  }
   goToOnboardingStep(onboardingStep + 1);
 });
 document.getElementById('onboarding-back')?.addEventListener('click', () => goToOnboardingStep(onboardingStep - 1));
