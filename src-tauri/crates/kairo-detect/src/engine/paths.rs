@@ -644,10 +644,10 @@ impl Engine {
         Some(verses)
     }
 
-    /// The last four finals and the live text, at most 60 words.
+    /// The last four finals (at least 40 words of them) and the live text, at
+    /// most 60 words.
     pub(crate) fn paraphrase_recent_text(&self) -> String {
-        let finals: Vec<&str> = self.t.finals.iter().rev().take(4).rev().map(|f| f.text.as_str()).collect();
-        let all = format!("{} {}", finals.join(" "), self.t.interim);
+        let all = format!("{} {}", self.t.recent_finals(4, 40), self.t.interim);
         let words: Vec<&str> = all.split_whitespace().collect();
         words[words.len().saturating_sub(60)..].join(" ")
     }

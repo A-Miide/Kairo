@@ -105,6 +105,22 @@ impl Transcript {
         all[all.len().saturating_sub(n)..].join(" ")
     }
 
+    /// The newest finals: at least `finals` of them and at least `words`
+    /// words — a Deepgram sentence, or the several short runs the offline
+    /// engine locks in while the same sentence is spoken.
+    pub fn recent_finals(&self, finals: usize, words: usize) -> String {
+        let (mut taken, mut count) = (Vec::new(), 0);
+        for f in self.finals.iter().rev() {
+            if taken.len() >= finals && count >= words {
+                break;
+            }
+            count += f.words;
+            taken.push(f.text.as_str());
+        }
+        taken.reverse();
+        taken.join(" ")
+    }
+
     /// Finished speech within the last `ms`.
     pub fn since(&self, now: u64, ms: u64) -> Vec<&Final> {
         self.finals.iter().filter(|f| now.saturating_sub(f.at) < ms).collect()

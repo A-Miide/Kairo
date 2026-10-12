@@ -315,9 +315,9 @@ impl Engine {
         !meaningful_words(&self.range_heard_words().join(" ")).iter().any(|w| own.contains(w))
     }
 
-    /// The words just spoken: the open interim or else the latest final.
+    /// The words just spoken: the latest final (a sentence's worth) and the open interim.
     pub(crate) fn recent_speech_words(&self, max: usize) -> Vec<String> {
-        let last = self.t.finals.back().map_or("", |f| f.text.as_str());
+        let last = self.t.recent_finals(1, super::decide::RECENT_SPEECH_WORDS);
         let words = meaningful_words(&format!("{last} {}", self.t.interim));
         words[words.len().saturating_sub(max)..].to_vec()
     }

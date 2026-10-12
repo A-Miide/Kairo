@@ -4314,6 +4314,14 @@
       "unverified": true
     },
     {
+      "book": "Mark",
+      "chapter": 11,
+      "verse": 23,
+      "kind": "quote",
+      "startMs": 1950000,
+      "addedBy": "read against both transcriptions (2026-10-12): say to this mountain, be thou removed… shall not doubt in his heart… shall have whatsoever he saith"
+    },
+    {
       "book": "Isaiah",
       "chapter": 53,
       "kind": "citation",

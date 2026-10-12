@@ -4432,6 +4432,14 @@
       "unverified": true
     },
     {
+      "book": "Haggai",
+      "chapter": 2,
+      "verse": 9,
+      "kind": "quote",
+      "startMs": 1428000,
+      "addedBy": "read against the offline transcription (2026-10-12): the glory of this latter house shall be greater than of the former"
+    },
+    {
       "book": "Job",
       "chapter": 22,
       "kind": "citation",
@@ -4474,6 +4482,14 @@
       "anchorWordIndex": 2500,
       "verseStart": 1,
       "verseEnd": 3
+    },
+    {
+      "book": "Proverbs",
+      "chapter": 22,
+      "verse": 7,
+      "kind": "quote",
+      "startMs": 1722000,
+      "addedBy": "read against the offline transcription (2026-10-12): the rich ruleth over the poor, and the borrower is servant to the lender"
     },
     {
       "book": "1 Corinthians",
@@ -4705,6 +4721,14 @@
       "startMs": 3291270,
       "anchorWordIndex": 5123,
       "verse": 5
+    },
+    {
+      "book": "2 Timothy",
+      "chapter": 1,
+      "verse": 7,
+      "kind": "quote",
+      "startMs": 3312000,
+      "addedBy": "read against the offline transcription (2026-10-12): God hath not given us the spirit of fear; but of power, and of love, and of a sound mind"
     },
     {
       "book": "Acts",

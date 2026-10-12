@@ -24,6 +24,9 @@ const ON_SCREEN_GUARD_MAX_COVERAGE: f32 = 0.8;
 /// A chapter just named holds text matches elsewhere this long.
 const CHAPTER_NAMED_HOLD_MS: u64 = 30_000;
 const VERBATIM_AUTOSEND_MIN: f32 = 0.95;
+/// "The newest speech" is at least this many words (one Deepgram sentence;
+/// several of the offline engine's short locked runs).
+pub(crate) const RECENT_SPEECH_WORDS: usize = 12;
 /// Matched wording this identifying is a quote, not a coincidence ("no
 /// respecter of persons" 15.8, "our light affliction" 15.1; "in the name of
 /// Jesus Christ" 10.6, "all the days of our life" 12.4). On the dev sermons'
@@ -326,6 +329,8 @@ impl Engine {
         if now.saturating_sub(at) > SAME_BOOK_WINDOW_MS || up == v || self.range.all.contains(&v) {
             return false;
         }
+        // Only the newest words: reaching further back reaches the verse on
+        // screen being read (Isaiah 53:8 held back by 53:7's "open his mouth").
         let newest = if self.t.interim.is_empty() { self.t.finals.back().map_or("", |f| f.text.as_str()) } else { &self.t.interim };
         fits_first_at_least_as_well(self.verse_text(up), self.verse_text(v), source.unwrap_or(newest))
     }
