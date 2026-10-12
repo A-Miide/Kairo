@@ -8,7 +8,14 @@ pub mod config;
 mod deepgram;
 pub mod detect;
 pub mod hub;
+mod clock;
+mod library;
+mod media;
+mod obs;
 mod routes;
+mod routes_library;
+mod routes_misc;
+mod translate;
 pub mod settings;
 mod vocabulary;
 mod ws;
@@ -43,6 +50,13 @@ pub struct App {
     pub audio: tokio::sync::Mutex<Option<tokio::sync::mpsc::Sender<bytes::Bytes>>>,
     pub listening: tokio::sync::Mutex<Option<Listening>>,
     pub(crate) keep_awake: std::sync::Mutex<Option<KeepAwake>>,
+    pub(crate) songs: library::Songs,
+    pub(crate) triggers: Arc<library::Triggers>,
+    pub(crate) segments: library::Segments,
+    pub(crate) media: Arc<media::Media>,
+    pub(crate) obs: obs::Obs,
+    pub(crate) translator: translate::Translator,
+    pub(crate) meaning: OnceLock<Arc<kairo_semantic::MeaningService>>,
 }
 
 /// The speech engine that's listening.
@@ -76,6 +90,10 @@ impl Drop for KeepAwake {
 pub type Shared = Arc<App>;
 
 impl App {
+    pub fn meaning_ready(&self) -> bool {
+        self.meaning.get().is_some()
+    }
+
     pub fn ready(&self) -> Option<(&Arc<Bible>, &Detector)> {
         Some((self.bible.get()?, self.detector.get()?))
     }
@@ -102,10 +120,19 @@ impl App {
 /// Serves until the process ends.
 pub async fn serve(cfg: Config) -> anyhow::Result<()> {
     let settings = Settings::load(cfg.app_data_dir.join("settings.json"));
+    let hub = Arc::new(Hub::new());
+    let triggers = Arc::new(library::Triggers::open(&cfg.app_data_dir, hub.clone()));
     let app: Shared = Arc::new(App {
         cfg: cfg.clone(),
         settings,
-        hub: Arc::new(Hub::new()),
+        songs: library::Songs::open(&cfg.app_data_dir),
+        segments: library::Segments::open(&cfg.app_data_dir, triggers.clone()),
+        triggers,
+        media: media::Media::open(&cfg.app_data_dir, hub.clone()),
+        obs: obs::Obs::new(),
+        translator: translate::Translator::default(),
+        meaning: OnceLock::new(),
+        hub,
         bible: OnceLock::new(),
         detector: OnceLock::new(),
         presentation: Arc::new(RwLock::new(Presentation::default())),
@@ -114,6 +141,12 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         keep_awake: std::sync::Mutex::new(None),
     });
     app.refresh_presentation().await;
+    let obs_app = app.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+        routes_misc::connect_obs(&obs_app).await;
+        follow_screen_in_obs(obs_app).await;
+    });
 
     // The engine's knowledge takes a moment: listen first, announce readiness after.
     let starting = app.clone();
@@ -142,9 +175,10 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         let _ = starting.detector.set(detector);
         eprintln!("[Server] Detection engine ready in {:.1}s (reference + verbatim + stream + fingerprint).", t.elapsed().as_secs_f32());
         starting.hub.broadcast(json!({ "type": "worker-ready" }));
+        load_meaning(&starting);
     });
 
-    let router = routes::router()
+    let router = routes::router().merge(routes_library::router()).merge(routes_misc::router())
         .layer(middleware::from_fn_with_state(app.clone(), auth))
         .layer(tower_http::cors::CorsLayer::permissive())
         .layer(axum::extract::DefaultBodyLimit::max(500 * 1024 * 1024))
@@ -153,6 +187,97 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
     eprintln!("[Server] Listening on http://127.0.0.1:{}{}", cfg.port, if cfg.auth_required() { " (token required)" } else { "" });
     axum::serve(listener, router).await?;
     Ok(())
+}
+
+/// What goes on screen is written into OBS's text source, and cleared with it.
+async fn follow_screen_in_obs(app: Shared) {
+    let mut rx = app.hub.subscribe();
+    loop {
+        let m = match rx.recv().await {
+            Ok(m) => m,
+            Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+            Err(_) => return,
+        };
+        if !app.obs.connected().await {
+            continue;
+        }
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(&m) else { continue };
+        let source = app.settings.str("obsTextSource").await.unwrap_or_else(|| "Scripture".into());
+        match v["type"].as_str() {
+            Some("detection") if v["target"] == "viewer" => {
+                let auto = app.presentation.read().unwrap().auto_send;
+                if v["method"] != "service" && !auto {
+                    continue;
+                }
+                let verse = &v["verses"][0];
+                let t = app.settings.str("translation").await.unwrap_or_else(|| "KJV".into());
+                let text = format!("{}\n{} ({t})", verse["text"].as_str().unwrap_or(""), verse["reference"].as_str().unwrap_or(""));
+                app.obs.set_text(&source, &text).await;
+            }
+            Some("clear-layer") if matches!(v["layer"].as_str(), Some("slide") | Some("all")) => app.obs.set_text(&source, "").await,
+            _ => {}
+        }
+    }
+}
+
+/// The meaning models (embedding model, verse index, cross-encoder): the
+/// paraphrase and meaning paths turn on once they're loaded.
+fn load_meaning(app: &Shared) {
+    use kairo_semantic::{Embedder, EmbedderConfig, MeaningService, Pooling, Reranker, RerankerConfig, VerseIndex};
+    let t = std::time::Instant::now();
+    let db = &app.cfg.db_dir;
+    let gemma = db.join("model/onnx-community/embeddinggemma-300m-ONNX");
+    let cfg = EmbedderConfig {
+        name: "gemma-legacy".into(),
+        model: gemma.join("onnx/model_q4.onnx"),
+        tokenizer: gemma.join("tokenizer.json"),
+        pooling: Pooling::Mean,
+        query_prefix: String::new(),
+        document_prefix: String::new(),
+        truncate_dims: 0,
+        max_tokens: 256,
+        threads: 0,
+    };
+    let index_name = format!("verse_index.{}.kvx", cfg.name);
+    let embedder = match Embedder::load(cfg) {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("[Server] Meaning model unavailable ({e}) — meaning-based detection off.");
+            return;
+        }
+    };
+    let built = app.cfg.app_data_dir.join("models").join(&index_name);
+    let index = match VerseIndex::load(&db.join(&index_name)).or_else(|_| VerseIndex::load(&built)) {
+        Ok(i) => i,
+        Err(_) => {
+            let Some(bible) = app.bible.get() else { return };
+            eprintln!("[Server] Building the verse index (first run, a few minutes)…");
+            let cache = app.cfg.app_data_dir.join("models");
+            let b = kairo_semantic::Builder { embedder: &embedder, corpus: &bible.k.corpus, cache_dir: cache };
+            match b.build(&[bible.k.corpus.kjv()], |_, _, _| {}) {
+                Ok(i) => {
+                    let _ = std::fs::create_dir_all(built.parent().unwrap_or(db));
+                    let _ = i.save(&built);
+                    i
+                }
+                Err(e) => {
+                    eprintln!("[Server] Verse index build failed ({e}) — meaning-based detection off.");
+                    return;
+                }
+            }
+        }
+    };
+    let rr_dir = db.join("reranker_model/Xenova/ms-marco-MiniLM-L-12-v2");
+    let reranker = Reranker::load(RerankerConfig { name: "minilm-l12".into(), model: rr_dir.join("onnx/model_int8.onnx"), tokenizer: rr_dir.join("tokenizer.json"), max_tokens: 256, threads: 0 }).ok();
+    let Some((bible, detector)) = app.ready() else { return };
+    let mut modern = vec![bible.nlt.clone()];
+    if let Ok(niv) = bible.k.corpus.load_flat("NIV", &db.join("translations/NIV.json")) {
+        modern.push(niv);
+    }
+    let m = Arc::new(MeaningService::new(embedder, index, reranker, bible.k.corpus.kjv().clone(), modern));
+    detector.meaning_ready(m.clone());
+    let _ = app.meaning.set(m);
+    eprintln!("[Server] Meaning-based detection ready in {:.1}s.", t.elapsed().as_secs_f32());
 }
 
 fn is_static_asset(path: &str) -> bool {

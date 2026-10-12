@@ -14,6 +14,8 @@ pub struct Config {
     pub app_data_dir: PathBuf,
     /// The UI files served at `/`.
     pub ui_dir: PathBuf,
+    /// Downloaded models (offline speech, translation).
+    pub models_dir: PathBuf,
 }
 
 impl Config {
@@ -27,6 +29,7 @@ impl Config {
             db_dir: env("KAIRO_DB_DIR").map(PathBuf::from).unwrap_or_else(|| project_root.join("databases/bibles")),
             app_data_dir: env("KAIRO_APP_DATA_DIR").map(PathBuf::from).unwrap_or_else(|| project_root.join("databases")),
             ui_dir: env("KAIRO_UI_DIR").map(PathBuf::from).unwrap_or_else(|| project_root.join("src")),
+            models_dir: env("KAIRO_APP_DATA_DIR").map(|d| PathBuf::from(d).join("models")).unwrap_or_else(|| project_root.join("server/models")),
         }
     }
 
