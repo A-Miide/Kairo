@@ -13,7 +13,6 @@
 //! count: missing "for" costs almost nothing, missing the verse's one rare
 //! word costs a lot.
 
-use std::collections::HashMap;
 
 use kairo_bible::VerseId;
 
@@ -71,24 +70,20 @@ pub fn verbatim(lex: &Lexicon, text: &str, min_words: usize, limit: usize) -> Ve
         let sources = std::iter::once((kjv_stems, lex.kjv().words(v).unwrap_or(&[])))
             .chain(lex.others().iter().filter_map(|o| Some((o.stems(v)?, o.words(v)?))));
         let sources: Vec<(&[WordId], &[WordId])> = sources.collect();
+        // For each source, the longest run shared with the speech ending at each spoken word:
+        // a window occurs in the verse exactly when a run that long ends where it ends.
+        let ends: Vec<Vec<usize>> = sources.iter().map(|(vs, _)| run_ends(vs, &stems)).collect();
         for len in (min_words..=MAX_WINDOW.min(stems.len())).rev() {
             for start in 0..=stems.len() - len {
-                let window = &stems[start..start + len];
-                if window.iter().any(Option::is_none) {
-                    continue;
-                }
-                for (verse_stems, verse_words) in &sources {
-                    if let Some(at) = find(verse_stems, window) {
-                        let matched = lex.idf_span(verse_words, at, len);
-                        results.push(VerbatimHit {
-                            verse: v,
-                            score: score(matched, lex.idf_total(verse_words)),
-                            tier: Tier::Phrase,
-                            matched_idf: Some(matched),
-                        });
-                        found.push(v);
-                        continue 'verse;
+                for (k, (verse_stems, verse_words)) in sources.iter().enumerate() {
+                    if ends[k][start + len - 1] < len {
+                        continue;
                     }
+                    let at = find(verse_stems, &stems[start..start + len]).expect("a shared run that long ends here");
+                    let matched = lex.idf_span(verse_words, at, len);
+                    results.push(VerbatimHit { verse: v, score: score(matched, lex.idf_total(verse_words)), tier: Tier::Phrase, matched_idf: Some(matched) });
+                    found.push(v);
+                    continue 'verse;
                 }
             }
         }
@@ -165,35 +160,60 @@ fn candidates(lex: &Lexicon, speech: &[SpeechWord]) -> Vec<VerseId> {
             query.push(w);
         }
     }
+    let n = lex.verse_count();
+    let mut counts = vec![0u32; n];
+    // Which query word last counted a verse through its own form.
+    let mut direct_for = vec![0u32; n];
     let mut order: Vec<VerseId> = Vec::new();
-    let mut counts: HashMap<VerseId, usize> = HashMap::new();
-    let mut bump = |v: VerseId, order: &mut Vec<VerseId>| {
-        let c = counts.entry(v).or_insert_with(|| {
-            order.push(v);
-            0
-        });
-        *c += 1;
-    };
-    for w in &query {
+    for (qi, w) in query.iter().enumerate() {
+        let tag = qi as u32 + 1;
         let direct: &[VerseId] = w.word.map_or(&[], |id| lex.verses_with_word(id));
         for &v in direct {
-            bump(v, &mut order);
+            let i = v.index();
+            if counts[i] == 0 {
+                order.push(v);
+            }
+            counts[i] += 1;
+            direct_for[i] = tag;
         }
         if w.stem_text != w.text {
             if let Some(s) = w.stem {
                 for &v in lex.verses_with_stem(s) {
-                    if !direct.contains(&v) {
-                        bump(v, &mut order);
+                    let i = v.index();
+                    if direct_for[i] == tag {
+                        continue;
                     }
+                    if counts[i] == 0 {
+                        order.push(v);
+                    }
+                    counts[i] += 1;
                 }
             }
         }
     }
-    let threshold = 2.max(query.len() * 2 / 5);
-    let mut qualifying: Vec<VerseId> = order.into_iter().filter(|v| counts[v] >= threshold).collect();
-    qualifying.sort_by(|a, b| counts[b].cmp(&counts[a]));
+    let threshold = 2.max(query.len() * 2 / 5) as u32;
+    let mut qualifying: Vec<VerseId> = order.into_iter().filter(|v| counts[v.index()] >= threshold).collect();
+    qualifying.sort_by(|a, b| counts[b.index()].cmp(&counts[a.index()]));
     qualifying.truncate(CANDIDATES);
     qualifying
+}
+
+/// For each spoken word, the longest run of consecutive words shared with
+/// `verse` that ends on it (unknown words break a run).
+fn run_ends(verse: &[WordId], speech: &[Option<WordId>]) -> Vec<usize> {
+    let mut prev = vec![0usize; verse.len() + 1];
+    let mut cur = vec![0usize; verse.len() + 1];
+    let mut out = Vec::with_capacity(speech.len());
+    for s in speech {
+        let mut best = 0;
+        for (j, w) in verse.iter().enumerate() {
+            cur[j + 1] = if *s == Some(*w) { prev[j] + 1 } else { 0 };
+            best = best.max(cur[j + 1]);
+        }
+        out.push(best);
+        std::mem::swap(&mut prev, &mut cur);
+    }
+    out
 }
 
 /// Where `needle` occurs in `hay` as consecutive words.

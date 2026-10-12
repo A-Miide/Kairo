@@ -241,9 +241,16 @@ fn load_cases(root: &Path, corpus: &Corpus) -> Result<(Vec<Case>, Vec<String>), 
             cases.push(Case { group, said: c.said.clone(), refs });
         }
     }
+    // Development sermons only; the held-out pair is scored once, at the end
+    // (docs/RUST_REWRITE_PLAN.md, "Evaluation split").
     let dir = root.join("server/eval/fixtures");
-    let mut names: Vec<_> = std::fs::read_dir(&dir)?.filter_map(|e| e.ok()).map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "json")).collect();
-    names.sort();
+    let held_out = std::env::args().any(|a| a == "--held-out");
+    let split: &[&str] = if held_out {
+        &["oyedepo-meditation", "shiloh2025-love-mystery"]
+    } else {
+        &["enough-is-enough", "oyedepo-kingdomlaw", "shiloh2025-impartation"]
+    };
+    let names: Vec<_> = split.iter().map(|n| dir.join(format!("{n}.json"))).collect();
     for path in names {
         let fx: Fixture = serde_json::from_slice(&std::fs::read(&path)?)?;
         for g in &fx.ground_truth {

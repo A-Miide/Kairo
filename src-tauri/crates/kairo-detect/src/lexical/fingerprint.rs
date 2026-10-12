@@ -67,28 +67,31 @@ pub fn fingerprint(lex: &Lexicon, corpus: &Corpus, text: &str, limit: usize, rec
     }
 
     // Each spoken word scores a verse at most once, through its own form or its stem.
-    let mut weight: HashMap<VerseId, f32> = HashMap::new();
-    let mut words_hit: HashMap<VerseId, u32> = HashMap::new();
+    let n = lex.verse_count();
+    let mut weight = vec![0f32; n];
+    let mut words_hit = vec![0u32; n];
+    let mut scored_by = vec![0u32; n];
     let mut order: Vec<VerseId> = Vec::new();
-    for w in &spoken {
+    for (wi, w) in spoken.iter().enumerate() {
+        let tag = wi as u32 + 1;
         let stem = super::stem::heal(w);
         let forms: Vec<WordId> = std::iter::once(w.as_str()).chain((stem != *w).then_some(stem.as_str())).filter_map(|f| lex.vocab().id(f)).collect();
         let original = lex.vocab().id(w);
-        let mut scored: Vec<VerseId> = Vec::new();
         for &form in &forms {
             for &v in lex.verses_with_word(form) {
-                if only.is_some_and(|set| !set.contains(&v)) || scored.contains(&v) {
+                let i = v.index();
+                if scored_by[i] == tag || only.is_some_and(|set| !set.contains(&v)) {
                     continue;
                 }
                 let sig = lex.signature(v);
                 let idf = sig.iter().find(|(s, _)| *s == form).or_else(|| original.and_then(|o| sig.iter().find(|(s, _)| *s == o))).map(|(_, i)| *i);
                 if let Some(idf) = idf {
-                    scored.push(v);
-                    if !weight.contains_key(&v) {
+                    scored_by[i] = tag;
+                    if words_hit[i] == 0 {
                         order.push(v);
                     }
-                    *weight.entry(v).or_default() += idf;
-                    *words_hit.entry(v).or_default() += 1;
+                    weight[i] += idf;
+                    words_hit[i] += 1;
                 }
             }
         }
@@ -97,9 +100,9 @@ pub fn fingerprint(lex: &Lexicon, corpus: &Corpus, text: &str, limit: usize, rec
     let mut coverage: Vec<(VerseId, f32)> = order
         .into_iter()
         .filter_map(|v| {
-            let matched = weight[&v];
+            let matched = weight[v.index()];
             let cov = matched / lex.signature_weight(v).max(1e-6);
-            (cov >= COVERAGE_THRESHOLD && words_hit[&v] >= MIN_WORD_HITS && matched >= MIN_ABS_WEIGHT).then_some((v, cov))
+            (cov >= COVERAGE_THRESHOLD && words_hit[v.index()] >= MIN_WORD_HITS && matched >= MIN_ABS_WEIGHT).then_some((v, cov))
         })
         .collect();
     if coverage.is_empty() {
