@@ -2247,6 +2247,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "kairo-eval"
+version = "3.2.15"
+dependencies = [
+ "kairo-bible",
+ "kairo-detect",
+ "kairo-semantic",
+ "serde_json",
+]
+
+[[package]]
 name = "kairo-semantic"
 version = "3.2.15"
 dependencies = [

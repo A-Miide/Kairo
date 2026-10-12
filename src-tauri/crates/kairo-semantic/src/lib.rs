@@ -6,11 +6,13 @@ pub mod build;
 pub mod embedder;
 pub mod index;
 pub mod reranker;
+pub mod service;
 
 pub use build::Builder;
 pub use embedder::{Embedder, EmbedderConfig, Pooling};
 pub use index::{Hit, IndexMeta, VerseIndex};
 pub use reranker::{Reranker, RerankerConfig};
+pub use service::{Found, MeaningService};
 
 use std::path::{Path, PathBuf};
 

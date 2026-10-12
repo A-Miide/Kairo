@@ -17,22 +17,31 @@
 //! Only the dev sermons are replayed unless `--held-out` is given
 //! (docs/RUST_REWRITE_PLAN.md, "Evaluation split").
 //!
-//!   cargo run --release -p kairo-detect --bin replay -- [--clock golden] [--parity] [--held-out] [--verbose] [name ...]
+//! Meaning-based detection runs when `--meaning <embedder.json>` names an
+//! embedder config (in `kairo-semantic/bench`); `--reranker <config>`,
+//! `--index KJV,NLT` and `--thresholds <file.json>` choose the rest.
+//!
+//!   cargo run --release -p kairo-eval --bin replay -- [--clock golden] [--parity] [--held-out] [--verbose] [--trace a..b] [--meaning gemma.json] [name ...]
 
 use std::collections::{HashMap, HashSet};
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
 
-use kairo_bible::{Book, Corpus, VerseId, VerseRef};
-use kairo_detect::engine::{Config, Effect, Engine, Event, Segment, Target};
+use kairo_bible::{Book, VerseId, VerseRef};
+use kairo_detect::engine::{Config, Effect, Engine, Event, MeaningThresholds, Output, Segment, Target};
 use kairo_detect::knowledge::Knowledge;
-use kairo_detect::lexical::Wordings;
+use kairo_eval::{answer, knowledge, meaning, root};
+use kairo_semantic::MeaningService;
 use serde_json::Value;
 
 const DEV: &[&str] = &["enough-is-enough", "oyedepo-kingdomlaw", "shiloh2025-impartation", "2026-09-26-identity-in-christ-1", "2026-09-26-identity-in-christ-2", "2026-09-26-identity-in-christ-3"];
 const HELD_OUT: &[&str] = &["oyedepo-meditation", "shiloh2025-love-mystery"];
 const MATCH_WINDOW_MS: i64 = 30_000;
+/// A suggestion is right when the sermon cites or reads that verse within this of it.
+const SUGGESTION_RIGHT_MS: i64 = 60_000;
+/// …or is a verse of a cited or read passage: same chapter, this close, this soon.
+const PASSAGE_MS: i64 = 180_000;
+const PASSAGE_VERSES: u16 = 5;
 const BARE_CHAPTER_EXEMPT_MS: i64 = 10 * 60 * 1000;
 /// Speaking pace assumed where a recording has no audio times (live runs).
 const MS_PER_WORD: u64 = 400;
@@ -44,6 +53,7 @@ struct Decision {
     method: String,
     verses: Vec<VerseId>,
     corrected: bool,
+    score: f32,
 }
 
 struct GroundTruth {
@@ -65,20 +75,13 @@ struct Score {
     missed_list: Vec<String>,
     /// Method → (found, wrong).
     by_method: std::collections::BTreeMap<String, (usize, usize)>,
-    /// Method → suggestions offered.
-    offered_by: std::collections::BTreeMap<String, usize>,
-}
-
-fn root() -> PathBuf {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../..")
-}
-
-fn load_knowledge() -> Knowledge {
-    let dir = root().join("databases/bibles");
-    let corpus = Corpus::load(&dir).expect("kjv");
-    let nlt = corpus.load_map_nlt(&dir.join("map.json")).expect("nlt");
-    let niv = corpus.load_flat("NIV", &dir.join("translations/NIV.json")).expect("niv");
-    Knowledge::build(corpus, Wordings { own: None, also: vec![nlt, niv] })
+    /// Method → (suggestions offered, of them the verse being cited or read then).
+    offered_by: std::collections::BTreeMap<String, (usize, usize)>,
+    /// Suggestions that are the verse being cited or read around then.
+    suggestions_right: usize,
+    /// …or a verse of the passage being cited or read then.
+    suggestions_in_passage: usize,
+    noise_list: Vec<String>,
 }
 
 /// "1 John 5:4", "Psalms 23:1-3" → its first verse.
@@ -150,7 +153,30 @@ fn score(k: &Knowledge, gt: &[GroundTruth], decisions: &[Decision], last_ms: i64
     let suggestions: Vec<&Decision> = decisions.iter().filter(|d| d.target == Target::Suggestions).collect();
     s.suggestions = suggestions.len();
     for d in &suggestions {
-        *s.offered_by.entry(d.method.clone()).or_default() += 1;
+        let right = gt.iter().any(|g| g.keys.contains(&d.verses[0]) && (d.at_ms - g.at_ms).abs() <= SUGGESTION_RIGHT_MS) || in_bare(d);
+        let r = k.verse_ref(d.verses[0]);
+        let in_passage = right
+            || gt.iter().any(|g| {
+                (d.at_ms - g.at_ms).abs() <= PASSAGE_MS
+                    && g.keys.iter().any(|x| {
+                        let x = k.verse_ref(*x);
+                        x.book == r.book && x.chapter == r.chapter && x.verse.abs_diff(r.verse) <= PASSAGE_VERSES
+                    })
+            });
+        if in_passage {
+            s.suggestions_in_passage += 1;
+        }
+        let e = s.offered_by.entry(d.method.clone()).or_default();
+        e.0 += 1;
+        if std::env::var("OFFERS").is_ok_and(|m| m == d.method) {
+            println!("    offer {} {:.3} {:>6.1}m {}", if right { "RIGHT" } else { "noise" }, d.score, d.at_ms as f64 / 60_000.0, label(k, d.verses[0]));
+        }
+        if right {
+            e.1 += 1;
+            s.suggestions_right += 1;
+        } else if !in_passage {
+            s.noise_list.push(format!("{:>6.1}m {} ({})", d.at_ms as f64 / 60_000.0, label(k, d.verses[0]), d.method));
+        }
     }
     for g in &missed {
         let offered = suggestions.iter().any(|d| g.keys.contains(&d.verses[0]) && (d.at_ms - g.at_ms).abs() <= MATCH_WINDOW_MS);
@@ -218,18 +244,18 @@ fn trace_range() -> Option<(usize, usize)> {
     Some((a.parse().ok()?, b.parse().ok()?))
 }
 
-fn replay(k: &Arc<Knowledge>, golden: &Value, audio: bool) -> (Vec<Decision>, f64) {
+fn replay(k: &Arc<Knowledge>, golden: &Value, audio: bool, m: Option<&MeaningService>, thresholds: MeaningThresholds) -> (Vec<Decision>, f64) {
     let trace = trace_range();
-    let mut engine = Engine::new(k.clone(), Config { explain: trace.is_some(), ..Config::default() });
+    let mut engine = Engine::new(k.clone(), Config { explain: trace.is_some(), meaning: m.is_some(), meaning_thresholds: thresholds, ..Config::default() });
     let cue_at = cue_ms(golden);
     let mut out = Vec::new();
     let mut wakes: Vec<(u64, Event)> = Vec::new();
     let started = Instant::now();
-    let collect = |o: kairo_detect::engine::Output, cue: usize, wakes: &mut Vec<(u64, Event)>, out: &mut Vec<Decision>| {
+    let collect = |o: Output, cue: usize, wakes: &mut Vec<(u64, Event)>, out: &mut Vec<Decision>| {
         for e in o.effects {
             match e {
-                Effect::Show { verses, method, target, corrected_from, .. } => {
-                    out.push(Decision { cue, at_ms: cue_at[cue.min(cue_at.len() - 1)], target, method: method.wire().to_string(), verses, corrected: corrected_from.is_some() })
+                Effect::Show { verses, method, target, corrected_from, score } => {
+                    out.push(Decision { cue, at_ms: cue_at[cue.min(cue_at.len() - 1)], target, method: method.wire().to_string(), verses, corrected: corrected_from.is_some(), score })
                 }
                 Effect::WakeAt { id, at_ms } => wakes.push((at_ms, Event::Timer(id))),
                 _ => {}
@@ -266,7 +292,22 @@ fn replay(k: &Arc<Knowledge>, golden: &Value, audio: bool) -> (Vec<Decision>, f6
                 }
             }
         }
+        let mut requests = o.requests.clone();
         collect(o, cue, &mut wakes, &mut out);
+        // The models answer at once (their latency is the runtime's concern).
+        while let (Some(m), Some(r)) = (m, requests.pop()) {
+            let o = engine.handle(Event::Answer(answer(m, &r)), t);
+            if traced {
+                for n in &o.notes {
+                    println!("      .. {n}");
+                }
+                for e in &o.effects {
+                    println!("      -> {e:?}");
+                }
+            }
+            requests.extend(o.requests.iter().cloned());
+            collect(o, cue, &mut wakes, &mut out);
+        }
     }
     (out, started.elapsed().as_secs_f64())
 }
@@ -282,7 +323,13 @@ fn main() {
     let parity = args.iter().any(|a| a == "--parity");
     let verbose = args.iter().any(|a| a == "--verbose");
     let held_out = args.iter().any(|a| a == "--held-out");
-    let names: Vec<&str> = args.iter().filter(|a| !a.starts_with("--") && *a != "golden" && *a != "audio" && !a.contains("..")).map(String::as_str).collect();
+    const TAKES_VALUE: &[&str] = &["--clock", "--trace", "--meaning", "--index", "--reranker", "--thresholds"];
+    let names: Vec<&str> = args
+        .iter()
+        .enumerate()
+        .filter(|(i, a)| !a.starts_with("--") && !(*i > 0 && TAKES_VALUE.contains(&args[i - 1].as_str())))
+        .map(|(_, a)| a.as_str())
+        .collect();
     let chosen: Vec<&str> = if !names.is_empty() {
         names
     } else if held_out {
@@ -291,8 +338,17 @@ fn main() {
         DEV.to_vec()
     };
 
+    let opt = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned();
     let t0 = Instant::now();
-    let k = Arc::new(load_knowledge());
+    let k = Arc::new(knowledge());
+    let m = opt("--meaning").map(|e| {
+        let codes = opt("--index").unwrap_or_else(|| "KJV".into());
+        let codes: Vec<&str> = codes.split(',').collect();
+        meaning(&e, Some(opt("--reranker").as_deref().unwrap_or("minilm.json")), &codes)
+    });
+    let thresholds: MeaningThresholds = opt("--thresholds")
+        .map(|p| serde_json::from_slice(&std::fs::read(root().join("src-tauri/crates/kairo-semantic/bench").join(p)).expect("thresholds")).expect("thresholds"))
+        .unwrap_or_default();
     eprintln!("[replay] knowledge built in {:.1}s; clock: {}", t0.elapsed().as_secs_f64(), if audio { "audio" } else { "golden (Node's)" });
 
     let (mut rust_total, mut node_total) = (Score::default(), Score::default());
@@ -305,7 +361,7 @@ fn main() {
             continue;
         };
         let golden: Value = serde_json::from_str(&raw).unwrap();
-        let (decisions, secs) = replay(&k, &golden, audio);
+        let (decisions, secs) = replay(&k, &golden, audio, m.as_ref(), thresholds);
         let fixture_path = root().join("server/eval/fixtures").join(format!("{name}.json"));
         let fixture: Option<Value> = std::fs::read_to_string(&fixture_path).ok().and_then(|s| serde_json::from_str(&s).ok());
         let cue_at = cue_ms(&golden);
@@ -324,7 +380,7 @@ fn main() {
                     return None;
                 }
                 let target = if o["target"] == "viewer" { Target::Screen } else { Target::Suggestions };
-                Some(Decision { cue, at_ms: cue_at[cue.min(cue_at.len() - 1)], target, method: o["method"].as_str()?.to_string(), verses, corrected: o.get("correctedFrom").is_some() })
+                Some(Decision { cue, at_ms: cue_at[cue.min(cue_at.len() - 1)], target, method: o["method"].as_str()?.to_string(), verses, corrected: o.get("correctedFrom").is_some(), score: 0.0 })
             })
             .collect();
 
@@ -343,6 +399,11 @@ fn main() {
                     for m in &r.missed_list {
                         println!("    missed  {m}");
                     }
+                    if args.iter().any(|a| a == "--noise") {
+                        for n in &r.noise_list {
+                            println!("    noise   {n}");
+                        }
+                    }
                 }
                 for (t, s) in [(&mut rust_total, r), (&mut node_total, n)] {
                     t.found += s.found;
@@ -352,8 +413,12 @@ fn main() {
                     t.offered += s.offered;
                     t.suggestions += s.suggestions;
                     t.hours += s.hours;
-                    for (m, n) in s.offered_by {
-                        *t.offered_by.entry(m).or_default() += n;
+                    t.suggestions_right += s.suggestions_right;
+                    t.suggestions_in_passage += s.suggestions_in_passage;
+                    for (m, (n, r)) in s.offered_by {
+                        let e = t.offered_by.entry(m).or_default();
+                        e.0 += n;
+                        e.1 += r;
                     }
                     for (m, (f, w)) in s.by_method {
                         let e = t.by_method.entry(m).or_default();
@@ -382,7 +447,7 @@ fn main() {
                 .filter_map(|o| {
                     let verses: Vec<VerseId> = o["refs"].as_array()?.iter().filter_map(|r| parse_ref(&k, r.as_str()?)).collect();
                     let target = if o["target"] == "viewer" { Target::Screen } else { Target::Suggestions };
-                    Some(Decision { cue: o["cue"].as_u64()? as usize, at_ms: 0, target, method: o["method"].as_str()?.to_string(), verses, corrected: false })
+                    Some(Decision { cue: o["cue"].as_u64()? as usize, at_ms: 0, target, method: o["method"].as_str()?.to_string(), verses, corrected: false, score: 0.0 })
                 })
                 .collect();
             let (mut same, mut missing): (usize, Vec<String>) = (0, Vec::new());
@@ -432,10 +497,16 @@ fn main() {
     }
     for (who, s) in [("Rust", &rust_total), ("Node", &node_total)] {
         println!("{who} by method (found/wrong): {}", s.by_method.iter().map(|(m, (f, w))| format!("{m} {f}/{w}")).collect::<Vec<_>>().join(", "));
-        println!("{who} suggestions per hour by method: {}", s.offered_by.iter().map(|(m, n)| format!("{m} {:.0}", *n as f64 / s.hours)).collect::<Vec<_>>().join(", "));
+        println!(
+            "{who} Possible Matches: {:.0}/hour, {:.0}% the verse cited, {:.0}% in the passage, {:.1} noise/hour — by method (offered/right): {}",
+            s.suggestions as f64 / s.hours,
+            pct(s.suggestions_right, s.suggestions),
+            pct(s.suggestions_in_passage, s.suggestions),
+            (s.suggestions - s.suggestions_in_passage) as f64 / s.hours,
+            s.offered_by.iter().map(|(m, (n, r))| format!("{m} {n}/{r}")).collect::<Vec<_>>().join(", ")
+        );
     }
     if parity {
         println!("Parity: {}/{} of Node's stable decisions reproduced ({:.1}%), {} extra", parity_totals.0, parity_totals.1, pct(parity_totals.0, parity_totals.1), parity_totals.2);
     }
-    let _ = Path::new(".");
 }

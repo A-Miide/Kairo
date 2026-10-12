@@ -17,6 +17,7 @@ mod twins;
 pub mod types;
 
 pub use self::core::{Config, Engine};
+pub use self::meaning::MeaningThresholds;
 
 pub use event::{Answer, Effect, Event, MeaningHit, Output, Request, Segment, TimerId};
 pub use scoring::{Ledger, Score, ScoreContext};

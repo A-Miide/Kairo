@@ -9,7 +9,7 @@ use super::scoring::{self, ScoreContext, SAME_BOOK_WINDOW_MS};
 use super::twins::TwinOutcome;
 use super::types::{Method, OnScreen, Target};
 
-const SUGGESTION_DEDUP_MS: u64 = 30_000;
+const SUGGESTION_DEDUP_MS: u64 = 180_000;
 /// A verse shown this recently is still in the operator's hands.
 const SHOWN_RECENTLY_MS: u64 = 60_000;
 const DETECT_DEDUP_MS: u64 = 45_000;
@@ -99,13 +99,24 @@ impl Engine {
             target = Target::Suggestions;
         }
 
-        // 6.
-        if target == Target::Drop {
+        // 6. A verse's identifying words in any order are a second opinion,
+        // never an offer of their own: in a sermon those words recur, and on
+        // their own they were mostly wrong.
+        if target == Target::Drop || (target == Target::Suggestions && c.method == Method::Fingerprint) {
             return Target::Drop;
         }
 
         // 7. A twin of the passage in play is explained by it.
         if target == Target::Suggestions && c.method.is_text_match() && self.twin_in_play(top, now) {
+            return Target::Drop;
+        }
+
+        // 7b. Part of a verse's wording (a phrase, a fragment of a quote) is
+        // offered only where the sermon supports it: its passage is in play, it
+        // belongs to what the sermon is about, or another method agrees. A
+        // near-complete quote stands on its own.
+        if target == Target::Suggestions && self.partial_text_match(&c) && !corroborated && !self.context_supports(top, now) {
+            self.note(|e| format!("{} offer of {} dropped: partial wording, nothing in the sermon points at it", c.method.wire(), e.label(top)));
             return Target::Drop;
         }
 
@@ -213,6 +224,33 @@ impl Engine {
             }
         }
         target
+    }
+
+    /// A text match resting on only part of a verse's wording.
+    fn partial_text_match(&self, c: &Candidate) -> bool {
+        let e = &c.evidence;
+        match c.method {
+            Method::Verbatim => e.similarity.unwrap_or(0.0) < ON_SCREEN_GUARD_MAX_COVERAGE && e.matched_idf.unwrap_or(0.0) < scoring::VERBATIM_CERTAIN_IDF,
+            Method::Stream => !e.confirmed || e.matched_idf.unwrap_or(0.0) < scoring::STREAM_IDF_FULL_CONFIDENCE,
+            Method::Fingerprint => true,
+            _ => false,
+        }
+    }
+
+    /// Something in the sermon points at this verse: its book or chapter is
+    /// in play (cited, read, on screen, a range, a person named there, a book
+    /// just named), or it's among the verses the sermon keeps returning to.
+    fn context_supports(&self, v: VerseId, now: u64) -> bool {
+        if self.passage_affinity(v, now) >= 1.0 {
+            return true;
+        }
+        if self.paths.topic_library.as_ref().is_some_and(|l| l.contains(&v)) {
+            return true;
+        }
+        let recent = self.paraphrase_recent_text();
+        let words: Vec<&str> = recent.split_whitespace().collect();
+        let named = crate::reference::book_mentions(&words[words.len().saturating_sub(25)..].join(" "), self.k.books, self.cfg.lang);
+        named.contains(&self.r(v).book)
     }
 
     /// Holds a stream match until a second method lands on the same verse.

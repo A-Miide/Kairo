@@ -10,6 +10,7 @@ use kairo_bible::{Book, VerseId, VerseRef};
 use super::check::CitationCheck;
 use super::citations::CitationState;
 use super::event::{Answer, Effect, Event, Output, Segment, TimerId};
+use super::meaning::{MeaningState, MeaningThresholds};
 use super::paths::{PathState, ReadingMode};
 use super::twins::TwinState;
 use super::scoring::Ledger;
@@ -29,11 +30,12 @@ pub struct Config {
     pub meaning: bool,
     /// Say why each decision went where it did (`Output::notes`).
     pub explain: bool,
+    pub meaning_thresholds: MeaningThresholds,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { lang: Lang::En, auto_send: true, auto_correct: true, offline: false, meaning: false, explain: false }
+        Config { lang: Lang::En, auto_send: true, auto_correct: true, offline: false, meaning: false, explain: false, meaning_thresholds: MeaningThresholds::LEGACY }
     }
 }
 
@@ -137,6 +139,7 @@ pub struct Engine {
     pub(crate) paths: PathState,
     pub(crate) reading_mode: ReadingMode,
     pub(crate) check: Option<CitationCheck>,
+    pub(crate) meaning: MeaningState,
     next_id: u32,
     /// The time of the event being handled.
     pub(crate) last_now: u64,
@@ -171,6 +174,7 @@ impl Engine {
             paths: PathState::default(),
             reading_mode: ReadingMode::default(),
             check: None,
+            meaning: MeaningState::default(),
             next_id: 0,
             last_now: 0,
             out: Output::default(),
@@ -199,7 +203,9 @@ impl Engine {
             Event::Reset => self.reset(),
             Event::Timer(TimerId::RestatedChapter(id)) => self.on_restated_timer(id, now),
             Event::Answer(Answer::Compare { id, scores }) => self.on_compare(id, &scores, now),
-            Event::Timer(TimerId::SentenceBuffer) | Event::SecondarySpeech { .. } | Event::Answer(_) => {}
+            Event::Answer(Answer::Paraphrase { id, candidates }) => self.on_paraphrase(id, candidates, now),
+            Event::Answer(Answer::Scoped { id, hits }) => self.on_scoped(id, &hits, now),
+            Event::Timer(TimerId::SentenceBuffer) | Event::SecondarySpeech { .. } => {}
         }
         while let Some(c) = self.redo.pop() {
             self.decide(c, now);
@@ -301,6 +307,7 @@ impl Engine {
                     self.t.last_fingerprint = now;
                     self.process_fingerprint(&text, now);
                 }
+                self.maybe_search_meaning(false, now);
             }
             return;
         }
@@ -356,6 +363,7 @@ impl Engine {
                     self.t.last_fingerprint = now;
                     self.process_fingerprint(&chunk, now);
                 }
+                self.maybe_search_meaning(true, now);
             }
             None if text.split_whitespace().count() >= 8 => self.process_verbatim(&text, false, "", now),
             None => {}
