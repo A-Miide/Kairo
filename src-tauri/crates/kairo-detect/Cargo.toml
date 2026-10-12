@@ -8,5 +8,6 @@ edition.workspace = true
 kairo-bible = { path = "../kairo-bible" }
 regex = "1"
 fancy-regex = "0.19"
+unicode-normalization = "0.1"
 serde.workspace = true
 serde_json.workspace = true

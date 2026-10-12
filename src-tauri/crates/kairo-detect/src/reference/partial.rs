@@ -23,6 +23,7 @@ use std::sync::LazyLock;
 
 use super::books::{levenshtein, Books};
 use super::citation::{Citation, Shape, Verses};
+use super::i18n::Lang;
 use super::numbers::{consume_number, is_ambiguous_number_word};
 use super::parse::Active;
 use crate::re::re;
@@ -52,6 +53,7 @@ const NOT_BOOK_NAMES: &[&str] = &[
 pub struct PartialResolver<'a> {
     pub books: &'a Books,
     pub shape: &'a Shape,
+    pub lang: Lang,
 }
 
 fn get<'a>(w: &[&'a str], i: usize) -> &'a str {
@@ -71,7 +73,7 @@ impl PartialResolver<'_> {
         static CLOCK: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?-u:\b)[0-9]{1,2}:[0-9]{2}(?-u:\b)"));
         let book = active.book?;
         let text = CLOCK.replace_all(text, " ");
-        let prepared = super::normalize::normalize(&text, self.books);
+        let prepared = super::normalize::normalize(&text, self.books, self.lang);
         let w: Vec<&str> = prepared.split(' ').filter(|s| !s.is_empty()).collect();
         let found = |chapter: u32, verses: Verses, chapter_given: bool| Some(Partial { citation: Citation::new(book, chapter, verses), chapter_given });
 

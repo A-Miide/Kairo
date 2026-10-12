@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::LazyLock;
 
 use kairo_bible::{Book, Corpus};
-use kairo_detect::reference::{book_mentions, Active, Books, Citation, Parser, PartialResolver, ReadingContext, Shape, Verses};
+use kairo_detect::reference::{Lang, book_mentions, Active, Books, Citation, Parser, PartialResolver, ReadingContext, Shape, Verses};
 
 static SHAPE: LazyLock<Shape> = LazyLock::new(|| {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../databases/bibles");
@@ -14,11 +14,11 @@ static SHAPE: LazyLock<Shape> = LazyLock::new(|| {
 });
 
 fn parser() -> Parser<'static> {
-    Parser { books: Books::get(), shape: &SHAPE }
+    Parser { books: Books::get(), shape: &SHAPE, lang: Lang::En }
 }
 
 fn resolver() -> PartialResolver<'static> {
-    PartialResolver { books: Books::get(), shape: &SHAPE }
+    PartialResolver { books: Books::get(), shape: &SHAPE, lang: Lang::En }
 }
 
 fn b(name: &str) -> Book {
@@ -81,8 +81,8 @@ fn unnumbered_stem_offers_both_books() {
     assert_eq!(refs.len(), 1);
     assert_eq!(refs[0].book, b("1 Corinthians"));
     assert_eq!(refs[0].alternatives, vec![b("2 Corinthians")]);
-    assert_eq!(book_mentions("the book of Corinthians", Books::get()), vec![]);
-    assert_eq!(book_mentions("read Timothy chapter three", Books::get()), vec![]);
+    assert_eq!(book_mentions("the book of Corinthians", Books::get(), Lang::En), vec![]);
+    assert_eq!(book_mentions("read Timothy chapter three", Books::get(), Lang::En), vec![]);
 }
 
 #[test]
@@ -207,8 +207,8 @@ fn speech_to_text_number_formatting() {
 
 #[test]
 fn everyday_word_books_need_a_citation_or_introduction() {
-    assert_eq!(book_mentions("So there is a revelation price", Books::get()), vec![]);
-    assert_eq!(book_mentions("the book of Revelation says", Books::get()), vec![b("Revelation")]);
+    assert_eq!(book_mentions("So there is a revelation price", Books::get(), Lang::En), vec![]);
+    assert_eq!(book_mentions("the book of Revelation says", Books::get(), Lang::En), vec![b("Revelation")]);
     assert_eq!(all("Revelation 3:20"), ["Revelation 3:20"]);
 }
 

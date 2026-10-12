@@ -7,7 +7,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use kairo_bible::{Book, Corpus, VerseRef};
-use kairo_detect::reference::{Active, Books, Citation, Parser, Shape, Verses};
+use kairo_detect::reference::{Lang, Active, Books, Citation, Parser, Shape, Verses};
 
 const SAMPLE: usize = 4000;
 
@@ -84,7 +84,7 @@ fn every_book_every_way() {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../databases/bibles");
     let corpus = Corpus::load(&dir).unwrap();
     let shape = Shape::new(&corpus);
-    let parser = Parser { books: Books::get(), shape: &shape };
+    let parser = Parser { books: Books::get(), shape: &shape, lang: Lang::En };
     let mut rng = Rng(0x5eed_cafe_f00d_1234);
 
     let mut tried: BTreeMap<&str, usize> = BTreeMap::new();
