@@ -239,7 +239,8 @@ impl Engine {
 
     /// Something in the sermon points at this verse: its book or chapter is
     /// in play (cited, read, on screen, a range, a person named there, a book
-    /// just named), or it's among the verses the sermon keeps returning to.
+    /// just named), it's among the verses the sermon keeps returning to, or
+    /// the preacher has just introduced scripture ("the Bible says").
     fn context_supports(&self, v: VerseId, now: u64) -> bool {
         if self.passage_affinity(v, now) >= 1.0 {
             return true;
@@ -249,8 +250,8 @@ impl Engine {
         }
         let recent = self.paraphrase_recent_text();
         let words: Vec<&str> = recent.split_whitespace().collect();
-        let named = crate::reference::book_mentions(&words[words.len().saturating_sub(25)..].join(" "), self.k.books, self.cfg.lang);
-        named.contains(&self.r(v).book)
+        let last = words[words.len().saturating_sub(25)..].join(" ");
+        crate::reference::book_mentions(&last, self.k.books, self.cfg.lang).contains(&self.r(v).book) || self.quote_signalled(&last)
     }
 
     /// Holds a stream match until a second method lands on the same verse.

@@ -33,6 +33,9 @@ fn proper_names_come_from_capitalization() {
     for not_a_name in ["lord", "god", "jesus", "the", "and"] {
         assert!(!K.is_name(not_a_name), "{not_a_name}");
     }
+    // Renamed in the text itself: Abraham's chapters include those where he's still Abram.
+    assert!(K.name_chapters("abraham").is_some_and(|c| c.contains(&ch("Genesis", 12)) && c.contains(&ch("Genesis", 22))));
+    assert!(K.name_chapters("sarai").is_some_and(|c| c.contains(&ch("Genesis", 23))));
     let top = K.frequent_names(10);
     assert!(top.contains(&"david") && top.contains(&"moses"), "{top:?}");
 }
