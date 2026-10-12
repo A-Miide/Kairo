@@ -73,9 +73,9 @@ pub enum Effect {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Request {
     /// Meaning search over several windows of recent speech.
-    Paraphrase { id: u32, windows: Vec<String> },
+    Paraphrase { id: u32, windows: Vec<String>, limit: usize },
     /// Meaning search restricted to these verses.
-    Scoped { id: u32, text: String, verses: Vec<VerseId> },
+    Scoped { id: u32, text: String, verses: Vec<VerseId>, limit: usize },
     /// Meaning and cross-encoder scores of a few verses against speech.
     Compare { id: u32, texts: Vec<String>, verses: Vec<VerseId> },
 }
@@ -98,9 +98,6 @@ pub struct MeaningHit {
     /// Cross-encoder against the KJV and against a modern wording.
     pub rerank: Option<f32>,
     pub rerank_modern: Option<f32>,
-    /// Identifying wording shared with the window (IDF sum) and how many stems.
-    pub lex_idf: f32,
-    pub lex_hits: u32,
 }
 
 /// Everything one event produced.
