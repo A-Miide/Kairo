@@ -11,3 +11,4 @@ kairo-detect = { path = "../kairo-detect" }
 kairo-semantic = { path = "../kairo-semantic" }
 kairo-server = { path = "../kairo-server" }
 serde_json.workspace = true
+sha2 = "0.10"

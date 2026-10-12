@@ -3,88 +3,91 @@ name: Build KAIRO
 on:
   push:
     tags:
-      - 'v*'          # triggers on v2.0.0, v2.1.0, etc.
-  workflow_dispatch:  # manual trigger from GitHub UI
+      - 'v*'          # a version tag builds every platform into a draft release
+  workflow_dispatch:  # a manual run builds every platform and keeps the installers as run artifacts
 
 jobs:
+  # ── What the app bundles but git doesn't hold ────────────────────────────
+  # The meaning models (pinned, checksum-verified) and the verse index built
+  # from them — once, shared by every platform, cached until the Bible text
+  # or the index code changes. See src-tauri/crates/kairo-eval/src/bin/bundle-data.rs.
+  bundle-data:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cached bundle data
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            databases/bibles/model
+            databases/bibles/reranker_model
+            databases/bibles/verse_index.gemma-legacy.kvx
+          key: bundle-data-${{ hashFiles('databases/bibles/kjv.json', 'src-tauri/crates/kairo-eval/src/bin/bundle-data.rs', 'src-tauri/crates/kairo-semantic/src/**', 'src-tauri/crates/kairo-semantic/bench/gemma-legacy.json') }}
+
+      - name: Setup Rust
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+
+      - name: Build dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
+
+      - name: Fetch the models and build the verse index
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: cargo run --release --manifest-path src-tauri/Cargo.toml -p kairo-eval --bin bundle-data
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle-data
+          path: |
+            databases/bibles/model
+            databases/bibles/reranker_model
+            databases/bibles/verse_index.gemma-legacy.kvx
+          retention-days: 3
+
   build:
+    needs: bundle-data
     permissions:
-      contents: write   # required so tauri-action can create the GitHub release
+      contents: write   # tauri-action creates the draft release on a tag
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: macos-latest   # Universal binary — runs native on Intel AND Apple Silicon
+          - platform: macos-latest   # universal: native on Intel and Apple Silicon
             args: '--target universal-apple-darwin'
-            node-triple: 'universal-apple-darwin'
           - platform: windows-latest
             args: ''
-            node-triple: 'x86_64-pc-windows-msvc'
           - platform: ubuntu-22.04
-            # Skip AppImage — linuxdeploy is currently broken on
-            # ubuntu-22.04 + libwebkit2gtk-4.1. .deb and .rpm cover
-            # the vast majority of Linux desktops.
+            # No AppImage — linuxdeploy is broken on ubuntu-22.04 + libwebkit2gtk-4.1.
             args: '--bundles deb,rpm,updater'
-            node-triple: 'x86_64-unknown-linux-gnu'
 
     runs-on: ${{ matrix.platform }}
 
     steps:
-      # ── Checkout ───────────────────────────────────────────────────────
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      # ── Node.js (for server deps) ──────────────────────────────────────
+      - uses: actions/download-artifact@v4
+        with:
+          name: bundle-data
+          path: databases/bibles
+
+      # The Tauri CLI comes from npm; the app itself has no Node at runtime.
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '22'
 
-      # ── MSVC dev environment (Windows only) ─────────────────────────────
-      # smart-whisper compiles whisper.cpp from source via node-gyp on every
-      # install (unlike the old vosk-koffi, which shipped prebuilt binaries),
-      # and node-gyp's own Visual Studio auto-detection can't identify newer
-      # VS installs on the windows-latest image ("VCINSTALLDIR not set, not
-      # running in VS Command Prompt"). Running inside a proper VS developer
-      # command prompt sidesteps that detection entirely.
-      - name: Setup MSVC dev environment
-        if: matrix.platform == 'windows-latest'
-        uses: ilammy/msvc-dev-cmd@v1
+      - name: Install the Tauri CLI
+        run: npm install --no-audit --no-fund
 
-      # ── Install server dependencies ────────────────────────────────────
-      - name: Install server dependencies
-        working-directory: server
-        run: npm ci --omit=dev
-
-      # ── Strip build-time-only weight before bundling ───────────────────
-      # tauri.conf.json's beforeBuildCommand already runs this, but it's kept
-      # explicit here too so CI's size impact stays visible in the log. Trims
-      # smart-whisper's compiled-away source/object files (whisper.cpp compiles
-      # from source via node-gyp, leaving ~20MB that's never touched again once
-      # build/Release/smart-whisper.node exists) plus generic doc/test/map
-      # bloat across every package — see scripts/prune-server-deps.js.
-      - name: Prune server dependencies
-        run: node scripts/prune-server-deps.js
-
-      # ── Offline speech model: fetched on first run, NOT bundled ────────
-      # The whisper.cpp model is downloaded on first launch (behind the startup
-      # overlay) only when the operator actually selects the offline engine —
-      # keeping the base download small the way Pewbeam does. See
-      # bootstrapStartup() in src/app.js and /api/whisper/install in
-      # server/server.js.
-      #
-      # KNOWN GAP — universal macOS build: smart-whisper compiles whisper.cpp
-      # natively via node-gyp, unlike the old vosk-koffi dependency which
-      # shipped prebuilt per-arch binaries. `npm ci` on this single-arch CI
-      # runner only produces a smart-whisper.node for the runner's own
-      # architecture, so the OTHER arch's slice of the universal build will
-      # fail to load the offline engine at runtime. Fixing this needs an
-      # explicit per-arch rebuild step (e.g. `npm rebuild smart-whisper
-      # --target_arch=x64` and `--target_arch=arm64`, keeping both .node
-      # outputs and picking the right one at runtime by process.arch) — not
-      # yet wired up here. Deepgram and every other feature are unaffected.
-
-      # ── Rust ───────────────────────────────────────────────────────────
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
@@ -96,7 +99,6 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
-      # ── Linux system deps ──────────────────────────────────────────────
       - name: Install Linux deps
         if: matrix.platform == 'ubuntu-22.04'
         run: |
@@ -109,135 +111,59 @@ jobs:
             libssl-dev \
             pkg-config
 
-      # ── Download bundled Node.js binary for this platform ─────────────
-      # macOS universal-apple-darwin: download BOTH arm64 + x64 node binaries.
-      # Tauri's sidecar pipeline uses `lipo` to combine them into a fat binary.
-      - name: Download Node.js binary (Unix)
-        if: matrix.platform != 'windows-latest'
-        run: |
-          set -euo pipefail
-          NODE_VERSION="22.14.0"
-          TRIPLE="${{ matrix.node-triple }}"
-          DEST="src-tauri/bin"
-          mkdir -p "$DEST"
-
-          fetch_node() {
-            local os="$1" nodearch="$2" triple="$3"
-            local url="https://nodejs.org/dist/v${NODE_VERSION}/node-v${NODE_VERSION}-${os}-${nodearch}.tar.gz"
-            local subdir="node-v${NODE_VERSION}-${os}-${nodearch}/bin/node"
-            local tmp="node-${triple}.tar.gz"
-            curl -fsSL "$url" -o "$tmp"
-            tar -xzf "$tmp"
-            cp "$subdir" "$DEST/node-${triple}"
-            chmod +x "$DEST/node-${triple}"
-            echo "✓ Bundled $DEST/node-${triple}"
-          }
-
-          if [[ "$TRIPLE" == "universal-apple-darwin" ]]; then
-            fetch_node darwin arm64 aarch64-apple-darwin
-            fetch_node darwin x64   x86_64-apple-darwin
-            # Tauri's sidecar loader for universal-apple-darwin expects ONE
-            # file named node-universal-apple-darwin. Fuse the two arch
-            # binaries into a fat Mach-O with lipo.
-            lipo -create \
-              "$DEST/node-aarch64-apple-darwin" \
-              "$DEST/node-x86_64-apple-darwin" \
-              -output "$DEST/node-universal-apple-darwin"
-            chmod +x "$DEST/node-universal-apple-darwin"
-            lipo -info "$DEST/node-universal-apple-darwin"
-            echo "✓ Bundled universal $DEST/node-universal-apple-darwin"
-          elif [[ "$TRIPLE" == *"darwin"* ]]; then
-            ARCH=$(echo "$TRIPLE" | grep -o 'aarch64\|x86_64')
-            NODEARCH=$([ "$ARCH" = "aarch64" ] && echo "arm64" || echo "x64")
-            fetch_node darwin "$NODEARCH" "$TRIPLE"
-          else
-            fetch_node linux x64 "$TRIPLE"
-          fi
-
-      - name: Download Node.js binary (Windows)
-        if: matrix.platform == 'windows-latest'
-        shell: pwsh
-        run: |
-          $NODE_VERSION = "22.14.0"
-          $DEST = "src-tauri\bin"
-          New-Item -ItemType Directory -Force -Path $DEST
-          $URL = "https://nodejs.org/dist/v$NODE_VERSION/node-v$NODE_VERSION-win-x64.zip"
-          Invoke-WebRequest -Uri $URL -OutFile node.zip
-          Expand-Archive -Path node.zip -DestinationPath .
-          Copy-Item "node-v$NODE_VERSION-win-x64\node.exe" "$DEST\node-x86_64-pc-windows-msvc.exe"
-          Write-Host "✓ Bundled $DEST\node-x86_64-pc-windows-msvc.exe"
-
-      # ── Build KAIRO with Tauri ─────────────────────────────────────────
-      # Note: macOS builds use ad-hoc signing (APPLE_SIGNING_IDENTITY: '-').
-      # Users will need to right-click → Open on first launch.
-      # To enable proper Developer ID signing + notarization, restore the
-      # APPLE_CERTIFICATE / APPLE_ID / APPLE_TEAM_ID secrets and pass them here.
+      # macOS builds use ad-hoc signing (APPLE_SIGNING_IDENTITY: '-'): users
+      # right-click → Open on first launch. Restore the APPLE_CERTIFICATE /
+      # APPLE_ID / APPLE_TEAM_ID secrets here for Developer ID signing.
       - name: Build KAIRO
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-          # ── Updater signing (required for auto-update to work) ──────────
           TAURI_SIGNING_PRIVATE_KEY:          ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-
-          # ── macOS ad-hoc signing only (no Developer ID required) ───────
           APPLE_SIGNING_IDENTITY: '-'
-
-          # ── Linux AppImage workaround ──────────────────────────────────
-          # Ubuntu 22.04 + libwebkit2gtk 4.1 trips linuxdeploy's strip pass.
           NO_STRIP: 'true'
         with:
-          tagName:     ${{ github.ref_name }}
+          # A tag makes a draft release; a manual run only builds.
+          tagName:     ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
           releaseName: 'KAIRO ${{ github.ref_name }}'
           releaseBody: |
             ## KAIRO ${{ github.ref_name }}
 
-            **AI-powered live Bible verse detection for church services.**
+            **Live scripture detection for church services — rebuilt in Rust.**
 
             ### What's new
-            - **Native NDI sender** — KAIRO now appears directly on the network as an NDI source. Frames are rendered in pure Rust (tiny-skia + cosmic-text) and sent without any capture bridge. Settings → Outputs → NDI → toggle on. Requires [NDI Tools](https://ndi.video/tools/) (free) installed; KAIRO loads `libndi` from the standard install paths at runtime.
-            - **3 new lower-third layout variants** — `lower-third-card` (bottom-left offset card), `corner-card` (compact upper-right pop-in), `side-rail` (full-height left rail). Each comes with a matching theme preset.
-            - **No more white splash flash** — splash window now starts with the dark gradient already painted; main window also uses a dark base color so transitions are seamless.
-
-            ### Carried over from v2.2.2
-            - 5 lower-third theme presets (Broadcast, Ribbon, Bold Title, Whisper, Brand Block)
-            - Syphon setup parity with ProPresenter
-            - "Open Settings" banner fix
-
-            ### Carried over from v2.2.1
-            - **macOS launch fix** — bundled Node sidecar ships with JIT entitlements (was the v2.2.0 white-screen cause).
-            - **Branded loading splash** — instant feedback while the server boots.
-            - **Microphone permission prompt** — proper macOS dialog with a usage description.
-            - **Offline speech engine** — runs entirely on-device. No internet, no API key, no monthly cost. Powered by whisper.cpp.
-            - **Pill Start/Stop button** — outlined when idle, filled while listening.
-
-            ### Pick your engine in Settings → Audio
-            - **Deepgram** — higher accuracy, requires a free API key from [deepgram.com](https://deepgram.com) (12,000 min/month free).
-            - **Offline** — no internet, no key, runs locally. Lower accuracy but always-on.
+            - **A new engine, inside the app.** The detection server is now part of KAIRO itself — no Node runtime, a smaller download (~400 MB on disk, from ~650 MB), faster start.
+            - **Possible Matches you can trust.** Less than half the suggestions of 3.x with half the noise, and the same verses found; quotes with distinctive wording are offered even when the preacher doesn't cite them.
+            - **Better at what preachers actually say.** "John four verse four" read with 1 John's words becomes 1 John 4:4; a citation whose book wasn't heard ("17 verse seven to eight") is placed by the quote that follows; "someone 25" is Psalm 125.
+            - **The KJV, correctly numbered.** The bundled KJV was missing six verses and split four — in Matthew 2, 22, 26 and Mark 4, 7, 8 every later verse showed the wrong text. Fixed.
+            - **Offline engine level with Deepgram** on the test sermons, and translating slides to French, Spanish and Portuguese works again, on your machine.
+            - **Sermon notes** rebuilt: the main text, every scripture marked read, cited or alluded to, themes and the people of the Bible named.
+            - **Word documents and pasted text** import the way they're written — headings start slides, line breaks stay, one paragraph per slide.
+            - New default Bible theme: Full — Background on Crimson.
 
             ### Install
-
-            - **macOS**: Download `.dmg`, drag KAIRO to Applications.
-
-              **First launch only**: macOS will block the app because we don't yet have an Apple Developer signing certificate. Right-click KAIRO in Applications → **Open** → click **Open** in the dialog. After that, double-click works normally.
-
-            - **Windows**: Download `.msi` installer, run it. SmartScreen may show "unrecognized publisher" — click **More info** → **Run anyway**.
-
-            - **Linux**: Download `.deb` (Debian/Ubuntu) or `.rpm` (Fedora/RHEL).
-
-            ### Optional integrations
-            ProPresenter REST API · OBS WebSocket · Syphon / external display (macOS)
+            - **macOS**: download the `.dmg`, drag KAIRO to Applications. First launch only: right-click KAIRO → **Open** → **Open**.
+            - **Windows**: run the `.msi`. If SmartScreen warns about an unrecognized publisher: **More info** → **Run anyway**.
+            - **Linux**: `.deb` (Debian/Ubuntu) or `.rpm` (Fedora/RHEL).
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
 
-  # ── Deploy landing page to GitHub Pages ─────────────────────────────────
+      - name: Keep the installers (manual runs)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: kairo-${{ matrix.platform }}
+          path: |
+            src-tauri/target/release/bundle/
+            src-tauri/target/universal-apple-darwin/release/bundle/
+          retention-days: 7
+
+  # ── Landing page (docs/index.html) to GitHub Pages ───────────────────────
+  # Only the page itself — the engineering docs beside it stay in the repo.
+  # Tag runs skip it (the github-pages environment deploys from branches only).
   deploy-page:
     needs: build
-    # Skip when triggered by a tag (github-pages environment only allows
-    # deployments from protected branches, not tags). Pages re-deploys
-    # automatically on any push to main.
     if: github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
@@ -249,8 +175,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      - name: Stage the page
+        run: mkdir -p site && cp docs/index.html site/
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: docs
+          path: site
       - id: deploy
         uses: actions/deploy-pages@v4
