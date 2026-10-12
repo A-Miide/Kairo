@@ -108,4 +108,6 @@ pub struct MeaningHit {
 pub struct Output {
     pub effects: Vec<Effect>,
     pub requests: Vec<Request>,
+    /// Why each decision went where it did (when `Config::explain` is on).
+    pub notes: Vec<String>,
 }

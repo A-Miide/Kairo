@@ -177,7 +177,7 @@ impl Engine {
         // verse fits what's being said.
         let prev_tail = prev.map(|(p, _)| p.trim().trim_end_matches(['.', ',', '!', '?']).split_whitespace().last().unwrap_or("").to_lowercase()).unwrap_or_default();
         let carried = matches!(prev_tail.as_str(), "verse" | "verses")
-            && prev.is_some_and(|(_, at)| now.saturating_sub(*at) < PREV_FINAL_JOIN_WINDOW_MS)
+            && prev.is_some_and(|(_, at)| self.t.segment_started.saturating_sub(*at) < PREV_FINAL_JOIN_WINDOW_MS)
             && opens_with_number(text);
         let query = if carried { format!("verse {text}") } else { text.to_string() };
         let Some(p) = self.k.partials(self.cfg.lang).resolve(&query, self.active(now), true) else { return false };

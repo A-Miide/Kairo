@@ -81,6 +81,11 @@ pub struct Transcript {
     /// Verses already sent from this utterance's interims.
     pub interim_sent: HashSet<VerseId>,
     pub stream_watermark: usize,
+    /// When the utterance in progress began (its first interim).
+    pub utterance_start: Option<u64>,
+    /// When the segment being handled began to be heard: a pause is measured
+    /// from the previous final to here, not to this segment's end.
+    pub segment_started: u64,
     pub last_interim_verbatim: u64,
     pub last_fingerprint: u64,
 }

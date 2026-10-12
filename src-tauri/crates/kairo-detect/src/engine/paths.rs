@@ -132,17 +132,18 @@ fn clause_list(text: &str, min_words: usize) -> Vec<String> {
 
 impl Engine {
     /// The best verbatim results over several texts (stopping at a near-complete quote).
-    fn verbatim_batch(&self, texts: &[String], min_words: usize) -> Vec<VerbatimHit> {
-        let mut best: Vec<VerbatimHit> = Vec::new();
+    /// The best results over several texts, and the text they came from.
+    fn verbatim_batch(&self, texts: &[String], min_words: usize) -> (Vec<VerbatimHit>, String) {
+        let mut best: (Vec<VerbatimHit>, String) = (Vec::new(), String::new());
         for t in texts {
             let r = verbatim(&self.k.lexicon, t, min_words, VERBATIM_LIMIT);
             if r.is_empty() {
                 continue;
             }
-            if best.is_empty() || r[0].score > best[0].score {
-                best = r;
+            if best.0.is_empty() || r[0].score > best.0[0].score {
+                best = (r, t.clone());
             }
-            if best[0].score >= READ_SIMILARITY {
+            if best.0[0].score >= READ_SIMILARITY {
                 break;
             }
         }
@@ -154,7 +155,7 @@ impl Engine {
         if texts.is_empty() {
             return;
         }
-        let results = self.verbatim_batch(&texts, VERBATIM_MIN_WORDS);
+        let (results, found_in) = self.verbatim_batch(&texts, VERBATIM_MIN_WORDS);
         let Some(first) = results.first().copied() else { return };
         let certain = |h: &VerbatimHit| h.score >= VERBATIM_AUTOSEND_MIN || h.matched_idf.is_some_and(|m| m >= VERBATIM_CERTAIN_IDF);
         let screen: Vec<VerbatimHit> = results.iter().copied().filter(certain).collect();
@@ -162,7 +163,7 @@ impl Engine {
 
         let Some(&top) = screen.first() else {
             // Below the bar: offered (the scorer's floor drops weak ones).
-            self.decide(Candidate::new(vec![first.verse], Method::Verbatim, first.score, Target::Suggestions).evidence(evidence(&first)).capped(), now);
+            self.decide(Candidate::new(vec![first.verse], Method::Verbatim, first.score, Target::Suggestions).evidence(evidence(&first)).from_text(&found_in).capped(), now);
             return;
         };
         let steps_back = self.screen.up_verse().is_some_and(|u| {
@@ -171,7 +172,7 @@ impl Engine {
         });
         // The end-of-utterance sweep mustn't resurrect a quote the reading has moved past.
         if rescan && (!self.shares_words_with(top.verse, latest) || steps_back) {
-            self.decide(Candidate::new(vec![top.verse], Method::Verbatim, top.score, Target::Suggestions).evidence(evidence(&top)).capped(), now);
+            self.decide(Candidate::new(vec![top.verse], Method::Verbatim, top.score, Target::Suggestions).evidence(evidence(&top)).from_text(&found_in).capped(), now);
             return;
         }
         let as_match = |h: &VerbatimHit| Match { verse: h.verse, similarity: h.score, matched_idf: h.matched_idf, method: Method::Verbatim };
@@ -187,7 +188,7 @@ impl Engine {
             let texts: Vec<String> = rivals.iter().map(|v| self.match_text(*v)).collect();
             let refs: Vec<&str> = texts.iter().map(String::as_str).collect();
             if explained_better_by(&self.match_text(top.verse), &refs, if rescan { latest } else { text }).is_some() {
-                self.decide(Candidate::new(vec![top.verse], Method::Verbatim, top.score, Target::Suggestions).evidence(evidence(&top)).capped(), now);
+                self.decide(Candidate::new(vec![top.verse], Method::Verbatim, top.score, Target::Suggestions).evidence(evidence(&top)).from_text(&found_in).capped(), now);
                 return;
             }
         }
@@ -195,7 +196,7 @@ impl Engine {
         let corroborated = self.ledger.has_corroboration(self.r(top.verse));
         let intent = if via_idf && !corroborated { Target::Suggestions } else { Target::Screen };
         let verses = screen.iter().map(|h| h.verse).collect();
-        self.decide(Candidate::new(verses, Method::Verbatim, score, intent).evidence(evidence(&top)), now);
+        self.decide(Candidate::new(verses, Method::Verbatim, score, intent).evidence(evidence(&top)).from_text(&found_in), now);
         if top.score >= READ_SIMILARITY {
             let r = self.r(top.verse);
             self.note_cited(r.book, Some(r.chapter), Some(r.verse), false, now);
@@ -529,11 +530,13 @@ impl Engine {
         let lex = &self.k.lexicon;
         let corpus = &self.k.corpus;
         let mut best = crate::lexical::FingerprintResult { hits: Vec::new(), confidence: Confidence::None };
+        let mut found_in = String::new();
         if let Some(library) = &self.paths.topic_library {
             for t in &texts {
                 let r = fingerprint(lex, corpus, t, FINGERPRINT_LIMIT, &recent, Some(library));
                 if r.confidence > best.confidence {
                     best = r;
+                    found_in = t.clone();
                 }
                 if best.confidence == Confidence::High {
                     break;
@@ -545,6 +548,7 @@ impl Engine {
                 let r = fingerprint(lex, corpus, t, FINGERPRINT_LIMIT, &recent, None);
                 if r.confidence > best.confidence {
                     best = r;
+                    found_in = t.clone();
                 }
                 if best.confidence == Confidence::High {
                     break;
@@ -561,7 +565,7 @@ impl Engine {
             let qualifying: Vec<(VerseId, f32)> = best.hits.iter().copied().filter(|(_, s)| *s >= SUGGESTION_MIN_SCORE).take(3).collect();
             if let Some(&(v, s)) = qualifying.first() {
                 let verses = qualifying.iter().map(|h| h.0).collect();
-                self.decide(Candidate::new(verses, Method::Fingerprint, s, Target::Suggestions).evidence(evidence(s)), now);
+                self.decide(Candidate::new(verses, Method::Fingerprint, s, Target::Suggestions).evidence(evidence(s)).from_text(&found_in), now);
                 let r = self.r(v);
                 self.note_cited(r.book, Some(r.chapter), Some(r.verse), false, now);
             }
@@ -575,7 +579,9 @@ impl Engine {
                 if s >= SCOPED_MIN_SCORE && margin >= SCOPED_MARGIN && !repeats {
                     let c = r.confidence;
                     self.decide(
-                        Candidate::new(vec![v], Method::Fingerprint, s, Target::Suggestions).evidence(Evidence { similarity: Some(s), confidence: Some(c), ..Default::default() }),
+                        Candidate::new(vec![v], Method::Fingerprint, s, Target::Suggestions)
+                            .evidence(Evidence { similarity: Some(s), confidence: Some(c), ..Default::default() })
+                            .from_text(&texts[0]),
                         now,
                     );
                 }

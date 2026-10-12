@@ -27,11 +27,13 @@ pub struct Config {
     pub offline: bool,
     /// The runtime answers model requests (meaning search, cross-encoder).
     pub meaning: bool,
+    /// Say why each decision went where it did (`Output::notes`).
+    pub explain: bool,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { lang: Lang::En, auto_send: true, auto_correct: true, offline: false, meaning: false }
+        Config { lang: Lang::En, auto_send: true, auto_correct: true, offline: false, meaning: false, explain: false }
     }
 }
 
@@ -52,6 +54,8 @@ pub struct Candidate {
     /// Already chosen over its near-duplicate twin.
     pub twin_resolved: bool,
     pub corrected_from: Option<VerseId>,
+    /// The speech the path found it in, when that's a stretch of its own.
+    pub source: Option<String>,
 }
 
 impl Candidate {
@@ -66,7 +70,13 @@ impl Candidate {
             verbatim_disagreed: false,
             twin_resolved: false,
             corrected_from: None,
+            source: None,
         }
+    }
+
+    pub fn from_text(mut self, text: &str) -> Candidate {
+        self.source = Some(text.to_string());
+        self
     }
 
     pub fn evidence(mut self, e: Evidence) -> Candidate {
@@ -242,6 +252,18 @@ impl Engine {
         self.sermon.iter().filter(move |c| now.saturating_sub(c.at) <= CONTEXT_WINDOW_MS)
     }
 
+    pub(crate) fn note(&mut self, f: impl FnOnce(&Engine) -> String) {
+        if self.cfg.explain {
+            let n = f(self);
+            self.out.notes.push(n);
+        }
+    }
+
+    pub(crate) fn label(&self, v: VerseId) -> String {
+        let r = self.r(v);
+        format!("{} {}:{}", r.book.name(), r.chapter, r.verse)
+    }
+
     pub(crate) fn next_request_id(&mut self) -> u32 {
         self.next_id += 1;
         self.next_id
@@ -256,6 +278,8 @@ impl Engine {
         self.note_named_person(&text, now);
 
         if !seg.is_final {
+            let started = *self.t.utterance_start.get_or_insert(now);
+            self.t.segment_started = started;
             self.t.interim = text.clone();
             self.stream_new_words(&text, false, false, now);
             self.next_verse_trigger(&text, now);
@@ -281,6 +305,7 @@ impl Engine {
             return;
         }
 
+        self.t.segment_started = self.t.utterance_start.take().unwrap_or(now);
         self.t.interim.clear();
         self.t.push_final(&text, now);
         let pace = self.t.pace_factor();

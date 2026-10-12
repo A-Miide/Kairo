@@ -253,7 +253,7 @@ impl Engine {
         if is_final {
             if let Some((prev, at)) = self.t.prev_final.clone() {
                 let split = !refs.is_empty() && opens_with_number(text) && ends_mid_citation(&prev);
-                if (refs.is_empty() || split) && now.saturating_sub(at) < PREV_FINAL_JOIN_WINDOW_MS {
+                if (refs.is_empty() || split) && self.t.segment_started.saturating_sub(at) < PREV_FINAL_JOIN_WINDOW_MS {
                     // Only citations the join creates or extends.
                     let prev_keys: HashSet<String> = self.parse(&prev, now).iter().map(cite_key).collect();
                     let joined = format!("{prev} {text}");
@@ -602,7 +602,7 @@ impl Engine {
     /// the previous final ("…in the book of Acts" | "one verse eight").
     pub(crate) fn announces_different_book(&self, text: &str, prev: Option<(String, u64)>, now: u64) -> bool {
         let mut prev_tail = match prev {
-            Some((p, at)) if now.saturating_sub(at) < PREV_FINAL_JOIN_WINDOW_MS => last_n_words(&p, 8),
+            Some((p, at)) if self.t.segment_started.max(at).saturating_sub(at) < PREV_FINAL_JOIN_WINDOW_MS => last_n_words(&p, 8),
             _ => String::new(),
         };
         if !prev_tail.is_empty() && self.parse(&prev_tail, now).iter().any(|c| !matches!(c.verses, Verses::Chapter)) {
