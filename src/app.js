@@ -303,7 +303,10 @@ function handleServerMessage(msg) {
     // mirroring it in this window's own preview so a media send has some
     // visible confirmation here too, not just on the actual output.
     case 'media':
-      if (msg.target === 'viewer') renderMediaPreview(msg.src, msg.kind, msg.fit);
+      if (msg.target === 'viewer') {
+        renderMediaPreview(msg.src, msg.kind, msg.fit);
+        window.KairoService?.onMediaLive?.(msg.src);
+      }
       break;
 
     // A live segment's themed countdown — mirror it into the Monitoring
@@ -314,7 +317,7 @@ function handleServerMessage(msg) {
 
     case 'clear-layer':
       if (msg.layer === 'slide' || msg.layer === 'all') clearPreviewScreen();
-      if (msg.layer === 'media' || msg.layer === 'all') clearMediaPreview();
+      if (msg.layer === 'media' || msg.layer === 'all') { clearMediaPreview(); window.KairoService?.onMediaLive?.(null); }
       if (msg.layer === 'timer' || msg.layer === 'all') window.KairoService?.onTimerSlide?.({ clear: true });
       break;
 

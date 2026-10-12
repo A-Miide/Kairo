@@ -49,6 +49,8 @@
   --brand:          #F5301A;
   --brand-dim:      rgba(245,48,26,0.15);
   --brand-gradient: linear-gradient(135deg, #FF9130, #F5301A);
+  /* A filled brand button under the pointer — a shade deeper, not lighter. */
+  --brand-hover:    #DB2A15;
   /* Secondary/interactive accent — input focus rings, hover borders, toggle
      tracks, drag-drop indicators, primary CTA buttons (.modal-btn.primary),
      accent-color on checkboxes. Was teal, kept "near-complementary to
@@ -2951,12 +2953,13 @@ select {
 }
 
 /* Primary actions — the one thing a panel is asking for (Save, Get Started,
-   Download the offline model) — in the brand colours (2026-10-12: "primary
-   actions like download offline model should use the branded colors");
-   secondary ones stay neutral, so the orange still says "this one". */
-.modal-btn.primary, .btn-brand { background: var(--brand-gradient); color: #fff; border-color: transparent; }
+   Download the offline model) — in the brand's darker colour, solid
+   (2026-10-12: "primary actions … should use the branded colors", "the
+   darker part for the colored buttons too" — no gradient buttons).
+   Secondary ones stay neutral, so the colour still says "this one". */
+.modal-btn.primary, .btn-brand { background: var(--brand); color: #fff; border-color: transparent; }
 .modal-btn.primary { padding: 8px 24px; }
-.modal-btn.primary:hover, .btn-brand:hover { background: var(--brand-gradient); filter: brightness(1.08); }
+.modal-btn.primary:hover, .btn-brand:hover { background: var(--brand-hover); }
 .modal-btn.primary:disabled, .btn-brand:disabled { filter: grayscale(0.6) brightness(0.8); cursor: default; }
 /* A download button laid out like a settings field. */
 .setting-input.btn-brand { font-weight: 600; text-align: center; }
@@ -4852,7 +4855,13 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
   font-size: 10.5px;
   color: var(--text-3);
   flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
+.media-bin-header .cs-section-label { white-space: nowrap; flex: none; }
+.media-bin-size, .media-bin-folder, #media-bin-hide-btn { flex: none; }
 .media-bin-strip {
   flex: 1;
   min-height: 0;
@@ -4866,8 +4875,26 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
 }
 .media-bin-strip .media-card {
   flex: 0 0 auto;
-  width: 130px;
+  width: var(--mb-thumb, 130px);
 }
+/* On air: the card whose picture is on the media layer now. */
+.media-card.is-live { border-color: var(--brand); box-shadow: 0 0 0 1.5px var(--brand); }
+.media-card.is-live::after {
+  content: 'On air';
+  position: absolute; top: 6px; left: 6px;
+  background: var(--brand); color: #fff;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  padding: 2px 6px; border-radius: 4px;
+}
+.media-bin-folder {
+  height: 24px; max-width: 170px;
+  padding: 0 6px;
+  background: var(--bg-panel); color: var(--text-2);
+  border: 1px solid var(--border); border-radius: var(--radius-sm);
+  font-size: 11px;
+}
+.media-bin-size { display: flex; align-items: center; gap: 6px; color: var(--text-3); }
+.media-bin-size input { width: 90px; accent-color: var(--brand); }
 .media-bin-strip .svc-empty {
   flex: 1;
   display: flex;
@@ -5627,8 +5654,9 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
 .ts-tool-btn:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
 /* The active tool in the brand colours, not a plain white wash — easy to
    pick out against the canvas at a glance (2026-09-30: "add more color to
-   the tool icon for contrast"; brand, not the warning red, 2026-10-12). */
-.ts-tool-btn.active { background: var(--brand-gradient); border-color: transparent; color: #fff; }
+   the tool icon for contrast"; the brand colour, not the warning red,
+   2026-10-12). */
+.ts-tool-btn.active { background: var(--brand); border-color: transparent; color: #fff; }
 /* The tools float centred over the TOP of the canvas (after Figma and
    Compositor) instead of sitting in the bar under it — taken out of
    .ts-preview-wrap's flex flow (position:absolute) so it never competes
