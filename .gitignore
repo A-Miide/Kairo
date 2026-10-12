@@ -56,3 +56,6 @@ scripts/kairo-updater.key
 .claude/
 
 .scratch_preview/
+
+# Parity recorder run logs
+parity/*.log

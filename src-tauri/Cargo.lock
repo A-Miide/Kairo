@@ -2053,6 +2053,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "kairo-bible"
+version = "3.2.15"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.18",
+]
+
+[[package]]
 name = "keyboard-types"
 version = "0.7.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
