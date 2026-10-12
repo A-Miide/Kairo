@@ -250,3 +250,29 @@ Quotes and paraphrases the sermon gives no pointer to and whose wording isn't
 distinctive ("I am that I am", "Thou shalt serve the Lord and he shall bless",
 the everlasting mountains of Habakkuk 3:6); "In Romans, whosoever call upon
 the name…" with no chapter (Node misses it too).
+
+### Offline closer to Deepgram (2026-10-12)
+- **The rolling locks stay** (4 live words, locks of 3+, never ending on a
+  number — `server/sherpa_engine.js`'s reasons: locking at pauses let a line
+  grow to 72 words and fire its citations 25 s late). The engine adapts to
+  them instead: every "the newest speech" window now takes segments until it
+  has enough words (`Transcript::recent_finals`) — the paraphrase context (4
+  segments, ≥ 40 words), the speech a range or twin check reads (≥ 12) — so a
+  Deepgram sentence and the offline engine's several short runs give the same
+  text. The on-screen comparison keeps the newest segment only (reaching
+  further back read the verse on screen: Isaiah 53:8 held back by 53:7).
+  Deepgram unchanged (218/255); offline +1.
+- **Beam search and the book names as hotwords** are written and measurable
+  (`offline-transcribe --beam`, `--hotwords 1.5`) but off: sherpa-onnx 1.13.8,
+  the newest release, has no beam search for NeMo streaming models (it exits);
+  k2-fsa/sherpa-onnx#3895 (14 Sep) adds it. Measure on the next release.
+- **The answer keys gained four quotes** that were said but missing (Haggai 2:9,
+  Proverbs 22:7, 2 Timothy 1:7 in Impartation; Mark 11:23 in Enough is Enough),
+  read against both transcriptions.
+- Result on the two sermons with audio: offline 64/81 found, 4 wrong; Deepgram
+  64/81, 0 wrong. Offline's wrong sends are the recogniser's: "the eye shall be
+  filled" for "the earth" (Isaiah 11:9 for Habakkuk 2:14), "Psalm one zero four
+  verse" dropped (a bare "twenty four" read as Proverbs 3:24), and Romans 10:13
+  for Acts 2:21 (the words said were Romans'). Closing that needs a better
+  transcript: hotwords when the release lands, or a second, non-streaming pass
+  over each finished sentence (a separate download — not done).

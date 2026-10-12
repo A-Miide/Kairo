@@ -66,6 +66,11 @@ pub fn present(dir: &std::path::Path) -> bool {
 /// How the recogniser decodes. Beam search can lean towards words a service
 /// is likely to hear (the Bible's book names, which the model otherwise
 /// mishears: "Proverbate", "someone 25"); greedy is the fastest.
+///
+/// Beam search for NeMo streaming models arrived in sherpa-onnx after 1.13.8
+/// (k2-fsa/sherpa-onnx#3895); 1.13.8 exits the process when asked for it.
+/// Until a release carries it the app decodes greedily, and only
+/// `offline-transcribe --beam` / `--hotwords` (for measuring it) ask for beam.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Decoding {
     pub beam: bool,
