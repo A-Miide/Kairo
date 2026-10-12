@@ -895,7 +895,7 @@ pub fn run() {
                     if let Ok(resp) = client.get(&health_url).send() {
                         let body = resp.text().unwrap_or_default();
                         if body.contains("\"workerBasicReady\":true") {
-                            println!("[KAIRO] Server + worker ready after ~{}ms", attempt * 500);
+                            println!("[KAIRO] Server ready after ~{}ms", attempt * 500);
                             server_ready = true;
                             break;
                         }

@@ -166,7 +166,14 @@ fn ordinal_forms(t: &str, books: &Books) -> String {
         re(r"(?-u:\b)(?:the )?(first|second|third|1st|2nd|3rd) (?:book|epistle|letter) (?:of|to) (?:the )?([a-z]+)(?-u:\b)")
     });
 
+    // "Psalm one twenty-five" is heard as "someone 25": read as Psalm 125 only
+    // when a verse or chapter word follows ("someone 25 years ago" is untouched).
+    static SOMEONE_PSALM: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?-u:\b)some ?one ([0-9]{2}),? (verse|verses|vers|chapter)(?-u:\b)"));
+
     let mut t = t.to_string();
+    if t.contains("one ") {
+        t = SOMEONE_PSALM.replace_all(&t, "psalm 1$1 $2").into_owned();
+    }
     if t.contains(" the end") {
         t = TO_THE_END.replace_all(&t, "$1 to end").into_owned();
     }
@@ -306,6 +313,8 @@ mod tests {
         assert_eq!(n("the first verse of the song"), "the first verse of the song");
         assert_eq!(n("from verse 4 to the end of the chapter"), "from verse 4 to end");
         assert_eq!(n("one one zero"), "one one zero");
+        assert_eq!(n("Someone 25, verse one and two"), "psalm 125 verse one and two");
+        assert_eq!(n("someone 25 years ago"), "someone 25 years ago");
     }
 
     #[test]

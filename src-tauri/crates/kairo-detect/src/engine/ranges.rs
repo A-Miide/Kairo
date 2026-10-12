@@ -21,6 +21,8 @@ const READING_SLACK: usize = 15;
 const PREFIX_MIN_IDF: f32 = 3.5;
 const ADVANCE_MIN_SCORE: f32 = 0.50;
 const CONTENT_LOOKAHEAD: usize = 3;
+/// What "just said" means for skipping ahead: at least this many words.
+const CONTENT_MIN_WORDS: usize = 10;
 /// A chapter's verse is chosen from speech only with this much identifying
 /// weight, and this lead over the next best.
 pub const CHAPTER_KEYWORD_MIN_IDF: f32 = 14.0;
@@ -180,7 +182,19 @@ impl Engine {
         if ahead.is_empty() {
             return;
         }
-        let text = self.range.heard.iter().rev().take(2).rev().cloned().collect::<Vec<_>>().join(" ");
+        // The last two segments, or more when they're short (the offline
+        // engine locks words in a few at a time).
+        let mut taken: Vec<&str> = Vec::new();
+        let mut words = 0;
+        for seg in self.range.heard.iter().rev() {
+            if taken.len() >= 2 && words >= CONTENT_MIN_WORDS {
+                break;
+            }
+            words += seg.split_whitespace().count();
+            taken.push(seg);
+        }
+        taken.reverse();
+        let text = taken.join(" ");
         if text.is_empty() || book_mentions(&text, self.k.books, self.cfg.lang).iter().any(|b| *b != cr.book) {
             return;
         }

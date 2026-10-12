@@ -206,6 +206,13 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
                     msg["corrected"] = json!(true);
                     msg["correctedFrom"] = json!(bible.reference(from));
                 }
+                eprintln!(
+                    "[Detect] {} → {} ({} {score:.2}){}",
+                    verses.iter().map(|v| bible.reference(*v)).collect::<Vec<_>>().join(", "),
+                    if viewer { "screen" } else { "Possible Matches" },
+                    method.wire(),
+                    corrected_from.map_or(String::new(), |f| format!(", corrects {}", bible.reference(f)))
+                );
                 hub.broadcast(msg);
                 if viewer && p.auto_send {
                     hub.set_bible_on_top(true);
