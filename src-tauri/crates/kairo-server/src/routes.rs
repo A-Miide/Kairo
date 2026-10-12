@@ -152,21 +152,26 @@ async fn test_transcript(State(app): State<Shared>, Json(body): Json<Value>) -> 
 
 async fn start_listening(State(app): State<Shared>, Json(body): Json<Value>) -> Json<Value> {
     let mut listening = app.listening.lock().await;
-    if matches!(&*listening, Some(crate::Listening::Deepgram(s)) if !s.alive()) {
+    if listening.as_ref().is_some_and(|l| !l.alive()) {
         *listening = None;
     }
     if listening.is_some() {
         return Json(json!({ "error": "Already listening" }));
     }
     let engine = body["engine"].as_str().unwrap_or("deepgram").to_lowercase();
-    if engine == "offline" || engine == "browser" {
-        return Json(json!({ "error": "The offline engine isn't available in this build yet" }));
-    }
-    match crate::deepgram::start(app.clone()).await {
+    let started = if engine == "offline" || engine == "browser" {
+        crate::offline::start(app.clone()).await.map(crate::Listening::Offline)
+    } else {
+        if let Some((_, d)) = app.ready() {
+            d.configure(|c| c.offline = false);
+        }
+        crate::deepgram::start(app.clone()).await.map(crate::Listening::Deepgram)
+    };
+    match started {
         Ok(session) => {
-            *listening = Some(crate::Listening::Deepgram(session));
+            *listening = Some(session);
             *app.keep_awake.lock().unwrap() = Some(crate::KeepAwake::hold());
-            Json(json!({ "ok": true }))
+            Json(if engine == "offline" || engine == "browser" { json!({ "ok": true, "engine": "offline" }) } else { json!({ "ok": true }) })
         }
         Err(e) => Json(e),
     }
@@ -174,8 +179,13 @@ async fn start_listening(State(app): State<Shared>, Json(body): Json<Value>) -> 
 
 async fn stop_listening(State(app): State<Shared>) -> Json<Value> {
     let session = app.listening.lock().await.take();
-    if let Some(crate::Listening::Deepgram(s)) = session {
-        s.stop().await;
+    match session {
+        Some(crate::Listening::Deepgram(s)) => s.stop().await,
+        Some(crate::Listening::Offline(s)) => {
+            s.stop().await;
+            crate::offline::stopped(&app).await;
+        }
+        None => {}
     }
     app.keep_awake.lock().unwrap().take();
     Json(json!({ "ok": true }))

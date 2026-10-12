@@ -121,3 +121,75 @@ Two of Rust's three "wrong" sends are verses the preacher did read that the
 ground truth doesn't list (1 Corinthians 9:24, Genesis 26:13). Rust doesn't
 yet have the meaning paths (Node found 1 verse that way). Possible Matches is
 busier than Node's; that's next to look at.
+
+## The server, the speech engines, the app (2026-10-12)
+
+The Node server is replaced by `crates/kairo-server` (axum), serving the same
+contract the UI already speaks — same routes, same WebSocket messages, same
+port and token — so the UI is unchanged. In release builds it runs inside the
+app; `npm run dev` runs it as its own process (`npm run server`). Node is no
+longer bundled (`npm run server:node` still runs the old server for
+comparison).
+
+### Ported
+- Static UI, token auth, settings, the WebSocket (catch-up state for windows
+  that reconnect, microphone audio intake), Back history, layers, looks,
+  monitor message, Live Queue sends, search, lookups, ranges.
+- **Deepgram** (keep-alive, stuck-connection watchdog, reconnect with the gap's
+  audio replayed, unfinished words locked, Finalize on stop, refusals
+  explained) and the **offline engine** (Nemotron through sherpa-onnx,
+  locking, endpoints, shared and released model) — one funnel for both, one
+  vocabulary for both. Tested end to end with streamed audio.
+- The offline model installer (resumable, retried, checksum-verified).
+- Songs, triggers (stage timer, clock), segments (with the pre-service loop,
+  exported from `src/announcement_pack.js` by
+  `scripts/export-announcement-pack.js`), media library (range-served files,
+  watched folders), OBS (obs-websocket v5), translation (the Bible in the
+  language; Ollama for other text), exports.
+- Slide import (text, Word, PowerPoint, ProPresenter 6/7, bundles, playlists)
+  and ProPresenter themes — own zip, protobuf and RTF readers.
+
+### Executive decisions
+- **Word and pasted text import the way they're written.** Most Word documents
+  have no blank lines between paragraphs and imported as one slide. Now:
+  section labels and headings start slides; Word line breaks (and their
+  clipboard forms) stay lines; short lines group four to a slide; each prose
+  paragraph is its own slide, split at sentence ends when long.
+- **Sermon notes rebuilt on the engine's record of the service**: the main
+  text printed, each scripture marked read / cited / alluded to, themes from
+  the words that identify the scriptures used, people of the Bible named,
+  notes for unpunctuated speech. No cloud model and no bundled language model
+  (owner: no added costs, no bloat); lines must be almost entirely real words
+  to be quoted.
+- **No re-offer of a verse within 3 minutes; fingerprint and scoped meaning
+  never offer alone; partial wording is offered only where the sermon's
+  context points at it** (passage in play, person named, book just named,
+  "the Bible says…"). Possible Matches: 78 → 20 per hour, noise 11.7 → 5.5
+  per hour (Node: 50 and 11.7), the same verses found.
+- **The meaning models stay as Node used them for now** (mean-pooled
+  EmbeddingGemma, MiniLM cross-encoder) with Node's thresholds; the corrected
+  model usage is calibrated (`kairo-eval --bin calibrate`) but not yet
+  validated on the dev sermons, so it doesn't ship.
+
+### Not in this build
+- The extra time-offset Deepgram streams (citation voting).
+- Downloading local translation models (Ollama and the bundled Bibles still
+  translate); scripture language-pack downloads.
+- The optional Ollama polish of sermon notes.
+
+### Size
+App about 400 MB on disk with the same features (655 MB today): no Node
+runtime or packages, the verse index 23 MB instead of 91 MB of raw vectors.
+Compressing the Bible text and tokenizer would bring it to about 330 MB.
+
+### How to test
+1. `npm run dev` on branch `rust-rewrite` (the first run compiles the server:
+   a minute or two). Nothing else should be listening on port 7777.
+2. Live: Deepgram and Offline (Settings → Speech Engine). The offline model
+   downloads from Settings as before.
+3. Detection, Possible Matches, ranges ("verses 3 to 5", "next verse"),
+   search, Back, Live Queue, media, songs, segments/timers, OBS.
+4. Import a Word document and paste from the clipboard.
+5. Export → Sermon notes / transcript / verses.
+6. Replays: `cargo run --release -p kairo-eval --bin replay` (dev sermons,
+   real timing, with `--verbose`, `--noise`, `--trace a..b`).

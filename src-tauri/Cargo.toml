@@ -42,6 +42,8 @@ anyhow = "1"
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+# Kairo's backend, run inside the app (release builds).
+kairo-server = { path = "crates/kairo-server" }
 tauri = { version = "2", features = ["webview-data-url"] }
 tauri-plugin-shell = "2"
 tauri-plugin-dialog = "2"

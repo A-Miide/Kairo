@@ -12,7 +12,9 @@ mod clock;
 mod library;
 mod media;
 mod import;
+mod installer;
 pub mod notes;
+mod offline;
 mod obs;
 mod pdf;
 mod pdf_metrics;
@@ -67,6 +69,16 @@ pub struct App {
 /// The speech engine that's listening.
 pub enum Listening {
     Deepgram(deepgram::Session),
+    Offline(offline::Session),
+}
+
+impl Listening {
+    fn alive(&self) -> bool {
+        match self {
+            Listening::Deepgram(s) => s.alive(),
+            Listening::Offline(s) => s.alive(),
+        }
+    }
 }
 
 /// Keeps the Mac awake while listening (a service mustn't sleep mid-sermon).
