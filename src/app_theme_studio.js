@@ -139,31 +139,12 @@ function gradientCanvas(id) {
 const DEFAULT_LOOKS = [
   {
     // The default Bible theme (first, so a fresh install's outputs start on
-    // it): a cool gradient from the bundled set — Blue Hour, cyan into blue
-    // and violet with a violet glow, dark enough under white verse text
-    // (2026-10-01: "a default bible theme with a sweet gradient, something
-    // cool, not warm"). Same text layout as Full — Background.
-    id: 'full-gradient', name: 'Full — Gradient', layout: 'fullscreen', animation: 'fade',
-    groupId: 'grp-bible', groupName: 'Bible',
-    layers: [
-      gradientCanvas('blue-hour'),
-      { id: 'verse', type: 'text', name: 'Verse', visible: true, binding: 'verse', customText: '',
-        pos: { x: 210, y: 80, w: 1500, h: 700 },
-        font: { family: 'Manrope', size: 64, weight: 500, italic: false, lineHeight: 1.35, letterSpacing: 0, transform: 'none' },
-        color: '#ffffff', opacity: 100, align: 'center',
-        shadow: { ...TXT_SHADOW_SOFT }, outline: { ...NO_OUTLINE } },
-      { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '',
-        pos: { x: 210, y: 820, w: 1500, h: 0 },
-        font: { family: 'Manrope', size: 28, weight: 600, italic: false, lineHeight: 1.2, letterSpacing: 4, transform: 'uppercase' },
-        color: '#ffffff', opacity: 70, align: 'center',
-        shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
-    ],
-  },
-  {
+    // it): the wine-red Crimson background (2026-10-12: "use the red or wine
+    // looking bg as default for the theme").
     id: 'full-bg', name: 'Full — Background', layout: 'fullscreen', animation: 'fade',
     groupId: 'grp-bible', groupName: 'Bible',
     layers: [
-      poolCanvas('midnight'),
+      poolCanvas('crimson'),
       // h bumped 440 -> 700 (y unchanged) — owner: "for full screen or block
       // themes, the text area should use a sizable height by default so
       // that text don't cut off due to the constraint." A fixed-height text
@@ -182,6 +163,27 @@ const DEFAULT_LOOKS = [
         pos: { x: 210, y: 820, w: 1500, h: 0 },
         font: { family: 'Manrope', size: 28, weight: 600, italic: false, lineHeight: 1.2, letterSpacing: 4, transform: 'uppercase' },
         color: '#ffffff', opacity: 60, align: 'center',
+        shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
+    ],
+  },
+  {
+    // A cool gradient from the bundled set — Blue Hour, cyan into blue and
+    // violet with a violet glow, dark enough under white verse text (the
+    // default from 2026-10-01 until Full — Background on Crimson replaced
+    // it). Same text layout as Full — Background.
+    id: 'full-gradient', name: 'Full — Gradient', layout: 'fullscreen', animation: 'fade',
+    groupId: 'grp-bible', groupName: 'Bible',
+    layers: [
+      gradientCanvas('blue-hour'),
+      { id: 'verse', type: 'text', name: 'Verse', visible: true, binding: 'verse', customText: '',
+        pos: { x: 210, y: 80, w: 1500, h: 700 },
+        font: { family: 'Manrope', size: 64, weight: 500, italic: false, lineHeight: 1.35, letterSpacing: 0, transform: 'none' },
+        color: '#ffffff', opacity: 100, align: 'center',
+        shadow: { ...TXT_SHADOW_SOFT }, outline: { ...NO_OUTLINE } },
+      { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '',
+        pos: { x: 210, y: 820, w: 1500, h: 0 },
+        font: { family: 'Manrope', size: 28, weight: 600, italic: false, lineHeight: 1.2, letterSpacing: 4, transform: 'uppercase' },
+        color: '#ffffff', opacity: 70, align: 'center',
         shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
     ],
   },

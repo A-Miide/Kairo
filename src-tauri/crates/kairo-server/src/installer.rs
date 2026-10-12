@@ -1,6 +1,7 @@
 //! Downloading the offline speech models: resumable, retried, checked
 //! against a known checksum, then unpacked into place — progress reported
-//! line by line (NDJSON) as the UI expects.
+//! line by line (NDJSON) as the UI expects. The translation models
+//! (`mt.rs`) download through the same checked fetch.
 
 use std::path::Path;
 use std::time::Duration;
@@ -56,12 +57,15 @@ pub fn installing(model: &str) -> bool {
     INSTALLING.lock().unwrap().contains(&model)
 }
 
-type Progress = tokio::sync::mpsc::UnboundedSender<Value>;
+pub(crate) type Progress = tokio::sync::mpsc::UnboundedSender<Value>;
 
-async fn download(client: &reqwest::Client, url: &str, dest: &Path, total: u64, progress: &Progress) -> Result<(), String> {
+/// Bytes received so far and the total, as a download runs.
+pub(crate) type OnBytes<'a> = &'a (dyn Fn(u64, u64) + Send + Sync);
+
+async fn download(client: &reqwest::Client, url: &str, dest: &Path, total: u64, on: OnBytes<'_>) -> Result<(), String> {
     let start = tokio::fs::metadata(dest).await.map_or(0, |m| m.len());
     if total > 0 && start >= total {
-        let _ = progress.send(json!({ "phase": "download", "pct": 100, "received": total, "total": total }));
+        on(total, total);
         return Ok(());
     }
     let mut req = client.get(url);
@@ -83,23 +87,59 @@ async fn download(client: &reqwest::Client, url: &str, dest: &Path, total: u64, 
         return Err(format!("HTTP {status}"));
     };
     let total = if total > 0 { total } else { received + resp.content_length().unwrap_or(0) };
-    let mut last = -1i64;
     loop {
         let chunk = tokio::time::timeout(IDLE_TIMEOUT, resp.chunk()).await.map_err(|_| format!("Download stalled (no activity for {}s)", IDLE_TIMEOUT.as_secs()))?.map_err(|e| e.to_string())?;
         let Some(chunk) = chunk else { break };
         file.write_all(&chunk).await.map_err(|e| e.to_string())?;
         received += chunk.len() as u64;
-        if total > 0 {
-            let pct = (received * 100 / total) as i64;
-            if pct != last {
-                last = pct;
-                let _ = progress.send(json!({ "phase": "download", "pct": pct, "received": received, "total": total }));
+        on(received, total);
+    }
+    file.flush().await.map_err(|e| e.to_string())?;
+    on(received, total.max(received));
+    Ok(())
+}
+
+/// Downloads `url` to `dest` (resuming, retrying) and checks its SHA-256;
+/// a file that doesn't match is deleted.
+pub(crate) async fn fetch_verified(client: &reqwest::Client, url: &str, dest: &Path, total: u64, sha256: &str, on: OnBytes<'_>, progress: &Progress) -> Result<(), String> {
+    let mut last_err = None;
+    for attempt in 1..=ATTEMPTS {
+        match download(client, url, dest, total, on).await {
+            Ok(()) => {
+                last_err = None;
+                break;
+            }
+            Err(e) => {
+                if attempt < ATTEMPTS {
+                    let _ = progress.send(json!({ "phase": "retry", "attempt": attempt, "maxAttempts": ATTEMPTS, "error": e }));
+                    tokio::time::sleep(Duration::from_secs(2)).await;
+                }
+                last_err = Some(e);
             }
         }
     }
-    file.flush().await.map_err(|e| e.to_string())?;
-    let _ = progress.send(json!({ "phase": "download", "pct": 100, "received": received, "total": total }));
+    if let Some(e) = last_err {
+        return Err(format!("Download failed after {ATTEMPTS} attempts: {e}"));
+    }
+    if sha256_file(dest).await? != sha256 {
+        let _ = tokio::fs::remove_file(dest).await;
+        return Err("The downloaded file did not match the expected one (checksum). Nothing was installed — try again.".into());
+    }
     Ok(())
+}
+
+/// Download progress as the UI reads it: whole percents, each sent once.
+pub(crate) fn percent_reporter(progress: Progress) -> impl Fn(u64, u64) + Send + Sync {
+    let last = std::sync::atomic::AtomicI64::new(-1);
+    move |received, total| {
+        if total == 0 {
+            return;
+        }
+        let pct = (received.min(total) * 100 / total) as i64;
+        if last.swap(pct, std::sync::atomic::Ordering::Relaxed) != pct {
+            let _ = progress.send(json!({ "phase": "download", "pct": pct, "received": received, "total": total }));
+        }
+    }
 }
 
 async fn sha256_file(path: &Path) -> Result<String, String> {
@@ -143,30 +183,8 @@ async fn install(app: &Shared, s: &Spec, progress: &Progress) -> Result<std::pat
         Some(t) => (s.url, t),
         None => (s.fallback, head(s.fallback).await.unwrap_or(0)),
     };
-    let mut last_err = None;
-    for attempt in 1..=ATTEMPTS {
-        match download(&client, url, &archive, total, progress).await {
-            Ok(()) => {
-                last_err = None;
-                break;
-            }
-            Err(e) => {
-                if attempt < ATTEMPTS {
-                    let _ = progress.send(json!({ "phase": "retry", "attempt": attempt, "maxAttempts": ATTEMPTS, "error": e }));
-                    tokio::time::sleep(Duration::from_secs(2)).await;
-                }
-                last_err = Some(e);
-            }
-        }
-    }
-    if let Some(e) = last_err {
-        return Err(format!("Download failed after {ATTEMPTS} attempts: {e}"));
-    }
-    let _ = progress.send(json!({ "phase": "verify" }));
-    if sha256_file(&archive).await? != s.sha256 {
-        let _ = tokio::fs::remove_file(&archive).await;
-        return Err("The downloaded file did not match the expected one (checksum). Nothing was installed — try again.".into());
-    }
+    let on = percent_reporter(progress.clone());
+    fetch_verified(&client, url, &archive, total, s.sha256, &on, progress).await?;
     let _ = progress.send(json!({ "phase": "extract" }));
     let top = dir.join(s.top_dir);
     let _ = tokio::fs::remove_dir_all(&top).await;
@@ -211,8 +229,13 @@ pub async fn route(State(app): State<Shared>, Query(q): Query<std::collections::
         });
         INSTALLING.lock().unwrap().retain(|k| *k != key);
     });
-    let stream = futures_util::stream::unfold(rx, |mut rx| async move { rx.recv().await.map(|v| (Ok::<_, std::convert::Infallible>(format!("{v}\n")), rx)) });
     let _ = spec.approx_mb;
+    ndjson_stream(rx)
+}
+
+/// Progress lines as they come, one JSON object per line.
+pub(crate) fn ndjson_stream(rx: tokio::sync::mpsc::UnboundedReceiver<Value>) -> Response {
+    let stream = futures_util::stream::unfold(rx, |mut rx| async move { rx.recv().await.map(|v| (Ok::<_, std::convert::Infallible>(format!("{v}\n")), rx)) });
     Response::builder()
         .header(header::CONTENT_TYPE, "application/x-ndjson")
         .header(header::CACHE_CONTROL, "no-cache")

@@ -8,6 +8,8 @@ edition.workspace = true
 kairo-bible = { path = "../kairo-bible" }
 kairo-detect = { path = "../kairo-detect" }
 kairo-semantic = { path = "../kairo-semantic" }
+ort = "=2.0.0-rc.13"
+tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
 serde.workspace = true
 serde_json.workspace = true
 anyhow.workspace = true

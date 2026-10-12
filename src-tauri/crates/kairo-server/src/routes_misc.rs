@@ -16,17 +16,15 @@ pub fn router() -> Router<Shared> {
         .route("/api/obs/sources", get(obs_sources))
         .route("/api/offline/status", get(offline_status))
         .route("/api/offline/install", post(crate::installer::route))
-        .route("/api/translate-model/status", get(translate_model_status))
+        .route("/api/translate-model/status", get(crate::mt::status_route))
         .route("/api/semantic-model/status", get(semantic_status))
         .route("/api/reranker-model/status", get(reranker_status))
-        .route("/api/lang/status", get(lang_status))
         .route("/api/translate/languages", get(translate_languages))
         .route("/api/service/import", post(service_import))
         .route("/api/export", post(export))
         .route("/api/semantic-model/install", post(bundled_install))
         .route("/api/reranker-model/install", post(bundled_install))
-        .route("/api/translate-model/install", post(translate_model_install))
-        .route("/api/lang/install", post(lang_install))
+        .route("/api/translate-model/install", post(crate::mt::install_route))
         .route("/api/theme/import-protheme", post(theme_import))
 }
 
@@ -132,21 +130,6 @@ async fn offline_status(State(app): State<Shared>, Query(q): Query<std::collecti
     }))
 }
 
-const MT: [(&str, &str, u32); 3] = [("fr", "opus-mt-en-fr", 108), ("es", "opus-mt-en-es", 108), ("pt", "nllb-200-distilled-600M", 895)];
-
-async fn translate_model_status(State(app): State<Shared>, Query(q): Query<std::collections::HashMap<String, String>>) -> Json<Value> {
-    let present = |dir: &str| app.cfg.models_dir.join("mt").join(dir).is_dir();
-    if let Some(lang) = q.get("lang") {
-        let Some((_, dir, mb)) = MT.iter().find(|m| m.0 == lang) else { return Json(json!({ "error": format!("Unknown language \"{lang}\"") })) };
-        return Json(json!({ "installed": present(dir), "modelPath": app.cfg.models_dir.join("mt").join(dir), "installing": false, "approxMB": mb }));
-    }
-    let mut all = serde_json::Map::new();
-    for (l, dir, mb) in MT {
-        all.insert(l.into(), json!({ "installed": present(dir), "installing": false, "approxMB": mb }));
-    }
-    Json(Value::Object(all))
-}
-
 /// The meaning models ship with the app.
 async fn semantic_status(State(app): State<Shared>) -> Json<Value> {
     let ready = app.meaning_ready();
@@ -154,21 +137,6 @@ async fn semantic_status(State(app): State<Shared>) -> Json<Value> {
 }
 async fn reranker_status() -> Json<Value> {
     Json(json!({ "installed": true, "installing": false }))
-}
-
-async fn lang_status(State(app): State<Shared>) -> Json<Value> {
-    let dir = app.cfg.app_data_dir.join("lang");
-    let mut installed = vec!["en".to_string()];
-    if let Ok(rd) = std::fs::read_dir(&dir) {
-        for e in rd.flatten() {
-            if let Some(n) = e.file_name().to_str() {
-                if n.len() == 2 && n.chars().all(|c| c.is_ascii_lowercase()) && !installed.contains(&n.to_string()) {
-                    installed.push(n.to_string());
-                }
-            }
-        }
-    }
-    Json(json!({ "installed": installed, "dir": dir }))
 }
 
 async fn translate_languages() -> Json<Value> {
@@ -276,19 +244,6 @@ async fn export(axum::extract::State(app): axum::extract::State<Shared>, Json(b)
 /// The meaning models ship with the app: nothing to download.
 async fn bundled_install() -> axum::response::Response {
     ndjson(vec![json!({ "phase": "done", "already": true }), json!({ "phase": "complete", "ok": true })])
-}
-
-async fn translate_model_install() -> axum::response::Response {
-    ndjson(vec![json!({ "phase": "complete", "ok": false, "error": "Downloading the local translation model isn't available in this build yet. Bible text is translated from the bundled Bibles; other text uses Ollama when it's running." })])
-}
-
-async fn lang_install(Json(b): Json<Value>) -> axum::response::Response {
-    use axum::response::IntoResponse;
-    let code = b["code"].as_str().unwrap_or("").to_lowercase();
-    if code == "en" {
-        return Json(json!({ "ok": true, "bundled": true })).into_response();
-    }
-    (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": "no scripture pack source configured yet" }))).into_response()
 }
 
 fn ndjson(lines: Vec<Value>) -> axum::response::Response {
