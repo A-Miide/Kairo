@@ -315,3 +315,25 @@ the name…" with no chapter (Node misses it too).
   Latest, so the updater's `releases/latest/download/latest.json` finds
   nothing — publishing 4.0.0 as Latest fixes it; keep model releases off
   Latest.
+
+## First install, owner's notes (2026-10-12)
+
+- **Brand.** Primary actions are the solid darker brand colour (#F5301A),
+  never a gradient button. Default Bible theme: Kairo Red (#F5301A into
+  #9E1608, a built-in gradient) — chosen over the logo's exact orange
+  gradient because white text on #FF9130 is 2.25:1. Split themes: the verse
+  on a Kairo Red panel, the camera half dimmed by 35% black. Stage Lights
+  ("plastic") off the picker.
+- **Text.** The verse is centred on the screen; a reference *follows* its
+  verse (`follows`, `stackFollowers` in layer_geometry.js — output,
+  previews and Theme Studio), sitting just under the text wherever it ends;
+  references bolder (700, 90%). Lower Third centred. Built-ins still at the
+  shipped layout migrate once. Previews shrink long verses like the output.
+- **Settings.** Language in three groups; every bundled Bible straight in the
+  menu (no fake installs); slide-translation rows with Remove (frees the
+  disk); Audio shows only the offline model the spoken language needs.
+- **Theme Studio** tools labelled. **Media Bin**: on-air outline, thumbnail
+  size, folder filter, readable names.
+- **The tour**, rebuilt: welcome with a live demo, how Kairo listens, what's
+  inside, and the real Start Listening spotlit with the microphone picker.
+  No video — CSS, still for reduced motion.
