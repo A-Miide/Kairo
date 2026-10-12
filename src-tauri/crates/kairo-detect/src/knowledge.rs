@@ -135,7 +135,7 @@ fn proper_names(corpus: &Corpus) -> HashMap<String, (Vec<Chapter>, u32)> {
     const NOT_IDENTIFYING: &[&str] = &[
         "god", "lord", "jesus", "christ", "spirit", "ghost", "holy", "father", "son", "amen", "selah", "israel", "jerusalem",
     ];
-    capital
+    let mut names: HashMap<String, (Vec<Chapter>, u32)> = capital
         .into_iter()
         .filter(|(w, c)| {
             let l = lower.get(w).copied().unwrap_or(0);
@@ -146,5 +146,32 @@ fn proper_names(corpus: &Corpus) -> HashMap<String, (Vec<Chapter>, u32)> {
             ch.sort();
             (w, (ch, count))
         })
-        .collect()
+        .collect();
+    // One person under two names: their chapters are each other's.
+    for (old, new) in renamings(corpus) {
+        let (Some(a), Some(b)) = (names.get(&old).cloned(), names.get(&new).cloned()) else { continue };
+        let mut both: Vec<Chapter> = a.0.iter().chain(&b.0).copied().collect();
+        both.sort();
+        both.dedup();
+        names.get_mut(&old).unwrap().0 = both.clone();
+        names.get_mut(&new).unwrap().0 = both;
+    }
+    names
+}
+
+/// People the Bible renames, in its own words: "thy name shall be called no
+/// more Jacob, but Israel", "called Abram, but thy name shall be Abraham",
+/// "call her name Sarai, but Sarah shall her name be".
+fn renamings(corpus: &Corpus) -> Vec<(String, String)> {
+    let re = crate::re::re(r"(?:called|call (?:his|her) name)(?: no more| any more)? ([A-Z][a-z]+), but (?:thy name shall be )?([A-Z][a-z]+)");
+    let mut out = Vec::new();
+    for id in corpus.ids() {
+        for c in re.captures_iter(corpus.kjv().text(id).unwrap_or("")) {
+            let pair = (c[1].to_lowercase(), c[2].to_lowercase());
+            if pair.0 != pair.1 && !out.contains(&pair) {
+                out.push(pair);
+            }
+        }
+    }
+    out
 }

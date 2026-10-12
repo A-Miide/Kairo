@@ -140,6 +140,8 @@ impl Engine {
                     }
                 }
                 x if self.k.is_name(x) => person_verb(i + 1),
+                // "…, said Abraham, …"
+                "said" | "says" | "saith" if self.k.is_name(w(i + 1)) => Some(i + 2),
                 _ => None,
             };
             if let Some(e) = end {
@@ -147,6 +149,12 @@ impl Engine {
             }
         }
         last
+    }
+
+    /// Did the preacher just introduce scripture ("the Bible says", "said Abraham")?
+    pub(crate) fn quote_signalled(&self, recent: &str) -> bool {
+        let normed: Vec<String> = recent.split_whitespace().map(norm_word).collect();
+        self.after_quote_signal(&normed).is_some()
     }
 
     /// Windows of recent speech to search by meaning, most specific first.
