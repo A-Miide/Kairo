@@ -5577,12 +5577,12 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
 }
 .ts-tool-tooltip.visible { opacity: 1; }
 .ts-tool-btn {
-  width: 32px;
   height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 0;
+  gap: 6px;
+  padding: 0 11px 0 9px;
   background: transparent;
   border: 1px solid transparent;
   border-radius: 7px;
@@ -5590,12 +5590,15 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
   cursor: pointer;
   transition: background var(--trans), color var(--trans), border-color var(--trans);
 }
-.ts-tool-btn svg { width: 17px; height: 17px; }
+.ts-tool-btn svg { width: 17px; height: 17px; flex: none; }
+/* Every tool says what it is (2026-10-12: "tools should be well labeled");
+   the hover tip still gives its key. */
+.ts-tool-label { font-size: 12px; font-weight: 600; letter-spacing: 0.01em; white-space: nowrap; }
 .ts-tool-btn:hover { background: rgba(255, 255, 255, 0.08); color: #fff; }
-/* The active tool in the app's own accent (--red), not a plain white wash —
-   easy to pick out against the canvas at a glance (2026-09-30: "add more
-   color to the tool icon for contrast"). */
-.ts-tool-btn.active { background: var(--red); border-color: var(--red); color: #fff; }
+/* The active tool in the brand colours, not a plain white wash — easy to
+   pick out against the canvas at a glance (2026-09-30: "add more color to
+   the tool icon for contrast"; brand, not the warning red, 2026-10-12). */
+.ts-tool-btn.active { background: var(--brand-gradient); border-color: transparent; color: #fff; }
 /* The tools float centred over the TOP of the canvas (after Figma and
    Compositor) instead of sitting in the bar under it — taken out of
    .ts-preview-wrap's flex flow (position:absolute) so it never competes

@@ -288,3 +288,54 @@ function gradientCss(layer, colorFn) {
 }
 window.gradientStops = gradientStops;
 window.gradientCss   = gradientCss;
+
+// A text layer can follow another (`follows: '<layer id>'` — a verse's
+// reference): it sits just under the leader's text, and the pair is centred
+// where the leader's text alone would sit, so a short verse and its
+// reference stay together in the middle instead of the reference waiting
+// at a fixed height below. Runs on laid-out elements, after any auto-fit
+// (and again on resize): each text element carries data-layer-id, and a
+// follower data-follows. Works in fractions of the stage, so it holds in
+// a scaled-down preview as on the output.
+const FOLLOW_GAP = 0.6; // of the follower's own height
+function stackFollowers(root) {
+  if (!root) return;
+  root.querySelectorAll('[data-follows]').forEach(f => {
+    const lead = root.querySelector(`[data-layer-id="${CSS.escape(f.dataset.follows)}"]`);
+    lead && (lead.style.translate = '');
+    if (!lead || lead.style.display === 'none' || f.style.display === 'none' || !lead.textContent.trim()) return;
+    const stage = f.offsetParent || root;
+    const box = stage.getBoundingClientRect();
+    if (!box.height || !stage.offsetHeight) return;
+    const range = document.createRange();
+    range.selectNodeContents(lead);
+    const text = range.getBoundingClientRect();
+    const fh = f.getBoundingClientRect().height;
+    if (!text.height || !fh) return;
+    const gap = fh * FOLLOW_GAP;
+    const top = text.top + text.height / 2 - (text.height + gap + fh) / 2;
+    const scale = box.height / stage.offsetHeight; // a preview drawn smaller than its layout size
+    lead.style.translate = `0 ${(top - text.top) / scale}px`;
+    f.style.top = ((top + text.height + gap - box.top) / box.height * 100) + '%';
+    f.style.bottom = 'auto';
+  });
+}
+window.stackFollowers = stackFollowers;
+
+// Shrinks a text element's font until its text fits its box — what the
+// output window's auto-fit does for a long verse, for a preview, so the
+// operator sees what the room sees rather than the verse cut at its box.
+function fitTextToBox(el, minPx = 6) {
+  const box = el.getBoundingClientRect();
+  if (!box.height) return;
+  const range = document.createRange();
+  let size = parseFloat(el.style.fontSize) || 0;
+  let guard = 40;
+  while (size > minPx && guard-- > 0) {
+    range.selectNodeContents(el);
+    if (range.getBoundingClientRect().height <= box.height + 1) break;
+    size *= 0.94;
+    el.style.fontSize = size.toFixed(1) + 'px';
+  }
+}
+window.fitTextToBox = fitTextToBox;

@@ -741,6 +741,8 @@
                 const div = document.createElement('div');
                 div.className = 'display-layer';
                 div.dataset.binding = layer.binding || 'custom';
+                div.dataset.layerId = layer.id || '';
+                if (layer.follows) div.dataset.follows = layer.follows; // see stackFollowers (layer_geometry.js)
                 if (hasTimerTemplate) div.dataset.timerTemplate = layer.customText;
                 div.dataset.layerId = layer.id || '';
 
@@ -1027,6 +1029,8 @@
     function fitVerse() {
         fitTextLayer('verse');
         fitTextLayer('verse_translated');
+        // A reference following its verse is placed once the verse has its size.
+        stackFollowers(stage);
     }
 
     function fitTextLayer(binding) {
