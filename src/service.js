@@ -1771,7 +1771,7 @@
   async function fetchAllMediaItemsForBin() {
     const items = [];
     const binP = fetchWithTimeout(`${SERVER}/api/media/bin`).then(r => r.json())
-      .then(bin => (bin.items || []).forEach(it => items.push(it)))
+      .then(bin => (bin.items || []).forEach(it => items.push({ ...it, binSource: 'bin' })))
       .catch(() => {});
     // Smart folders are fetched in parallel, not one round-trip per folder
     // in sequence — the Media Bin's first paint used to wait on N serial
@@ -1779,7 +1779,7 @@
     const foldersP = fetchWithTimeout(`${SERVER}/api/media/folders`).then(r => r.json())
       .then(foldersRes => Promise.all((foldersRes.folders || []).map(folder =>
         fetchWithTimeout(`${SERVER}/api/media/folders/${folder.id}/items`).then(r => r.json())
-          .then(res => (res.items || []).forEach(it => items.push(it)))
+          .then(res => (res.items || []).forEach(it => items.push({ ...it, binSource: folder.id, binSourceName: folder.name })))
           .catch(() => {})
       )))
       .catch(() => {});
@@ -1795,7 +1795,8 @@
 
   function buildMediaBinCard(item) {
     const card = document.createElement('button');
-    card.className = 'media-card';
+    card.className = 'media-card' + (item.url === liveMediaSrc ? ' is-live' : '');
+    card.dataset.url = item.url;
     // Owner: "add a dropzone highlight for where the user wants to drag
     // from media bin directly to slides grid." The Media Bin strip is the
     // one place Media content is ever visible AT THE SAME TIME as another
@@ -1842,9 +1843,9 @@
     }
     const label = document.createElement('div');
     label.className = 'media-card-label';
-    label.textContent = item.name;
+    label.textContent = mediaLabel(item);
     card.appendChild(label);
-    card.title = `Send "${item.name}" to the media layer`;
+    card.title = `Send "${mediaLabel(item)}" to the media layer`;
     // Same call the Media tab's own grid uses (buildMediaCard, above) — the
     // Media Bin is just a second, always-reachable place to trigger it from
     // Bible/Slides/Timer, not a different mechanism. An earlier version of
@@ -1873,18 +1874,80 @@
     return card;
   }
 
+  // A file the bin stored as "<time>-<random>-crimson.jpg" (so two uploads
+  // of one name never collide) is shown by the name it was added with.
+  const mediaLabel = (item) => String(item.name || '').replace(/^\d{10,}-[0-9a-f]{8}-/, '');
+
+  // What's on the media layer now — its card in the bin is outlined, so the
+  // operator can see what's on air (2026-10-12). Set from the same 'media'
+  // broadcast the output renders (app.js), cleared with the media layer.
+  let liveMediaSrc = null;
+  function onMediaLive(src) {
+    liveMediaSrc = src || null;
+    document.querySelectorAll('.media-card[data-url]').forEach(c => c.classList.toggle('is-live', !!liveMediaSrc && c.dataset.url === liveMediaSrc));
+  }
+
+  // The bin shows one folder at a time when asked (or everything), and its
+  // thumbnails at the size the operator picks — both remembered.
+  const MEDIA_BIN_FOLDER_KEY = 'kairo-media-bin-folder';
+  const MEDIA_BIN_THUMB_KEY = 'kairo-media-bin-thumb';
+  let mediaBinItems = [];
+  const readPref = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+  const writePref = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+
+  function paintMediaBin() {
+    const strip = document.getElementById('media-bin-strip');
+    const folderSel = document.getElementById('media-bin-folder');
+    if (!strip) return;
+    // The folder menu: everything, the bin's own items, then each folder.
+    if (folderSel) {
+      const want = readPref(MEDIA_BIN_FOLDER_KEY) || 'all';
+      const folders = new Map();
+      mediaBinItems.forEach(it => { if (it.binSource !== 'bin') folders.set(it.binSource, it.binSourceName || 'Folder'); });
+      const options = [['all', 'All media'], ['bin', 'Media Bin'], ...folders];
+      folderSel.innerHTML = '';
+      options.forEach(([v, label]) => {
+        const o = document.createElement('option');
+        o.value = v; o.textContent = label;
+        folderSel.appendChild(o);
+      });
+      folderSel.value = options.some(([v]) => v === want) ? want : 'all';
+    }
+    const source = folderSel?.value || 'all';
+    const shown = source === 'all' ? mediaBinItems : mediaBinItems.filter(it => it.binSource === source);
+    strip.innerHTML = '';
+    if (!shown.length) {
+      strip.innerHTML = mediaBinItems.length
+        ? '<div class="svc-empty">Nothing in this folder yet.</div>'
+        : '<div class="svc-empty">No media yet — add some from the Media tab.</div>';
+      return;
+    }
+    shown.forEach(item => strip.appendChild(buildMediaBinCard(item)));
+  }
+
   async function renderMediaBinStrip() {
     const strip = document.getElementById('media-bin-strip');
     if (!strip) return;
-    strip.innerHTML = '<div class="svc-empty">Loading…</div>';
-    const items = await fetchAllMediaItemsForBin();
-    strip.innerHTML = '';
-    if (!items.length) {
-      strip.innerHTML = '<div class="svc-empty">No media yet — add some from the Media tab.</div>';
-      return;
-    }
-    items.forEach(item => strip.appendChild(buildMediaBinCard(item)));
+    if (!mediaBinItems.length) strip.innerHTML = '<div class="svc-empty">Loading…</div>';
+    mediaBinItems = await fetchAllMediaItemsForBin();
+    paintMediaBin();
   }
+
+  document.getElementById('media-bin-folder')?.addEventListener('change', (e) => {
+    writePref(MEDIA_BIN_FOLDER_KEY, e.target.value);
+    paintMediaBin();
+  });
+  (function initMediaBinThumbSize() {
+    const slider = document.getElementById('media-bin-size');
+    const strip = document.getElementById('media-bin-strip');
+    if (!slider || !strip) return;
+    const saved = parseInt(readPref(MEDIA_BIN_THUMB_KEY) || '', 10);
+    if (saved > 0) slider.value = String(saved);
+    const apply = () => strip.style.setProperty('--mb-thumb', slider.value + 'px');
+    apply();
+    slider.addEventListener('input', apply);
+    slider.addEventListener('change', () => writePref(MEDIA_BIN_THUMB_KEY, slider.value));
+  })();
 
   document.getElementById('media-bin-toggle-btn')?.addEventListener('click', toggleMediaBin);
   document.getElementById('media-bin-hide-btn')?.addEventListener('click', toggleMediaBin);
@@ -4716,7 +4779,7 @@
 
   function buildMediaCard(item, { isRecent } = {}) {
     const card = document.createElement('button');
-    card.className = 'media-card';
+    card.className = 'media-card' + (item.url === liveMediaSrc ? ' is-live' : '');
     card.dataset.url = item.url;
     card.appendChild(buildMediaThumb(item));
     if (item.kind === 'video') {
@@ -4738,9 +4801,9 @@
     }
     const label = document.createElement('div');
     label.className = 'media-card-label';
-    label.textContent = item.name;
+    label.textContent = mediaLabel(item);
     card.appendChild(label);
-    card.title = `Send "${item.name}" to the media layer`;
+    card.title = `Send "${mediaLabel(item)}" to the media layer`;
     card.addEventListener('click', () => sendMediaItem(item));
     card.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -6682,7 +6745,7 @@
     slidesFor, sendSlide, cycleSectionLabel, focusInStack, openFullEdit, closeStack, closeFullEdit,
     effectiveTranslateTo, awaitTranslatedText,
     paintLookLayers, renderLookThumbnail, saveService, openContextMenu, openThemePopover, themeForItem,
-    showMediaLibrary, onMediaStatus, onMediaFolderChanged, setMediaTransportVisible,
+    showMediaLibrary, onMediaStatus, onMediaFolderChanged, setMediaTransportVisible, onMediaLive,
     showTimerLibrary, onTimerAction, onClockAction, getTimerItem, updateSegmentParams, saveTimerScenes, saveScenePace,
     onTranscript, setAutoFollow, get autoFollow() { return autoFollow; },
     resendLiveForThemeEdit, resendLiveForSlideStyleEdit, onTimerSlide, refreshThumbnails, clearLive,
