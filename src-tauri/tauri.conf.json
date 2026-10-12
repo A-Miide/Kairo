@@ -5,7 +5,7 @@
   "build": {
     "beforeDevCommand": "npm run server",
     "devUrl": "http://localhost:7777",
-    "beforeBuildCommand": "npm --prefix server install --omit=dev && node scripts/prune-server-deps.js",
+    "beforeBuildCommand": "cargo run --release --manifest-path src-tauri/Cargo.toml -p kairo-eval --bin verse-index",
     "frontendDist": "http://localhost:7777"
   },
   "app": {
@@ -37,7 +37,9 @@
         "https://github.com/Kairo-live/Kairo/releases/latest/download/latest.json"
       ],
       "dialog": false,
-      "windows": { "installMode": "passive" }
+      "windows": {
+        "installMode": "passive"
+      }
     }
   },
   "bundle": {
@@ -51,23 +53,23 @@
       "icons/icon.ico"
     ],
     "resources": {
-      "../server": "server",
-      "../package.json": "package.json",
       "../src": "src",
       "../databases/bibles/map.json": "databases/bibles/map.json",
       "../databases/bibles/kjv.json": "databases/bibles/kjv.json",
       "../databases/bibles/model": "databases/bibles/model",
       "../databases/bibles/reranker_model": "databases/bibles/reranker_model",
-      "../databases/bibles/verse_embeddings.f32": "databases/bibles/verse_embeddings.f32",
-      "../databases/bibles/verse_embeddings.json": "databases/bibles/verse_embeddings.json",
       "../databases/bibles/packs": "databases/bibles/packs",
-      "../databases/bibles/translations": "databases/bibles/translations"
+      "../databases/bibles/translations": "databases/bibles/translations",
+      "../databases/bibles/verse_index.gemma-legacy.kvx": "databases/bibles/verse_index.gemma-legacy.kvx",
+      "../databases/i18n": "databases/i18n"
     },
-    "externalBin": [
-      "bin/node"
-    ],
     "linux": {
-      "deb": { "depends": ["libwebkit2gtk-4.1-0", "libssl3"] }
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libssl3"
+        ]
+      }
     },
     "macOS": {
       "minimumSystemVersion": "12.0",

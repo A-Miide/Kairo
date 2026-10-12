@@ -10,7 +10,7 @@ mod syphon;
 mod spout;
 mod fonts;
 
-use std::process::{Child, Command};
+use std::process::Child;
 use std::sync::{Arc, Mutex};
 use base64::Engine;
 use tauri::{AppHandle, Emitter, Manager, RunEvent};
@@ -370,132 +370,39 @@ impl NdiState {
     }
 }
 
-// ── Node.js binary resolution ─────────────────────────────────────────────
+// ── The server ────────────────────────────────────────────────────────────
 
-/// In dev, search common system paths for Node.js.
-fn find_system_node() -> Option<std::path::PathBuf> {
-    let candidates = [
-        "node",
-        "/usr/local/bin/node",
-        "/opt/homebrew/bin/node",
-        "/usr/bin/node",
-        "/usr/local/bin/node",
-    ];
-    for c in &candidates {
-        if Command::new(c).arg("--version").output().is_ok() {
-            return Some(std::path::PathBuf::from(c));
-        }
-    }
-    None
-}
-
-/// In production, Node is bundled alongside the app binary via externalBin.
-#[allow(dead_code)]
-/// Tauri strips the target-triple suffix at bundle time, so at runtime it's
-/// just "node" (or "node.exe" on Windows) next to the main executable.
-fn find_bundled_node() -> Option<std::path::PathBuf> {
-    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
-
-    #[cfg(target_os = "windows")]
-    let name = "node.exe";
-    #[cfg(not(target_os = "windows"))]
-    let name = "node";
-
-    let path = exe_dir.join(name);
-    if path.exists() { Some(path) } else { None }
-}
-
-// ── Server launcher ───────────────────────────────────────────────────────
-
+/// Starts Kairo's server inside this process (release builds; dev runs it
+/// separately via `beforeDevCommand`): the UI files, the Bible data and
+/// models from the bundle's resources, settings and downloads in app data.
 #[cfg_attr(debug_assertions, allow(dead_code))]
-fn start_server(app: &AppHandle, port: u16, token: &str) -> Option<Child> {
-    // Resolve Node.js binary
-    #[cfg(debug_assertions)]
-    let node_bin = find_system_node();
-
-    #[cfg(not(debug_assertions))]
-    let node_bin = find_bundled_node().or_else(|| find_system_node());
-
-    let node_bin = match node_bin {
-        Some(p) => p,
-        None => {
-            eprintln!("[KAIRO] ERROR: Node.js not found — cannot start server.");
-            return None;
-        }
-    };
-
-    // Resolve server.js. A packaging/permissions quirk (sandboxed install,
-    // moved bundle) making resource_dir unavailable used to panic and kill
-    // the whole process at launch — fall back to the same cwd-relative dev
-    // path the bundled-vs-dev branches below already use instead.
+fn start_server(app: &AppHandle, port: u16, token: &str) {
     let cwd = || std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let resource_dir = match app.path().resource_dir() {
-        Ok(dir) => dir,
-        Err(e) => {
-            eprintln!("[KAIRO] WARNING: Tauri resource dir unavailable ({e}) — falling back to cwd-relative paths.");
-            cwd()
-        }
+    let resource_dir = app.path().resource_dir().unwrap_or_else(|e| {
+        eprintln!("[KAIRO] WARNING: Tauri resource dir unavailable ({e}) — falling back to cwd-relative paths.");
+        cwd()
+    });
+    let pick = |rel: &str| {
+        let bundled = resource_dir.join(rel);
+        if bundled.exists() { bundled } else { cwd().join(rel) }
     };
-
-    let server_js = {
-        // Production: bundled at resource_dir/server/server.js
-        let bundled = resource_dir.join("server").join("server.js");
-        if bundled.exists() {
-            bundled
-        } else {
-            // Dev: relative to project root
-            cwd().join("server").join("server.js")
-        }
-    };
-
-    // Database dir — bundled map.json lives at resource_dir/databases/bibles/
-    let db_dir = {
-        let bundled = resource_dir.join("databases").join("bibles");
-        if bundled.exists() {
-            bundled
-        } else {
-            // Dev: project root databases/bibles
-            cwd().join("databases").join("bibles")
-        }
-    };
-
-    println!("[KAIRO] node:       {}", node_bin.display());
-    println!("[KAIRO] server.js:  {}", server_js.display());
-    println!("[KAIRO] databases:  {}", db_dir.display());
-
-    let working_dir = server_js.parent().unwrap().to_path_buf();
-
-    // App-data dir — writable by the user; settings.json lives here in production.
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .unwrap_or_else(|_| std::env::temp_dir().join("kairo"));
+    let app_data_dir = app.path().app_data_dir().unwrap_or_else(|_| std::env::temp_dir().join("kairo"));
     std::fs::create_dir_all(&app_data_dir).ok();
-
-    match Command::new(&node_bin)
-        .arg(&server_js)
-        .current_dir(&working_dir)
-        // Pass resource dir so server.js can resolve bundled database files
-        .env("KAIRO_RESOURCE_DIR", resource_dir.to_str().unwrap_or(""))
-        .env("KAIRO_DB_DIR", db_dir.to_str().unwrap_or(""))
-        // Writable dir for settings.json (read-only bundle path won't work in production)
-        .env("KAIRO_APP_DATA_DIR", app_data_dir.to_str().unwrap_or(""))
-        // Dynamic port + shared-secret token. The Node server reads these and
-        // binds to 127.0.0.1:<port>, rejecting any HTTP/WS request without
-        // the matching token.
-        .env("KAIRO_SERVER_PORT", port.to_string())
-        .env("KAIRO_AUTH_TOKEN",  token)
-        .spawn()
-    {
-        Ok(child) => {
-            println!("[KAIRO] Server started (pid {})", child.id());
-            Some(child)
+    let cfg = kairo_server::Config {
+        port,
+        token: token.to_string(),
+        db_dir: pick("databases/bibles"),
+        models_dir: app_data_dir.join("models"),
+        app_data_dir,
+        ui_dir: pick("src"),
+    };
+    println!("[KAIRO] databases:  {}", cfg.db_dir.display());
+    println!("[KAIRO] ui:         {}", cfg.ui_dir.display());
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = kairo_server::serve(cfg).await {
+            eprintln!("[KAIRO] Server failed: {e}");
         }
-        Err(e) => {
-            eprintln!("[KAIRO] Failed to start server: {}", e);
-            None
-        }
-    }
+    });
 }
 
 // ── Tauri commands ────────────────────────────────────────────────────────
@@ -951,25 +858,13 @@ pub fn run() {
             // main window appears. Accepted tradeoff per the owner's explicit
             // ask, not an oversight.
 
-            // Start the bundled Node.js server.
+            // Start the server, inside this process.
             // In dev, the server is started by `beforeDevCommand` in tauri.conf.json
             // so we don't spawn a second one (which would collide on the same port).
             #[cfg(not(debug_assertions))]
             {
                 let cfg = app.state::<ServerConfig>();
-                let child = start_server(&handle, cfg.port, &cfg.token);
-                // Recover rather than panic if the mutex was ever poisoned —
-                // losing the child handle here would leak the Node sidecar
-                // process on shutdown, which matters more than a clean panic.
-                // Bound to its own `let` first — chaining straight off
-                // `app.state::<ServerProcess>()` made the State a temporary
-                // that got dropped at the end of the statement while the
-                // MutexGuard borrowed from it was still in use (E0716); this
-                // block only compiles in release builds (debug_assertions
-                // off), so `cargo build` never caught it during dev.
-                let server_process = app.state::<ServerProcess>();
-                let mut guard = server_process.0.lock().unwrap_or_else(|p| p.into_inner());
-                *guard = child;
+                start_server(&handle, cfg.port, &cfg.token);
             }
             #[cfg(debug_assertions)]
             {

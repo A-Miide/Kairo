@@ -15,6 +15,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/obs/connect", post(obs_connect))
         .route("/api/obs/sources", get(obs_sources))
         .route("/api/offline/status", get(offline_status))
+        .route("/api/offline/install", post(crate::installer::route))
         .route("/api/translate-model/status", get(translate_model_status))
         .route("/api/semantic-model/status", get(semantic_status))
         .route("/api/reranker-model/status", get(reranker_status))
@@ -22,6 +23,10 @@ pub fn router() -> Router<Shared> {
         .route("/api/translate/languages", get(translate_languages))
         .route("/api/service/import", post(service_import))
         .route("/api/export", post(export))
+        .route("/api/semantic-model/install", post(bundled_install))
+        .route("/api/reranker-model/install", post(bundled_install))
+        .route("/api/translate-model/install", post(translate_model_install))
+        .route("/api/lang/install", post(lang_install))
         .route("/api/theme/import-protheme", post(theme_import))
 }
 
@@ -123,7 +128,7 @@ async fn offline_status(State(app): State<Shared>, Query(q): Query<std::collecti
     let needed = if lang.to_lowercase().starts_with("en") { "en" } else { "multi" };
     Json(json!({
         "model": model, "installed": installed, "needsUpdate": installed && version.as_deref() != Some(OFFLINE_VERSION),
-        "modelPath": path, "installing": false, "approxMB": mb, "needed": needed,
+        "modelPath": path, "installing": crate::installer::installing(model), "approxMB": mb, "needed": needed,
     }))
 }
 
@@ -266,4 +271,27 @@ async fn export(axum::extract::State(app): axum::extract::State<Shared>, Json(b)
         let _ = std::process::Command::new("open").arg(&file).spawn();
     }
     Json(json!({ "ok": true, "path": file, "file": file.file_name().and_then(|n| n.to_str()) })).into_response()
+}
+
+/// The meaning models ship with the app: nothing to download.
+async fn bundled_install() -> axum::response::Response {
+    ndjson(vec![json!({ "phase": "done", "already": true }), json!({ "phase": "complete", "ok": true })])
+}
+
+async fn translate_model_install() -> axum::response::Response {
+    ndjson(vec![json!({ "phase": "complete", "ok": false, "error": "Downloading the local translation model isn't available in this build yet. Bible text is translated from the bundled Bibles; other text uses Ollama when it's running." })])
+}
+
+async fn lang_install(Json(b): Json<Value>) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let code = b["code"].as_str().unwrap_or("").to_lowercase();
+    if code == "en" {
+        return Json(json!({ "ok": true, "bundled": true })).into_response();
+    }
+    (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": "no scripture pack source configured yet" }))).into_response()
+}
+
+fn ndjson(lines: Vec<Value>) -> axum::response::Response {
+    let body: String = lines.iter().map(|l| format!("{l}\n")).collect();
+    axum::response::Response::builder().header("content-type", "application/x-ndjson").body(axum::body::Body::from(body)).unwrap()
 }
