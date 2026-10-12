@@ -1,0 +1,20 @@
+[package]
+name = "kairo-server"
+description = "Kairo's backend: the HTTP routes and WebSocket the UI talks to, speech engines, detection, outputs"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+kairo-bible = { path = "../kairo-bible" }
+kairo-detect = { path = "../kairo-detect" }
+kairo-semantic = { path = "../kairo-semantic" }
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+tokio = { version = "1.53.2", features = ["full"] }
+axum = { version = "0.8", features = ["ws"] }
+tower-http = { version = "0.6", features = ["fs", "cors"] }
+futures-util = "0.3.34"
+tokio-tungstenite = { version = "0.26", features = ["rustls-tls-webpki-roots"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+bytes = "1.12.1"

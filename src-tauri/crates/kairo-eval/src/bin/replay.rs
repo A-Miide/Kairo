@@ -296,6 +296,12 @@ fn replay(k: &Arc<Knowledge>, golden: &Value, audio: bool, m: Option<&MeaningSer
         collect(o, cue, &mut wakes, &mut out);
         // The models answer at once (their latency is the runtime's concern).
         while let (Some(m), Some(r)) = (m, requests.pop()) {
+            if let (Ok(path), kairo_detect::engine::Request::Scoped { text, verses, .. }) = (std::env::var("SCOPED_LOG"), &r) {
+                use std::io::Write;
+                let line = serde_json::json!({ "text": text, "verses": verses.iter().map(|v| v.0).collect::<Vec<_>>() });
+                let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path).unwrap();
+                writeln!(f, "{line}").unwrap();
+            }
             let o = engine.handle(Event::Answer(answer(m, &r)), t);
             if traced {
                 for n in &o.notes {

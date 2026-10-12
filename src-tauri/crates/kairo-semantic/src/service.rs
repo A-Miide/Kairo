@@ -109,6 +109,12 @@ impl MeaningService {
         Ok(top)
     }
 
+    /// The closest verses in meaning in the whole Bible.
+    pub fn search(&self, text: &str, limit: usize) -> Result<Vec<(VerseId, f32)>, SemanticError> {
+        let q = self.queries(&[text])?;
+        Ok(self.index.search(&q[0], limit).into_iter().map(|h| (h.verse, h.score)).collect())
+    }
+
     /// The closest verses in meaning among `verses`.
     pub fn scoped(&self, text: &str, verses: &[VerseId], limit: usize) -> Result<Vec<(VerseId, f32)>, SemanticError> {
         let q = self.queries(&[text])?;
