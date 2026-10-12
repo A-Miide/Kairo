@@ -1,0 +1,834 @@
+{
+ "source": "2026-09-26-identity-in-christ-3",
+ "kind": "live_run",
+ "recordedAt": "2026-10-12T03:01:20.425Z",
+ "pacing": {
+  "stepMs": 15,
+  "settleMs": 2000,
+  "seed": 20261011,
+  "interim": "3-8 word growing prefixes"
+ },
+ "cues": [
+  {
+   "text": "When you understand who you are and Christ, the devils and their agent become afraid of you.",
+   "audioMs": null
+  },
+  {
+   "text": "It's because you have never like organized whom God created.",
+   "audioMs": null
+  },
+  {
+   "text": "Yeah.",
+   "audioMs": null
+  },
+  {
+   "text": "In Psalm 82 verse six, heaven say you are a God.",
+   "audioMs": null
+  },
+  {
+   "text": "In the book of Acts of Apostle one verse eight, he say, when the spirit of Christ enters in you, what you shall receive is what?",
+   "audioMs": null
+  },
+  {
+   "text": "Power.",
+   "audioMs": null
+  },
+  {
+   "text": "Genesis one from verse 26 to 28 let us make man in our own word, image.",
+   "audioMs": null
+  },
+  {
+   "text": "Anytime you understand who you are on earth, devil will start to fear you.",
+   "audioMs": null
+  },
+  {
+   "text": "You are indefatigable.",
+   "audioMs": null
+  },
+  {
+   "text": "Second Timothy one verse seven say, that the spirit of Jesus Christ can never give you a spirit of fear, that the boldness and what?",
+   "audioMs": null
+  },
+  {
+   "text": "Sandman.",
+   "audioMs": null
+  },
+  {
+   "text": "First John four verse four say, who is in you is greater the devils in the world.",
+   "audioMs": null
+  },
+  {
+   "text": "But hear this, Say John five verse 19 have said, the world where you are is under power, control by the evil one.",
+   "audioMs": null
+  },
+  {
+   "text": "But John three verse 31 say, he that is above is above what?",
+   "audioMs": null
+  },
+  {
+   "text": "When you lost the ability to understand the God you are serving, the God that tell you with him all things are possible.",
+   "audioMs": null
+  },
+  {
+   "text": "In Matthew 11, say, come to me.",
+   "audioMs": null
+  },
+  {
+   "text": "28, all you that are in pain, I will solve the problem.",
+   "audioMs": null
+  },
+  {
+   "text": "In no man's whosoever call upon the name of Jesus shall be saved.",
+   "audioMs": null
+  },
+  {
+   "text": "Proverbate him.",
+   "audioMs": null
+  },
+  {
+   "text": "He said, a believer Elisha, run to me and they are safe and protected.",
+   "audioMs": null
+  },
+  {
+   "text": "Deuteronomy 31 verses.",
+   "audioMs": null
+  },
+  {
+   "text": "It says fear not.",
+   "audioMs": null
+  },
+  {
+   "text": "Be strong.",
+   "audioMs": null
+  },
+  {
+   "text": "Be of courage.",
+   "audioMs": null
+  },
+  {
+   "text": "For I, the lord of heavens, will never fail you or neither disappointed you.",
+   "audioMs": null
+  },
+  {
+   "text": "He said Ephesians two verse 10, in my name Jesus, every knee shall do what?",
+   "audioMs": null
+  },
+  {
+   "text": "Every knee shall do what?",
+   "audioMs": null
+  },
+  {
+   "text": "Jeremiah 17 verse seven to eight.",
+   "audioMs": null
+  },
+  {
+   "text": "He said blessed are those who trusted in the Lord Jesus.",
+   "audioMs": null
+  },
+  {
+   "text": "For you shall be like a tree, planted by the side of the liver bank.",
+   "audioMs": null
+  },
+  {
+   "text": "You will never dry.",
+   "audioMs": null
+  },
+  {
+   "text": "Someone 25, verse one and two, he say, your shall be like a mountain Zion.",
+   "audioMs": null
+  },
+  {
+   "text": "And nobody can take you away from your positions.",
+   "audioMs": null
+  },
+  {
+   "text": "From today, brethren, prepare the barrier of your enemies.",
+   "audioMs": null
+  }
+ ],
+ "inputs": [
+  {
+   "t": 0,
+   "cue": 0,
+   "text": "When you understand who you",
+   "isFinal": false
+  },
+  {
+   "t": 16,
+   "cue": 0,
+   "text": "When you understand who you are and Christ, the devils and their",
+   "isFinal": false
+  },
+  {
+   "t": 33,
+   "cue": 0,
+   "text": "When you understand who you are and Christ, the devils and their agent become afraid of you.",
+   "isFinal": true
+  },
+  {
+   "t": 165,
+   "cue": 1,
+   "text": "It's because you have",
+   "isFinal": false
+  },
+  {
+   "t": 181,
+   "cue": 1,
+   "text": "It's because you have never like organized",
+   "isFinal": false
+  },
+  {
+   "t": 198,
+   "cue": 1,
+   "text": "It's because you have never like organized whom God created.",
+   "isFinal": true
+  },
+  {
+   "t": 315,
+   "cue": 2,
+   "text": "Yeah.",
+   "isFinal": true
+  },
+  {
+   "t": 380,
+   "cue": 3,
+   "text": "In Psalm 82 verse six, heaven say",
+   "isFinal": false
+  },
+  {
+   "t": 397,
+   "cue": 3,
+   "text": "In Psalm 82 verse six, heaven say you are a God.",
+   "isFinal": true
+  },
+  {
+   "t": 491,
+   "cue": 4,
+   "text": "In the book of Acts",
+   "isFinal": false
+  },
+  {
+   "t": 508,
+   "cue": 4,
+   "text": "In the book of Acts of Apostle one",
+   "isFinal": false
+  },
+  {
+   "t": 526,
+   "cue": 4,
+   "text": "In the book of Acts of Apostle one verse eight, he say, when the spirit",
+   "isFinal": false
+  },
+  {
+   "t": 874,
+   "cue": 4,
+   "text": "In the book of Acts of Apostle one verse eight, he say, when the spirit of Christ enters",
+   "isFinal": false
+  },
+  {
+   "t": 891,
+   "cue": 4,
+   "text": "In the book of Acts of Apostle one verse eight, he say, when the spirit of Christ enters in you, what you shall receive is what?",
+   "isFinal": true
+  },
+  {
+   "t": 1179,
+   "cue": 5,
+   "text": "Power.",
+   "isFinal": true
+  },
+  {
+   "t": 1264,
+   "cue": 6,
+   "text": "Genesis one from verse 26 to 28",
+   "isFinal": false
+  },
+  {
+   "t": 1280,
+   "cue": 6,
+   "text": "Genesis one from verse 26 to 28 let us make man in our own",
+   "isFinal": false
+  },
+  {
+   "t": 1296,
+   "cue": 6,
+   "text": "Genesis one from verse 26 to 28 let us make man in our own word, image.",
+   "isFinal": true
+  },
+  {
+   "t": 1609,
+   "cue": 7,
+   "text": "Anytime you understand who you",
+   "isFinal": false
+  },
+  {
+   "t": 1626,
+   "cue": 7,
+   "text": "Anytime you understand who you are on earth, devil will start to",
+   "isFinal": false
+  },
+  {
+   "t": 1643,
+   "cue": 7,
+   "text": "Anytime you understand who you are on earth, devil will start to fear you.",
+   "isFinal": true
+  },
+  {
+   "t": 1934,
+   "cue": 8,
+   "text": "You are indefatigable.",
+   "isFinal": true
+  },
+  {
+   "t": 2009,
+   "cue": 9,
+   "text": "Second Timothy one verse seven say, that",
+   "isFinal": false
+  },
+  {
+   "t": 2170,
+   "cue": 9,
+   "text": "Second Timothy one verse seven say, that the spirit of Jesus Christ can never give",
+   "isFinal": false
+  },
+  {
+   "t": 2188,
+   "cue": 9,
+   "text": "Second Timothy one verse seven say, that the spirit of Jesus Christ can never give you a spirit",
+   "isFinal": false
+  },
+  {
+   "t": 2205,
+   "cue": 9,
+   "text": "Second Timothy one verse seven say, that the spirit of Jesus Christ can never give you a spirit of fear, that",
+   "isFinal": false
+  },
+  {
+   "t": 2222,
+   "cue": 9,
+   "text": "Second Timothy one verse seven say, that the spirit of Jesus Christ can never give you a spirit of fear, that the boldness and what?",
+   "isFinal": true
+  },
+  {
+   "t": 2334,
+   "cue": 10,
+   "text": "Sandman.",
+   "isFinal": true
+  },
+  {
+   "t": 2406,
+   "cue": 11,
+   "text": "First John four verse four say,",
+   "isFinal": false
+  },
+  {
+   "t": 2579,
+   "cue": 11,
+   "text": "First John four verse four say, who is in you is",
+   "isFinal": false
+  },
+  {
+   "t": 2596,
+   "cue": 11,
+   "text": "First John four verse four say, who is in you is greater the devils in the world.",
+   "isFinal": true
+  },
+  {
+   "t": 2701,
+   "cue": 12,
+   "text": "But hear this, Say John five",
+   "isFinal": false
+  },
+  {
+   "t": 2716,
+   "cue": 12,
+   "text": "But hear this, Say John five verse 19 have",
+   "isFinal": false
+  },
+  {
+   "t": 3114,
+   "cue": 12,
+   "text": "But hear this, Say John five verse 19 have said, the world where",
+   "isFinal": false
+  },
+  {
+   "t": 3131,
+   "cue": 12,
+   "text": "But hear this, Say John five verse 19 have said, the world where you are is under",
+   "isFinal": false
+  },
+  {
+   "t": 3341,
+   "cue": 12,
+   "text": "But hear this, Say John five verse 19 have said, the world where you are is under power, control by the evil one.",
+   "isFinal": true
+  },
+  {
+   "t": 3653,
+   "cue": 13,
+   "text": "But John three verse 31 say, he",
+   "isFinal": false
+  },
+  {
+   "t": 3789,
+   "cue": 13,
+   "text": "But John three verse 31 say, he that is above is above",
+   "isFinal": false
+  },
+  {
+   "t": 3806,
+   "cue": 13,
+   "text": "But John three verse 31 say, he that is above is above what?",
+   "isFinal": true
+  },
+  {
+   "t": 4044,
+   "cue": 14,
+   "text": "When you lost the ability to understand the",
+   "isFinal": false
+  },
+  {
+   "t": 4185,
+   "cue": 14,
+   "text": "When you lost the ability to understand the God you are",
+   "isFinal": false
+  },
+  {
+   "t": 4200,
+   "cue": 14,
+   "text": "When you lost the ability to understand the God you are serving, the God that",
+   "isFinal": false
+  },
+  {
+   "t": 4217,
+   "cue": 14,
+   "text": "When you lost the ability to understand the God you are serving, the God that tell you with him",
+   "isFinal": false
+  },
+  {
+   "t": 4533,
+   "cue": 14,
+   "text": "When you lost the ability to understand the God you are serving, the God that tell you with him all things are possible.",
+   "isFinal": true
+  },
+  {
+   "t": 5094,
+   "cue": 15,
+   "text": "In Matthew 11, say, come to me.",
+   "isFinal": true
+  },
+  {
+   "t": 5319,
+   "cue": 16,
+   "text": "28, all you that are in",
+   "isFinal": false
+  },
+  {
+   "t": 5337,
+   "cue": 16,
+   "text": "28, all you that are in pain, I will solve the problem.",
+   "isFinal": true
+  },
+  {
+   "t": 5447,
+   "cue": 17,
+   "text": "In no man's",
+   "isFinal": false
+  },
+  {
+   "t": 5464,
+   "cue": 17,
+   "text": "In no man's whosoever call upon the name",
+   "isFinal": false
+  },
+  {
+   "t": 5481,
+   "cue": 17,
+   "text": "In no man's whosoever call upon the name of Jesus shall",
+   "isFinal": false
+  },
+  {
+   "t": 5499,
+   "cue": 17,
+   "text": "In no man's whosoever call upon the name of Jesus shall be saved.",
+   "isFinal": true
+  },
+  {
+   "t": 5745,
+   "cue": 18,
+   "text": "Proverbate him.",
+   "isFinal": true
+  },
+  {
+   "t": 5829,
+   "cue": 19,
+   "text": "He said, a believer Elisha, run to",
+   "isFinal": false
+  },
+  {
+   "t": 5846,
+   "cue": 19,
+   "text": "He said, a believer Elisha, run to me and they are safe",
+   "isFinal": false
+  },
+  {
+   "t": 5863,
+   "cue": 19,
+   "text": "He said, a believer Elisha, run to me and they are safe and protected.",
+   "isFinal": true
+  },
+  {
+   "t": 6138,
+   "cue": 20,
+   "text": "Deuteronomy 31 verses.",
+   "isFinal": true
+  },
+  {
+   "t": 6218,
+   "cue": 21,
+   "text": "It says fear not.",
+   "isFinal": true
+  },
+  {
+   "t": 6291,
+   "cue": 22,
+   "text": "Be strong.",
+   "isFinal": true
+  },
+  {
+   "t": 6359,
+   "cue": 23,
+   "text": "Be of courage.",
+   "isFinal": true
+  },
+  {
+   "t": 6433,
+   "cue": 24,
+   "text": "For I, the",
+   "isFinal": false
+  },
+  {
+   "t": 6450,
+   "cue": 24,
+   "text": "For I, the lord of heavens, will",
+   "isFinal": false
+  },
+  {
+   "t": 6468,
+   "cue": 24,
+   "text": "For I, the lord of heavens, will never fail you or",
+   "isFinal": false
+  },
+  {
+   "t": 6484,
+   "cue": 24,
+   "text": "For I, the lord of heavens, will never fail you or neither disappointed you.",
+   "isFinal": true
+  },
+  {
+   "t": 6600,
+   "cue": 25,
+   "text": "He said Ephesians two verse",
+   "isFinal": false
+  },
+  {
+   "t": 6682,
+   "cue": 25,
+   "text": "He said Ephesians two verse 10, in my",
+   "isFinal": false
+  },
+  {
+   "t": 6854,
+   "cue": 25,
+   "text": "He said Ephesians two verse 10, in my name Jesus, every",
+   "isFinal": false
+  },
+  {
+   "t": 6871,
+   "cue": 25,
+   "text": "He said Ephesians two verse 10, in my name Jesus, every knee shall do what?",
+   "isFinal": true
+  },
+  {
+   "t": 7111,
+   "cue": 26,
+   "text": "Every knee shall do",
+   "isFinal": false
+  },
+  {
+   "t": 7128,
+   "cue": 26,
+   "text": "Every knee shall do what?",
+   "isFinal": true
+  },
+  {
+   "t": 7324,
+   "cue": 27,
+   "text": "Jeremiah 17 verse seven to eight.",
+   "isFinal": true
+  },
+  {
+   "t": 7600,
+   "cue": 28,
+   "text": "He said blessed are those who trusted in",
+   "isFinal": false
+  },
+  {
+   "t": 7616,
+   "cue": 28,
+   "text": "He said blessed are those who trusted in the Lord Jesus.",
+   "isFinal": true
+  },
+  {
+   "t": 7861,
+   "cue": 29,
+   "text": "For you shall be like",
+   "isFinal": false
+  },
+  {
+   "t": 7878,
+   "cue": 29,
+   "text": "For you shall be like a tree, planted by the side",
+   "isFinal": false
+  },
+  {
+   "t": 7895,
+   "cue": 29,
+   "text": "For you shall be like a tree, planted by the side of the liver bank.",
+   "isFinal": true
+  },
+  {
+   "t": 8256,
+   "cue": 30,
+   "text": "You will never dry.",
+   "isFinal": true
+  },
+  {
+   "t": 8324,
+   "cue": 31,
+   "text": "Someone 25, verse one and",
+   "isFinal": false
+  },
+  {
+   "t": 8341,
+   "cue": 31,
+   "text": "Someone 25, verse one and two, he say, your shall be like a",
+   "isFinal": false
+  },
+  {
+   "t": 8357,
+   "cue": 31,
+   "text": "Someone 25, verse one and two, he say, your shall be like a mountain Zion.",
+   "isFinal": true
+  },
+  {
+   "t": 8676,
+   "cue": 32,
+   "text": "And nobody can take you away",
+   "isFinal": false
+  },
+  {
+   "t": 8693,
+   "cue": 32,
+   "text": "And nobody can take you away from your positions.",
+   "isFinal": true
+  },
+  {
+   "t": 9003,
+   "cue": 33,
+   "text": "From today, brethren, prepare the barrier of",
+   "isFinal": false
+  },
+  {
+   "t": 9020,
+   "cue": 33,
+   "text": "From today, brethren, prepare the barrier of your enemies.",
+   "isFinal": true
+  }
+ ],
+ "stable": [
+  {
+   "t": 380,
+   "cue": 3,
+   "target": "viewer",
+   "method": "direct",
+   "refs": [
+    "Psalms 82:6"
+   ]
+  },
+  {
+   "t": 569,
+   "cue": 4,
+   "target": "viewer",
+   "method": "direct",
+   "refs": [
+    "Acts 1:8"
+   ]
+  },
+  {
+   "t": 1280,
+   "cue": 6,
+   "target": "viewer",
+   "method": "direct",
+   "refs": [
+    "Genesis 1:26",
+    "Genesis 1:27",
+    "Genesis 1:28"
+   ]
+  },
+  {
+   "t": 1296,
+   "cue": 6,
+   "target": "viewer",
+   "method": "direct",
+   "refs": [
+    "Genesis 1:26",
+    "Genesis 1:27",
+    "Genesis 1:28"
+   ]
+  },
+  {
+   "t": 1309,
+   "cue": 6,
+   "target": "suggestions",
+   "method": "verbatim",
+   "refs": [
+    "Genesis 1:26"
+   ]
+  },
+  {
+   "t": 2009,
+   "cue": 9,
+   "target": "viewer",
+   "method": "direct",
+   "refs": [
+    "2 Timothy 1:7"
+   ]
+  },
+  {
+   "t": 2406,
+   "cue": 11,
+   "target": "viewer",
+   "method": "direct",
+   "refs": [
+    "1 John 4:4"
+   ]
+  },
+  {
+   "t": 2625,
+   "cue": 11,
+   "target": "suggestions",
+   "method": "verbatim",
+   "refs": [
+    "1 John 4:4"
+   ]
+  },
+  {
+   "t": 2917,
+   "cue": 12,
+   "target": "viewer",
+   "method": "direct",
+   "refs": [
+    "1 John 5:19"
+   ]
+  },
+  {
+   "t": 3653,
+   "cue": 13,
+   "target": "viewer",
+   "method": "direct",
+   "refs": [
+    "John 3:31"
+   ]
+  },
+  {
+   "t": 5320,
+   "cue": 16,
+   "target": "viewer",
+   "method": "chapter-keyword",
+   "refs": [
+    "Matthew 11:28"
+   ]
+  },
+  {
+   "t": 5567,
+   "cue": 17,
+   "target": "suggestions",
+   "method": "verbatim",
+   "refs": [
+    "1 Corinthians 1:2"
+   ]
+  },
+  {
+   "t": 6360,
+   "cue": 23,
+   "target": "viewer",
+   "method": "chapter-keyword",
+   "refs": [
+    "Deuteronomy 31:6"
+   ]
+  },
+  {
+   "t": 6683,
+   "cue": 25,
+   "target": "viewer",
+   "method": "direct",
+   "refs": [
+    "Ephesians 2:10"
+   ]
+  },
+  {
+   "t": 7045,
+   "cue": 25,
+   "target": "viewer",
+   "method": "direct",
+   "refs": [
+    "Philippians 2:10"
+   ],
+   "correctedFrom": "Ephesians 2:10"
+  },
+  {
+   "t": 7325,
+   "cue": 27,
+   "target": "viewer",
+   "method": "direct",
+   "refs": [
+    "Jeremiah 17:7",
+    "Jeremiah 17:8"
+   ]
+  },
+  {
+   "t": 7610,
+   "cue": 28,
+   "target": "suggestions",
+   "method": "verbatim",
+   "refs": [
+    "Jeremiah 17:7"
+   ]
+  },
+  {
+   "t": 7878,
+   "cue": 29,
+   "target": "viewer",
+   "method": "direct",
+   "refs": [
+    "Jeremiah 17:8"
+   ]
+  },
+  {
+   "t": 8341,
+   "cue": 31,
+   "target": "viewer",
+   "method": "direct",
+   "refs": [
+    "Psalms 125:1",
+    "Psalms 125:2"
+   ]
+  }
+ ],
+ "unstable": [],
+ "runs": [
+  19,
+  19
+ ]
+}
