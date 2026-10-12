@@ -586,15 +586,15 @@ fn main_text(k: &Knowledge, session: &Session, passages: &[Passage]) -> Vec<Pass
 
 // ── Themes and people ───────────────────────────────────────────────────────
 
-/// The words the sermon keeps returning to that its scriptures also say:
-/// what it's about, not how preaching sounds ("today", "going", "please").
+/// The words the sermon keeps returning to that identify one of its
+/// scriptures: what it's about, not how preaching sounds ("today", "going").
 fn themes(k: &Knowledge, units: &[Unit], shown: &[Shown]) -> Vec<String> {
     use kairo_detect::lexical::stem::heal;
+    // The words that identify each scripture used (its fingerprint).
     let mut scripture: HashSet<String> = HashSet::new();
     for s in shown {
-        let texts = std::iter::once(k.lexicon.kjv().text(s.verse)).chain(k.lexicon.others().iter().map(|o| o.text(s.verse)));
-        for t in texts.flatten() {
-            scripture.extend(norm(t).split(' ').map(heal));
+        for (w, _) in k.lexicon.signature(s.verse) {
+            scripture.insert(heal(k.lexicon.vocab().word(*w)));
         }
     }
     let mut counts: HashMap<String, (usize, HashMap<String, usize>)> = HashMap::new();
@@ -612,7 +612,12 @@ fn themes(k: &Knowledge, units: &[Unit], shown: &[Shown]) -> Vec<String> {
         .filter(|(stem, (c, _))| *c >= 4 && scripture.contains(stem))
         .filter_map(|(stem, (c, forms))| {
             let idf = k.lexicon.idf_of(&stem);
-            let common = ["jesus", "christ", "father", "spirit", "amen", "glory", "praise", "hallelujah", "church", "thing", "things"];
+            // The words of preaching itself and of conversation: never a theme.
+            let common = [
+                "jesus", "christ", "father", "spirit", "amen", "glory", "praise", "hallelujah", "church", "thing", "things", "going", "please", "thank",
+                "thanks", "cannot", "today", "tonight", "really", "every", "people", "never", "always", "right", "should", "would", "could", "about",
+                "there", "where", "which", "believe", "know", "think", "today's", "somebody", "everybody", "nobody", "anything", "everything",
+            ];
             // Shown as it was said most.
             let said = forms.into_iter().max_by(|a, b| a.1.cmp(&b.1).then(b.0.cmp(&a.0))).map(|f| f.0).unwrap_or(stem.clone());
             (idf >= 3.0 && !common.contains(&said.as_str())).then(|| (said, c as f32 * idf))

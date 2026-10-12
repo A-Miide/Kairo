@@ -399,7 +399,10 @@ pub(crate) async fn send_service_slide(app: &Shared, verse: Value, look: Value, 
     }
     if let Some((bible, d)) = app.ready() {
         match verse["book"].as_str().and_then(|b| bible.find(b, verse["chapter"].as_u64().unwrap_or(0), verse["verse"].as_u64().unwrap_or(0))) {
-            Some(v) => d.send(Event::OperatorSent(v)),
+            Some(v) => {
+                d.send(Event::OperatorSent(v));
+                app.log.lock().unwrap().shown.push(crate::notes::Shown { verse: v, at: epoch_ms(), how: crate::notes::How::Cited });
+            }
             None if !is_bible => d.send(Event::NonScriptureLive),
             None => {}
         }

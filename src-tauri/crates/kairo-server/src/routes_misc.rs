@@ -193,15 +193,62 @@ fn unique_path(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
     c
 }
 
-async fn export(Json(b): Json<Value>) -> axum::response::Response {
+/// The notes PDF: the transcript the UI captured, and the service's own
+/// record of what went on screen and how (else the UI's list of verses).
+async fn sermon_notes(app: &Shared, b: &Value, date: &str) -> Result<(String, Vec<u8>), String> {
+    let Some((bible, _)) = app.ready() else { return Err("The detection engine is still loading".into()) };
+    let bible = bible.clone();
+    let mut session = crate::notes::Session {
+        name: b["name"].as_str().unwrap_or("").to_string(),
+        lines: b["transcript"].as_array().into_iter().flatten().filter_map(|t| Some(crate::notes::Line { text: t["text"].as_str()?.to_string(), at: t["at"].as_u64().unwrap_or(0) })).collect(),
+        ..Default::default()
+    };
+    {
+        let log = app.log.lock().unwrap();
+        session.shown = log.shown.clone();
+        session.ranges = log.ranges.clone();
+    }
+    if session.shown.is_empty() {
+        for v in b["verses"].as_array().into_iter().flatten() {
+            let Some((book, cv)) = v["ref"].as_str().and_then(|r| r.rsplit_once(' ')) else { continue };
+            let Some((c, n)) = cv.split_once(':') else { continue };
+            if let Some(id) = bible.find(book, c.parse().unwrap_or(0), n.parse().unwrap_or(0)) {
+                session.shown.push(crate::notes::Shown { verse: id, at: v["at"].as_u64().unwrap_or(0), how: crate::notes::How::Cited });
+            }
+        }
+    }
+    if session.lines.is_empty() {
+        return Err("Nothing captured yet — start listening first".into());
+    }
+    let meaning = app.meaning.get().cloned();
+    let date = date.to_string();
+    tokio::task::spawn_blocking(move || {
+        let notes = crate::notes::build(&bible.k, &session, meaning.as_deref().map(|m| m as &dyn crate::notes::Meaning));
+        let when = notes
+            .started_at
+            .and_then(|ms| chrono::DateTime::from_timestamp_millis(ms as i64))
+            .map(|t| t.with_timezone(&chrono::Local).format("%A, %B %-d, %Y at %-I:%M %p").to_string())
+            .unwrap_or_default();
+        let pdf = crate::notes::render_pdf(&bible.k, &notes, &when);
+        let title = safe_file_name(&notes.title);
+        (format!("{} — {date}.pdf", if title.is_empty() { "Sermon Notes".to_string() } else { title }), pdf)
+    })
+    .await
+    .map_err(|e| e.to_string())
+}
+
+async fn export(axum::extract::State(app): axum::extract::State<Shared>, Json(b): Json<Value>) -> axum::response::Response {
     use axum::response::IntoResponse;
     let date = chrono::Local::now().format("%Y-%m-%d").to_string();
     let list = |k: &str| b[k].as_array().cloned().unwrap_or_default();
     let s = |v: &Value, k: &str| v[k].as_str().unwrap_or("").to_string();
-    let (filename, data) = match b["kind"].as_str() {
-        Some("transcript") => (format!("KAIRO transcript — {date}.txt"), list("transcript").iter().map(|p| format!("[{}] {}", s(p, "time"), s(p, "text"))).collect::<Vec<_>>().join("\n") + "\n"),
-        Some("verses") => (format!("KAIRO verses — {date}.txt"), list("verses").iter().map(|v| format!("{}  {}\n{}\n", s(v, "time"), s(v, "ref"), s(v, "text"))).collect::<Vec<_>>().join("\n")),
-        Some("notes") => return (axum::http::StatusCode::NOT_IMPLEMENTED, Json(json!({ "error": "Sermon notes export isn't available in this build yet" }))).into_response(),
+    let (filename, data): (String, Vec<u8>) = match b["kind"].as_str() {
+        Some("transcript") => (format!("KAIRO transcript — {date}.txt"), (list("transcript").iter().map(|p| format!("[{}] {}", s(p, "time"), s(p, "text"))).collect::<Vec<_>>().join("\n") + "\n").into_bytes()),
+        Some("verses") => (format!("KAIRO verses — {date}.txt"), list("verses").iter().map(|v| format!("{}  {}\n{}\n", s(v, "time"), s(v, "ref"), s(v, "text"))).collect::<Vec<_>>().join("\n").into_bytes()),
+        Some("notes") => match sermon_notes(&app, &b, &date).await {
+            Ok(x) => x,
+            Err(e) => return (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": e }))).into_response(),
+        },
         _ => return (axum::http::StatusCode::BAD_REQUEST, Json(json!({ "error": "Unknown export" }))).into_response(),
     };
     let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) else {

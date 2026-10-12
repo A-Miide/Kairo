@@ -171,7 +171,8 @@ impl Doc {
         let mut objs: Vec<String> = Vec::new();
         // 1 catalog, 2 pages, 3–5 fonts, 6 info, then (content, page) pairs.
         let n = self.pages.len();
-        let kids: Vec<String> = (0..n).map(|i| format!("{} 0 R", 8 + 2 * i)).collect();
+        // Each page is its content stream (8 + 2i) followed by the page itself (9 + 2i).
+        let kids: Vec<String> = (0..n).map(|i| format!("{} 0 R", 9 + 2 * i)).collect();
         objs.push("<< /Type /Catalog /Pages 2 0 R >>".into());
         objs.push(format!("<< /Type /Pages /Kids [{}] /Count {n} >>", kids.join(" ")));
         for f in ["Helvetica", "Helvetica-Bold", "Helvetica-Oblique"] {
@@ -220,5 +221,7 @@ mod tests {
         d.text("Hello", Face::Bold, 24.0, &hex("#1d1d1f"), 0.0, 400.0, 0.0);
         let b = d.finish();
         assert!(b.starts_with(b"%PDF-1.4") && b.ends_with(b"%%EOF\n"));
+        let text = String::from_utf8_lossy(&b);
+        assert!(text.contains("/Kids [9 0 R]") && text.contains("9 0 obj\n<< /Type /Page "), "the page list points at the pages");
     }
 }

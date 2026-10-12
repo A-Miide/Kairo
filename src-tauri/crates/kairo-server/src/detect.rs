@@ -37,17 +37,26 @@ pub struct Detector {
     tx: mpsc::Sender<Command>,
 }
 
+/// What this service put on screen and how — the sermon notes read it.
+#[derive(Default)]
+pub struct ServiceLog {
+    pub shown: Vec<crate::notes::Shown>,
+    pub ranges: Vec<(Vec<VerseId>, u64)>,
+}
+
+pub type Log = Arc<std::sync::Mutex<ServiceLog>>;
+
 pub fn epoch_ms() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
 }
 
 impl Detector {
-    pub fn start(bible: Arc<Bible>, hub: Arc<Hub>, cfg: Config, presentation: Arc<std::sync::RwLock<Presentation>>, rt: tokio::runtime::Handle) -> Detector {
+    pub fn start(bible: Arc<Bible>, hub: Arc<Hub>, cfg: Config, presentation: Arc<std::sync::RwLock<Presentation>>, rt: tokio::runtime::Handle, log: Log) -> Detector {
         let (tx, rx) = mpsc::channel::<Command>();
         let me = Detector { tx: tx.clone() };
         std::thread::Builder::new()
             .name("detection".into())
-            .spawn(move || run(bible, hub, cfg, presentation, rt, tx, rx))
+            .spawn(move || run(bible, hub, cfg, presentation, rt, tx, rx, log))
             .expect("detection thread");
         me
     }
@@ -93,6 +102,7 @@ fn run(
     rt: tokio::runtime::Handle,
     tx: mpsc::Sender<Command>,
     rx: mpsc::Receiver<Command>,
+    log: Log,
 ) {
     let started = Instant::now();
     let mut engine = Engine::new(bible.k.clone(), cfg);
@@ -117,6 +127,10 @@ fn run(
     for cmd in rx {
         let now = started.elapsed().as_millis() as u64;
         let out = match cmd {
+            Command::Event(Event::Reset) => {
+                *log.lock().unwrap() = ServiceLog::default();
+                engine.handle(Event::Reset, now)
+            }
             Command::Event(e) => engine.handle(e, now),
             Command::Configure(f) => {
                 f(engine.config_mut());
@@ -130,7 +144,7 @@ fn run(
             }
         };
         let p = presentation.read().unwrap().clone();
-        apply(&bible, &hub, &mut range, out.clone(), &p);
+        apply(&bible, &hub, &mut range, out.clone(), &p, &log);
         for r in out.requests {
             if meaning.is_some() {
                 let _ = mtx.send(r);
@@ -167,7 +181,7 @@ fn answer(m: &MeaningService, r: &Request) -> Answer {
 }
 
 /// Decisions → what the UI and outputs are told.
-fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Presentation) {
+fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Presentation, log: &Log) {
     for e in out.effects {
         match e {
             Effect::Show { verses, method, score, target, corrected_from } => {
@@ -195,9 +209,13 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
                 hub.broadcast(msg);
                 if viewer && p.auto_send {
                     hub.set_bible_on_top(true);
+                    let how = crate::notes::How::of(method.wire());
+                    let at = epoch_ms();
+                    log.lock().unwrap().shown.extend(verses.iter().take(1).map(|v| crate::notes::Shown { verse: *v, at, how }));
                 }
             }
             Effect::RangeSet { verses, current } => {
+                log.lock().unwrap().ranges.push((verses.clone(), epoch_ms()));
                 range.all = verses.clone();
                 range.current = verses.iter().position(|v| *v == current).unwrap_or(0);
                 range_state(bible, hub, range);
