@@ -37,7 +37,7 @@ pub struct Partial {
 
 /// Words that can come before a bare verse number and still leave it a
 /// verse call.
-const BARE_NUMBER_FILLER: &[&str] =
+pub(crate) const BARE_NUMBER_FILLER: &[&str] =
     &["and", "so", "now", "okay", "ok", "um", "uh", "then", "also", "yes", "yeah", "right", "alright", "verse", "verses", "next"];
 
 /// Words skipped when looking back from "verse N" for another passage.

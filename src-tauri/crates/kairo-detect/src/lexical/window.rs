@@ -17,24 +17,26 @@ pub fn longest_run(verse: &[WordId], speech: &[Option<WordId>], min: usize, cap:
     if v == 0 || t == 0 {
         return None;
     }
-    // run[a][b]: equal words starting at verse[a], speech[b].
-    let w = t + 1;
-    let mut run = vec![0u16; (v + 1) * w];
-    for a in (0..v).rev() {
-        for b in (0..t).rev() {
-            if speech[b] == Some(verse[a]) {
-                run[a * w + b] = 1 + run[(a + 1) * w + b + 1];
-            }
-        }
-    }
+    // Runs ending at verse[a], speech[b], one row of the verse at a time; a
+    // run's start is fixed along it, so the longest (capped) run with the
+    // earliest start is kept.
+    let mut prev = vec![0u16; t + 1];
+    let mut cur = vec![0u16; t + 1];
     let mut best = Run { start: 0, len: 0 };
     for a in 0..v {
         for b in 0..t {
-            let len = (run[a * w + b] as usize).min(cap);
-            if len > best.len {
-                best = Run { start: a, len };
+            if speech[b] == Some(verse[a]) {
+                let l = prev[b] + 1;
+                cur[b + 1] = l;
+                let (len, start) = ((l as usize).min(cap), a + 1 - l as usize);
+                if len > best.len || (len == best.len && start < best.start) {
+                    best = Run { start, len };
+                }
+            } else {
+                cur[b + 1] = 0;
             }
         }
+        std::mem::swap(&mut prev, &mut cur);
     }
     (best.len >= min.max(1)).then_some(best)
 }

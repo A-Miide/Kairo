@@ -451,6 +451,11 @@ impl Lexicon {
         &self.signatures[v.index()]
     }
 
+    /// Verses in the Bible (every per-verse table has this many rows).
+    pub fn verse_count(&self) -> usize {
+        self.signature_weight.len()
+    }
+
     pub fn signature_weight(&self, v: VerseId) -> f32 {
         self.signature_weight[v.index()]
     }
