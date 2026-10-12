@@ -65,6 +65,8 @@ struct Score {
     missed_list: Vec<String>,
     /// Method → (found, wrong).
     by_method: std::collections::BTreeMap<String, (usize, usize)>,
+    /// Method → suggestions offered.
+    offered_by: std::collections::BTreeMap<String, usize>,
 }
 
 fn root() -> PathBuf {
@@ -147,6 +149,9 @@ fn score(k: &Knowledge, gt: &[GroundTruth], decisions: &[Decision], last_ms: i64
     }
     let suggestions: Vec<&Decision> = decisions.iter().filter(|d| d.target == Target::Suggestions).collect();
     s.suggestions = suggestions.len();
+    for d in &suggestions {
+        *s.offered_by.entry(d.method.clone()).or_default() += 1;
+    }
     for g in &missed {
         let offered = suggestions.iter().any(|d| g.keys.contains(&d.verses[0]) && (d.at_ms - g.at_ms).abs() <= MATCH_WINDOW_MS);
         if offered {
@@ -347,6 +352,9 @@ fn main() {
                     t.offered += s.offered;
                     t.suggestions += s.suggestions;
                     t.hours += s.hours;
+                    for (m, n) in s.offered_by {
+                        *t.offered_by.entry(m).or_default() += n;
+                    }
                     for (m, (f, w)) in s.by_method {
                         let e = t.by_method.entry(m).or_default();
                         e.0 += f;
@@ -424,6 +432,7 @@ fn main() {
     }
     for (who, s) in [("Rust", &rust_total), ("Node", &node_total)] {
         println!("{who} by method (found/wrong): {}", s.by_method.iter().map(|(m, (f, w))| format!("{m} {f}/{w}")).collect::<Vec<_>>().join(", "));
+        println!("{who} suggestions per hour by method: {}", s.offered_by.iter().map(|(m, n)| format!("{m} {:.0}", *n as f64 / s.hours)).collect::<Vec<_>>().join(", "));
     }
     if parity {
         println!("Parity: {}/{} of Node's stable decisions reproduced ({:.1}%), {} extra", parity_totals.0, parity_totals.1, pct(parity_totals.0, parity_totals.1), parity_totals.2);

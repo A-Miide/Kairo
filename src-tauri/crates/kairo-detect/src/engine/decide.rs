@@ -10,6 +10,8 @@ use super::twins::TwinOutcome;
 use super::types::{Method, OnScreen, Target};
 
 const SUGGESTION_DEDUP_MS: u64 = 30_000;
+/// A verse shown this recently is still in the operator's hands.
+const SHOWN_RECENTLY_MS: u64 = 60_000;
 const DETECT_DEDUP_MS: u64 = 45_000;
 const DIRECT_DEDUP_MS: u64 = 5_000;
 const SEND_DEDUP_MS: u64 = 8_000;
@@ -130,13 +132,15 @@ impl Engine {
             target = Target::Suggestions;
         }
 
-        // 10. Offer a verse once per half minute.
+        // 10. Offer a verse once per half minute, and never one the operator
+        // has on screen or just had there.
         if target == Target::Suggestions {
             let fresh: Vec<VerseId> = c
                 .verses
                 .iter()
                 .copied()
                 .filter(|v| self.screen.recent_suggestions.get(v).is_none_or(|t| now.saturating_sub(*t) >= SUGGESTION_DEDUP_MS))
+                .filter(|v| self.screen.up_verse() != Some(*v) && self.screen.recent_detections.get(v).is_none_or(|t| now.saturating_sub(*t) >= SHOWN_RECENTLY_MS))
                 .collect();
             if self.screen.recent_suggestions.len() > 200 {
                 self.screen.recent_suggestions.retain(|_, t| now.saturating_sub(*t) < SUGGESTION_DEDUP_MS);
