@@ -1,0 +1,8 @@
+{
+  "name": "gemma",
+  "model": "databases/bibles/model/onnx-community/embeddinggemma-300m-ONNX/onnx/model_q4.onnx",
+  "tokenizer": "databases/bibles/model/onnx-community/embeddinggemma-300m-ONNX/tokenizer.json",
+  "pooling": { "kind": "output", "output": "sentence_embedding" },
+  "query_prefix": "task: search result | query: ",
+  "document_prefix": "title: none | text: "
+}
