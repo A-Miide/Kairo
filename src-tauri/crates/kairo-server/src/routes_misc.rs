@@ -20,6 +20,64 @@ pub fn router() -> Router<Shared> {
         .route("/api/reranker-model/status", get(reranker_status))
         .route("/api/lang/status", get(lang_status))
         .route("/api/translate/languages", get(translate_languages))
+        .route("/api/service/import", post(service_import))
+        .route("/api/theme/import-protheme", post(theme_import))
+}
+
+fn unprocessable(e: crate::import::ImportError) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    (axum::http::StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "error": e.0, "code": e.1 }))).into_response()
+}
+
+fn decode_b64(s: &str) -> Option<Vec<u8>> {
+    use base64::Engine as _;
+    base64::engine::general_purpose::STANDARD.decode(s).ok()
+}
+
+async fn service_import(Json(b): Json<Value>) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    use crate::import::{dedupe_image_layers, from_text, import_slides, ImportError, Imported};
+    if let Some(t) = b["text"].as_str().filter(|t| !t.trim().is_empty()) {
+        return Json(json!({ "ok": true, "format": "text", "blocks": from_text(t) })).into_response();
+    }
+    let Some(data) = b["dataBase64"].as_str().and_then(decode_b64) else {
+        return (axum::http::StatusCode::BAD_REQUEST, Json(json!({ "error": "Nothing to import" }))).into_response();
+    };
+    let filename = b["filename"].as_str().unwrap_or("").to_string();
+    let result = tokio::task::spawn_blocking(move || import_slides(&filename, &data)).await.unwrap_or_else(|_| Err(ImportError("import failed".into(), None)));
+    match result {
+        Ok(Imported::Items { format, mut items }) => {
+            if items.is_empty() {
+                return unprocessable(ImportError("No presentations found in that playlist".into(), None));
+            }
+            let media = dedupe_image_layers(&mut items);
+            Json(json!({ "ok": true, "format": format, "items": items, "media": media })).into_response()
+        }
+        Ok(Imported::Blocks { format, mut blocks, note }) => {
+            if blocks.is_empty() {
+                return unprocessable(ImportError("No text found in that file".into(), None));
+            }
+            let media = dedupe_image_layers(&mut blocks);
+            let mut out = json!({ "ok": true, "format": format, "blocks": blocks, "media": media });
+            if let Some(n) = note {
+                out["note"] = json!(n);
+            }
+            Json(out).into_response()
+        }
+        Err(e) => unprocessable(e),
+    }
+}
+
+async fn theme_import(Json(b): Json<Value>) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let Some(data) = b["dataBase64"].as_str().and_then(decode_b64) else {
+        return (axum::http::StatusCode::BAD_REQUEST, Json(json!({ "error": "Nothing to import" }))).into_response();
+    };
+    match tokio::task::spawn_blocking(move || crate::import::from_pro_theme(&data)).await {
+        Ok(Ok((themes, warnings))) => Json(json!({ "ok": true, "themes": themes, "warnings": warnings })).into_response(),
+        Ok(Err(e)) => unprocessable(e),
+        Err(_) => unprocessable(crate::import::ImportError("import failed".into(), None)),
+    }
 }
 
 pub async fn connect_obs(app: &Shared) {
