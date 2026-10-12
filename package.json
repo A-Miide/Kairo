@@ -3,13 +3,14 @@
   "version": "3.2.15",
   "description": "KAIRO v2 — Tauri + Logos-powered scripture detection",
   "scripts": {
-    "server": "node server/server.js",
+    "server": "cargo run --release --manifest-path src-tauri/Cargo.toml -p kairo-server",
     "dev": "npx @tauri-apps/cli@latest dev",
     "build": "npx @tauri-apps/cli@latest build",
     "tauri": "npx @tauri-apps/cli@latest",
     "test-server": "node server/server.js",
     "mt:install": "node scripts/download-mt-model.js",
-    "prune-server": "node scripts/prune-server-deps.js"
+    "prune-server": "node scripts/prune-server-deps.js",
+    "server:node": "node server/server.js"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

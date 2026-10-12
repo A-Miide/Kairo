@@ -1,6 +1,6 @@
 //! The HTTP routes, as the Node server served them.
 
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
@@ -39,7 +39,8 @@ pub fn router() -> Router<Shared> {
         .route("/api/look/apply", post(look_apply))
         .route("/api/monitor-message", post(monitor_message))
         .route("/api/debug-log", post(debug_log))
-        .route("/{*path}", get(static_file))
+        .route("/api/translate", post(crate::translate::route))
+        .fallback(get(static_file))
 }
 
 /// The UI's page.
@@ -47,8 +48,13 @@ pub async fn index(app: &Shared) -> Response {
     serve_file(app, "index.html").await
 }
 
-async fn static_file(State(app): State<Shared>, Path(path): Path<String>) -> Response {
+async fn static_file(State(app): State<Shared>, uri: axum::http::Uri) -> Response {
+    let path = percent_decode_path(uri.path());
     serve_file(&app, &path).await
+}
+
+fn percent_decode_path(p: &str) -> String {
+    crate::query_param(&format!("p={}", p.replace('+', "%2B")), "p").unwrap_or_default()
 }
 
 async fn serve_file(app: &Shared, rel: &str) -> Response {
@@ -117,8 +123,13 @@ async fn post_settings(State(app): State<Shared>, Json(body): Json<Map<String, V
         }
     }
     let animation_changed = incoming.contains_key("outputAnimation") || incoming.contains_key("outputAnimationSpeed");
+    let obs_changed = ["obsEnabled", "obsUrl", "obsPassword"].iter().any(|k| body.contains_key(*k));
     let s = app.settings.merge(incoming).await;
     app.refresh_presentation().await;
+    if obs_changed {
+        let a = app.clone();
+        tokio::spawn(async move { crate::routes_misc::connect_obs(&a).await });
+    }
     if animation_changed {
         app.hub.broadcast(json!({
             "type": "output-transition", "target": "viewer",
@@ -437,6 +448,12 @@ async fn send_timer(State(app): State<Shared>, Json(b): Json<Value>) -> Json<Val
 /// Clears a layer: `bible` brings back the slide under it; `slide` under a
 /// Bible only forgets the slide.
 pub(crate) async fn clear_layer(app: &Shared, layer: &str) -> Value {
+    if layer == "timer" || layer == "all" {
+        app.segments.stop_live();
+        for id in app.triggers.active_clocks() {
+            app.triggers.stop(&id);
+        }
+    }
     if layer == "bible" {
         app.hub.set_bible_on_top(false);
         let under = app.hub.live.lock().unwrap().underneath.clone();

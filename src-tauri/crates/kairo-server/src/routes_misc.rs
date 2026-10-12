@@ -1,0 +1,112 @@
+//! OBS, and the status of the downloadable models.
+
+use axum::extract::{Query, State};
+use axum::routing::{get, post};
+use axum::{Json, Router};
+use serde_json::{json, Value};
+
+use crate::obs::Obs;
+use crate::Shared;
+
+pub fn router() -> Router<Shared> {
+    Router::new()
+        .route("/api/obs/test", get(obs_test))
+        .route("/api/obs/status", get(obs_status))
+        .route("/api/obs/connect", post(obs_connect))
+        .route("/api/obs/sources", get(obs_sources))
+        .route("/api/offline/status", get(offline_status))
+        .route("/api/translate-model/status", get(translate_model_status))
+        .route("/api/semantic-model/status", get(semantic_status))
+        .route("/api/reranker-model/status", get(reranker_status))
+        .route("/api/lang/status", get(lang_status))
+        .route("/api/translate/languages", get(translate_languages))
+}
+
+pub async fn connect_obs(app: &Shared) {
+    let s = &app.settings;
+    app.obs.connect(s.bool("obsEnabled").await == Some(true), s.str("obsUrl").await, s.str("obsPassword").await).await;
+}
+
+async fn obs_test(State(app): State<Shared>) -> Json<Value> {
+    Json(Obs::test(app.settings.str("obsUrl").await, app.settings.str("obsPassword").await).await)
+}
+async fn obs_status(State(app): State<Shared>) -> Json<Value> {
+    Json(json!({ "connected": app.obs.connected().await, "enabled": app.settings.bool("obsEnabled").await == Some(true) }))
+}
+async fn obs_connect(State(app): State<Shared>) -> Json<Value> {
+    connect_obs(&app).await;
+    Json(json!({ "ok": app.obs.connected().await }))
+}
+async fn obs_sources(State(app): State<Shared>) -> Json<Value> {
+    Json(json!({ "sources": app.obs.text_sources().await }))
+}
+
+// ── Models ──────────────────────────────────────────────────────────────────
+
+const OFFLINE_REQUIRED: [&str; 4] = ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"];
+const OFFLINE_VERSION: &str = "v1";
+
+fn offline_spec(model: &str) -> (&'static str, &'static str, u32) {
+    if model == "multi" { ("multi", "sherpa-streaming-multi", 475) } else { ("en", "sherpa-streaming-en", 465) }
+}
+
+pub fn offline_present(app: &Shared, model: &str) -> bool {
+    let dir = app.cfg.models_dir.join(offline_spec(model).1);
+    OFFLINE_REQUIRED.iter().all(|f| dir.join(f).exists()) && std::fs::metadata(dir.join("encoder.int8.onnx")).is_ok_and(|m| m.len() > 5_000_000)
+}
+
+async fn offline_status(State(app): State<Shared>, Query(q): Query<std::collections::HashMap<String, String>>) -> Json<Value> {
+    let (model, dir, mb) = offline_spec(q.get("model").map(String::as_str).unwrap_or("en"));
+    let path = app.cfg.models_dir.join(dir);
+    let installed = offline_present(&app, model);
+    let version = std::fs::read_to_string(path.join(".kairo-model-version")).ok().map(|v| v.trim().to_string());
+    let lang = app.settings.str("sttLanguage").await.unwrap_or_else(|| "en-US".into());
+    let needed = if lang.to_lowercase().starts_with("en") { "en" } else { "multi" };
+    Json(json!({
+        "model": model, "installed": installed, "needsUpdate": installed && version.as_deref() != Some(OFFLINE_VERSION),
+        "modelPath": path, "installing": false, "approxMB": mb, "needed": needed,
+    }))
+}
+
+const MT: [(&str, &str, u32); 3] = [("fr", "opus-mt-en-fr", 108), ("es", "opus-mt-en-es", 108), ("pt", "nllb-200-distilled-600M", 895)];
+
+async fn translate_model_status(State(app): State<Shared>, Query(q): Query<std::collections::HashMap<String, String>>) -> Json<Value> {
+    let present = |dir: &str| app.cfg.models_dir.join("mt").join(dir).is_dir();
+    if let Some(lang) = q.get("lang") {
+        let Some((_, dir, mb)) = MT.iter().find(|m| m.0 == lang) else { return Json(json!({ "error": format!("Unknown language \"{lang}\"") })) };
+        return Json(json!({ "installed": present(dir), "modelPath": app.cfg.models_dir.join("mt").join(dir), "installing": false, "approxMB": mb }));
+    }
+    let mut all = serde_json::Map::new();
+    for (l, dir, mb) in MT {
+        all.insert(l.into(), json!({ "installed": present(dir), "installing": false, "approxMB": mb }));
+    }
+    Json(Value::Object(all))
+}
+
+/// The meaning models ship with the app.
+async fn semantic_status(State(app): State<Shared>) -> Json<Value> {
+    let ready = app.meaning_ready();
+    Json(json!({ "modelInstalled": true, "embeddingsBuilt": true, "installed": true, "installing": !ready }))
+}
+async fn reranker_status() -> Json<Value> {
+    Json(json!({ "installed": true, "installing": false }))
+}
+
+async fn lang_status(State(app): State<Shared>) -> Json<Value> {
+    let dir = app.cfg.app_data_dir.join("lang");
+    let mut installed = vec!["en".to_string()];
+    if let Ok(rd) = std::fs::read_dir(&dir) {
+        for e in rd.flatten() {
+            if let Some(n) = e.file_name().to_str() {
+                if n.len() == 2 && n.chars().all(|c| c.is_ascii_lowercase()) && !installed.contains(&n.to_string()) {
+                    installed.push(n.to_string());
+                }
+            }
+        }
+    }
+    Json(json!({ "installed": installed, "dir": dir }))
+}
+
+async fn translate_languages() -> Json<Value> {
+    Json(json!({ "languages": crate::translate::LANGUAGES.iter().map(|(code, name)| json!({ "code": code, "name": name })).collect::<Vec<_>>() }))
+}
