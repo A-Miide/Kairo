@@ -102,7 +102,9 @@ impl Engine {
         // 6. A verse's identifying words in any order are a second opinion,
         // never an offer of their own: in a sermon those words recur, and on
         // their own they were mostly wrong.
-        if target == Target::Drop || (target == Target::Suggestions && c.method == Method::Fingerprint) {
+        // The same for a meaning search within the chapters in play: never right
+        // on its own (0 of 21 on the dev sermons), so it only corroborates.
+        if target == Target::Drop || (target == Target::Suggestions && matches!(c.method, Method::Fingerprint | Method::Semantic)) {
             return Target::Drop;
         }
 
@@ -232,7 +234,8 @@ impl Engine {
         match c.method {
             Method::Verbatim => e.similarity.unwrap_or(0.0) < ON_SCREEN_GUARD_MAX_COVERAGE && e.matched_idf.unwrap_or(0.0) < scoring::VERBATIM_CERTAIN_IDF,
             Method::Stream => !e.confirmed || e.matched_idf.unwrap_or(0.0) < scoring::STREAM_IDF_FULL_CONFIDENCE,
-            Method::Fingerprint => true,
+            // A paraphrase is the preacher's own words: the sermon must point at it too.
+            Method::Fingerprint | Method::Paraphrase => true,
             _ => false,
         }
     }

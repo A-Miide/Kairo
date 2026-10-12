@@ -185,12 +185,26 @@ impl Engine {
         &self.k
     }
 
+    pub fn config(&self) -> &Config {
+        &self.cfg
+    }
+
+    /// Settings changed mid-service (auto-send, auto-correct, the engine, meaning models).
+    pub fn config_mut(&mut self) -> &mut Config {
+        &mut self.cfg
+    }
+
     /// Handle one event that happened at `now` (ms).
     pub fn handle(&mut self, event: Event, now: u64) -> Output {
         self.last_now = now;
         match event {
             Event::Speech(seg) => self.on_speech(seg, now),
-            Event::OperatorSent(v) => self.put_up(v, Method::Direct, now),
+            Event::OperatorSent(v) => {
+                self.screen.non_scripture_live = false;
+                self.mark_shown(v, now);
+            }
+            Event::OperatorCited(verses) => self.operator_cited(verses, now),
+            Event::Restored { up, taken_down } => self.restored(up, taken_down, now),
             Event::NonScriptureLive => self.screen.non_scripture_live = true,
             Event::ScreenCleared => self.screen.up = None,
             Event::RangeNext => {
@@ -376,6 +390,40 @@ impl Engine {
                 self.process_verbatim(&window, true, &text, now);
                 self.process_fingerprint(&window, now);
             }
+        }
+    }
+
+    fn operator_cited(&mut self, verses: Vec<VerseId>, now: u64) {
+        let Some(&first) = verses.first() else { return };
+        if verses.len() > 1 {
+            self.set_range(verses.clone(), now);
+        } else {
+            self.clear_range(now);
+        }
+        let r = self.r(first);
+        self.note_cited(r.book, Some(r.chapter), Some(r.verse), true, now);
+        self.reading.update(r.book, Some(r.chapter as u32), now);
+        self.screen.last_citation_at = now;
+        self.decide(Candidate::new(verses, Method::Direct, 1.0, Target::Screen), now);
+    }
+
+    /// Back: the screen shows `up` again; `taken_down` mustn't come straight back.
+    fn restored(&mut self, up: Option<VerseId>, taken_down: Option<VerseId>, now: u64) {
+        match up {
+            Some(v) => {
+                self.mark_shown(v, now);
+                if !self.range.all.is_empty() && !self.jump_range_to(v, now) {
+                    self.clear_range(now);
+                }
+            }
+            None => {
+                self.screen.up = None;
+                self.clear_range(now);
+            }
+        }
+        if let Some(d) = taken_down {
+            self.screen.recent_detections.insert(d, now);
+            self.screen.corrected_away = up.map(|u| super::state::CorrectedAway { verse: d, replaced_by: u, at: now });
         }
     }
 

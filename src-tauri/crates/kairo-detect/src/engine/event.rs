@@ -23,8 +23,13 @@ pub enum Event {
     Speech(Segment),
     /// A final from an extra, time-offset recogniser stream (citation voting).
     SecondarySpeech { text: String, stream: u8 },
-    /// The operator put a verse up (Live Queue send, search).
+    /// The operator put a verse up (Live Queue send).
     OperatorSent(VerseId),
+    /// The operator typed a citation (search): its verses go up as a spoken
+    /// one's would, several as a range.
+    OperatorCited(Vec<VerseId>),
+    /// The operator stepped the screen back: what's up again, and what came down.
+    Restored { up: Option<VerseId>, taken_down: Option<VerseId> },
     /// A song, announcement or other non-scripture slide went live.
     NonScriptureLive,
     /// The screen was cleared or stepped back.
