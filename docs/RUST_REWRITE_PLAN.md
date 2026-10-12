@@ -160,6 +160,15 @@ tests. The rewrite keeps each lesson as a general rule and drops the tuning:
   forms; ordinary sermon speech as negatives). Two of the five recorded
   sermons are held out and only used for the final accuracy check.
 
+### Evaluation split (fixed 2026-10-11, before any results were inspected)
+
+- Development: `enough-is-enough`, `oyedepo-kingdomlaw`,
+  `shiloh2025-impartation`, and the three `live_runs` transcripts. Rules may be
+  checked and adjusted against these.
+- Held out: `oyedepo-meditation`, `shiloh2025-love-mystery` (one of each
+  preacher with two recordings). Only scored at the end; their transcripts and
+  per-case results are not inspected while building.
+
 ## Parity
 
 Parity means no loss of accuracy, not identical decisions — identical would

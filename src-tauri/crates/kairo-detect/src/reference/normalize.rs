@@ -27,11 +27,12 @@
 use std::sync::LazyLock;
 
 use super::books::{numbered_prefix, Books};
+use super::i18n::{localize, Lang};
 use super::numbers::{consume_number, is_ambiguous_number_word, plain_number, spoken_to_number, word_value, ORDINALS, ORDINALS_ORDERED, WORD_TO_NUM_ORDERED};
 use crate::re::{fre, freplace, re, words, WB};
 
-pub fn normalize(text: &str, books: &Books) -> String {
-    let t = text.to_lowercase();
+pub fn normalize(text: &str, books: &Books, lang: Lang) -> String {
+    let t = if lang == Lang::En { text.to_lowercase() } else { localize(text, lang) };
     let t = roman_after_keywords(&t);
     let t = drop_possessives(&t);
     let t = join_split_digits(&t);
@@ -273,7 +274,7 @@ mod tests {
     use super::*;
 
     fn n(s: &str) -> String {
-        normalize(s, &Books::get())
+        normalize(s, Books::get(), Lang::En)
     }
 
     #[test]

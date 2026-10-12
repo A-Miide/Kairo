@@ -30,6 +30,7 @@ use kairo_bible::Book;
 
 use super::books::{numbered_prefix, Books};
 use super::citation::{Citation, Shape, Verses};
+use super::i18n::Lang;
 use super::numbers::{consume_number, is_ambiguous_number_word, Num, ORDINALS};
 use crate::re::words;
 
@@ -61,12 +62,14 @@ fn n32(v: i64) -> u32 {
 pub struct Parser<'a> {
     pub books: &'a Books,
     pub shape: &'a Shape,
+    /// The language citations are spoken in.
+    pub lang: Lang,
 }
 
 impl Parser<'_> {
     /// Normalized, titles resolved, "chapter 7 of Luke" put book-first.
     pub fn prepare(&self, text: &str) -> String {
-        let t = super::normalize::normalize(text, self.books);
+        let t = super::normalize::normalize(text, self.books, self.lang);
         let t = self.books.apply_titles(&t);
         if t.contains(" of ") { self.book_first(&t) } else { t }
     }

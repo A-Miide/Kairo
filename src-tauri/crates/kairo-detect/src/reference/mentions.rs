@@ -11,6 +11,7 @@
 use kairo_bible::Book;
 
 use super::books::{numbered_prefix, Books};
+use super::i18n::{localize, Lang};
 use crate::re::words;
 
 /// Phrases that introduce a book as a book.
@@ -20,7 +21,14 @@ const INTRODUCTIONS: &[&str] = &[
     "prophet",
 ];
 
-pub fn book_mentions(text: &str, books: &Books) -> Vec<Book> {
+pub fn book_mentions(text: &str, books: &Books, lang: Lang) -> Vec<Book> {
+    let localized;
+    let text = if lang == Lang::En {
+        text
+    } else {
+        localized = localize(text, lang);
+        localized.as_str()
+    };
     let mut found: Vec<Book> = Vec::new();
     let mut add = |b: Book| {
         if !found.contains(&b) {
@@ -57,7 +65,7 @@ pub fn book_mentions(text: &str, books: &Books) -> Vec<Book> {
         }
     }
 
-    let prepared = books.apply_titles(&super::normalize::normalize(text, books));
+    let prepared = books.apply_titles(&super::normalize::normalize(text, books, Lang::En));
     let w = words(&prepared);
     let mut i = 0;
     while i < w.len() {
