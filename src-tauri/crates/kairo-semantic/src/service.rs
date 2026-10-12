@@ -109,6 +109,16 @@ impl MeaningService {
         Ok(top)
     }
 
+    /// Unit vectors for any texts (sentences of a sermon).
+    pub fn embed(&self, texts: &[String]) -> Result<Vec<Vec<f32>>, SemanticError> {
+        let refs: Vec<&str> = texts.iter().map(String::as_str).collect();
+        let mut out = Vec::with_capacity(texts.len());
+        for chunk in refs.chunks(32) {
+            out.extend(self.embedder.embed_queries(chunk)?);
+        }
+        Ok(out)
+    }
+
     /// The closest verses in meaning in the whole Bible.
     pub fn search(&self, text: &str, limit: usize) -> Result<Vec<(VerseId, f32)>, SemanticError> {
         let q = self.queries(&[text])?;

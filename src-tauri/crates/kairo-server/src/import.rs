@@ -299,26 +299,132 @@ fn labelled(lines: Vec<String>, n: usize) -> Value {
     }
 }
 
+/// Pasted or plain text: a line per paragraph. Text copied from Word marks a
+/// line break inside a paragraph (Shift-Enter) with a vertical tab or the
+/// Unicode line separator, and may separate paragraphs with the paragraph
+/// separator; those keep their meaning.
 pub fn from_text(text: &str) -> Vec<Value> {
-    static BLANK: LazyLock<Regex> = LazyLock::new(|| re(r"\n\s*\n"));
-    let text = text.replace("\r\n", "\n").replace('\r', "\n");
-    let mut out = Vec::new();
-    let mut pending: Option<String> = None;
-    for chunk in BLANK.split(&text) {
-        let lines: Vec<String> = chunk.split('\n').map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
-        if lines.is_empty() {
-            continue;
+    let text = text.replace("\r\n", "\n").replace(['\r', '\u{2029}'], "\n").replace(['\u{00A0}', '\t'], " ");
+    let paras: Vec<Para> = text
+        .split('\n')
+        .map(|p| Para { lines: p.split(['\u{000B}', '\u{2028}']).map(|l| l.trim().to_string()).collect(), heading: false })
+        .collect();
+    blocks_from(&paras)
+}
+
+/// A paragraph of a document: its lines (line breaks inside it), and whether
+/// it's styled as a heading.
+pub struct Para {
+    pub lines: Vec<String>,
+    pub heading: bool,
+}
+
+impl Para {
+    fn blank(&self) -> bool {
+        self.lines.iter().all(|l| l.trim().is_empty())
+    }
+}
+
+/// Lines a slide holds before the next one starts (lyrics).
+const LINES_PER_SLIDE: usize = 4;
+/// Words a slide holds before prose is split across slides (at sentence ends).
+const WORDS_PER_SLIDE: usize = 45;
+
+fn is_prose(line: &str) -> bool {
+    let n = line.split_whitespace().count();
+    n > 12 || (n >= 8 && line.trim_end().ends_with(['.', '!', '?']))
+}
+
+/// Prose split at sentence ends into slides of at most `WORDS_PER_SLIDE` words.
+fn split_prose(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let mut cur = String::new();
+    for w in text.split_whitespace() {
+        let ends = w.ends_with(['.', '!', '?']);
+        cur = if cur.is_empty() { w.to_string() } else { format!("{cur} {w}") };
+        let n = cur.split_whitespace().count();
+        if (ends && n >= WORDS_PER_SLIDE * 2 / 3) || n >= WORDS_PER_SLIDE + 15 {
+            out.push(std::mem::take(&mut cur));
         }
-        if lines.len() == 1 && SECTION.is_match(&lines[0]) {
-            pending = Some(section_label(&lines[0]));
-            continue;
+    }
+    if !cur.is_empty() {
+        // A short tail joins the slide before it.
+        match out.last_mut() {
+            Some(last) if cur.split_whitespace().count() < 8 && last.split_whitespace().count() + cur.split_whitespace().count() <= WORDS_PER_SLIDE + 15 => {
+                last.push(' ');
+                last.push_str(&cur);
+            }
+            _ => out.push(cur),
         }
-        let leading = leading_label(&lines);
-        let label = leading.as_ref().map(|l| l.0.clone()).or_else(|| pending.take()).unwrap_or_else(|| format!("Slide {}", out.len() + 1));
-        pending = None;
-        out.push(block(label, leading.map_or(lines, |l| l.1)));
     }
     out
+}
+
+/// Slides from paragraphs. A blank line ends a slide; a section label
+/// ("Chorus") or a heading names the next. Without blank lines (most Word
+/// documents), short lines are grouped a few to a slide and each paragraph
+/// of prose is a slide of its own.
+pub fn blocks_from(paras: &[Para]) -> Vec<Value> {
+    let blank_separated = paras.iter().any(Para::blank) && paras.iter().filter(|p| !p.blank()).count() > 1;
+    let mut out: Vec<Value> = Vec::new();
+    let mut pending: Option<String> = None;
+    let mut cur: Vec<String> = Vec::new();
+    let flush = |cur: &mut Vec<String>, pending: &mut Option<String>, out: &mut Vec<Value>| {
+        if cur.is_empty() {
+            return;
+        }
+        let label = pending.take().unwrap_or_else(|| format!("Slide {}", out.len() + 1));
+        out.push(block(label, std::mem::take(cur)));
+    };
+    for p in paras {
+        if p.blank() {
+            flush(&mut cur, &mut pending, &mut out);
+            continue;
+        }
+        let lines: Vec<String> = p.lines.iter().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
+        // A label on its own line, or a heading: names the slide that follows.
+        if lines.len() == 1 && (SECTION.is_match(&lines[0]) || (p.heading && lines[0].split_whitespace().count() <= 8)) {
+            flush(&mut cur, &mut pending, &mut out);
+            pending = Some(if SECTION.is_match(&lines[0]) { section_label(&lines[0]) } else { lines[0].clone() });
+            continue;
+        }
+        if blank_separated {
+            cur.extend(lines);
+            continue;
+        }
+        if lines.len() == 1 && is_prose(&lines[0]) {
+            flush(&mut cur, &mut pending, &mut out);
+            for part in split_prose(&lines[0]) {
+                cur.push(part);
+                flush(&mut cur, &mut pending, &mut out);
+            }
+            continue;
+        }
+        // Lines broken inside one paragraph belong together; short lines group.
+        if lines.len() > 1 {
+            flush(&mut cur, &mut pending, &mut out);
+            for chunk in lines.chunks(LINES_PER_SLIDE) {
+                cur.extend(chunk.iter().cloned());
+                flush(&mut cur, &mut pending, &mut out);
+            }
+            continue;
+        }
+        cur.extend(lines);
+        if cur.len() >= LINES_PER_SLIDE {
+            flush(&mut cur, &mut pending, &mut out);
+        }
+    }
+    flush(&mut cur, &mut pending, &mut out);
+    // A slide that opens with its own label ("Verse 2" then its lines).
+    out.into_iter()
+        .map(|b| {
+            let lines: Vec<String> = b["lines"].as_array().unwrap().iter().filter_map(|l| l.as_str().map(str::to_string)).collect();
+            match leading_label(&lines) {
+                Some((label, rest)) if b["label"].as_str().is_some_and(|l| l.starts_with("Slide ")) => block(label, rest),
+                _ => b,
+            }
+        })
+        .collect()
 }
 
 fn decode_entities(s: &str) -> String {
@@ -326,12 +432,29 @@ fn decode_entities(s: &str) -> String {
 }
 
 fn from_docx(buf: &[u8]) -> Result<Vec<Value>, ImportError> {
-    static P: LazyLock<Regex> = LazyLock::new(|| re(r"(?s)<w:p\b[^>]*>(.*?)</w:p>"));
-    static T: LazyLock<Regex> = LazyLock::new(|| re(r"(?s)<w:t\b[^>]*>(.*?)</w:t>"));
+    // A paragraph's text runs, its line breaks and tabs, in order; its style.
+    static P: LazyLock<Regex> = LazyLock::new(|| re(r"(?s)<w:p\b[^>]*?(?:/>|>(.*?)</w:p>)"));
+    static PIECE: LazyLock<Regex> = LazyLock::new(|| re(r"(?s)<w:t\b[^>]*>(.*?)</w:t>|<w:br\b[^>]*/>|<w:cr\b[^>]*/>|<w:tab\b[^>]*/>"));
+    static STYLE: LazyLock<Regex> = LazyLock::new(|| re(r#"<w:pStyle\b[^>]*w:val="([^"]+)""#));
     let files = unzip(buf, |n| n == "word/document.xml")?;
     let xml = files.first().map(|f| String::from_utf8_lossy(&f.1).into_owned()).ok_or_else(|| err("no document.xml — is this really a .docx?"))?;
-    let paras: Vec<String> = P.captures_iter(&xml).map(|m| T.captures_iter(&m[1]).map(|t| decode_entities(&t[1])).collect::<String>().trim().to_string()).collect();
-    Ok(from_text(&paras.join("\n")))
+    let paras: Vec<Para> = P
+        .captures_iter(&xml)
+        .map(|m| {
+            let body = m.get(1).map_or("", |b| b.as_str());
+            let mut text = String::new();
+            for piece in PIECE.captures_iter(body) {
+                match piece.get(1) {
+                    Some(t) => text.push_str(&decode_entities(t.as_str())),
+                    None if piece[0].starts_with("<w:tab") => text.push(' '),
+                    None => text.push('\n'),
+                }
+            }
+            let style = STYLE.captures(body).map(|s| s[1].to_lowercase()).unwrap_or_default();
+            Para { lines: text.split('\n').map(|l| l.trim().to_string()).collect(), heading: style.starts_with("heading") || style == "title" }
+        })
+        .collect();
+    Ok(blocks_from(&paras))
 }
 
 fn from_pptx(buf: &[u8]) -> Result<Vec<Value>, ImportError> {
@@ -833,6 +956,33 @@ pub fn from_pro_theme(buf: &[u8]) -> Result<(Vec<Value>, Vec<String>), ImportErr
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_word_document_without_blank_lines() {
+        let p = |t: &str| Para { lines: vec![t.to_string()], heading: false };
+        let b = blocks_from(&[
+            p("Verse 1"),
+            p("Amazing grace how sweet the sound"),
+            p("That saved a wretch like me"),
+            p("Chorus"),
+            p("My chains are gone, I've been set free"),
+            p("Welcome to our service this morning. We are glad you are here with us today."),
+            p("Announcements: the youth meeting is on Friday at 6pm in the main hall."),
+        ]);
+        assert_eq!(b.len(), 4, "{b:?}");
+        assert_eq!(b[0]["label"], "Verse 1");
+        assert_eq!(b[0]["lines"], json!(["Amazing grace how sweet the sound", "That saved a wretch like me"]));
+        assert_eq!(b[1]["label"], "Chorus");
+        assert_eq!(b[1]["lines"], json!(["My chains are gone, I've been set free"]));
+        assert_eq!(b[2]["lines"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn long_prose_is_split_at_sentence_ends() {
+        let long = "This is a sentence of exactly ten words in it here. ".repeat(8);
+        let parts = split_prose(&long);
+        assert!(parts.len() >= 2 && parts.iter().all(|s| s.split_whitespace().count() <= 60 && s.ends_with('.')));
+    }
 
     #[test]
     fn plain_text_becomes_labelled_slides() {
