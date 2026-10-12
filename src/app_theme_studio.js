@@ -139,12 +139,13 @@ function gradientCanvas(id) {
 const DEFAULT_LOOKS = [
   {
     // The default Bible theme (first, so a fresh install's outputs start on
-    // it): the wine-red Crimson background (2026-10-12: "use the red or wine
-    // looking bg as default for the theme").
+    // it): Kairo's own red into its darker shade (2026-10-12: the brand
+    // colours, chosen over the logo's exact orange gradient so white verse
+    // text stays readable on a projector).
     id: 'full-bg', name: 'Full — Background', layout: 'fullscreen', animation: 'fade',
     groupId: 'grp-bible', groupName: 'Bible',
     layers: [
-      poolCanvas('crimson'),
+      gradientCanvas('kairo'),
       // h bumped 440 -> 700 (y unchanged) — owner: "for full screen or block
       // themes, the text area should use a sizable height by default so
       // that text don't cut off due to the constraint." A fixed-height text
@@ -273,8 +274,13 @@ const DEFAULT_LOOKS = [
     layers: [
       { id: 'bg', type: 'background', name: 'Canvas', visible: true,
         fill: 'transparent', fillBefore: 'solid', color: '#000000', opacity: 100, color2: '#000000', angle: 0 },
+      // The camera half, dimmed a little so the brand panel reads as the
+      // focus (2026-10-12) — still see-through.
+      { id: 'shade', type: 'background', name: 'Other Half', visible: true,
+        fill: 'solid', color: '#000000', opacity: 35, color2: '#000000', angle: 0, radius: 0,
+        pos: { x: 960, y: 0, w: 960, h: 1080 } },
       { id: 'panel', type: 'background', name: 'Filled Half', visible: true,
-        fill: 'image', src: 'backgrounds/midnight.jpg', color: poolColor('midnight'), opacity: 100, color2: '#1c1c30', angle: 160, radius: 0,
+        fill: 'gradient', color: '#F5301A', color2: '#9E1608', opacity: 100, angle: 160, gradientStops: [{ pos: 0, color: '#F5301A' }, { pos: 100, color: '#9E1608' }], radius: 0,
         pos: { x: 0, y: 0, w: 960, h: 1080 } },
       { id: 'verse', type: 'text', name: 'Verse', visible: true, binding: 'verse', customText: '',
         pos: { x: 88, y: 325, w: 784, h: 430 },
@@ -295,8 +301,13 @@ const DEFAULT_LOOKS = [
     layers: [
       { id: 'bg', type: 'background', name: 'Canvas', visible: true,
         fill: 'transparent', fillBefore: 'solid', color: '#000000', opacity: 100, color2: '#000000', angle: 0 },
+      // The camera half, dimmed a little so the brand panel reads as the
+      // focus (2026-10-12) — still see-through.
+      { id: 'shade', type: 'background', name: 'Other Half', visible: true,
+        fill: 'solid', color: '#000000', opacity: 35, color2: '#000000', angle: 0, radius: 0,
+        pos: { x: 0, y: 0, w: 960, h: 1080 } },
       { id: 'panel', type: 'background', name: 'Filled Half', visible: true,
-        fill: 'image', src: 'backgrounds/midnight.jpg', color: poolColor('midnight'), opacity: 100, color2: '#1c1c30', angle: 160, radius: 0,
+        fill: 'gradient', color: '#F5301A', color2: '#9E1608', opacity: 100, angle: 160, gradientStops: [{ pos: 0, color: '#F5301A' }, { pos: 100, color: '#9E1608' }], radius: 0,
         pos: { x: 960, y: 0, w: 960, h: 1080 } },
       { id: 'verse', type: 'text', name: 'Verse', visible: true, binding: 'verse', customText: '',
         pos: { x: 1048, y: 325, w: 784, h: 430 },
@@ -601,7 +612,7 @@ const DEFAULT_LOOKS = [
     id: 'timer-big', name: 'Timer — Big Countdown', layout: 'fullscreen', animation: 'cut',
     groupId: 'grp-timer', groupName: 'Timer',
     layers: [
-      poolCanvas('stage'),
+      gradientCanvas('kairo'),
       { id: 'timer', type: 'text', name: 'Countdown', visible: true, binding: 'timer', customText: '',
         pos: { x: 160, y: 380, w: 1600, h: 320 },
         font: { family: 'Manrope', size: 180, weight: 800, italic: false, lineHeight: 1, letterSpacing: 0, transform: 'none' },
