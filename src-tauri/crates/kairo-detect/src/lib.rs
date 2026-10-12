@@ -3,3 +3,4 @@
 mod re;
 pub mod reference;
 pub mod lexical;
+pub mod engine;
