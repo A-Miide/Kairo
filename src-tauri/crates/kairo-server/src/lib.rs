@@ -11,6 +11,7 @@ pub mod hub;
 mod clock;
 mod library;
 mod media;
+mod import;
 mod obs;
 mod routes;
 mod routes_library;
