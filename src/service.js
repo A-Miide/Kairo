@@ -3216,6 +3216,8 @@
       // paint — app.js's onTimerAction writes each tick into
       // [data-binding="timer"], mirroring display.html's real output.
       if (layer.binding) d.dataset.binding = layer.binding;
+      d.dataset.layerId = layer.id || '';
+      if (layer.follows) d.dataset.follows = layer.follows; // stackFollowers, below
       const p = layer.pos || { x: 100, y: 400, w: DESIGN_W - 200, h: 0 };
       const box = ov.pos || p;
       d.style.position = 'absolute';
@@ -3339,6 +3341,17 @@
       const anim = animOf(layer);
       for (let i = before; i < host.childNodes.length; i++) window.KairoMotion.animateLayer(host.childNodes[i], anim, { builds: !!opts.builds, unit });
     });
+    // Long verses shrink to their box as on the output; then a reference
+    // following its verse is placed (again next frame, for a host only now
+    // being attached or sized).
+    const fitAndStack = () => {
+      host.querySelectorAll('[data-binding="verse"],[data-binding="verse_translated"]').forEach(el => {
+        if (el.style.height && !el.isContentEditable) fitTextToBox(el);
+      });
+      stackFollowers(host);
+    };
+    fitAndStack();
+    requestAnimationFrame(fitAndStack);
   }
 
   // Small live preview of a look's layers, shared by every theme picker in
