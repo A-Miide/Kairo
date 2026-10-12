@@ -61,6 +61,7 @@ pub struct App {
     pub(crate) obs: obs::Obs,
     pub(crate) translator: translate::Translator,
     pub(crate) meaning: OnceLock<Arc<kairo_semantic::MeaningService>>,
+    pub(crate) log: detect::Log,
 }
 
 /// The speech engine that's listening.
@@ -136,6 +137,7 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         obs: obs::Obs::new(),
         translator: translate::Translator::default(),
         meaning: OnceLock::new(),
+        log: Default::default(),
         hub,
         bible: OnceLock::new(),
         detector: OnceLock::new(),
@@ -174,7 +176,7 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         let bible = Arc::new(Bible::new(k, nlt, db.clone()));
         let p = starting.presentation.read().unwrap().clone();
         let cfg = kairo_detect::engine::Config { auto_send: p.auto_send, ..Default::default() };
-        let detector = Detector::start(bible.clone(), starting.hub.clone(), cfg, starting.presentation.clone(), rt);
+        let detector = Detector::start(bible.clone(), starting.hub.clone(), cfg, starting.presentation.clone(), rt, starting.log.clone());
         let _ = starting.bible.set(bible);
         let _ = starting.detector.set(detector);
         eprintln!("[Server] Detection engine ready in {:.1}s (reference + verbatim + stream + fingerprint).", t.elapsed().as_secs_f32());
