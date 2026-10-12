@@ -172,10 +172,7 @@ comparison).
   validated on the dev sermons, so it doesn't ship.
 
 ### Not in this build
-- The extra time-offset Deepgram streams (citation voting).
-- Downloading local translation models (Ollama and the bundled Bibles still
-  translate); scripture language-pack downloads.
-- The optional Ollama polish of sermon notes.
+See "4.0.0" below: everything here was ported or decided.
 
 ### Size
 App about 400 MB on disk with the same features (655 MB today): no Node
@@ -276,3 +273,45 @@ the name…" with no chapter (Node misses it too).
   for Acts 2:21 (the words said were Romans'). Closing that needs a better
   transcript: hotwords when the release lands, or a second, non-streaming pass
   over each finished sentence (a separate download — not done).
+
+## 4.0.0 (2026-10-12)
+
+### The features that weren't ported — decided
+- **Extra Deepgram streams (citation voting): dropped.** Opt-in in Node with
+  no control in the UI; its own measurement was 10.3 of 14 citations on
+  screen against 10.0 with one stream, for two or three times the Deepgram
+  bill. The citation check (sibling books, sound-alike numbers, meaning)
+  catches misheard references at no cost.
+- **Slide translation models: ported** (`kairo-server/src/mt.rs`). Opus-MT
+  for French and Spanish (~108 MB each), NLLB-200 for Portuguese (~880 MB),
+  downloaded per language from pinned revisions with every file's SHA-256
+  checked, run with ort: the merged decoder carries its state between steps
+  (Portuguese 1.5–1.9 s a slide, French 0.1–0.5 s), each sentence on its
+  own (NLLB stops at the first). Opus-MT's tokenizer files carry an empty
+  "Precompiled" normalizer the tokenizers crate can't read; it's dropped on
+  load. Order: the Bible for verses, the local model, Ollama if one runs.
+- **Scripture packs: nothing to port.** They ship with the app and the UI
+  switches them on; `/api/lang/install` never had a source in Node either —
+  both lang routes removed.
+- **Ollama notes polish: nothing to port** (no UI for it).
+
+### Also
+- The default Bible theme is Full — Background on the Crimson picture (wine
+  red); Full — Gradient (Blue Hour) second.
+- Possible Matches' count no longer counts its own empty-state line.
+- **The build pipeline was rebuilt.** It had failed on every run since v2.6.0
+  (whisper.cpp and Node steps, and the meaning models were never in git).
+  Now: one job puts the bundle data in place (`kairo-eval --bin
+  bundle-data`: EmbeddingGemma and MiniLM at pinned revisions, checksum-
+  verified, and the verse index — cached until the Bible text or the index
+  code changes), then macOS universal, Windows and Linux build from it. A
+  manual run builds and keeps the installers; a tag makes a draft release.
+  Only `docs/index.html` is published to Pages. Windows is built, not yet
+  run by anyone (no Windows machine).
+- The Node server's source stays until the owner's full test passes (the
+  comparison tools and `npm run server:node` use it); the scripts that
+  bundled Node are gone.
+- Before releasing: the "Offline STT model v1" GitHub release is marked
+  Latest, so the updater's `releases/latest/download/latest.json` finds
+  nothing — publishing 4.0.0 as Latest fixes it; keep model releases off
+  Latest.
