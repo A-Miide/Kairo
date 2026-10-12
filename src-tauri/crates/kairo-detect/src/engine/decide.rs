@@ -62,7 +62,8 @@ impl Engine {
         let decided = scoring::target(s.total, c.method, corroborated, s.very_high);
         let second_opinion = (decided != Target::Drop || continuity)
             && !(c.method == Method::Verbatim && c.evidence.similarity.unwrap_or(0.0) < CORROBORATING_QUOTE_COVERAGE);
-        self.ledger.record(r, c.method, now, second_opinion);
+        let evidence = c.source.as_deref().map(|s| self.evidence_key(top, s));
+        self.ledger.record_evidence(r, c.method, now, second_opinion, evidence);
 
         // 4. A stream match held for want of a second method: now it has one.
         if c.method != Method::Stream && second_opinion {
@@ -73,6 +74,21 @@ impl Engine {
             }
         }
 
+        self.note(|e| {
+            format!(
+                "{} {} {:.3}: B {:.2} D {:+.2} A {:+.2} = {:.2} → {decided:?}{}{}{}",
+                c.method.wire(),
+                e.label(top),
+                c.score,
+                s.b,
+                s.d,
+                s.a,
+                s.total,
+                if continuity { " (continues the chapter)" } else { "" },
+                if corroborated { " (corroborated)" } else { "" },
+                if c.cap { " (capped)" } else { "" }
+            )
+        });
         let mut target = if continuity { Target::Screen } else { decided };
         let score = if continuity { c.score.max(s.total) } else { s.total };
 
@@ -216,7 +232,7 @@ impl Engine {
             return true;
         }
         let near_complete = c.method == Method::Verbatim && c.evidence.similarity.unwrap_or(0.0) >= ON_SCREEN_GUARD_MAX_COVERAGE;
-        !near_complete && self.on_screen_explains_speech_better(top, now)
+        !near_complete && self.on_screen_explains_speech_better(top, c.source.as_deref(), now)
     }
 
     fn chapter_just_named_elsewhere(&self, v: VerseId, c: &Candidate, now: u64) -> bool {
@@ -231,13 +247,26 @@ impl Engine {
         !(c.method == Method::Verbatim && c.evidence.similarity.unwrap_or(0.0) >= VERBATIM_AUTOSEND_MIN)
     }
 
-    fn on_screen_explains_speech_better(&self, v: VerseId, now: u64) -> bool {
+    /// The words the match was found in (else the newest speech) fit the verse
+    /// on screen at least as well.
+    fn on_screen_explains_speech_better(&self, v: VerseId, source: Option<&str>, now: u64) -> bool {
         let Some((up, at)) = self.screen.up else { return false };
         if now.saturating_sub(at) > SAME_BOOK_WINDOW_MS || up == v || self.range.all.contains(&v) {
             return false;
         }
-        let said = if self.t.interim.is_empty() { self.t.finals.back().map_or("", |f| f.text.as_str()) } else { &self.t.interim };
-        fits_first_at_least_as_well(self.verse_text(up), self.verse_text(v), said)
+        let newest = if self.t.interim.is_empty() { self.t.finals.back().map_or("", |f| f.text.as_str()) } else { &self.t.interim };
+        fits_first_at_least_as_well(self.verse_text(up), self.verse_text(v), source.unwrap_or(newest))
+    }
+
+    /// What a sighting rests on: the verse's own words found in the speech.
+    fn evidence_key(&self, v: VerseId, source: &str) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let heard = super::evidence::evidence_words(source);
+        let mut words: Vec<String> = super::evidence::evidence_words(&self.match_text(v)).into_iter().filter(|w| heard.contains(w)).collect();
+        words.sort();
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        words.hash(&mut h);
+        h.finish()
     }
 
     /// A verse already shown and replaced goes back up only if the words said

@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 use kairo_bible::VerseId;
 
 use super::core::{Engine, CONTEXT_WINDOW_MS, NAMED_PERSON_WINDOW_MS};
-use super::evidence::{meaningful_words, stem_lite};
+use super::evidence::{meaningful_words, telling_words};
 use super::scoring::SAME_BOOK_WINDOW_MS;
 
 /// One verse's own words heard this many more times than the other's decides between them.
@@ -47,10 +47,11 @@ impl Engine {
         }
         twins.sort_by(|a, b| b.shared.cmp(&a.shared));
         twins.truncate(TWINS_COMPARED);
-        if let Some((d, at)) = self.twins.decided.get(&v) {
-            if now.saturating_sub(*at) < TWIN_DECISION_TTL_MS {
+        if let Some((d, at)) = self.twins.decided.get(&v).copied() {
+            if now.saturating_sub(at) < TWIN_DECISION_TTL_MS {
+                self.note(|e| format!("twin decision for {} reused: {d:?}", e.label(v)));
                 return match d {
-                    Decided::Switch(t) => Some(TwinOutcome::Switch(*t)),
+                    Decided::Switch(t) => Some(TwinOutcome::Switch(t)),
                     Decided::Keep => None,
                 };
             }
@@ -60,15 +61,16 @@ impl Engine {
             return None;
         }
         if let Some(t) = twins.iter().find(|t| self.cited_recently(t.verse, now)) {
+            self.note(|e| format!("twin {} of {} was cited", e.label(t.verse), e.label(v)));
             return Some(TwinOutcome::Switch(t.verse));
         }
         self.twins.decided.retain(|_, (_, at)| now.saturating_sub(*at) <= TWIN_DECISION_TTL_MS);
 
-        let speech: HashSet<String> = self.recent_speech_seconds(30).iter().map(|w| stem_lite(w)).collect();
+        let speech = telling_words(&self.recent_speech_seconds(30).join(" "));
         if speech.is_empty() {
             return None;
         }
-        let words = |e: &Engine, x: VerseId| -> HashSet<String> { meaningful_words(&e.match_text(x)).iter().map(|w| stem_lite(w)).collect() };
+        let words = |e: &Engine, x: VerseId| telling_words(&e.match_text(x));
         let cand = words(self, v);
         let cand_aff = self.passage_affinity(v, now);
         let mut best: Option<(TwinOutcome, usize)> = None;
@@ -96,6 +98,7 @@ impl Engine {
                 }
             }
         }
+        self.note(|e| format!("twin check {}: speech {:?}, candidate affinity {cand_aff}, best {:?}", e.label(v), speech, best.map(|(o, h)| (o, h))));
         match best {
             Some((TwinOutcome::Switch(t), _)) => {
                 self.twins.decided.insert(v, (Decided::Switch(t), now));

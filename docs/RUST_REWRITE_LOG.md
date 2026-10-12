@@ -64,3 +64,60 @@ with the reason and, where it applies, the measurement behind it.
 - **8 GB RAM is the target machine** (this dev Mac is an M1 with 8 GB). Model
   choices are judged on accuracy, CPU latency, memory and size together, since
   the embedder, reranker and offline speech model can all be loaded at once.
+
+## The engine, end to end (2026-10-12)
+
+The whole funnel now runs in Rust (`crates/kairo-detect/src/engine`): spoken
+citations, ranges, spoken triggers, the stream / verbatim / fingerprint paths,
+twins, miscitation correction and the citation check, all through one decider.
+Meaning-based paths (paraphrase, scoped meaning search) are next.
+
+### How it's measured
+- **`replay`** (`cargo run --release -p kairo-detect --bin replay`) feeds the
+  recorded sermons through the engine and scores them the way
+  `server/eval/run_eval.js` does (found within 30 s, wrong sends, misses
+  offered in Possible Matches, suggestions per hour), side by side with what
+  Node decided on the same input. Dev sermons only, unless `--held-out`.
+- **Real timing.** The engine is clock-free, so sermons replay at their real
+  audio times. Node's eval could only run compressed (a 60-minute sermon in
+  ~4 minutes), which hid every behaviour that depends on seconds: how often
+  the fingerprint path runs, how long a pause is. Replaying at real speed
+  surfaced several problems Node's numbers never showed (below).
+- **`--trace a..b`** prints every input and every decision with its reasons
+  (score parts, guards, twin checks) for a stretch of a sermon.
+- **Word matchers vs Node** (`tests/lexical_vs_node.rs`, ignored): same verse
+  on 99.8% of 7,334 real texts for verbatim, 98.6% for fingerprint. The
+  differences come from Node reading `map.json`, whose KJV text still holds
+  the translators' margin notes (John 1:5 carries "{comprehended: or, did not
+  admit, or, receive}") and lacks 92 verses; Rust reads the cleaned KJV.
+
+### Executive decisions (each measured on the dev sermons, real timing)
+- **Fingerprint never puts a verse up alone.** At a real cadence it runs every
+  second, and short verses made of preaching words ("thank… praise… glorious
+  name", 1 Chronicles 29:13) matched the preaching itself: 1 right, 11 wrong
+  on screen. It now needs a second method or the chapter on screen; it still
+  offers in Possible Matches. Recall unchanged.
+- **Only new evidence counts as a repeat.** Re-searching a growing sentence
+  found the same words again and the scorer counted each as another sighting.
+  A sighting now counts only if it rests on words not counted before.
+- **Guards judge the words that produced the match**, not just the newest
+  segment ("does the verse on screen explain this at least as well?").
+- **Twin decisions use only words that can tell verses apart.** "God" (from
+  "God help me") and "there" switched Genesis 12:2 to its near-duplicate 46:3.
+- **A pause is measured from the end of one segment to the start of the
+  next.** Node measured final to final (8 s); this preacher's segments are ~8 s
+  long, so "Hebrews chapter 3:12 to" | "15" was never joined and the range
+  never set.
+- **The sentence that ends an utterance is searched with its own words.**
+  Node's flush on end-of-utterance left the last segment out of the sentence.
+
+### Where it stands (dev sermons, real timing)
+| | found | wrong sends | missed but offered | suggestions/hour |
+|---|---|---|---|---|
+| Rust | 184/212 (86.8%) | 3 of 298 | 18/28 | 78 |
+| Node (its own recorded run) | 181/212 (85.4%) | 2 of 279 | 22/31 | 50 |
+
+Two of Rust's three "wrong" sends are verses the preacher did read that the
+ground truth doesn't list (1 Corinthians 9:24, Genesis 26:13). Rust doesn't
+yet have the meaning paths (Node found 1 verse that way). Possible Matches is
+busier than Node's; that's next to look at.

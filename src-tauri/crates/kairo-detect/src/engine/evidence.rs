@@ -43,6 +43,12 @@ pub fn evidence_words(text: &str) -> HashSet<String> {
     meaningful_words(text).into_iter().filter(|w| !NON_EVIDENCE.contains(&w.as_str())).map(|w| stem_lite(&w)).collect()
 }
 
+/// Words that can tell one verse from another: evidence words minus the
+/// everyday words of preaching.
+pub fn telling_words(text: &str) -> HashSet<String> {
+    evidence_words(text).into_iter().filter(|w| !preaching_common(w)).collect()
+}
+
 /// Does `speech` fit verse A at least as well as verse B? Only the words one
 /// verse has and the other doesn't are counted — shared words can't tell them
 /// apart. A holds when it has words of its own heard, at least as many as B;

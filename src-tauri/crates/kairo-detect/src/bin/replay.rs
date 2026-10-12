@@ -63,6 +63,8 @@ struct Score {
     hours: f64,
     wrong_list: Vec<String>,
     missed_list: Vec<String>,
+    /// Method → (found, wrong).
+    by_method: std::collections::BTreeMap<String, (usize, usize)>,
 }
 
 fn root() -> PathBuf {
@@ -122,9 +124,10 @@ fn score(k: &Knowledge, gt: &[GroundTruth], decisions: &[Decision], last_ms: i64
         s.total += 1;
         let hit = screen.iter().enumerate().find(|(i, d)| !used.contains(i) && g.keys.contains(&d.verses[0]) && (d.at_ms - g.at_ms).abs() <= MATCH_WINDOW_MS);
         match hit {
-            Some((i, _)) => {
+            Some((i, d)) => {
                 used.insert(i);
                 s.found += 1;
+                s.by_method.entry(d.method.clone()).or_default().0 += 1;
             }
             None => missed.push(g),
         }
@@ -138,6 +141,7 @@ fn score(k: &Knowledge, gt: &[GroundTruth], decisions: &[Decision], last_ms: i64
     for (i, d) in screen.iter().enumerate() {
         if !used.contains(&i) && !all_keys.contains(&d.verses[0]) && !in_bare(d) {
             s.wrong += 1;
+            s.by_method.entry(d.method.clone()).or_default().1 += 1;
             s.wrong_list.push(format!("{:>6.1}m {} ({}{})", d.at_ms as f64 / 60_000.0, label(k, d.verses[0]), d.method, if d.corrected { ", corrected" } else { "" }));
         }
     }
@@ -201,8 +205,17 @@ fn cue_ms(golden: &Value) -> Vec<i64> {
         .collect()
 }
 
+/// Cues to print every input and effect for (`--trace 60..75`).
+fn trace_range() -> Option<(usize, usize)> {
+    let args: Vec<String> = std::env::args().collect();
+    let i = args.iter().position(|a| a == "--trace")?;
+    let (a, b) = args.get(i + 1)?.split_once("..")?;
+    Some((a.parse().ok()?, b.parse().ok()?))
+}
+
 fn replay(k: &Arc<Knowledge>, golden: &Value, audio: bool) -> (Vec<Decision>, f64) {
-    let mut engine = Engine::new(k.clone(), Config::default());
+    let trace = trace_range();
+    let mut engine = Engine::new(k.clone(), Config { explain: trace.is_some(), ..Config::default() });
     let cue_at = cue_ms(golden);
     let mut out = Vec::new();
     let mut wakes: Vec<(u64, Event)> = Vec::new();
@@ -226,7 +239,28 @@ fn replay(k: &Arc<Knowledge>, golden: &Value, audio: bool) -> (Vec<Decision>, f6
             let o = engine.handle(ev, at);
             collect(o, cue, &mut wakes, &mut out);
         }
+        let traced = trace.is_some_and(|(a, b)| cue >= a && cue <= b);
+        if traced {
+            println!("  [{cue} t={t}] {} \"{text}\"", if fin { "FINAL" } else { "interim" });
+        }
         let o = engine.handle(Event::Speech(Segment { text, is_final: fin, speech_final: fin, continues_live: false }), t);
+        if traced {
+            for n in &o.notes {
+                println!("      .. {n}");
+            }
+            for e in &o.effects {
+                match e {
+                    Effect::Show { verses, method, score, target, corrected_from } => println!(
+                        "      -> {target:?} {} {:.3} {}{}",
+                        method.wire(),
+                        score,
+                        verses.iter().map(|v| label(k, *v)).collect::<Vec<_>>().join(", "),
+                        corrected_from.map_or(String::new(), |c| format!(" (corrects {})", label(k, c)))
+                    ),
+                    other => println!("      -> {other:?}"),
+                }
+            }
+        }
         collect(o, cue, &mut wakes, &mut out);
     }
     (out, started.elapsed().as_secs_f64())
@@ -243,7 +277,7 @@ fn main() {
     let parity = args.iter().any(|a| a == "--parity");
     let verbose = args.iter().any(|a| a == "--verbose");
     let held_out = args.iter().any(|a| a == "--held-out");
-    let names: Vec<&str> = args.iter().filter(|a| !a.starts_with("--") && *a != "golden" && *a != "audio").map(String::as_str).collect();
+    let names: Vec<&str> = args.iter().filter(|a| !a.starts_with("--") && *a != "golden" && *a != "audio" && !a.contains("..")).map(String::as_str).collect();
     let chosen: Vec<&str> = if !names.is_empty() {
         names
     } else if held_out {
@@ -313,6 +347,11 @@ fn main() {
                     t.offered += s.offered;
                     t.suggestions += s.suggestions;
                     t.hours += s.hours;
+                    for (m, (f, w)) in s.by_method {
+                        let e = t.by_method.entry(m).or_default();
+                        e.0 += f;
+                        e.1 += w;
+                    }
                 }
             }
             None => {
@@ -382,6 +421,9 @@ fn main() {
             s.total - s.found,
             s.suggestions as f64 / s.hours.max(1e-9)
         );
+    }
+    for (who, s) in [("Rust", &rust_total), ("Node", &node_total)] {
+        println!("{who} by method (found/wrong): {}", s.by_method.iter().map(|(m, (f, w))| format!("{m} {f}/{w}")).collect::<Vec<_>>().join(", "));
     }
     if parity {
         println!("Parity: {}/{} of Node's stable decisions reproduced ({:.1}%), {} extra", parity_totals.0, parity_totals.1, pct(parity_totals.0, parity_totals.1), parity_totals.2);

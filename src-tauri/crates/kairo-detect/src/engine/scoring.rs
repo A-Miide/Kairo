@@ -133,6 +133,9 @@ struct VerseEntry {
     methods: HashSet<Method>,
     landed: HashSet<Method>,
     count: u32,
+    /// The evidence each sighting rested on: the same words found again
+    /// (a growing sentence re-searched) aren't a new sighting.
+    evidence: HashSet<u64>,
     last_at: u64,
 }
 
@@ -155,13 +158,21 @@ impl Ledger {
     /// Every hit counts toward the bonuses; only one that `landed` (was worth
     /// showing somewhere) counts as a second opinion.
     pub fn record(&mut self, v: VerseRef, method: Method, now_ms: u64, landed: bool) {
+        self.record_evidence(v, method, now_ms, landed, None);
+    }
+
+    /// As `record`; `evidence` identifies what the sighting rested on, and a
+    /// sighting on evidence already counted doesn't count as a repeat.
+    pub fn record_evidence(&mut self, v: VerseRef, method: Method, now_ms: u64, landed: bool, evidence: Option<u64>) {
         self.prune(now_ms);
         let e = self.by_verse.entry(v).or_default();
         e.methods.insert(method);
         if landed {
             e.landed.insert(method);
         }
-        e.count += 1;
+        if evidence.is_none_or(|k| e.evidence.insert(k)) {
+            e.count += 1;
+        }
         e.last_at = now_ms;
         let c = self.by_chapter.entry((v.book, v.chapter)).or_default();
         c.verses.insert(v.verse);
@@ -257,10 +268,15 @@ pub fn score(candidate: VerseRef, method: Method, e: &Evidence, ctx: &ScoreConte
 }
 
 /// Screen, Possible Matches or drop. Meaning-only matches reach the screen
-/// only corroborated or at very high confidence; fingerprint reaches it only
-/// through its own very-high calibration.
+/// only corroborated or at very high confidence. A verse's identifying words
+/// said in any order (fingerprint) never put it up alone: in a sermon those
+/// words recur every few seconds, and a short verse made of them matches the
+/// preaching itself — it needs a second method (or the chapter on screen).
 pub fn target(total: f32, method: Method, corroborated: bool, very_high: bool) -> Target {
     if method == Method::Semantic && total >= VIEWER_MIN_SCORE && !(corroborated || very_high) {
+        return Target::Suggestions;
+    }
+    if method == Method::Fingerprint && total >= VIEWER_MIN_SCORE && !corroborated {
         return Target::Suggestions;
     }
     if total >= VIEWER_MIN_SCORE {
