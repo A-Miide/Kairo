@@ -338,6 +338,7 @@ impl Engine {
             if !found && self.reading.is_valid(now) && !self.announces_different_book(&text, self.t.prev_final.clone(), now) {
                 self.interim_partial(&text, now);
             }
+            self.spoken_correction(&text, false, now);
             if !found {
                 let words = text.split_whitespace().count();
                 if words >= 6 && now.saturating_sub(self.t.last_interim_verbatim) > 500 {
@@ -372,7 +373,9 @@ impl Engine {
         let prev_before = self.t.prev_final.clone();
         let mut found = self.process_references_final(&text, &sent_from_interim, seg.continues_live, now);
         self.check_citation_siblings(&text, true, false, now);
-        if !found && self.reading.is_valid(now) {
+        if self.spoken_correction(&text, true, now) {
+            found = true;
+        } else if !found && self.reading.is_valid(now) {
             found = self.final_partial(&text, prev_before.as_ref(), now);
         }
         if !found {
@@ -380,6 +383,9 @@ impl Engine {
         }
         if !found {
             found = self.verse_end_jump(&text, now);
+        }
+        if !found {
+            self.offer_named_passages(&text, now);
         }
         if let Some(last) = self.t.finals.back_mut() {
             last.has_ref = found;
