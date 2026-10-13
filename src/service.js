@@ -6334,7 +6334,10 @@
       if (duration > 0) mediaControl('seek', (Number(mediaSeekInput.value) / 1000) * duration);
       mediaSeeking = false;
     });
-    document.getElementById('media-volume')?.addEventListener('input', (e) => {
+    const mediaVolumeBar = document.getElementById('media-volume');
+    try { const v = parseInt(localStorage.getItem('kairo-media-volume') || '', 10); if (v >= 0 && v <= 100 && mediaVolumeBar) mediaVolumeBar.value = String(v); } catch {}
+    mediaVolumeBar?.addEventListener('input', (e) => {
+      try { localStorage.setItem('kairo-media-volume', e.target.value); } catch {}
       mediaControl('volume', Number(e.target.value) / 100);
     });
 

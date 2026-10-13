@@ -3285,6 +3285,14 @@ populateAudioOutputDevices();
 // Re-apply the saved device to a freshly (re)connected display window —
 // otherwise it only ever learns the choice from a change event, not on
 // its own (re)connect.
+(function reapplySavedMediaVolume() {
+  const v = parseInt(localStorage.getItem('kairo-media-volume') || '', 10);
+  if (!(v >= 0 && v < 100)) return;
+  fetch(`${SERVER}/api/service/media-control`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'volume', value: v / 100 }),
+  }).catch(() => {});
+})();
 (function reapplySavedAudioOutput() {
   const deviceId = localStorage.getItem(MEDIA_OUTPUT_KEY) || '';
   if (!deviceId) return;
@@ -3973,14 +3981,15 @@ if (document.documentElement.classList.contains('platform-darwin')) {
 // own startDragging() sidesteps the app-region/compositing path entirely —
 // there's nothing left for that bug class to trigger on.
 (function wireWindowDrag() {
-  const region = document.querySelector('.top-bar-center');
-  if (!region) return;
-  region.addEventListener('mousedown', (e) => {
+  // The whole top bar moves the window except its controls. The empty part of
+  // the centre column alone was too small once the tab pill filled it: at most
+  // widths there was almost nothing to grab.
+  const bar = document.querySelector('.top-bar');
+  if (!bar) return;
+  const INTERACTIVE = 'button, a, input, select, textarea, label, [role="button"], [contenteditable], .tb-group, .window-controls, .listen-btn, #mic-display';
+  bar.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return; // left-click only — matches native drag-region behavior
-    // .top-bar-center now also hosts the Bible/Slides/Songs/Media/Theme
-    // Studio tabs (centering them in the bar) — only start a window drag
-    // when the empty space itself was clicked, not a tab button.
-    if (e.target !== region) return;
+    if (e.target.closest(INTERACTIVE)) return;
     const win = window.__TAURI__?.window?.getCurrentWindow?.();
     win?.startDragging?.().catch(() => {});
   });

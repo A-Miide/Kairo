@@ -648,17 +648,15 @@
                         <button id="media-play-btn" class="ls-icon-btn" title="Play / Pause">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" id="media-play-icon"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                 </button>
-                <!-- Mute button immediately followed by the volume slider —
-                     they used to sit at opposite ends of the bar (mute here,
-                     volume all the way past seek+time), which read as two
-                     unrelated controls instead of one "volume" group paired
-                     the way every other media player pairs them. -->
+                <!-- Progress first and widest, then the time; mute and a short
+                     volume slider after, so the two sliders can't be mistaken for
+                     each other. -->
+                <input type="range" id="media-seek" class="media-seek" min="0" max="1000" value="0" title="Seek">
+                <span class="media-time" id="media-time">0:00 / 0:00</span>
                 <button id="media-mute-btn" class="ls-icon-btn" title="Mute / Unmute">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" id="media-mute-icon"><polygon points="3 9 8 9 13 4 13 20 8 15 3 15 3 9" fill="currentColor" stroke="none"/><path d="M16 8a5 5 0 0 1 0 8"/><path d="M19 5a9 9 0 0 1 0 14"/></svg>
                 </button>
                 <input type="range" id="media-volume" class="media-volume" min="0" max="100" value="100" title="Volume">
-                <input type="range" id="media-seek" class="media-seek" min="0" max="1000" value="0" title="Seek">
-                <span class="media-time" id="media-time">0:00 / 0:00</span>
                     </div>
                 </div>
                 <!-- Output transition — display-level (not per-theme, see
@@ -1237,6 +1235,9 @@
                 <div class="settings-section">
                     <div class="settings-section-label">Audio</div>
 
+                    <div class="setting-row-2col audio-cols">
+                    <div class="setting-col-stack">
+
                     <div class="setting-group">
                         <label class="setting-label">Speech Engine</label>
                         <div class="toggle-group" id="speech-engine-toggle">
@@ -1282,7 +1283,8 @@
                         <input type="password" id="deepgram-key" class="setting-input" placeholder="dg_...">
                     </div>
 
-                    <div class="setting-row-2col">
+                    </div>
+                    <div class="setting-col-stack">
                         <div class="setting-group">
                             <label class="setting-label">Audio Input</label>
                             <div style="display:flex;gap:6px;align-items:center;">
@@ -1302,6 +1304,7 @@
                             <p class="setting-hint">The line-in or interface feed the app listens to.</p>
                         </div>
 
+                    </div>
                     </div>
                 </div>
 
@@ -1325,9 +1328,8 @@
                         </select>
                         <p class="setting-hint">The version a verse goes up in.</p>
                     </div>
-                </div>
 
-                <div class="setting-group setting-checks">
+                    <div class="setting-group setting-checks">
                     <label class="bs-check-label">
                         <input type="checkbox" id="auto-send-settings" checked>
                         <span><strong>Put confident matches on screen automatically</strong>
@@ -1338,6 +1340,7 @@
                         <span><strong>Show how sure each match is</strong>
                         <span class="setting-hint">A percentage on each card in the Live Queue and Possible Matches.</span></span>
                     </label>
+                </div>
                 </div>
             </div>
 

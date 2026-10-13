@@ -611,6 +611,19 @@ function setMediaOutput(deviceId) {
     body: JSON.stringify({ deviceId: deviceId || null }),
   }).catch(() => {});
 }
+const MEDIA_VOLUME_KEY = 'kairo-media-volume';
+function savedMediaVolume() {
+  try { const v = parseInt(localStorage.getItem(MEDIA_VOLUME_KEY) || '', 10); return v >= 0 && v <= 100 ? v : 100; } catch { return 100; }
+}
+function setMediaVolume(pct) {
+  try { localStorage.setItem(MEDIA_VOLUME_KEY, String(pct)); } catch {}
+  const bar = document.getElementById('media-volume');
+  if (bar) bar.value = String(pct); // the transport bar's slider follows
+  fetch(`${SERVER}/api/service/media-control`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'volume', value: pct / 100 }),
+  }).catch(() => {});
+}
 async function mediaOutputDevices() {
   try {
     const devices = await navigator.mediaDevices.enumerateDevices();
@@ -665,6 +678,26 @@ function renderAudioOutputDetail(host) {
   note.className = 'setting-hint';
   group.appendChild(note);
   host.appendChild(group);
+
+  const volGroup = detailGroup('Volume');
+  const volRow = document.createElement('div');
+  volRow.className = 'audio-out-row';
+  const vol = document.createElement('input');
+  vol.type = 'range'; vol.min = '0'; vol.max = '100'; vol.step = '1';
+  vol.value = String(savedMediaVolume());
+  vol.className = 'audio-out-volume';
+  vol.setAttribute('aria-label', 'Media volume');
+  const volVal = document.createElement('span');
+  volVal.className = 'audio-out-volume-val';
+  volVal.textContent = `${vol.value}%`;
+  vol.addEventListener('input', () => { volVal.textContent = `${vol.value}%`; setMediaVolume(Number(vol.value)); });
+  volRow.append(vol, volVal);
+  volGroup.appendChild(volRow);
+  const volHint = document.createElement('p');
+  volHint.className = 'setting-hint';
+  volHint.textContent = 'How loud video on the Media layer plays. The same level as the slider on the media controls.';
+  volGroup.appendChild(volHint);
+  host.appendChild(volGroup);
 
   const testBtn = document.createElement('button');
   testBtn.type = 'button';
