@@ -604,6 +604,13 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
   transition: all var(--trans);
 }
 
+/* Windows / Linux: the app's own controls, flush to the right edge and as tall
+   as the bar, the way the system draws them. On macOS the traffic lights sit
+   on the left instead and these stay hidden. */
+.platform-win32 .top-bar, .platform-linux .top-bar { padding-right: 0; }
+.platform-win32 .window-controls, .platform-linux .window-controls { margin-left: 8px; gap: 0; align-self: stretch; }
+.platform-win32 .win-btn, .platform-linux .win-btn { width: 46px; height: 100%; border-radius: 0; }
+.platform-win32 .win-btn.close:hover, .platform-linux .win-btn.close:hover { background: #e81123; color: #fff; }
 .win-btn:hover { background: var(--bg-hover); color: var(--text); }
 .win-btn.close:hover { background: var(--red-dim); color: var(--red); }
 

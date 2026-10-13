@@ -18,7 +18,8 @@ pub fn kind_for(name: &str) -> Option<&'static str> {
     let ext = Path::new(name).extension()?.to_str()?.to_ascii_lowercase();
     match ext.as_str() {
         "png" | "jpg" | "jpeg" | "gif" | "webp" | "bmp" | "svg" => Some("image"),
-        "mp4" | "webm" | "mov" | "m4v" => Some("video"),
+        "mp4" | "webm" | "mov" | "m4v" | "mkv" | "avi" | "wmv" | "asf" | "flv" | "f4v" | "mpg" | "mpeg" | "ts" | "mts"
+        | "m2ts" | "3gp" | "3g2" | "ogv" | "vob" | "mxf" | "divx" => Some("video"),
         _ => None,
     }
 }

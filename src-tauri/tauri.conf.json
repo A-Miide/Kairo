@@ -23,6 +23,7 @@
         "decorations": true,
         "transparent": false,
         "titleBarStyle": "Overlay",
+        "trafficLightPosition": { "x": 18, "y": 17 },
         "hiddenTitle": true,
         "visible": false,
         "backgroundColor": "#0d0d0d",
@@ -61,13 +62,15 @@
       "../databases/bibles/packs": "databases/bibles/packs",
       "../databases/bibles/translations": "databases/bibles/translations",
       "../databases/bibles/verse_index.gemma-legacy.kvx": "databases/bibles/verse_index.gemma-legacy.kvx",
-      "../databases/i18n": "databases/i18n"
+      "../databases/i18n": "databases/i18n",
+      "bin": "bin"
     },
     "linux": {
       "deb": {
         "depends": [
           "libwebkit2gtk-4.1-0",
-          "libssl3"
+          "libssl3",
+          "ffmpeg"
         ]
       }
     },

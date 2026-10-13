@@ -60,3 +60,10 @@ scripts/kairo-updater.key
 # Parity recorder run logs
 parity/*.log
 databases/bibles/verse_index.*.kvx
+
+# The ffmpeg that ships in the app is built by scripts/build-ffmpeg-macos.sh, not committed.
+src-tauri/bin/*
+!src-tauri/bin/.gitkeep
+
+# Scratch space for scripts/build-ffmpeg-macos.sh
+/target/

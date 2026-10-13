@@ -35,6 +35,47 @@ pub fn router() -> Router<Shared> {
         .route("/api/media/folders/{id}/items", get(folder_items))
         .route("/api/media/folders/{id}/upload", post(folder_upload))
         .route("/api/media/folders/{id}/file/{name}", get(folder_file))
+        .route("/api/media/prepare", post(prepare_video))
+        .route("/api/media/prepared/{file}", get(prepared_file))
+}
+
+/// The file on disk behind one of the media addresses the UI uses.
+fn media_path(app: &Shared, url: &str) -> Option<std::path::PathBuf> {
+    let path = url.split(['?', '#']).next().unwrap_or("");
+    let dec = |s: &str| crate::percent_decode(s);
+    if let Some(name) = path.strip_prefix("/api/media/bin/file/") {
+        return app.media.bin_file(&dec(name));
+    }
+    let rest = path.strip_prefix("/api/media/folders/")?;
+    let (id, name) = rest.split_once("/file/")?;
+    app.media.folder_file(id, &dec(name))
+}
+
+/// Makes a video playable: `{ url }` in, where it stands out. A file the web
+/// view plays as it is comes back `native`; with `force` (it failed to play) or
+/// for a container it can't read, it's converted once and `ready` carries the
+/// address of the converted copy.
+async fn prepare_video(State(app): State<Shared>, b: Option<Json<Value>>) -> Response {
+    let b = body_or_empty(b);
+    let url = b["url"].as_str().unwrap_or("").to_string();
+    let force = b["force"].as_bool().unwrap_or(false);
+    let Some(path) = media_path(&app, &url) else { return not_found("No such file") };
+    let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("").to_string();
+    if !force && !crate::video::needs_conversion(&name) {
+        return Json(json!({ "state": "native" })).into_response();
+    }
+    let v = app.video.clone();
+    let out = tokio::task::spawn_blocking(move || v.start(path)).await.unwrap_or_else(|_| json!({ "state": "failed" }));
+    Json(out).into_response()
+}
+
+async fn prepared_file(State(app): State<Shared>, Path(file): Path<String>, req: Request) -> Response {
+    let key = file.strip_suffix(".mp4").unwrap_or("");
+    if key.is_empty() || !key.bytes().all(|c| c.is_ascii_hexdigit()) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let p = app.video.prepared_path(key);
+    if p.is_file() { send_file(p, req).await } else { StatusCode::NOT_FOUND.into_response() }
 }
 
 fn not_found(msg: &str) -> Response {

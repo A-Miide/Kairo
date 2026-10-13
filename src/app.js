@@ -3995,5 +3995,18 @@ if (document.documentElement.classList.contains('platform-darwin')) {
   });
 })();
 
+// Windows / Linux window controls (macOS uses the system's traffic lights).
+(function wireWindowControls() {
+  const win = () => window.__TAURI__?.window?.getCurrentWindow?.();
+  document.getElementById('minimize-btn')?.addEventListener('click', () => win()?.minimize?.().catch(() => {}));
+  document.getElementById('maximize-btn')?.addEventListener('click', () => win()?.toggleMaximize?.().catch(() => {}));
+  document.getElementById('close-btn')?.addEventListener('click', () => win()?.close?.().catch(() => {}));
+  // Double-clicking the empty part of the bar maximises, as on every desktop.
+  document.querySelector('.top-bar')?.addEventListener('dblclick', (e) => {
+    if (e.target.closest('button, a, input, select, textarea, label, [role="button"], .tb-group, .window-controls')) return;
+    win()?.toggleMaximize?.().catch(() => {});
+  });
+})();
+
 // ── Boot ───────────────────────────────────────────────────────────────────
 populateAudioDevices();
