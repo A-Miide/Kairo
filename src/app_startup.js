@@ -69,44 +69,13 @@
     document.getElementById(btnId)?.click();
   };
 
-  // File > Import's chooser — see the comment on the 'menu-import' listener
-  // below and #import-options-modal in index.html. Each row just hands off
-  // to a flow that already exists and is already tested (the Slides add-
-  // menu's quick file/clipboard import, and Theme Studio's own importer),
-  // this is only ever the front door that picks which one "Import" meant.
-  const importOptionsModal = document.getElementById('import-options-modal');
-  function openImportOptionsModal() { importOptionsModal?.classList.remove('hidden'); }
-  function closeImportOptionsModal() { importOptionsModal?.classList.add('hidden'); }
-  document.getElementById('close-import-options')?.addEventListener('click', closeImportOptionsModal);
-  importOptionsModal?.querySelector('.modal-overlay')?.addEventListener('click', closeImportOptionsModal);
-
-  const triggerQuickFile = (destination) => {
-    const input = document.getElementById('quick-import-file');
-    if (input) { input.dataset.destination = destination; input.click(); }
-  };
-  document.getElementById('import-opt-file')?.addEventListener('click', () => {
-    closeImportOptionsModal();
-    triggerQuickFile('playlist');
-  });
-  document.getElementById('import-opt-clipboard')?.addEventListener('click', () => {
-    closeImportOptionsModal();
-    window.KairoService?.quickImportClipboard?.('playlist');
-  });
-  document.getElementById('import-opt-song')?.addEventListener('click', () => {
-    closeImportOptionsModal();
-    triggerQuickFile('library');
-  });
-  document.getElementById('import-opt-theme')?.addEventListener('click', () => {
-    closeImportOptionsModal();
-    clickWhenReady('import-look-btn');
-  });
   window.__TAURI__.event.listen('menu-new-theme',     () => clickWhenReady('new-look-btn'));
   // File > Import used to go straight to clickWhenReady('import-look-btn')
   // — silently jumping into Theme Studio's own theme importer, with nothing
   // telling the operator that's what "Import" even meant. Import is almost
   // always about CONTENT (slides/a song), not a theme file, so this now
   // opens a small chooser instead of guessing — see #import-options-modal.
-  window.__TAURI__.event.listen('menu-import',        () => openImportOptionsModal());
+  window.__TAURI__.event.listen('menu-import',        () => window.KairoImport?.open());
   window.__TAURI__.event.listen('menu-export-theme',  () => clickWhenReady('export-look-btn'));
   // KAIRO > Settings… (Cmd+,) — same panel the toolbar gear icon opens.
   window.__TAURI__.event.listen('menu-settings',      () => { settingsModal?.classList.remove('hidden'); showFirstSettingsPane(); });

@@ -2808,9 +2808,11 @@
   function buildImportRows(list, destination) {
     const fileRow = document.createElement('button');
     fileRow.className = 'svc-popover-item';
-    fileRow.textContent = 'Import file…';
+    fileRow.textContent = 'Import…';
     fileRow.addEventListener('click', () => {
       closePopover();
+      // The Import window lists every format; fall back to the bare picker.
+      if (window.KairoImport) { window.KairoImport.open({ destination }); return; }
       const input = document.getElementById('quick-import-file');
       if (input) { input.dataset.destination = destination; input.click(); }
     });
@@ -6909,6 +6911,7 @@
     // this same "Paste from clipboard" flow the Slides/Songs add-menus
     // already use, rather than a second implementation of clipboard import.
     quickImportClipboard,
+    quickImportFile,
     // The global search overlay (global_search.js).
     prefetchForSearch, searchContent, openFound,
   };
