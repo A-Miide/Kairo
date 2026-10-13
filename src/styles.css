@@ -4574,10 +4574,6 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
    video, its controls — right under the screen it's on. */
 .rs-media-strip { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--border); }
 .rs-media-strip.hidden, .rs-media-video.hidden { display: none; }
-.rs-media-now { display: flex; align-items: center; gap: 8px; min-width: 0; }
-.rs-media-thumb { flex: none; width: 34px; height: 19px; border-radius: 3px; background: #000 center / cover no-repeat; box-shadow: 0 0 0 1px var(--border-md); }
-.rs-media-thumb.is-video { background: var(--brand-dim); }
-.rs-media-name { flex: 1; min-width: 0; font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .rs-media-clear { flex: none; height: 24px; padding: 0 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-md); background: transparent; color: var(--text-2); font-size: 11px; font-weight: 600; cursor: pointer; }
 .rs-media-clear:hover { color: var(--text); border-color: rgba(255, 255, 255, 0.3); }
 .rs-media-video { display: flex; align-items: center; gap: 8px; }

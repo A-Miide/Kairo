@@ -1931,19 +1931,12 @@
   let liveMediaSrc = null;
   function onMediaLive(src, kind) {
     liveMediaSrc = (src && preparedOrigin.get(src)) || src || null;
-    // The Monitoring card's strip: what's on air, and its controls.
+    // Under the Monitoring screen: the video controls, only while a video is on air.
     const strip = document.getElementById('media-transport');
     if (strip) {
-      strip.classList.toggle('hidden', !liveMediaSrc);
-      const file = liveMediaSrc ? decodeURIComponent(String(liveMediaSrc).split('?')[0].split('/').pop() || '') : '';
-      const name = document.getElementById('media-now-name');
-      if (name) name.textContent = mediaLabel({ name: file });
-      const thumb = document.getElementById('media-now-thumb');
-      if (thumb) {
-        thumb.classList.toggle('is-video', kind === 'video');
-        thumb.style.backgroundImage = liveMediaSrc && kind !== 'video' ? `url("${liveMediaSrc}")` : '';
-      }
-      setMediaTransportVisible(!!liveMediaSrc && kind === 'video');
+      const isVideo = !!liveMediaSrc && kind === 'video';
+      strip.classList.toggle('hidden', !isVideo);
+      setMediaTransportVisible(isVideo);
     }
     document.querySelectorAll('.media-card[data-url]').forEach(c => c.classList.toggle('is-live', !!liveMediaSrc && c.dataset.url === liveMediaSrc));
   }

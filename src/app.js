@@ -1053,7 +1053,36 @@ function renderPreviewScreen(text, reference, look, translatedText = '', image =
 // preview — sending media had no feedback anywhere in the operator's own
 // UI before this (nothing here ever changed on a media send), which made a
 // working send look identical to a failed one.
+// Media comes in and goes out with the output's Transition, like the output screen does.
+let mediaPreviewGen = 0;
 function renderMediaPreview(src, kind, fit) {
+  const host = document.getElementById('slide-preview-media');
+  if (!host) return;
+  const gen = ++mediaPreviewGen;
+  const ms = Math.round(300 * outputAnimationSpeed);
+  const slide = outputAnimation === 'slide-up';
+  const reset = () => { host.style.transition = 'none'; host.style.opacity = '1'; host.style.transform = 'none'; };
+  const comeIn = () => {
+    host.style.transition = 'none'; host.style.opacity = '0'; host.style.transform = slide ? 'translateY(10px)' : 'none';
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      host.style.transition = `opacity ${ms}ms ease, transform ${ms}ms ease`; host.style.opacity = '1'; host.style.transform = 'none';
+    }));
+  };
+  if (outputAnimation === 'cut') { reset(); renderMediaPreviewNow(src, kind, fit); return; }
+  if (host.hasChildNodes() && !host.classList.contains('hidden')) {
+    host.style.transition = `opacity ${ms}ms ease, transform ${ms}ms ease`;
+    host.style.opacity = '0'; host.style.transform = slide ? 'translateY(-10px)' : 'none';
+    setTimeout(() => {
+      if (gen !== mediaPreviewGen) return;
+      renderMediaPreviewNow(src, kind, fit);
+      if (src) comeIn(); else reset();
+    }, ms + 10);
+  } else {
+    renderMediaPreviewNow(src, kind, fit);
+    if (src) comeIn(); else reset();
+  }
+}
+function renderMediaPreviewNow(src, kind, fit) {
   const host = document.getElementById('slide-preview-media');
   if (!host) return;
   host.innerHTML = '';

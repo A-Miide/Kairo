@@ -1533,6 +1533,42 @@
     // from whatever the slide layer is showing. No native <video> controls —
     // this is the output the congregation sees; every control lives in the
     // operator's window and reaches here via WS (see handleMessage below).
+    // What the operator sends or clears on the media layer comes in and goes out with
+    // the output's Transition (Fade / Slide / Cut, and its length), like the slide layer.
+    // Media a theme draws as its own background is swapped with renderMediaStage directly.
+    let mediaGen = 0;
+    function transitionMedia(src, kind, fit, motion) {
+        const gen = ++mediaGen;
+        const animType = outputAnimation;
+        const ms = Math.round(300 * outputAnimationSpeed);
+        const reset = () => { mediaLayer.style.transition = 'none'; mediaLayer.style.opacity = '1'; mediaLayer.style.transform = 'none'; };
+        if (animType === 'cut' || MONITOR) { reset(); renderMediaStage(src, kind, fit, motion); return; }
+        const ease = `opacity ${ms}ms ease, transform ${ms}ms ease`;
+        const comeIn = () => {
+            // Start just off (no transition yet), force a layout, then play in.
+            mediaLayer.style.transition = 'none';
+            mediaLayer.style.opacity = '0';
+            mediaLayer.style.transform = animType === 'slide-up' ? 'translateY(16px)' : 'none';
+            mediaLayer.offsetHeight;
+            mediaLayer.style.transition = ease;
+            mediaLayer.style.opacity = '1';
+            mediaLayer.style.transform = 'none';
+        };
+        if (mediaLayer.hasChildNodes()) {
+            mediaLayer.style.transition = ease;
+            mediaLayer.style.opacity = '0';
+            mediaLayer.style.transform = animType === 'slide-up' ? 'translateY(-16px)' : 'none';
+            setTimeout(() => {
+                if (gen !== mediaGen) return;   // a newer send or clear took over
+                renderMediaStage(src, kind, fit, motion);
+                if (src) comeIn(); else reset();
+            }, ms + 20);
+        } else {
+            renderMediaStage(src, kind, fit, motion);
+            if (src) comeIn(); else reset();
+        }
+    }
+
     function renderMediaStage(src, kind, fit, motion) {
         // Media goes out on the full theme only — and a text-only or stage
         // screen must not play a video's sound alongside the main screen.
@@ -1964,7 +2000,7 @@
         if (msg.type === 'clear-layer') {
             if (msg.layer === 'slide' || msg.layer === 'all') { clearDisplay(); noteConfidenceSlide(null); }
             if (msg.layer === 'timer' || msg.layer === 'all') updateConfidenceTimer({ cleared: true });
-            if (msg.layer === 'media' || msg.layer === 'all') renderMediaStage(null);
+            if (msg.layer === 'media' || msg.layer === 'all') transitionMedia(null);
             // Cosmetic only — the server-side clear-timer/clear-all handlers
             // actually stop the live segment's trigger *before* sending this,
             // so nothing broadcasts a fresh remainingMs a moment later to
@@ -1989,7 +2025,7 @@
 
         if (msg.type === 'media' && msg.target === 'viewer') {
             if (!outputLayers.media) return;
-            renderMediaStage(msg.src, msg.kind, msg.fit);
+            transitionMedia(msg.src, msg.kind, msg.fit);
             return;
         }
 
