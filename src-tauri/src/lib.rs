@@ -35,7 +35,7 @@ fn build_app_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry
         .name(Some("KAIRO"))
         .version(Some(env!("CARGO_PKG_VERSION")))
         .copyright(Some("© 2026 KAIRO"))
-        .website(Some("https://github.com/Kairo-live/Kairo"))
+        .website(Some("https://github.com/miide-Adeyemi/Kairo"))
         .website_label(Some("GitHub"))
         .build();
 
@@ -836,7 +836,7 @@ pub fn run() {
             // a frontend counterpart.
             match id {
                 "menu-check-updates" => check_for_updates(app.clone(), true),
-                "menu-learn-more" => { let _ = app.shell().open("https://github.com/Kairo-live/Kairo", None); }
+                "menu-learn-more" => { let _ = app.shell().open("https://github.com/miide-Adeyemi/Kairo", None); }
                 // Every other item of ours ("menu-…") is the frontend's to
                 // carry out (see initNativeMenuBridge in app_startup.js).
                 other if other.starts_with("menu-") => {
