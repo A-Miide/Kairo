@@ -18,6 +18,7 @@ pub mod offline;
 mod mt;
 mod obs;
 mod pdf;
+pub mod propresenter;
 mod pdf_metrics;
 mod routes;
 mod routes_library;

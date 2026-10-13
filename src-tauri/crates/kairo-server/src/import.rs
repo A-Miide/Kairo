@@ -2,6 +2,7 @@
 //! playlists) and ProPresenter themes — read without the presenting apps, from
 //! the files' own structure: a zip reader, a protobuf walker and RTF text.
 
+use crate::propresenter as pp;
 use std::collections::HashMap;
 use std::io::Read;
 use std::sync::LazyLock;
@@ -559,10 +560,6 @@ fn data_url(base: &str, bytes: &[u8]) -> String {
     format!("data:{};base64,{}", mime_for(base), base64::engine::general_purpose::STANDARD.encode(bytes))
 }
 
-/// Images in an archive, by lowercase file name.
-fn media_map(files: &[(String, Vec<u8>)]) -> HashMap<String, Vec<u8>> {
-    files.iter().filter(|f| IMAGE_PATH.is_match(&f.0)).map(|f| (f.0.rsplit('/').next().unwrap_or("").to_lowercase(), f.1.clone())).collect()
-}
 
 fn resolve(media: &HashMap<String, Vec<u8>>, path: &str) -> Option<String> {
     let base = path.rsplit(['\\', '/']).next().unwrap_or("").to_lowercase();
@@ -636,21 +633,30 @@ fn looks_like_pro6_xml(buf: &[u8]) -> bool {
     head.trim_start().starts_with("<?xml") || head.contains("RVPresentationDocument")
 }
 
-fn presentation(buf: &[u8], media: Option<&HashMap<String, Vec<u8>>>) -> Result<Vec<Value>, ImportError> {
-    if looks_like_pro6_xml(buf) { from_pro6(buf) } else { from_pro7(buf, media) }
+fn presentation(buf: &[u8], archive: &pp::Archive<'_>, assets: &pp::Assets, warnings: &mut Vec<String>) -> Result<Vec<Value>, ImportError> {
+    if looks_like_pro6_xml(buf) {
+        return from_pro6(buf);
+    }
+    let mut ctx = pp::Ctx { archive, assets, warnings };
+    let blocks = pp::presentation(buf, &mut ctx).ok_or_else(|| err("could not parse this ProPresenter 7 file"))?;
+    if blocks.is_empty() {
+        // Nothing drawable: fall back to the words alone.
+        return from_pro7(buf, None);
+    }
+    Ok(blocks)
 }
 
 static PRO: LazyLock<Regex> = LazyLock::new(|| re(r"(?i)\.pro6?$"));
 
-fn from_pro_bundle(buf: &[u8]) -> Result<Vec<Value>, ImportError> {
-    let files = unzip(buf, |n| PRO.is_match(n) || IMAGE_PATH.is_match(n))?;
+fn from_pro_bundle(buf: &[u8], assets: &pp::Assets, warnings: &mut Vec<String>) -> Result<Vec<Value>, ImportError> {
+    let files = unzip(buf, |_| true)?;
     let mut pres: Vec<&(String, Vec<u8>)> = files.iter().filter(|f| PRO.is_match(&f.0)).collect();
     if pres.is_empty() {
         return Err(err("no presentation found in this ProPresenter bundle"));
     }
     pres.sort_by_key(|f| f.0.len());
-    let media = media_map(&files);
-    presentation(&pres[0].1, (!media.is_empty()).then_some(&media))
+    let archive = pp::Archive::new(&files);
+    presentation(&pres[0].1, &archive, assets, warnings)
 }
 
 fn file_ref_rel_path(buf: &[u8]) -> Option<String> {
@@ -680,26 +686,32 @@ fn walk_playlist(fields: &[Field<'_>], out: &mut Vec<(String, String)>, depth: u
     }
 }
 
-fn from_pro_playlist(buf: &[u8]) -> Result<Vec<Value>, ImportError> {
+fn from_pro_playlist(buf: &[u8], assets: &pp::Assets, warnings: &mut Vec<String>) -> Result<Vec<Value>, ImportError> {
     static DATA: LazyLock<Regex> = LazyLock::new(|| re(r"(^|/)data$"));
-    let files = unzip(buf, |n| DATA.is_match(n) || PRO.is_match(n) || IMAGE_PATH.is_match(n))?;
-    let manifest = files.iter().find(|f| f.0 == "data").ok_or_else(|| err("no playlist data found in this ProPresenter playlist"))?;
-    let fields = pb_fields(&manifest.1).ok_or_else(|| err("could not parse this ProPresenter playlist"))?;
-    let mut items = Vec::new();
-    walk_playlist(&fields, &mut items, 0);
+    let files = unzip(buf, |_| true)?;
+    let manifest = files.iter().find(|f| DATA.is_match(&f.0)).ok_or_else(|| err("no playlist data found in this ProPresenter playlist"))?;
+    let mut items = pp::playlist_items(&manifest.1);
+    if items.is_empty() {
+        // An older layout: walk it the old way.
+        if let Some(fields) = pb_fields(&manifest.1) {
+            walk_playlist(&fields, &mut items, 0);
+        }
+    }
     if items.is_empty() {
         return Err(err("this ProPresenter playlist has no items"));
     }
     let by_base: HashMap<String, &Vec<u8>> = files.iter().filter(|f| PRO.is_match(&f.0)).map(|f| (f.0.rsplit('/').next().unwrap_or("").to_lowercase(), &f.1)).collect();
-    let media = media_map(&files);
+    let archive = pp::Archive::new(&files);
     let mut out = Vec::new();
     for (name, rel) in items {
         let base = if rel.is_empty() { format!("{name}.pro") } else { rel.rsplit('/').next().unwrap_or("").to_string() }.to_lowercase();
-        let Some(pro) = by_base.get(&base).or_else(|| by_base.get(&format!("{name}.pro").to_lowercase())) else { continue };
-        if let Ok(blocks) = presentation(pro, (!media.is_empty()).then_some(&media)) {
-            if !blocks.is_empty() {
-                out.push(json!({ "name": name, "blocks": blocks }));
-            }
+        let Some(pro) = by_base.get(&base).or_else(|| by_base.get(&format!("{name}.pro").to_lowercase())) else {
+            warnings.push(format!("\"{name}\" isn't inside the playlist file."));
+            continue;
+        };
+        match presentation(pro, &archive, assets, warnings) {
+            Ok(blocks) if !blocks.is_empty() => out.push(json!({ "name": name, "blocks": blocks })),
+            _ => warnings.push(format!("\"{name}\" has no slides Kairo could read.")),
         }
     }
     if out.is_empty() {
@@ -752,22 +764,32 @@ pub fn dedupe_image_layers(list: &mut [Value]) -> Vec<String> {
 
 /// What an import found: slides, or a playlist's presentations.
 pub enum Imported {
-    Blocks { format: &'static str, blocks: Vec<Value>, note: Option<String> },
-    Items { format: &'static str, items: Vec<Value> },
+    Blocks { format: &'static str, blocks: Vec<Value>, note: Option<String>, warnings: Vec<String> },
+    Items { format: &'static str, items: Vec<Value>, warnings: Vec<String> },
 }
 
-pub fn import_slides(filename: &str, buf: &[u8]) -> Result<Imported, ImportError> {
+pub fn import_slides(filename: &str, buf: &[u8], assets: &pp::Assets) -> Result<Imported, ImportError> {
     let ext = filename.to_lowercase().rsplit('.').next().unwrap_or("").to_string();
-    let blocks = |format, blocks| Ok(Imported::Blocks { format, blocks, note: None });
+    let mut warnings = Vec::new();
+    let blocks = |format, blocks| Ok(Imported::Blocks { format, blocks, note: None, warnings: Vec::new() });
     match ext.as_str() {
         "txt" | "md" | "json" => blocks("text", from_text(&String::from_utf8_lossy(buf))),
         "docx" => blocks("docx", from_docx(buf)?),
         "pptx" => blocks("pptx", from_pptx(buf)?),
-        "pro6" | "pro" | "pro7" => blocks(if looks_like_pro6_xml(buf) { "pro6" } else { "pro7" }, presentation(buf, None)?),
-        "probundle" => blocks("probundle", from_pro_bundle(buf)?),
-        "proplaylist" => Ok(Imported::Items { format: "proplaylist", items: from_pro_playlist(buf)? }),
+        "pro6" | "pro" | "pro7" => {
+            let b = presentation(buf, &pp::Archive::empty(), assets, &mut warnings)?;
+            Ok(Imported::Blocks { format: if looks_like_pro6_xml(buf) { "pro6" } else { "pro7" }, blocks: b, note: None, warnings })
+        }
+        "probundle" => {
+            let b = from_pro_bundle(buf, assets, &mut warnings)?;
+            Ok(Imported::Blocks { format: "probundle", blocks: b, note: None, warnings })
+        }
+        "proplaylist" => {
+            let items = from_pro_playlist(buf, assets, &mut warnings)?;
+            Ok(Imported::Items { format: "proplaylist", items, warnings })
+        }
         "pdf" => Err(ImportError("PDF import isn't supported yet".into(), Some("PDF_UNSUPPORTED"))),
-        _ => Ok(Imported::Blocks { format: "text", blocks: from_text(&String::from_utf8_lossy(buf)), note: Some(format!("treated .{ext} as plain text")) }),
+        _ => Ok(Imported::Blocks { format: "text", blocks: from_text(&String::from_utf8_lossy(buf)), note: Some(format!("treated .{ext} as plain text")), warnings }),
     }
 }
 
@@ -929,27 +951,20 @@ pub fn decode_slide(slide: &[Field<'_>], name: &str, media: &HashMap<String, Vec
     json!({ "id": uid("protheme"), "name": name, "layout": "fullscreen", "animation": "fade", "canvasSize": { "w": w, "h": h }, "layers": layers })
 }
 
-pub fn from_pro_theme(buf: &[u8]) -> Result<(Vec<Value>, Vec<String>), ImportError> {
+pub fn from_pro_theme(buf: &[u8], assets: &pp::Assets) -> Result<(Vec<Value>, Vec<String>), ImportError> {
     static THEME: LazyLock<Regex> = LazyLock::new(|| re(r"(^|/)Theme$"));
-    let files = unzip(buf, |n| THEME.is_match(n) || IMAGE_PATH.is_match(n))?;
+    let files = unzip(buf, |_| true)?;
     let theme = files.iter().find(|f| THEME.is_match(&f.0)).ok_or_else(|| err("no Theme document found in this .protheme bundle"))?;
-    let root = pb_fields(&theme.1).ok_or_else(|| err("could not parse this ProPresenter theme (unrecognized format)"))?;
-    let slides: Vec<&Field<'_>> = root.iter().filter(|f| f.num == 3 && f.wire == 2).collect();
-    if slides.is_empty() {
+    let group = theme.0.rsplit('/').nth(1).unwrap_or("Theme").to_string();
+    let archive = pp::Archive::new(&files);
+    let mut warnings = Vec::new();
+    let mut ctx = pp::Ctx { archive: &archive, assets, warnings: &mut warnings };
+    let themes = pp::theme_document(&theme.1, &group, &mut ctx).ok_or_else(|| err("could not parse this ProPresenter theme (unrecognized format)"))?;
+    if themes.is_empty() {
         return Err(err("this ProPresenter theme has no slides"));
     }
-    let media = media_map(&files);
-    let mut warnings = Vec::new();
-    let mut themes = Vec::new();
-    for (i, entry) in slides.iter().enumerate() {
-        let Some(fields) = pb_fields(entry.raw) else { continue };
-        let Some(slide) = sub(Some(&fields), 1) else { continue };
-        let name = text(Some(&fields), 2).unwrap_or_else(|| format!("Theme Slide {}", i + 1));
-        themes.push(decode_slide(&slide, &name, &media, &mut warnings, false));
-    }
-    if themes.is_empty() {
-        return Err(err("none of this theme’s slides could be read"));
-    }
+    warnings.sort();
+    warnings.dedup();
     Ok((themes, warnings))
 }
 

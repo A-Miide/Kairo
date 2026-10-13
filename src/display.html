@@ -304,6 +304,7 @@
     <script src="color_utils.js"></script>
     <script src="layer_geometry.js"></script>
     <script src="motion_graphics.js"></script>
+    <script src="pp_render.js"></script>
     <script>
     'use strict';
 
@@ -451,20 +452,27 @@
         // Text only (this output's Shows setting): the words, nothing else —
         // no background, shapes, pictures, video or motion graphics. Behind
         // them: black, or this output's key (Keying).
-        if (outputMode === 'text') layers = layers.filter(l => l.type === 'text');
+        if (outputMode === 'text') layers = layers.filter(l => l.type === 'text' || (l.type === 'pp' && (l.binding === 'verse' || l.binding === 'reference')));
         // Only themes that actually pair a reference/translation caption with
         // a verse layer get the "no caption without a verse line" guard below
         // — a theme deliberately built with ONLY a reference/citation layer
         // (no verse layer at all) has nothing else to show, so its reference
         // must still paint even when verseText is empty. Same rule
         // paintLookLayers (service.js) applies for every preview.
-        const hasVerseLayer = layers.some(l => l.type === 'text' && l.binding === 'verse' && l.visible !== false);
+        const hasVerseLayer = layers.some(l => (l.type === 'text' || l.type === 'pp') && l.binding === 'verse' && l.visible !== false);
         const animOf = (layer) => animOverride(layer, (styleByLayerId || {})[layer.id]);
         const paintLayer = (layer) => {
             if (!layer.visible) return;
             // The slide's own rotation / accent colour / photo look, if any
             // (see layer_geometry.js's withLayerOverride).
             layer = withLayerOverride(layer, (styleByLayerId || {})[layer.id]);
+
+            // An element imported from ProPresenter, drawn exactly (pp_render.js).
+            if (layer.type === 'pp') {
+                if (layer.binding === 'reference' && hasVerseLayer && !verseText) return;
+                frag.appendChild(window.KairoPP.render(layer, { verseText, referenceText: verseRef, translatedText, timerText }, { motion: 'live', textOnly: outputMode === 'text' }));
+                return;
+            }
 
             // Image layer — always free-positioned, drawn in layer order.
             // Video is added the same way (Theme Studio's file picker/native

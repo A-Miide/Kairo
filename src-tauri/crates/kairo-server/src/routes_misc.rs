@@ -39,7 +39,7 @@ fn decode_b64(s: &str) -> Option<Vec<u8>> {
     base64::engine::general_purpose::STANDARD.decode(s).ok()
 }
 
-async fn service_import(Json(b): Json<Value>) -> axum::response::Response {
+async fn service_import(State(app): State<Shared>, Json(b): Json<Value>) -> axum::response::Response {
     use axum::response::IntoResponse;
     use crate::import::{dedupe_image_layers, from_text, import_slides, ImportError, Imported};
     if let Some(t) = b["text"].as_str().filter(|t| !t.trim().is_empty()) {
@@ -49,21 +49,22 @@ async fn service_import(Json(b): Json<Value>) -> axum::response::Response {
         return (axum::http::StatusCode::BAD_REQUEST, Json(json!({ "error": "Nothing to import" }))).into_response();
     };
     let filename = b["filename"].as_str().unwrap_or("").to_string();
-    let result = tokio::task::spawn_blocking(move || import_slides(&filename, &data)).await.unwrap_or_else(|_| Err(ImportError("import failed".into(), None)));
+    let assets = crate::propresenter::Assets::new(&app.cfg.app_data_dir);
+    let result = tokio::task::spawn_blocking(move || import_slides(&filename, &data, &assets)).await.unwrap_or_else(|_| Err(ImportError("import failed".into(), None)));
     match result {
-        Ok(Imported::Items { format, mut items }) => {
+        Ok(Imported::Items { format, mut items, warnings }) => {
             if items.is_empty() {
                 return unprocessable(ImportError("No presentations found in that playlist".into(), None));
             }
             let media = dedupe_image_layers(&mut items);
-            Json(json!({ "ok": true, "format": format, "items": items, "media": media })).into_response()
+            Json(json!({ "ok": true, "format": format, "items": items, "media": media, "warnings": warnings })).into_response()
         }
-        Ok(Imported::Blocks { format, mut blocks, note }) => {
+        Ok(Imported::Blocks { format, mut blocks, note, warnings }) => {
             if blocks.is_empty() {
                 return unprocessable(ImportError("No text found in that file".into(), None));
             }
             let media = dedupe_image_layers(&mut blocks);
-            let mut out = json!({ "ok": true, "format": format, "blocks": blocks, "media": media });
+            let mut out = json!({ "ok": true, "format": format, "blocks": blocks, "media": media, "warnings": warnings });
             if let Some(n) = note {
                 out["note"] = json!(n);
             }
@@ -73,12 +74,13 @@ async fn service_import(Json(b): Json<Value>) -> axum::response::Response {
     }
 }
 
-async fn theme_import(Json(b): Json<Value>) -> axum::response::Response {
+async fn theme_import(State(app): State<Shared>, Json(b): Json<Value>) -> axum::response::Response {
     use axum::response::IntoResponse;
     let Some(data) = b["dataBase64"].as_str().and_then(decode_b64) else {
         return (axum::http::StatusCode::BAD_REQUEST, Json(json!({ "error": "Nothing to import" }))).into_response();
     };
-    match tokio::task::spawn_blocking(move || crate::import::from_pro_theme(&data)).await {
+    let assets = crate::propresenter::Assets::new(&app.cfg.app_data_dir);
+    match tokio::task::spawn_blocking(move || crate::import::from_pro_theme(&data, &assets)).await {
         Ok(Ok((themes, warnings))) => Json(json!({ "ok": true, "themes": themes, "warnings": warnings })).into_response(),
         Ok(Err(e)) => unprocessable(e),
         Err(_) => unprocessable(crate::import::ImportError("import failed".into(), None)),
