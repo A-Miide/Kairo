@@ -8,6 +8,7 @@ mod decide;
 pub mod event;
 pub mod evidence;
 mod meaning;
+mod named;
 mod paths;
 mod ranges;
 pub mod scoring;

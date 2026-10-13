@@ -30,6 +30,9 @@ const PARTIAL_CONFIRM_MAX_AGE_MS: u64 = 15_000;
 
 static NEXT: LazyLock<regex::Regex> = LazyLock::new(|| re(r"\b(next verse|following verse|verse after (that|this|it))\b"));
 static BACK: LazyLock<regex::Regex> = LazyLock::new(|| re(r"\b(previous verse|verse before|preceding verse)\b"));
+/// A preacher taking back the number just said: "Romans 8:28, sorry, verse 31".
+static CORRECTION_WORD: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?i)\b(sorry|i mean|i meant|rather|correction|pardon me|excuse me|my mistake)\b[\s,.;:!-]*"));
+static VERSE_OR_CHAPTER_NEXT: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?i)^(verses?|chapter)\b"));
 
 fn filler(w: &str) -> bool {
     BARE_NUMBER_FILLER.contains(&w)
@@ -166,6 +169,23 @@ impl Engine {
         self.jump_range_to(v, now);
         let sent = self.decide(Candidate::new(vec![v], partial_method(&p), DIRECT_PARTIAL_SCORE, Target::Screen), now);
         self.partial_confirms_context(sent, v, &p, now);
+    }
+
+    /// "Romans 8:28 — sorry, verse 31": the verse named after a correction word
+    /// replaces the one just cited in the same breath. (Said in a later
+    /// segment, "sorry, verse 31" is an ordinary "verse N" already.)
+    pub(crate) fn spoken_correction(&mut self, text: &str, is_final: bool, now: u64) -> bool {
+        let Some(m) = CORRECTION_WORD.find_iter(text).last() else { return false };
+        let tail = text[m.end()..].trim_start();
+        if !VERSE_OR_CHAPTER_NEXT.is_match(tail) || !self.reading.is_valid(now) {
+            return false;
+        }
+        if is_final {
+            self.final_partial(tail, None, now)
+        } else {
+            self.interim_partial(tail, now);
+            false
+        }
     }
 
     /// "verse N" (or "verses 3 to 5") in a final, against the passage being read.
