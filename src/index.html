@@ -1318,12 +1318,13 @@
             </section>
 
             <section class="settings-pane" data-pane="bible">
-                <!-- ── BIBLE ──────────────────────────────────────── -->
-                <div class="settings-section">
-                    <div class="settings-section-label">Bible</div>
+            <!-- ── BIBLE ──────────────────────────────────────── -->
+            <div class="settings-section">
+                <div class="settings-section-label">Bible</div>
 
+                <div class="setting-row-2col">
                     <div class="setting-group">
-                        <label class="setting-label">Translation</label>
+                        <label class="setting-label" for="translation-select-settings">Translation</label>
                         <select id="translation-select-settings" class="setting-input">
                             <option value="KJV" selected>KJV</option>
                             <option value="NKJV">NKJV</option>
@@ -1332,38 +1333,34 @@
                             <option value="ESV">ESV</option>
                             <option value="NASB">NASB</option>
                         </select>
+                        <p class="setting-hint">The version a verse goes up in.</p>
                     </div>
-
-                    <!-- Moved here from the Bible tab's own search-bar
-                         toolbar (owner, 2026-09-22: "the language option...
-                         is supposed to live in this same page in settings,
-                         with helper text"). Same element id, same JS wiring
-                         (app.js's MT_LANGUAGES population + change listener)
-                         — only the markup's location changed. -->
+                    <!-- Same element id and wiring (app.js's MT_LANGUAGES population
+                         + change listener) as before; only the layout changed. -->
                     <div class="setting-group">
-                        <label class="setting-label">Second Language</label>
+                        <label class="setting-label" for="bible-translate-to-select">Second language</label>
                         <select id="bible-translate-to-select" class="setting-input">
                             <option value="">Off</option>
                         </select>
-                        <p class="setting-hint">
-                            Shows a translated version alongside the primary verse text on the Multi-Language theme — e.g. English on one side, Spanish on the other. Leave Off if you're not using that theme.
-                        </p>
+                        <p class="setting-hint">Shown beside the verse on the Multi-Language theme. Leave Off otherwise.</p>
                     </div>
-
-                    <div class="setting-group">
-                        <label class="bs-check-label">
-                            <input type="checkbox" id="auto-send-settings" checked>
-                            Auto-send high confidence verses
-                        </label>
-                        <label class="bs-check-label">
-                            <input type="checkbox" id="show-confidence-settings" checked>
-                            Show confidence scores
-                        </label>
-                    </div>
-
                 </div>
 
-                <!-- Meaning-Based Candidates (semantic layer) used to have
+                <div class="setting-group setting-checks">
+                    <label class="bs-check-label">
+                        <input type="checkbox" id="auto-send-settings" checked>
+                        <span><strong>Put confident matches on screen automatically</strong>
+                        <span class="setting-hint">Turn off to send every verse yourself from the Live Queue.</span></span>
+                    </label>
+                    <label class="bs-check-label">
+                        <input type="checkbox" id="show-confidence-settings" checked>
+                        <span><strong>Show how sure each match is</strong>
+                        <span class="setting-hint">A percentage on each card in the Live Queue and Possible Matches.</span></span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Meaning-Based Candidates (semantic layer) used to have
                      its own install/download UI here — owner, 2026-09-22:
                      "this is part of our engine, it should be bundled up
                      with the app, and quite frankly, users should not know
@@ -1394,7 +1391,7 @@
                      panel. -->
                 <div class="settings-section">
                     <div class="settings-section-label">Shortcuts</div>
-                    <p class="setting-hint" style="font-size:11px;color:var(--text-3);margin-bottom:10px;">Click Change, then press a key combo. These are independent of the app's native menu shortcuts.</p>
+                    <p class="setting-hint" style="margin-bottom:12px;">Click Change, then press the keys. These work alongside the shortcuts in the app’s menus.</p>
                     <div id="hotkeys-list"></div>
                 </div>
             </section>
@@ -1586,7 +1583,8 @@
                  the only real downloads here. -->
             <div class="settings-section">
                 <div class="settings-section-label">Listening</div>
-                <div class="setting-group">
+                <div class="setting-row-2col">
+                    <div class="setting-group">
                     <label class="setting-label" for="stt-language">Spoken language</label>
                     <select id="stt-language" class="setting-input">
                                 <option value="en-US">English (US)</option>
@@ -1615,27 +1613,31 @@
                 <div class="setting-group">
                     <label class="setting-label" for="custom-keyterms">Church vocabulary</label>
                     <textarea id="custom-keyterms" class="setting-input" rows="3" placeholder="Pastor Mensah&#10;Grace Chapel&#10;Shiloh"></textarea>
-                        <p class="setting-hint">Names and words your services use that transcription may miss — the pastor, the church, local places. One per line or separated by commas (up to 40). English and auto-detect services; applies from the next Start Listening.</p>
+                        <p class="setting-hint">Names transcription may miss — your pastor, your church, local places. One per line, up to 40. Applies from the next Start Listening.</p>
+                </div>
                 </div>
             </div>
 
+            <!-- Both decide what the room sees, so they share a row (2026-10-12:
+                 the scripture menu alone used the full width). -->
             <div class="settings-section">
                 <div class="settings-section-label">On screen</div>
-                <div class="setting-group">
-                    <label class="setting-label" for="bible-language">Scripture language</label>
-                    <select id="bible-language" class="setting-input"></select>
-                    <p class="setting-hint">Which language a matched verse shows in. Every Bible listed comes with Kairo and works offline.</p>
-                    <p class="setting-hint scripture-credits" id="scripture-credits"></p>
+                <div class="setting-row-2col">
+                    <div class="setting-group">
+                        <label class="setting-label" for="bible-language">Scripture language</label>
+                        <select id="bible-language" class="setting-input"></select>
+                        <p class="setting-hint">Which language a matched verse shows in. Every Bible listed comes with Kairo and works offline.</p>
+                        <p class="setting-hint scripture-credits" id="scripture-credits"></p>
+                    </div>
+                    <!-- The bundled translation models (mt.rs): one per language,
+                         downloaded the first time it's used — only for slide text,
+                         never scripture, which uses the Bibles beside it. -->
+                    <div class="setting-group" id="mt-model-group">
+                        <label class="setting-label">Slide translation</label>
+                        <div id="mt-model-list" class="dl-list"></div>
+                        <p class="setting-hint">Translates slide text that isn't scripture, for the Multi-Language theme — on this computer, no account.</p>
+                    </div>
                 </div>
-            </div>
-
-            <!-- The bundled translation models (mt.rs): one per language,
-                 downloaded the first time it's used — only for slide text,
-                 never scripture, which uses the Bibles above. -->
-            <div class="settings-section" id="mt-model-group">
-                <div class="settings-section-label">Slide translation</div>
-                <div id="mt-model-list" class="dl-list"></div>
-                <p class="setting-hint">Translates slide text that isn't scripture, for the Multi-Language theme — on this computer, no account. Each language downloads once.</p>
             </div>
             </section>
 

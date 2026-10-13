@@ -442,7 +442,9 @@ function renderOutputsList() {
     typeEl.className = 'outputs-list-item-type';
     typeEl.textContent = o.monitor ? 'Monitor' : outputTypeLabel(o.type);
     info.appendChild(nameEl);
-    info.appendChild(typeEl);
+    // The kind, only when the name doesn't already say it ("Monitor" over
+    // MONITOR read twice; "Stage screen" still gets "Display").
+    if (!String(o.name || '').toLowerCase().includes(typeEl.textContent.toLowerCase())) info.appendChild(typeEl);
     // A per-row Bible/Slide/Media/Timer summary used to render here too —
     // owner (2026-09-21): redundant now that the Monitor grid
     // (renderMonitorGrid, above) is the dedicated place for exactly this
