@@ -37,6 +37,14 @@ pub fn router() -> Router<Shared> {
         .route("/api/media/folders/{id}/file/{name}", get(folder_file))
         .route("/api/media/prepare", post(prepare_video))
         .route("/api/media/prepared/{file}", get(prepared_file))
+        .route("/api/pp-assets/{file}", get(pp_asset))
+}
+
+/// A picture or video imported from a ProPresenter file (see propresenter.rs's Assets).
+async fn pp_asset(State(app): State<Shared>, Path(file): Path<String>, req: Request) -> Response {
+    let ok = file.split_once('.').is_some_and(|(h, e)| h.len() == 32 && h.bytes().all(|c| c.is_ascii_hexdigit()) && !e.is_empty() && e.bytes().all(|c| c.is_ascii_alphanumeric()));
+    let p = crate::propresenter::Assets::new(&app.cfg.app_data_dir).dir().join(&file);
+    if ok && p.is_file() { send_file(p, req).await } else { StatusCode::NOT_FOUND.into_response() }
 }
 
 /// The file on disk behind one of the media addresses the UI uses.

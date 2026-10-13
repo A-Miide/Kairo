@@ -1514,7 +1514,8 @@ function renderLayersList() {
     // Type icon
     const typeIcon = document.createElement('div');
     typeIcon.className = 'ts-layer-type-icon';
-    typeIcon.textContent = layer.type === 'image' ? '▣'
+    typeIcon.textContent = layer.type === 'pp' ? (layer.text && layer.binding !== 'none' ? 'T' : layer.fill && layer.fill.media ? '▣' : '◆')
+                         : layer.type === 'image' ? '▣'
                          : layer.type === 'image-cycle' ? '▤'
                          : layer.type === 'motion' ? '✺'
                          : layer.type === 'background' ? '■'
@@ -1817,6 +1818,19 @@ function renderStage() {
 
   const paintLayer = (layer) => {
     if (!layer.visible) return;
+
+    // An element imported from ProPresenter: drawn exactly by pp_render.js,
+    // with a plain box over it to select and move it by.
+    if (layer.type === 'pp') {
+      stage.appendChild(window.KairoPP.render(layer, { verseText: PREVIEW_TEXT_SAMPLE, referenceText: PREVIEW_REF_SAMPLE }, { motion: 'still', scale: pxScale }));
+      const p = layer.pos || { x: 0, y: 0, w: TS_DESIGN_W, h: TS_DESIGN_H };
+      const hit = document.createElement('div');
+      hit.style.cssText = `position:absolute;left:${p.x / TS_DESIGN_W * 100}%;top:${p.y / TS_DESIGN_H * 100}%;width:${p.w / TS_DESIGN_W * 100}%;height:${p.h / TS_DESIGN_H * 100}%;` +
+        (layer.rotation ? `transform:rotate(${layer.rotation}deg);` : '');
+      stage.appendChild(hit);
+      tsDecorateLayerEl(hit, layer, true);
+      return;
+    }
 
     if (layer.type === 'background') {
       const div = document.createElement('div');

@@ -3138,7 +3138,7 @@
     // theme deliberately built with ONLY a reference/citation layer (no verse
     // layer at all) has nothing else to show, so its reference must still
     // paint even when verseText is empty.
-    const hasVerseLayer = layers.some(l => l.type === 'text' && l.binding === 'verse' && l.visible !== false);
+    const hasVerseLayer = layers.some(l => (l.type === 'text' || l.type === 'pp') && l.binding === 'verse' && l.visible !== false);
     // opts.motion: 'live' animates motion layers (the operator's Live
     // Preview and timer monitor); anything else — thumbnails, slide lists,
     // timer cards — shows them paused. opts.builds plays each layer's
@@ -3149,6 +3149,13 @@
       if (layer.visible === false) return;
       // The slide's own rotation / accent colour / photo look, if any.
       layer = withLayerOverride(layer, (style || {})[layer.id]);
+
+      // An element imported from ProPresenter, drawn exactly (pp_render.js).
+      if (layer.type === 'pp') {
+        if (layer.binding === 'reference' && hasVerseLayer && !content?.verseText) return;
+        host.appendChild(window.KairoPP.render(layer, content || {}, { motion: motionMode, scale }));
+        return;
+      }
 
       if (layer.type === 'background') {
         const bgOv = (style || {})[layer.id] || {};
