@@ -41,6 +41,7 @@ jobs:
           # cache keeps the script's output, so it must keep these too
           # (otherwise a warm cache links against a folder that's gone).
           cache-directories: src-tauri/target/sherpa-onnx-prebuilt
+          key: with-sherpa-libs
 
       - name: Build dependencies
         if: steps.cache.outputs.cache-hit != 'true'
@@ -113,6 +114,7 @@ jobs:
           # cache keeps the script's output, so it must keep these too
           # (otherwise a warm cache links against a folder that's gone).
           cache-directories: src-tauri/target/sherpa-onnx-prebuilt
+          key: with-sherpa-libs
 
       - name: Install Linux deps
         if: matrix.platform == 'ubuntu-24.04'
