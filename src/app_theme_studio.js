@@ -1915,7 +1915,7 @@ function renderStage() {
       if (div.tagName === 'VIDEO') {
         div.autoplay = true; div.loop = true; div.muted = true; div.playsInline = true;
         div.style.cssText = posCss + `object-fit:${fit};`;
-        div.src = layer.src;
+        div.src = authedMediaUrl(layer.src);
         applyImageLook(div, layer);
       } else {
         // The picture is drawn one level in (tsImageArt): clipped for Ken

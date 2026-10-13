@@ -493,7 +493,7 @@
                     v.style.height = (p.h / DESIGN_H * 100) + '%';
                     if (layer.rotation) v.style.transform = `rotate(${layer.rotation}deg)`;
                     applyImageLook(v, layer);
-                    v.src = layer.src;
+                    v.src = authedMediaUrl(layer.src);
                     frag.appendChild(v);
                     // Belt-and-suspenders alongside the declarative autoplay
                     // attribute — caught, not awaited, so a decode failure
@@ -1560,7 +1560,7 @@
         const objectFit = fit || 'contain';
         if (kind === 'video') {
             const v = document.createElement('video');
-            v.src = src;
+            v.src = authedMediaUrl(src);
             v.autoplay = true;
             v.loop = true;
             // Every modern engine (Chrome, and WebKit — what Tauri actually

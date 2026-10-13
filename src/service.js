@@ -3183,7 +3183,7 @@
           v.style.height = (p.h / DESIGN_H * 100) + '%';
           if (layer.rotation) v.style.transform = `rotate(${layer.rotation}deg)`;
           applyImageLook(v, layer);
-          v.src = layer.src;
+          v.src = authedMediaUrl(layer.src);
           host.appendChild(v);
           v.play().catch(() => {});
           return;
@@ -4817,7 +4817,7 @@
       v.addEventListener('loadedmetadata', () => {
         try { v.currentTime = Math.min(0.1, (v.duration || 1) / 2); } catch {}
       }, { once: true });
-      v.dataset.src = item.url;
+      v.dataset.src = authedMediaUrl(item.url);
       lazyMediaObserver.observe(v);
       return v;
     }
