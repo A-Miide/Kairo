@@ -1252,6 +1252,10 @@ async function deleteThemeGroup(groupId, groupName, groupLooks) {
 function renderLooksList() {
   const el = document.getElementById('looks-list');
   if (!el) return;
+  // Emptying the list collapses its height, which snaps whatever scrolls it
+  // back to the top; keep the position so picking a row doesn't jump.
+  const scrollers = [];
+  for (let n = el; n && n !== document.body; n = n.parentElement) if (n.scrollTop) scrollers.push([n, n.scrollTop]);
   el.innerHTML = '';
   const renderedGroups = new Set();
   looks.forEach(look => {
@@ -1266,7 +1270,7 @@ function renderLooksList() {
       return;
     }
     el.appendChild(buildLookRow(look, false));
-  });
+  });  scrollers.forEach(([n, top]) => { n.scrollTop = top; });
 }
 
 function selectLook(look) {

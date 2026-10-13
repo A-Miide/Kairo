@@ -4089,6 +4089,21 @@
       // slide, but leaving a stale value from a previous dialog use around
       // for no reason is its own small confusion to avoid).
       if (isSceneImport) themeSel.value = '';
+      // Shown as the same thumbnail dropdown as every other theme picker;
+      // the hidden <select> stays the value store confirmAddConfirm reads.
+      if (typeof buildThemeDropdown === 'function') {
+        themeSel.hidden = true;
+        let pick = themeSel.parentElement.querySelector('.theme-pick');
+        if (!pick) {
+          pick = buildThemeDropdown({
+            value: () => themeSel.value,
+            onPick: (id) => { themeSel.value = id; },
+            defaultLabel: 'Output default',
+          });
+          themeSel.after(pick);
+        }
+        pick.refresh();
+      }
     }
 
     const delimGroup = document.getElementById('ac-delim-group');
@@ -6097,6 +6112,12 @@
     throw new Error('clipboard unavailable');
   }
 
+  // Pasted text is named after its first three words ("Amazing Grace How").
+  function pastedTitle(text) {
+    const words = String(text || '').replace(/[^\p{L}\p{N}'’\s-]/gu, ' ').split(/\s+/).filter(Boolean).slice(0, 3);
+    return words.length ? words.join(' ') : 'Pasted content';
+  }
+
   async function quickImportClipboard(destination = 'playlist') {
     try {
       const text = await readClipboardText();
@@ -6107,7 +6128,7 @@
       // "keep as-is" defaulting and multi-item (.proplaylist) handling
       // consistent regardless of which of the three entry points (quick
       // file, quick clipboard, or the paste-dialog fallback) was used.
-      beginImportResult(d, 'Pasted content', { destination });
+      beginImportResult(d, pastedTitle(text), { destination });
     } catch (err) {
       // Permission denied or nothing to read — fall back to the paste dialog.
       openImport({ destination });
@@ -6158,6 +6179,7 @@
       // stale result over it.
       if (myGeneration !== importGeneration) return;
       importPending = d;
+      d.__title = file.name.replace(/\.[^.]+$/, '');
       const count = d.items ? d.items.length : d.blocks.length;
       const label = d.items ? `presentation${count === 1 ? '' : 's'}` : `slide${count === 1 ? '' : 's'}`;
       if (st) st.textContent = `${count} ${label} found in ${file.name}${d.note ? ` (${d.note})` : ''} — press “Add slides”.`;
@@ -6185,7 +6207,7 @@
       return;
     }
     closeImport();
-    beginImportResult(d, 'Pasted content', { destination: importDestination });
+    beginImportResult(d, (importPending === d && d.__title) || pastedTitle(ta?.value), { destination: importDestination });
   }
 
   // ── Grid/List + scale, applied to expanded card previews ─────────────────
