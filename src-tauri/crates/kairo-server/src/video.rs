@@ -19,8 +19,11 @@ const CONVERT_ALWAYS: &[&str] = &[
     "divx", "rm", "rmvb",
 ];
 
-/// Encoders that make web-playable H.264, best first.
-const H264_ENCODERS: &[&str] = &["libx264", "h264_videotoolbox", "h264_mf", "libopenh264", "h264_nvenc", "h264_qsv", "h264_amf"];
+/// Encoders that make something every web view plays, best first: H.264, else VP9
+/// (what a Linux build without an H.264 encoder falls back to) — both in an MP4.
+const ENCODERS: &[&str] = &[
+    "libx264", "h264_videotoolbox", "h264_mf", "libopenh264", "h264_nvenc", "h264_qsv", "h264_amf", "libvpx-vp9",
+];
 
 pub fn needs_conversion(name: &str) -> bool {
     Path::new(name)
@@ -39,16 +42,23 @@ pub struct Video {
     cache: PathBuf,
     ffmpeg: Option<PathBuf>,
     encoder: OnceLock<Option<&'static str>>,
+    /// Set to an encoder name to use that one (for testing).
+    forced_encoder: Option<String>,
     jobs: Mutex<HashMap<String, Job>>,
     /// One conversion at a time: a folder of files all asking at once would otherwise start them all.
     gate: Mutex<()>,
 }
 
 impl Video {
-    pub fn open(app_data_dir: &Path) -> Arc<Self> {
+    /// `ui_dir` is the app's `src` folder; the bundled ffmpeg sits beside it in `bin`.
+    pub fn open(app_data_dir: &Path, ui_dir: &Path) -> Arc<Self> {
         let cache = app_data_dir.join("media-cache");
         let _ = std::fs::create_dir_all(&cache);
-        Arc::new(Self { cache, ffmpeg: find_ffmpeg(), encoder: OnceLock::new(), jobs: Mutex::new(HashMap::new()), gate: Mutex::new(()) })
+        Arc::new(Self {
+            cache,
+            ffmpeg: find_ffmpeg(ui_dir),
+            encoder: OnceLock::new(),
+            forced_encoder: std::env::var("KAIRO_VIDEO_ENCODER").ok().filter(|e| !e.is_empty()), jobs: Mutex::new(HashMap::new()), gate: Mutex::new(()) })
     }
 
     /// The cache key for a file: changes when the file does.
@@ -62,20 +72,21 @@ impl Video {
         Some(h.finalize().iter().take(12).map(|b| format!("{b:02x}")).collect())
     }
 
-    pub fn prepared_path(&self, key: &str) -> PathBuf {
-        self.cache.join(format!("{key}.mp4"))
+    /// The converted copy, if there is one, and which kind it is.
+    pub fn prepared(&self, key: &str) -> Option<(PathBuf, &'static str)> {
+        ["mp4", "webm"].into_iter().map(|e| (self.cache.join(format!("{key}.{e}")), e)).find(|(p, _)| p.is_file())
     }
 
-    pub fn prepared_url(key: &str) -> String {
-        format!("/api/media/prepared/{key}.mp4")
+    pub fn prepared_url(key: &str, ext: &str) -> String {
+        format!("/api/media/prepared/{key}.{ext}")
     }
 
     /// Where a conversion stands: ready (with its address), converting, failed,
     /// or not possible here (no ffmpeg).
     pub fn status(&self, src: &Path) -> Value {
         let Some(key) = Self::key(src) else { return json!({ "state": "failed", "error": "The file can't be read." }) };
-        if self.prepared_path(&key).is_file() {
-            return json!({ "state": "ready", "url": Self::prepared_url(&key) });
+        if let Some((_, ext)) = self.prepared(&key) {
+            return json!({ "state": "ready", "url": Self::prepared_url(&key, ext) });
         }
         match self.jobs.lock().unwrap().get(&key) {
             Some(Job::Running(p)) => json!({ "state": "converting", "progress": p }),
@@ -110,7 +121,11 @@ impl Video {
             let ff = self.ffmpeg.as_ref()?;
             let out = Command::new(ff).args(["-hide_banner", "-encoders"]).output().ok()?;
             let listing = String::from_utf8_lossy(&out.stdout).to_string();
-            H264_ENCODERS.iter().copied().find(|name| listing.lines().any(|l| l.split_whitespace().nth(1) == Some(name)))
+            let has = |name: &str| listing.lines().any(|l| l.split_whitespace().nth(1) == Some(name));
+            if let Some(f) = self.forced_encoder.as_deref() {
+                return ENCODERS.iter().copied().find(|n| *n == f && has(n));
+            }
+            ENCODERS.iter().copied().find(|name| has(name))
         })
     }
 
@@ -124,7 +139,7 @@ impl Video {
         let _turn = self.gate.lock().unwrap_or_else(|e| e.into_inner());
         let ff = self.ffmpeg.as_ref().ok_or("This copy of Kairo can't convert video.")?;
         let enc = self.encoder().ok_or("No video encoder is available to convert this file.")?;
-        let out = self.prepared_path(key);
+        let out = self.cache.join(format!("{key}.mp4"));
         let partial = self.cache.join(format!("{key}.partial.mp4"));
         let _ = std::fs::remove_file(&partial);
 
@@ -135,7 +150,7 @@ impl Video {
         cmd.args(["-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn", "-vf", scale, "-c:v", enc]);
         match enc {
             "libx264" => { cmd.args(["-preset", "veryfast", "-crf", "20"]); }
-            "libopenh264" => { cmd.args(["-b:v", "8M"]); }
+            "libvpx-vp9" => { cmd.args(["-b:v", "0", "-crf", "32", "-deadline", "realtime", "-cpu-used", "5", "-row-mt", "1"]); }
             _ => { cmd.args(["-b:v", "8M"]); }
         }
         cmd.args(["-c:a", "aac", "-b:a", "160k", "-movflags", "+faststart", "-progress", "pipe:1", "-nostats"]);
@@ -196,22 +211,22 @@ fn parse_clock(s: &str) -> Option<u64> {
 }
 
 /// The ffmpeg that ships inside the app, else one on the machine.
-fn find_ffmpeg() -> Option<PathBuf> {
+fn find_ffmpeg(ui_dir: &Path) -> Option<PathBuf> {
     let exe = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
     if let Some(p) = std::env::var_os("KAIRO_FFMPEG").map(PathBuf::from).filter(|p| p.is_file()) {
         return Some(p);
     }
-    let me = std::env::current_exe().ok()?;
-    let dir = me.parent()?;
-    let mut candidates = vec![dir.join(exe), dir.join("bin").join(exe), dir.join("resources").join("bin").join(exe)];
-    // macOS: Kairo.app/Contents/MacOS/Kairo → Contents/Resources/bin/ffmpeg
-    if let Some(contents) = dir.parent() {
-        candidates.push(contents.join("Resources").join("bin").join(exe));
-        candidates.push(contents.join("Resources").join("resources").join("bin").join(exe));
+    // The app's resources: `src` (the UI) and `bin` sit side by side on every OS
+    // (Contents/Resources on macOS, the install folder on Windows, /usr/lib/<app> on Linux).
+    let mut candidates = Vec::new();
+    if let Some(res) = ui_dir.parent() {
+        candidates.push(res.join("bin").join(exe));
+        // Running from the source tree (npm run dev): src-tauri/bin beside src.
+        candidates.push(res.join("src-tauri").join("bin").join(exe));
     }
-    // Running from the source tree.
-    if let Some(root) = dir.ancestors().find(|p| p.join("src-tauri").is_dir()) {
-        candidates.push(root.join("src-tauri").join("bin").join(exe));
+    if let Some(dir) = std::env::current_exe().ok().and_then(|me| me.parent().map(Path::to_path_buf)) {
+        candidates.push(dir.join(exe));
+        candidates.push(dir.join("bin").join(exe));
     }
     if let Some(p) = candidates.into_iter().find(|p| p.is_file()) {
         return Some(p);

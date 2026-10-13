@@ -70,12 +70,14 @@ async fn prepare_video(State(app): State<Shared>, b: Option<Json<Value>>) -> Res
 }
 
 async fn prepared_file(State(app): State<Shared>, Path(file): Path<String>, req: Request) -> Response {
-    let key = file.strip_suffix(".mp4").unwrap_or("");
+    let key = file.strip_suffix(".mp4").or_else(|| file.strip_suffix(".webm")).unwrap_or("");
     if key.is_empty() || !key.bytes().all(|c| c.is_ascii_hexdigit()) {
         return StatusCode::NOT_FOUND.into_response();
     }
-    let p = app.video.prepared_path(key);
-    if p.is_file() { send_file(p, req).await } else { StatusCode::NOT_FOUND.into_response() }
+    match app.video.prepared(key) {
+        Some((p, _)) => send_file(p, req).await,
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
 }
 
 fn not_found(msg: &str) -> Response {
