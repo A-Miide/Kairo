@@ -1083,7 +1083,7 @@ function renderMediaPreview(src, kind, fit) {
   const objectFit = fit === 'fill' ? 'fill' : (fit || 'contain');
   if (kind === 'video') {
     const v = document.createElement('video');
-    v.src = src; v.autoplay = true; v.loop = true; v.muted = true; v.playsInline = true;
+    v.src = authedMediaUrl(src); v.autoplay = true; v.loop = true; v.muted = true; v.playsInline = true;
     v.style.objectFit = objectFit;
     host.appendChild(v);
   } else {
