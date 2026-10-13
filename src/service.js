@@ -1882,8 +1882,22 @@
   // operator can see what's on air (2026-10-12). Set from the same 'media'
   // broadcast the output renders (app.js), cleared with the media layer.
   let liveMediaSrc = null;
-  function onMediaLive(src) {
+  function onMediaLive(src, kind) {
     liveMediaSrc = src || null;
+    // The Monitoring card's strip: what's on air, and its controls.
+    const strip = document.getElementById('media-transport');
+    if (strip) {
+      strip.classList.toggle('hidden', !liveMediaSrc);
+      const file = liveMediaSrc ? decodeURIComponent(String(liveMediaSrc).split('?')[0].split('/').pop() || '') : '';
+      const name = document.getElementById('media-now-name');
+      if (name) name.textContent = mediaLabel({ name: file });
+      const thumb = document.getElementById('media-now-thumb');
+      if (thumb) {
+        thumb.classList.toggle('is-video', kind === 'video');
+        thumb.style.backgroundImage = liveMediaSrc && kind !== 'video' ? `url("${liveMediaSrc}")` : '';
+      }
+      setMediaTransportVisible(!!liveMediaSrc && kind === 'video');
+    }
     document.querySelectorAll('.media-card[data-url]').forEach(c => c.classList.toggle('is-live', !!liveMediaSrc && c.dataset.url === liveMediaSrc));
   }
 
@@ -4946,8 +4960,10 @@
   // ── Transport bar (mute/play/volume/seek) — remote-controls whatever the
   // display's media layer is currently showing; see display.html's
   // applyMediaControl/reportMediaStatus and server.js's ws relay. ─────────
+  // The video controls in the Monitoring card's media strip (onMediaLive
+  // shows the strip itself for any media).
   function setMediaTransportVisible(visible) {
-    document.getElementById('media-transport')?.classList.toggle('hidden', !visible);
+    document.getElementById('media-video-controls')?.classList.toggle('hidden', !visible);
   }
 
   function mediaControl(action, value) {
@@ -6126,8 +6142,15 @@
 
     function setActive(anim) {
       picker.querySelectorAll('.ts-align-btn').forEach(b => b.classList.toggle('active', b.dataset.anim === anim));
-      speedInput.classList.toggle('hidden', anim === 'cut');
+      document.getElementById('rs-anim-speed-row')?.classList.toggle('hidden', anim === 'cut');
     }
+    // Quick / Normal / Slow; a value saved before (any length) shows as the nearest.
+    const showDuration = (value) => {
+      const opts = [...speedInput.querySelectorAll('[data-speed]')];
+      const nearest = opts.reduce((a, b) => (Math.abs(b.dataset.speed - value) < Math.abs(a.dataset.speed - value) ? b : a), opts[0]);
+      opts.forEach(o => o.classList.toggle('active', o === nearest));
+    };
+    showDuration(1);
 
     // If the operator touches the picker before this initial fetch
     // resolves, its own POST already applied the real change — the fetch
@@ -6138,7 +6161,7 @@
     fetchWithTimeout(`${SERVER}/api/settings`).then(r => r.json()).then(s => {
       if (userTouched) return;
       setActive(s.outputAnimation || 'fade');
-      if (typeof s.outputAnimationSpeed === 'number' && s.outputAnimationSpeed > 0) speedInput.value = s.outputAnimationSpeed;
+      if (typeof s.outputAnimationSpeed === 'number' && s.outputAnimationSpeed > 0) showDuration(s.outputAnimationSpeed);
     }).catch(() => { if (!userTouched) setActive('fade'); });
 
     picker.addEventListener('click', (e) => {
@@ -6152,20 +6175,16 @@
       }).catch(() => {});
     });
 
-    // Debounced — 'input' fires continuously while dragging, and each
-    // change here is a real settings-file write plus a broadcast, not
-    // just a local style update.
-    let speedTimer = null;
-    speedInput.addEventListener('input', () => {
+    speedInput.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-speed]');
+      if (!btn) return;
       userTouched = true;
-      clearTimeout(speedTimer);
-      const value = parseFloat(speedInput.value);
-      speedTimer = setTimeout(() => {
-        fetchWithTimeout(`${SERVER}/api/settings`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ outputAnimationSpeed: value }),
-        }).catch(() => {});
-      }, 200);
+      const value = parseFloat(btn.dataset.speed);
+      showDuration(value);
+      fetchWithTimeout(`${SERVER}/api/settings`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outputAnimationSpeed: value }),
+      }).catch(() => {});
     });
   }
 

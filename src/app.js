@@ -305,7 +305,7 @@ function handleServerMessage(msg) {
     case 'media':
       if (msg.target === 'viewer') {
         renderMediaPreview(msg.src, msg.kind, msg.fit);
-        window.KairoService?.onMediaLive?.(msg.src);
+        window.KairoService?.onMediaLive?.(msg.src, msg.kind);
       }
       break;
 
@@ -2469,7 +2469,8 @@ function openOnboardingWizard() {
   if (input) input.value = '';
   syncToggleGroup('first-run-engine-toggle', 'engine', 'deepgram'); // always starts on Deepgram
   goToOnboardingStep(0);
-  setTimeout(() => document.getElementById('onboarding-next')?.focus(), 50);
+  // Nothing is focused for the operator (a focused button wears the
+  // system's blue ring); Enter still moves on — see the keydown below.
 }
 
 function renderOnboardingProgress() {
@@ -2583,14 +2584,9 @@ async function saveFirstRunChoice() {
   const engine = readToggleGroup('first-run-engine-toggle', 'engine') || 'deepgram';
 
   if (engine === 'browser') {
-    // Offline chosen — no key needed. Persist the engine choice so it
-    // sticks (and so bootstrapStartup()/Settings both see it), then, if the
-    // model isn't already installed, kick off the same download this
-    // modal's own #first-run-offline-install-btn would (wireOfflineModelInstaller
-    // already fully owns its progress UI) rather than silently leaving the
-    // resilience path unfetched until the operator happens to revisit
-    // Settings. The download runs server-side regardless of whether this
-    // modal stays open, so closing it early (Skip/X) never interrupts it.
+    // Offline chosen — no key needed. Persist the engine choice so it sticks
+    // (bootstrapStartup()/Settings both see it). A download started from the
+    // tour's own button runs server-side whether or not the tour stays open.
     try {
       await fetch(`${SERVER}/api/settings`, {
         method: 'POST',
@@ -2603,9 +2599,10 @@ async function saveFirstRunChoice() {
       toast('Could not save — try again in Settings', 'error');
       return;
     }
-    const installBtn = document.getElementById('first-run-offline-install-btn');
-    if (installBtn && installBtn.style.display !== 'none') installBtn.click();
-    else closeFirstRunModal();
+    // The choice is saved; the model downloads only when the operator asks
+    // (2026-10-12: finishing the tour used to start the 465 MB download
+    // unasked). Settings → Audio offers it, and Start Listening says so.
+    closeFirstRunModal();
     return;
   }
 
@@ -2704,7 +2701,14 @@ document.getElementById('first-run-skip')?.addEventListener('click', closeFirstR
 document.getElementById('close-first-run')?.addEventListener('click', closeFirstRunModal);
 document.addEventListener('keydown', (e) => {
   const modal = document.getElementById('first-run-modal');
-  if (e.key === 'Escape' && modal && !modal.classList.contains('hidden')) closeFirstRunModal();
+  if (!modal || modal.classList.contains('hidden')) return;
+  if (e.key === 'Escape') closeFirstRunModal();
+  // Enter with nothing in particular focused: the step's main button.
+  if (e.key === 'Enter' && (document.activeElement === document.body || !modal.contains(document.activeElement))) {
+    e.preventDefault();
+    const last = onboardingStep === ONBOARDING_STEP_COUNT - 1;
+    document.getElementById(last ? 'first-run-save' : 'onboarding-next')?.click();
+  }
 });
 document.getElementById('first-run-deepgram-key')?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') document.getElementById('onboarding-next')?.click();
@@ -3156,6 +3160,7 @@ function handleLayerState(msg) {
 }
 document.getElementById('clear-slide-layer-btn')?.addEventListener('click', () => clearOutputLayer('slide'));
 document.getElementById('clear-media-layer-btn')?.addEventListener('click', () => clearOutputLayer('media'));
+document.getElementById('media-now-clear')?.addEventListener('click', () => clearOutputLayer('media'));
 // 'timer' has no client-side preview to clear (unlike slide/media, the
 // countdown only ever exists on the actual output) — the server-side stop
 // is the whole effect; see clear-layer's handling in server.js.
@@ -3322,14 +3327,28 @@ function wireOfflineModelInstaller(ids) {
   // whatever the update download actually is.
   const downloadLabel = installBtn.textContent;
 
+  let pollTimer = null;
   async function refreshStatus() {
     try {
       const r = await fetch(`${SERVER}/api/offline/status?model=${model}`);
       const s = await r.json();
       if (s.installing) {
-        statusLine.textContent = 'Install in progress…';
+        // Started here or anywhere else (the tour): the same progress, and
+        // it keeps updating until it's done.
+        const pct = typeof s.progress === 'number' ? s.progress : null;
+        statusLine.textContent = pct == null ? 'Downloading…' : `Downloading… ${pct}%`;
+        statusLine.style.color = '';
         installBtn.style.display = 'none';
-      } else if (s.needsUpdate) {
+        if (progressWrap) progressWrap.style.display = '';
+        if (progressBar && pct != null) progressBar.style.width = `${pct}%`;
+        if (progressText) progressText.textContent = pct == null ? 'Starting…' : `${pct}%`;
+        clearTimeout(pollTimer);
+        pollTimer = setTimeout(() => { if (group.style.display !== 'none') refreshStatus(); }, 1000);
+        return;
+      }
+      clearTimeout(pollTimer);
+      if (progressWrap && s.installed) progressWrap.style.display = 'none';
+      if (s.needsUpdate) {
         // A model IS present and working (isModelPresent) — just not the
         // MODEL_VERSION this build ships (see sherpa_installer.js's own
         // comment). Distinct from "not installed" so it doesn't read as a
