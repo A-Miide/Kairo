@@ -5067,6 +5067,19 @@
   }
 
   function mediaControl(action, value) {
+    // The preview is always silent (the output carries the sound), so only
+    // play, pause and seek apply to it.
+    const pv = previewVideo();
+    if (pv) {
+      if (action === 'play') pv.play().catch(() => {});
+      else if (action === 'pause') pv.pause();
+      else if (action === 'seek' && typeof value === 'number') { try { pv.currentTime = value; } catch {} }
+      else if (action === 'mute') pv.muted = true;
+      else if (action === 'unmute') { pv.muted = false; pv.play().catch(() => {}); }
+      else if (action === 'volume' && typeof value === 'number') pv.volume = Math.max(0, Math.min(1, value));
+    }
+    if (action === 'mute') mediaMutedState = true;
+    if (action === 'unmute') mediaMutedState = false;
     fetchWithTimeout(`${SERVER}/api/service/media-control`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, value }),
@@ -5087,7 +5100,15 @@
   // own image — see renderTimerScene, which shares this same layer), the
   // transport bar has nothing left to control and must hide instead of
   // sitting there with a seek bar frozen at 0:00/0:00 looking broken.
-  function onMediaStatus({ currentTime, duration, paused, kind }) {
+  // The video playing in the Monitor's own preview. It is what the transport
+  // bar shows and drives, so the controls work whether or not an output screen
+  // is open; the output gets the same commands through the server.
+  const previewVideo = () => document.querySelector('#slide-preview-media video');
+  let mediaMutedState = false; // the transport's mute button; a new video starts that way
+
+  function onMediaStatus({ currentTime, duration, paused, kind, local }) {
+    // An output's own report only counts when there's no preview video to read.
+    if (!local && previewVideo()) return;
     if (kind && kind !== 'video') { setMediaTransportVisible(false); return; }
     setMediaTransportVisible(true);
     const seek = document.getElementById('media-seek');
@@ -6866,7 +6887,7 @@
     get service() { return service; },
     slidesFor, sendSlide, cycleSectionLabel, focusInStack, openFullEdit, closeStack, closeFullEdit,
     effectiveTranslateTo, awaitTranslatedText,
-    paintLookLayers, renderLookThumbnail, buildThemeTree, slideThemeIdOf, hasSlideThemes, saveService, openContextMenu, openThemePopover, themeForItem,
+    paintLookLayers, renderLookThumbnail, buildThemeTree, slideThemeIdOf, hasSlideThemes, mediaMuted: () => mediaMutedState, saveService, openContextMenu, openThemePopover, themeForItem,
     showMediaLibrary, onMediaStatus, onMediaFolderChanged, setMediaTransportVisible, onMediaLive,
     showTimerLibrary, onTimerAction, onClockAction, getTimerItem, updateSegmentParams, saveTimerScenes, saveScenePace,
     onTranscript, setAutoFollow, get autoFollow() { return autoFollow; },

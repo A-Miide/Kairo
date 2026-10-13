@@ -647,7 +647,7 @@ function buildAudioOutputRow() {
   name.textContent = 'Audio Output';
   const type = document.createElement('span');
   type.className = 'outputs-list-item-type';
-  type.textContent = savedMediaOutput() ? 'Chosen device' : 'With the screen';
+  type.textContent = savedMediaOutput() ? 'Chosen device' : 'System default';
   info.append(name, type);
   row.append(dot, info);
   row.addEventListener('click', () => { selectedOutputId = AUDIO_OUTPUT_ID; renderOutputsList(); renderOutputsDetail(); });
@@ -659,7 +659,7 @@ function renderAudioOutputDetail(host) {
   host.appendChild(detailTitle('Audio Output', null, null));
   const intro = document.createElement('p');
   intro.className = 'setting-hint';
-  intro.textContent = 'Sound from video on the Media layer plays through the screen that shows it \u2014 over HDMI, the display\u2019s own speakers. Pick another device to send it to a speaker, a mixer or this computer instead.';
+  intro.textContent = 'Sound from video on the Media layer plays from this computer, through its sound output \u2014 or through the device you pick here: a speaker, a mixer, an HDMI display. Screens show the picture only.';
   host.appendChild(intro);
 
   const group = detailGroup('Play media sound on');
@@ -710,7 +710,7 @@ function renderAudioOutputDetail(host) {
     const devices = await mediaOutputDevices();
     sel.innerHTML = '';
     const dflt = document.createElement('option');
-    dflt.value = ''; dflt.textContent = 'With the screen (default)';
+    dflt.value = ''; dflt.textContent = 'System default';
     sel.appendChild(dflt);
     devices.forEach(d => {
       const o = document.createElement('option');
@@ -723,10 +723,10 @@ function renderAudioOutputDetail(host) {
     sel.disabled = !routable;
     testBtn.disabled = !routable;
     note.textContent = routable
-      ? 'Takes effect on the next video you send. Leave it on the default to keep the sound with the screen.'
+      ? 'Applies to the video that is playing now and to every video you send after it.'
       : 'This computer\u2019s display engine can\u2019t pick a sound device. Set the output in your system\u2019s Sound settings instead.';
   };
-  sel.addEventListener('change', () => { setMediaOutput(sel.value); renderOutputsList(); });
+  sel.addEventListener('change', () => { setMediaOutput(sel.value); window.applyMediaSink?.(); renderOutputsList(); });
   refresh.addEventListener('click', fill);
   testBtn.addEventListener('click', async () => {
     try {

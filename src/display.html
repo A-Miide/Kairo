@@ -1582,9 +1582,8 @@
             if (!MONITOR && mediaSinkId && typeof v.setSinkId === 'function') {
                 v.setSinkId(mediaSinkId).catch(() => {});
             }
-            if (!mediaMuted && !MONITOR) {
-                v.addEventListener('playing', () => { v.muted = false; }, { once: true });
-            }
+            // Sound plays from the operator window (app.js's renderMediaPreview), through the
+            // device chosen under Settings → Outputs → Audio Output; a screen shows the picture only.
             // Throttled status reports so the operator's window can drive a
             // real seek slider without polling — see server.js's ws.on('message').
             let lastReport = 0;
@@ -1620,7 +1619,7 @@
     function applyMediaControl(action, value) {
         const v = currentMediaVideo();
         if (action === 'mute') { mediaMuted = true; if (v) v.muted = true; }
-        else if (action === 'unmute') { mediaMuted = false; if (v && !MONITOR) v.muted = false; }
+        else if (action === 'unmute') { mediaMuted = false; }
         else if (action === 'play') { if (v) v.play().catch(() => {}); }
         else if (action === 'pause') { if (v) v.pause(); }
         else if (action === 'seek') { if (v && typeof value === 'number') v.currentTime = value; }
