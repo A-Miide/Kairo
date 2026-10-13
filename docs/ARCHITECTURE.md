@@ -294,7 +294,7 @@ Needs Node 22+, a Rust toolchain and Tauri's platform prerequisites. A few thing
 - `src-tauri/tauri.conf.json` names the original maintainer's macOS signing identity. On another
   machine a release build needs its own identity there (or ad-hoc signing); dev runs do not sign.
 - The auto-updater (`tauri-plugin-updater`) reads
-  `https://github.com/Kairo-live/Kairo/releases/latest/download/latest.json`. Its private signing
+  `https://github.com/miide-Adeyemi/Kairo/releases/latest/download/latest.json`. Its private signing
   key is not in the repository.
 - `.github/workflows/build.yml` builds macOS, Windows and Linux when a `v*` tag is pushed. It was
   written for an earlier engine stack, so check it before relying on it.
