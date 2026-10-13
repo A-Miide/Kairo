@@ -61,13 +61,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # Every build adds the release config: the signed update packages
+          # and latest.json the in-app updater reads (local builds skip them,
+          # so they don't need the signing key).
           - platform: macos-latest   # universal: native on Intel and Apple Silicon
-            args: '--target universal-apple-darwin'
+            args: '--target universal-apple-darwin --config src-tauri/tauri.release.conf.json'
           - platform: windows-latest
-            args: ''
+            args: '--config src-tauri/tauri.release.conf.json'
           - platform: ubuntu-22.04
             # No AppImage — linuxdeploy is broken on ubuntu-22.04 + libwebkit2gtk-4.1.
-            args: '--bundles deb,rpm,updater'
+            args: '--bundles deb,rpm --config src-tauri/tauri.release.conf.json'
 
     runs-on: ${{ matrix.platform }}
 
