@@ -37,6 +37,10 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
+          # sherpa-onnx's build script downloads its libraries here; the
+          # cache keeps the script's output, so it must keep these too
+          # (otherwise a warm cache links against a folder that's gone).
+          cache-directories: src-tauri/target/sherpa-onnx-prebuilt
 
       - name: Build dependencies
         if: steps.cache.outputs.cache-hit != 'true'
@@ -105,6 +109,10 @@ jobs:
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
+          # sherpa-onnx's build script downloads its libraries here; the
+          # cache keeps the script's output, so it must keep these too
+          # (otherwise a warm cache links against a folder that's gone).
+          cache-directories: src-tauri/target/sherpa-onnx-prebuilt
 
       - name: Install Linux deps
         if: matrix.platform == 'ubuntu-24.04'
