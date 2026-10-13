@@ -28,7 +28,7 @@ struct Spec {
 }
 
 const EN: Spec = Spec {
-    url: "https://github.com/Kairo-live/Kairo/releases/download/offline-model-v1/sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25.tar.bz2",
+    url: "https://github.com/miide-Adeyemi/Kairo/releases/download/offline-model-v1/sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25.tar.bz2",
     fallback: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25.tar.bz2",
     sha256: "78e2b79fcf7271553a74402a76b771b09ea40117a39566a79f52235b23db6358",
     top_dir: "sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25",
@@ -38,7 +38,7 @@ const EN: Spec = Spec {
     approx_mb: 465,
 };
 const MULTI: Spec = Spec {
-    url: "https://github.com/Kairo-live/Kairo/releases/download/offline-model-multi-v1/sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-560ms-int8-2026-06-11.tar.bz2",
+    url: "https://github.com/miide-Adeyemi/Kairo/releases/download/offline-model-multi-v1/sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-560ms-int8-2026-06-11.tar.bz2",
     fallback: "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-560ms-int8-2026-06-11.tar.bz2",
     sha256: "c6bf5e0df765f9d5b43bc9e0536d4b4b3e7d40bdf5ecf13e45f134c51c05ae3a",
     top_dir: "sherpa-onnx-nemotron-3.5-asr-streaming-0.6b-560ms-int8-2026-06-11",
