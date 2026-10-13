@@ -4580,7 +4580,9 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
    the generic input[type="range"] rules near the top of this file. */
 .rs-media-strip #media-mute-btn.active { color: var(--brand); background: var(--brand-dim); border-color: var(--brand); }
 .media-seek { flex: 1; }
-.media-volume { width: 80px; flex: none; }
+.media-volume { width: 56px; flex: 0 1 56px; min-width: 32px; }
+.media-seek { min-width: 40px; }
+.rs-media-video { min-width: 0; }
 .media-time {
   font-size: 10px;
   font-family: var(--mono);
@@ -8068,3 +8070,6 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 }
 /* A narrow left column: the title gives way before the Clear button does. */
 .ls-transcript-header > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.audio-out-volume { flex: 1; min-width: 0; accent-color: var(--brand); }
+.audio-out-volume-val { min-width: 38px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-2); font-size: 12px; }
+.audio-cols { align-items: start; }
