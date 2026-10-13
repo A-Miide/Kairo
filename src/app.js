@@ -1083,8 +1083,21 @@ function renderMediaPreview(src, kind, fit) {
   const objectFit = fit === 'fill' ? 'fill' : (fit || 'contain');
   if (kind === 'video') {
     const v = document.createElement('video');
+    // This is the video you hear: it starts muted so autoplay is certain, then takes
+    // its sound as soon as it plays (you've just clicked to send it), on the chosen
+    // output device and at the saved volume. The screens show the picture only.
     v.src = authedMediaUrl(src); v.autoplay = true; v.loop = true; v.muted = true; v.playsInline = true;
     v.style.objectFit = objectFit;
+    try { const vol = parseInt(localStorage.getItem('kairo-media-volume') || '', 10); if (vol >= 0 && vol <= 100) v.volume = vol / 100; } catch {}
+    applyMediaSink(v);
+    if (!window.KairoService?.mediaMuted?.()) {
+      v.addEventListener('playing', () => { v.muted = false; if (v.paused) v.muted = true; }, { once: true });
+    }
+    // The transport bar under the preview reads this video (see service.js's onMediaStatus).
+    const report = () => window.KairoService?.onMediaStatus?.({
+      kind: 'video', local: true, currentTime: v.currentTime || 0, duration: Number.isFinite(v.duration) ? v.duration : 0, paused: v.paused,
+    });
+    ['loadedmetadata', 'timeupdate', 'play', 'pause', 'seeked'].forEach(ev => v.addEventListener(ev, report));
     host.appendChild(v);
   } else {
     const img = document.createElement('img');
@@ -3160,7 +3173,6 @@ function handleLayerState(msg) {
 }
 document.getElementById('clear-slide-layer-btn')?.addEventListener('click', () => clearOutputLayer('slide'));
 document.getElementById('clear-media-layer-btn')?.addEventListener('click', () => clearOutputLayer('media'));
-document.getElementById('media-now-clear')?.addEventListener('click', () => clearOutputLayer('media'));
 // 'timer' has no client-side preview to clear (unlike slide/media, the
 // countdown only ever exists on the actual output) — the server-side stop
 // is the whole effect; see clear-layer's handling in server.js.
@@ -3285,6 +3297,13 @@ populateAudioOutputDevices();
 // Re-apply the saved device to a freshly (re)connected display window —
 // otherwise it only ever learns the choice from a change event, not on
 // its own (re)connect.
+// Sends the preview video's sound to the device chosen under Outputs → Audio Output.
+function applyMediaSink(v) {
+  const id = localStorage.getItem(MEDIA_OUTPUT_KEY) || '';
+  const target = v || document.querySelector('#slide-preview-media video');
+  if (target && typeof target.setSinkId === 'function') target.setSinkId(id).catch(() => {});
+}
+window.applyMediaSink = applyMediaSink;
 (function reapplySavedMediaVolume() {
   const v = parseInt(localStorage.getItem('kairo-media-volume') || '', 10);
   if (!(v >= 0 && v < 100)) return;
