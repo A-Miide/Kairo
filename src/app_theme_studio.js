@@ -5842,7 +5842,11 @@ document.getElementById('ts-item-theme-picker-btn')?.addEventListener('click', (
 // lookup, else the primary output's assigned theme, else the first theme) —
 // matches this codebase's existing precedent of each context owning its own
 // small layer-renderer/resolver rather than cross-file exporting one.
-function resolveItemBaseLook(item) {
+function resolveItemBaseLook(item, slideIndex) {
+  // A slide of a Slides deck can carry its own theme (block.themeId).
+  const slideTheme = (item.type === 'slides' && slideIndex != null) ? item.blocks?.[slideIndex]?.themeId : null;
+  const own = slideTheme ? looks.find(l => l.id === slideTheme) : null;
+  if (own) return own;
   const explicit = item.themeId ? looks.find(l => l.id === item.themeId) : null;
   if (explicit) return explicit;
   // A fresh timer segment has no themeId yet, and falling through to the
@@ -5900,7 +5904,7 @@ function buildSyntheticLook(item, slideIndex) {
   if (item.type === 'slides' && item.blocks?.[slideIndex]?.layers) {
     return { id: `scene:${item.id}:${slideIndex}`, layers: deepClone(item.blocks[slideIndex].layers) };
   }
-  const base = resolveItemBaseLook(item);
+  const base = resolveItemBaseLook(item, slideIndex);
   const clone = deepClone(base) || { layers: [] };
   clone.id = `item-edit:${item.id}:${slideIndex}`;
   const overrides = item.slideStyles?.[slideIndex] || {};
@@ -6231,7 +6235,7 @@ function openItemStyleEditor(itemId, slideIndex = 0) {
     || window.KairoService?.getTimerItem?.(itemId);
   if (!item) return;
   tsMode = 'item';
-  tsItemCtx = { item, slideIndex, baseLook: resolveItemBaseLook(item) };
+  tsItemCtx = { item, slideIndex, baseLook: resolveItemBaseLook(item, slideIndex) };
   document.querySelector('.main-layout')?.classList.add('hidden-el');
   document.getElementById('service-view')?.classList.add('hidden');
   looksModal?.classList.remove('hidden');
@@ -6283,7 +6287,7 @@ function refreshItemStyleEditorSlides(itemId) {
 // the slide/synthetic-look rebuild refreshItemStyleEditorSlides already does.
 function refreshItemStyleEditorTheme(itemId) {
   if (tsMode !== 'item' || !tsItemCtx || tsItemCtx.item.id !== itemId) return;
-  tsItemCtx.baseLook = resolveItemBaseLook(tsItemCtx.item);
+  tsItemCtx.baseLook = resolveItemBaseLook(tsItemCtx.item, tsItemCtx.slideIndex);
   updateItemThemeLabel();
   refreshItemStyleEditorSlides(itemId);
 }

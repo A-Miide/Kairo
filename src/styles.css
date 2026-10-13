@@ -107,7 +107,7 @@
   --font-head: 'Manrope', -apple-system, BlinkMacSystemFont, sans-serif;
   --mono: 'SF Mono', 'Fira Code', monospace;
 
-  --topbar-h: 46px;
+  --topbar-h: 48px; /* the top bar's own height, so the panels below end exactly at the window's edge */
 
   --shadow-sm: 0 1px 6px rgba(0,0,0,0.2);
   --shadow-md: 0 2px 12px rgba(0,0,0,0.4);
@@ -1583,8 +1583,8 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
 .settings-nav {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: var(--space-3) var(--space-2);
+  gap: 6px;
+  padding: var(--space-4) var(--space-3);
   border-right: 1px solid var(--border);
   background: var(--bg-input);
   overflow-y: auto;
@@ -1610,7 +1610,7 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
   align-items: center;
   gap: var(--space-3);
   width: 100%;
-  padding: 9px 10px;
+  padding: 13px 14px;
   background: transparent;
   border: none;
   border-radius: var(--radius);
@@ -1749,18 +1749,19 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
 .outputs-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 6px;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
-  padding: 4px;
+  padding: 8px;
   max-height: 420px;
   overflow-y: auto;
 }
 .outputs-list-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 8px;
+  gap: 12px;
+  padding: 14px 14px;
+  min-height: 52px;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
@@ -1772,9 +1773,9 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
 .outputs-list-item:hover { background: var(--bg-hover); color: var(--text); }
 .outputs-list-item.active { background: var(--selected-dim); color: var(--selected-text); }
 .outputs-list-item .bs-dot { flex-shrink: 0; }
-.outputs-list-item-info { display: flex; flex-direction: column; gap: 1px; min-width: 0; flex: 1; }
+.outputs-list-item-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
 .outputs-list-item-name {
-  font-size: 12px; font-weight: 600;
+  font-size: 13px; font-weight: 600;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .outputs-list-item-type {
@@ -4825,9 +4826,8 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
 ══════════════════════════════════════ */
 .media-bin {
   flex-shrink: 0;
-  height: 150px;
+  height: 150px; /* until service.js matches it to the Live Transcript box */
   min-height: 90px;
-  max-height: 400px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -4836,6 +4836,7 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
   background: var(--bg-card);
 }
 .media-bin-splitter {
+  display: none; /* the bin follows the transcript box's height; nothing to drag */
   flex: none;
   height: 9px;
   background: transparent;
@@ -4860,7 +4861,7 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 0 12px 8px;
+  padding: 10px 12px 8px;
 }
 .media-bin-hint {
   font-size: 10.5px;
@@ -4876,18 +4877,15 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
 .media-bin-strip {
   flex: 1;
   min-height: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-content: flex-start;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(var(--mb-thumb, 130px), 1fr));
+  align-content: start;
   gap: 8px;
   padding: 0 12px 10px;
   overflow-x: hidden;
   overflow-y: auto;
 }
-.media-bin-strip .media-card {
-  flex: 0 0 auto;
-  width: var(--mb-thumb, 130px);
-}
+.media-bin-strip .media-card { min-width: 0; }
 /* On air: the card whose picture is on the media layer now. */
 .media-card.is-live { border-color: var(--brand); box-shadow: 0 0 0 1.5px var(--brand); }
 .media-card.is-live::after {
@@ -4907,6 +4905,7 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
 .media-bin-size { display: flex; align-items: center; gap: 6px; color: var(--text-3); }
 .media-bin-size input { width: 90px; accent-color: var(--brand); }
 .media-bin-strip .svc-empty {
+  grid-column: 1 / -1;
   flex: 1;
   display: flex;
   align-items: center;
@@ -5471,8 +5470,17 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
 }
 .rs-transition-bar { flex-wrap: wrap; row-gap: 8px; }
 .rs-transition-bar .rs-anim-btn { width: auto; padding: 0 9px; gap: 5px; font-size: 11px; font-weight: 600; }
-.rs-duration { display: flex; align-items: center; gap: 8px; flex-basis: 100%; }
+.rs-duration { display: flex; align-items: center; gap: 8px; margin-left: auto; }
+.rs-transition-bar .rs-transition-label { display: none; } /* groups are labelled for screen readers; the buttons say what they are */
 .rs-duration.hidden { display: none; }
+/* One row, flat segmented controls: a shared track, the chosen option lifted. */
+.rs-transition-bar { flex-wrap: nowrap; justify-content: space-between; }
+.rs-transition-bar { gap: 6px; padding-left: 8px; padding-right: 8px; }
+.rs-transition-bar .rs-anim-btn { padding: 0 6px; gap: 4px; font-size: 10.5px; }
+.rs-transition-bar .ts-align-group { gap: 0; padding: 2px; border-radius: 8px; background: rgba(255,255,255,0.05); }
+.rs-transition-bar .ts-align-btn { border-color: transparent; background: transparent; }
+.rs-transition-bar .ts-align-btn.active { background: var(--bg-hover); color: var(--text); border-color: transparent; box-shadow: 0 1px 2px rgba(0,0,0,.35); }
+@media (max-width: 420px) { .rs-transition-bar { flex-wrap: wrap; } .rs-duration { margin-left: 0; } }
 
 /* Part of the monitor card, under the screen. */
 .rs-preview-card .rs-transition-bar { margin-top: 0; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: transparent; }
@@ -7962,3 +7970,101 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
    rows don't stack three solid red buttons (one solid red per panel). */
 .dl-row .modal-btn.primary.dl-btn { background: transparent; border: 1px solid var(--brand); color: var(--brand); }
 .dl-row .modal-btn.primary.dl-btn:hover { background: var(--brand-dim); }
+
+/* Second language + its models, stacked in one column of the On screen row. */
+.setting-col-stack { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+
+/* Section title with an action on the same line (Help & Guide's tour button). */
+.settings-section-head {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 4px;
+}
+.settings-section-head .settings-section-label { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
+.settings-section-head .modal-btn.primary { padding: 6px 14px; font-size: var(--fs-xs); margin-bottom: 8px; }
+
+/* Output theme picker: a dropdown with a tiny preview beside each theme. */
+.theme-pick { position: relative; min-width: 0; flex: 1; }
+.theme-pick-trigger {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  text-align: left; cursor: pointer; padding-top: 6px; padding-bottom: 6px;
+}
+.theme-pick-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.theme-pick-chev { color: var(--text-3); font-size: 11px; flex: none; }
+.theme-pick-menu {
+  position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px);
+  max-height: 320px; overflow-y: auto; padding: 4px;
+  background: var(--bg-input); border: 1px solid var(--border-md); border-radius: var(--radius);
+  box-shadow: 0 10px 28px rgba(0,0,0,.45);
+}
+.theme-pick-menu[hidden] { display: none; }
+.theme-pick-item {
+  display: flex; align-items: center; gap: 10px; width: 100%;
+  padding: 6px 8px; border: none; border-radius: var(--radius-sm);
+  background: transparent; color: var(--text-2); font: inherit; text-align: left; cursor: pointer;
+}
+.theme-pick-item:hover { background: var(--bg-hover); color: var(--text); }
+.theme-pick-item.active { background: var(--selected-dim); color: var(--selected-text); font-weight: 600; }
+.theme-pick-item span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Tour: the standout-features step. */
+.ob-art-multi i { position: absolute; top: 20px; width: 62px; height: 40px; border-radius: 5px; box-shadow: 0 6px 16px rgba(0,0,0,.4); }
+.ob-art-multi i:nth-child(1) { left: 14px; background: linear-gradient(135deg, #F5301A, #9E1608); }
+.ob-art-multi i:nth-child(2) { left: 50%; margin-left: -31px; background: #101014; border: 1px solid #55555f; }
+.ob-art-multi i:nth-child(3) { right: 14px; background: linear-gradient(135deg, #2c4a8a, #162a52); }
+.ob-art-multi i::after { content: ''; position: absolute; left: 9px; right: 9px; top: 14px; height: 12px; background: repeating-linear-gradient(rgba(255,255,255,.85) 0 2px, transparent 2px 6px); }
+.ob-art-multi i { animation: ob-pulse 4.5s ease-in-out infinite; }
+.ob-art-multi i:nth-child(2) { animation-delay: .4s; } .ob-art-multi i:nth-child(3) { animation-delay: .8s; }
+@keyframes ob-pulse { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
+.ob-art-bi { display: flex; gap: 6px; padding: 14px; }
+.ob-art-bi b { flex: 1; display: flex; align-items: center; justify-content: center; border-radius: 5px; padding: 4px; text-align: center; }
+.ob-art-bi b:first-child { background: linear-gradient(135deg, #F5301A, #9E1608); }
+.ob-art-bi b:last-child { background: linear-gradient(135deg, #2c4a8a, #162a52); }
+.ob-art-bi em { font-style: normal; font-size: 10px; font-weight: 700; line-height: 1.3; color: #fff; }
+.ob-art-mon { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; padding: 18px 12px; }
+.ob-art-mon i { border-radius: 3px; background: #101014; border: 1px solid #55555f; position: relative; }
+.ob-art-mon i::after { content: ''; position: absolute; left: 4px; right: 4px; top: 40%; height: 3px; border-radius: 2px; background: #F5301A; animation: ob-blink 4.5s ease-in-out infinite; }
+.ob-art-mon i:nth-child(2)::after { animation-delay: .5s; background: #7a98e0; } .ob-art-mon i:nth-child(3)::after { animation-delay: 1s; } .ob-art-mon i:nth-child(4)::after { animation-delay: 1.5s; background: #7a98e0; }
+@keyframes ob-blink { 0%, 100% { opacity: .25; } 40%, 70% { opacity: 1; } }
+
+/* Tour: real screenshots of the app in the feature tiles. */
+.ob-shot { display: block; width: 100%; height: 150px; object-fit: cover; object-position: top; border-radius: 10px; border: 1px solid var(--border-md); background: #0c0c0e; }
+.ob-art-bi { height: 150px; padding: 18px; border: 1px solid var(--border-md); }
+.ob-art-bi em { font-size: 13px; }
+
+/* Grouped theme tree shared by every theme picker: a parent row with a chevron opens its themes. */
+.thm-tree { display: flex; flex-direction: column; gap: 2px; }
+.thm-group-head {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 8px;
+  border: none; border-radius: var(--radius-sm); background: transparent;
+  color: var(--text); font: inherit; font-weight: 600; text-align: left; cursor: pointer;
+}
+.thm-group-head:hover { background: var(--bg-hover); }
+.thm-group-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.thm-group-count { font-size: 11px; color: var(--text-3); }
+.thm-group-chev { color: var(--text-3); font-size: 11px; transition: transform var(--trans); transform: rotate(-90deg); }
+.thm-group.is-open > .thm-group-head .thm-group-chev { transform: none; }
+.thm-group-body { display: flex; flex-direction: column; gap: 2px; padding: 2px 0 6px 18px; border-left: 1px solid var(--border); margin-left: 16px; }
+.thm-group-body[hidden] { display: none; }
+
+.audio-out-row { display: flex; gap: 6px; align-items: center; }
+.audio-out-row select { flex: 1; min-width: 0; }
+
+/* ── Narrow windows (the app's minimum is 1000 px wide) ───────────────────── */
+@media (max-width: 1180px) {
+  .main-layout { grid-template-columns: 240px 1fr 340px; }
+  .rs-transition-bar .rs-anim-btn svg { display: none; } /* words only, so both groups fit the narrower column */
+  .rs-layer-clear-bar .rs-layer-clear-btn { font-size: 9.5px; }
+}
+@media (max-width: 1120px) {
+  .top-bar { padding: 0 10px; }
+  .top-bar-left { flex: 0 0 auto; }
+  .top-bar-right { gap: 4px; }
+  .mic-label { display: none; } /* the same name is in Settings → Audio */
+  .tb-group .tb-studio-btn { padding-left: 9px; padding-right: 9px; }
+}
+@media (min-width: 1900px) {
+  .main-layout { grid-template-columns: 340px 1fr 440px; }
+}
+/* A narrow left column: the title gives way before the Clear button does. */
+.ls-transcript-header > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

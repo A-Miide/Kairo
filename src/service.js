@@ -512,11 +512,11 @@
         return (item.blocks || []).map((b, i) => b.layers
           ? { label: b.label || `Slide ${i + 1}`, isScene: true, blockIndex: i, layers: b.layers, canvasSize: b.canvasSize, text: b.text || '', reference: '' }
           : b.image
-          ? { label: b.label || `Slide ${i + 1}`, image: b.image, text: '', reference: '' }
+          ? { label: b.label || `Slide ${i + 1}`, image: b.image, text: '', reference: '', themeId: b.themeId || null }
           : {
               label: b.label || `Slide ${i + 1}`,
               lines: (b.text || '').split('\n'),
-              text: b.text || '', reference: '',
+              text: b.text || '', reference: '', themeId: b.themeId || null,
             });
       case 'image':
         return [{ label: item.title, image: item.src, text: '', reference: item.title }];
@@ -645,6 +645,13 @@
       if (primary) return primary;
     }
     return list[0];
+  }
+  // A slide of a Slides deck can carry its own theme (block.themeId); it wins
+  // over the deck's, which wins over the output's default.
+  function slideThemeLook(slide) {
+    if (!slide || !slide.themeId) return null;
+    const list = (typeof looks !== 'undefined' && Array.isArray(looks)) ? looks : [];
+    return list.find(l => l.id === slide.themeId) || null;
   }
   function itemLookOverride(item) {
     if (!item || !item.themeId) return null;
@@ -1139,7 +1146,7 @@
     // slide the way a real per-slide scene needs to. Without this, the
     // live output would show whatever item-level theme happens to be
     // assigned (or nothing) instead of the slide's own preserved design.
-    const look = slide.isScene ? { layers: slide.layers || [] } : itemLookOverride(item);
+    const look = slide.isScene ? { layers: slide.layers || [] } : (slideThemeLook(slide) || itemLookOverride(item));
     debugLog('send-slide', {
       itemId: item.id,
       itemType: item.type,
@@ -1973,37 +1980,19 @@
   // relationship — dragging UP (mouse Y decreasing) has to grow it, and the
   // element being resized (.media-bin) IS the splitter's own parent, not a
   // separate sibling pane.
-  const MEDIA_BIN_H_KEY = 'kairo-media-bin-h';
+  // The bin is as tall as the Live Transcript box beside it, so the two
+  // shelves line up along the bottom of the window; the splitter between the
+  // playlist and the transcript (left column) is the one control for both.
   function initMediaBinResize() {
     const bin = document.getElementById('media-bin');
-    const splitter = document.getElementById('media-bin-splitter');
-    if (!bin || !splitter) return;
-    const saved = parseInt(localStorage.getItem(MEDIA_BIN_H_KEY) || '', 10);
-    if (saved > 0) bin.style.height = saved + 'px';
-
-    let startY = 0, startH = 0;
-    const MIN_H = 90, MAX_H = 400; // matches .media-bin's own min-/max-height in styles.css
-    const onMove = (e) => {
-      const h = Math.max(MIN_H, Math.min(MAX_H, startH + (startY - e.clientY)));
-      bin.style.height = h + 'px';
+    const transcript = document.querySelector('.ls-transcript-section');
+    if (!bin || !transcript) return;
+    const match = () => {
+      const h = Math.round(transcript.getBoundingClientRect().height);
+      if (h > 0) bin.style.height = h + 'px';
     };
-    const onUp = () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      splitter.classList.remove('dragging');
-      document.body.style.userSelect = '';
-      try { localStorage.setItem(MEDIA_BIN_H_KEY, String(bin.offsetHeight)); } catch {}
-    };
-    splitter.addEventListener('mousedown', (e) => {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      startY = e.clientY;
-      startH = bin.offsetHeight;
-      splitter.classList.add('dragging');
-      document.body.style.userSelect = 'none';
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
-    });
+    new ResizeObserver(match).observe(transcript);
+    match();
   }
   initMediaBinResize();
 
@@ -2402,7 +2391,14 @@
       // Edit jumps straight to THIS slide (index i), not always slide 0.
       sections.push([
         { label: 'Edit', onClick: () => window.KairoItemStyleEditor?.open?.(item.id, i) },
-        { label: 'Change Theme', onClick: () => openThemePopover(card, item) },
+        (() => {
+          // Right-clicking inside a multi-slide selection re-themes the whole
+          // selection; otherwise just this slide. Songs and other items keep
+          // one theme for the whole item.
+          const many = item.type === 'slides' && selectedSlideIndices.size > 1 && selectedSlideIndices.has(i);
+          const idx = many ? [...selectedSlideIndices].sort((a, b) => a - b) : [i];
+          return { label: many ? `Change Theme (${idx.length} slides)` : 'Change Theme', onClick: () => openThemePopover(card, item, item.type === 'slides' ? { slideIndices: idx } : {}) };
+        })(),
       ]);
       if (s.image) sections.push([{ label: 'Fit Mode', submenu: fitModeMenuItems(item) }]);
       // Real gap: a song's section label (Verse/Chorus/Bridge/etc) was only
@@ -2810,20 +2806,36 @@
     });
   }
 
-  function openThemePopover(anchor, item) {
+  // `opts.slideIndices` aims the pick at those slides of a Slides deck (the
+  // slide's own theme) instead of the whole item.
+  function openThemePopover(anchor, item, opts = {}) {
+    const slideIdx = (item.type === 'slides' && Array.isArray(opts.slideIndices) && opts.slideIndices.length) ? opts.slideIndices : null;
+    const slideThemes = slideIdx ? slideIdx.map(i => item.blocks[i] && item.blocks[i].themeId || null) : [];
+    const sharedSlideTheme = slideIdx && slideThemes.every(t => t === slideThemes[0]) ? slideThemes[0] : undefined;
+    const currentThemeId = slideIdx ? sharedSlideTheme : item.themeId;
+    const applyTheme = (id) => {
+      if (slideIdx) {
+        slideIdx.forEach(i => { const b = item.blocks[i]; if (b) { if (id) b.themeId = id; else delete b.themeId; } });
+        saveService(); refreshAfterSlideEdit(item);
+      } else {
+        // Re-theming a whole deck replaces any slide-by-slide choices.
+        if (item.type === 'slides') (item.blocks || []).forEach(b => { delete b.themeId; });
+        item.themeId = id; saveService(); renderStack();
+      }
+    };
     openPopover(anchor, (pop) => {
       const label = document.createElement('div');
       label.className = 'svc-popover-label';
-      label.textContent = 'Theme';
+      label.textContent = slideIdx ? (slideIdx.length === 1 ? 'Theme for this slide' : `Theme for ${slideIdx.length} slides`) : 'Theme';
       pop.appendChild(label);
       const list = document.createElement('div');
       list.className = 'svc-popover-list';
 
       const dflt = document.createElement('button');
-      dflt.className = 'svc-popover-item' + (!item.themeId ? ' active' : '');
-      dflt.textContent = 'Output default';
+      dflt.className = 'svc-popover-item' + (!currentThemeId ? ' active' : '');
+      dflt.textContent = slideIdx ? 'Same as the deck' : 'Output default';
       dflt.addEventListener('click', () => {
-        item.themeId = null; saveService(); renderStack(); renderFullEditHeader();
+        applyTheme(null); renderFullEditHeader();
         window.KairoItemStyleEditor?.refreshTheme?.(item.id);
         closePopover();
       });
@@ -2835,10 +2847,9 @@
       // as unrelated flat rows with no preview, which read as a completely
       // different (and unhelpfully longer) picker than the one in Theme
       // Studio for the exact same set of themes.
-      const renderedGroups = new Set();
       const buildRow = (l) => {
         const b = document.createElement('button');
-        b.className = 'svc-popover-item has-thumb' + (item.themeId === l.id ? ' active' : '');
+        b.className = 'svc-popover-item has-thumb' + (currentThemeId === l.id ? ' active' : '');
         const thumb = document.createElement('div');
         thumb.className = 'ts-theme-thumb';
         renderLookThumbnail(thumb, l);
@@ -2847,7 +2858,7 @@
         b.appendChild(thumb);
         b.appendChild(label);
         b.addEventListener('click', () => {
-          item.themeId = l.id; saveService(); renderStack();
+          applyTheme(l.id);
           if (activeItemId === item.id) renderFullEdit();
           window.KairoItemStyleEditor?.refreshTheme?.(item.id);
           // Any theme with a verse_translated layer (not just the one
@@ -2863,24 +2874,12 @@
             // which pinned the reopened popover to the top-left corner
             // instead of back under the button. Re-find the fresh one.
             const freshAnchor = document.querySelector(`.svc-card[data-id="${CSS.escape(item.id)}"] .svc-card-actions-btn`);
-            openThemePopover(freshAnchor && freshAnchor.isConnected ? freshAnchor : anchor, item);
+            openThemePopover(freshAnchor && freshAnchor.isConnected ? freshAnchor : anchor, item, opts);
           } else closePopover();
         });
         return b;
       };
-      all.forEach(l => {
-        if (l.groupId) {
-          if (renderedGroups.has(l.groupId)) return;
-          renderedGroups.add(l.groupId);
-          const groupLabel = document.createElement('div');
-          groupLabel.className = 'svc-popover-group-label';
-          groupLabel.textContent = l.groupName || 'Theme';
-          list.appendChild(groupLabel);
-          all.filter(g => g.groupId === l.groupId).forEach(g => list.appendChild(buildRow(g)));
-          return;
-        }
-        list.appendChild(buildRow(l));
-      });
+      list.appendChild(buildThemeTree(all, buildRow, currentThemeId));
       pop.appendChild(list);
 
       // Use themeForItem (not a raw id lookup against `all`) so this also
@@ -2949,7 +2948,6 @@
       list.className = 'svc-popover-list';
       // Same clustering + thumbnails as the per-item theme popover above —
       // see its own comment for why.
-      const renderedGroups = new Set();
       const buildRow = (l) => {
         const b = document.createElement('button');
         b.className = 'svc-popover-item has-thumb' + (l.id === current ? ' active' : '');
@@ -2975,19 +2973,7 @@
         });
         return b;
       };
-      all.forEach(l => {
-        if (l.groupId) {
-          if (renderedGroups.has(l.groupId)) return;
-          renderedGroups.add(l.groupId);
-          const groupLabel = document.createElement('div');
-          groupLabel.className = 'svc-popover-group-label';
-          groupLabel.textContent = l.groupName || 'Theme';
-          list.appendChild(groupLabel);
-          all.filter(g => g.groupId === l.groupId).forEach(g => list.appendChild(buildRow(g)));
-          return;
-        }
-        list.appendChild(buildRow(l));
-      });
+      list.appendChild(buildThemeTree(all, buildRow, current));
       pop.appendChild(list);
 
       if (current === 'multi-language') {
@@ -3452,6 +3438,58 @@
     container.appendChild(inner);
     paintLookLayers(inner, look, {}, { verseText: 'Sample text', referenceText: 'Reference', translatedText: '' });
     container.classList.toggle('is-transparent-thumb', inner.classList.contains('is-alpha'));
+  }
+
+  // One grouped theme list for every theme picker (per-item, Bible, outputs):
+  // each parent (Bible, Lyrics, Slides, an imported bundle) is a row with a
+  // chevron that opens its themes, each with its small preview. Themes that
+  // belong to no group stay as plain rows. The group holding the current
+  // theme starts open; the rest start closed.
+  function buildThemeTree(allLooks, buildRow, currentId) {
+    const root = document.createElement('div');
+    root.className = 'thm-tree';
+    const seen = new Set();
+    allLooks.forEach(l => {
+      if (!l.groupId) { root.appendChild(buildRow(l)); return; }
+      if (seen.has(l.groupId)) return;
+      seen.add(l.groupId);
+      const kids = allLooks.filter(g => g.groupId === l.groupId);
+      const group = document.createElement('div');
+      group.className = 'thm-group';
+      const head = document.createElement('button');
+      head.type = 'button';
+      head.className = 'thm-group-head';
+      const open = kids.some(k => k.id === currentId);
+      head.setAttribute('aria-expanded', String(open));
+      const thumb = document.createElement('div');
+      thumb.className = 'ts-theme-thumb';
+      renderLookThumbnail(thumb, kids.find(k => k.id === currentId) || kids[0]);
+      const name = document.createElement('span');
+      name.className = 'thm-group-name';
+      name.textContent = l.groupName || 'Theme';
+      const count = document.createElement('span');
+      count.className = 'thm-group-count';
+      count.textContent = String(kids.length);
+      const chev = document.createElement('span');
+      chev.className = 'thm-group-chev';
+      chev.setAttribute('aria-hidden', 'true');
+      chev.textContent = '▾';
+      head.append(thumb, name, count, chev);
+      const body = document.createElement('div');
+      body.className = 'thm-group-body';
+      body.hidden = !open;
+      group.classList.toggle('is-open', open);
+      kids.forEach(k => body.appendChild(buildRow(k)));
+      head.addEventListener('click', () => {
+        const nowOpen = body.hidden;
+        body.hidden = !nowOpen;
+        group.classList.toggle('is-open', nowOpen);
+        head.setAttribute('aria-expanded', String(nowOpen));
+      });
+      group.append(head, body);
+      root.appendChild(group);
+    });
+    return root;
   }
 
   // Write a flow row's edited text back into whatever storage that slide
@@ -6116,7 +6154,7 @@
       // theme to apply at all; themeForItem(item) would be either the
       // wrong theme or nothing. Same convention Full-scale Edit's own
       // thumbnail painter already uses for this (renderItemSlidesList).
-      const look = s.isScene ? { layers: s.layers || [] } : themeForItem(item);
+      const look = s.isScene ? { layers: s.layers || [] } : (slideThemeLook(s) || themeForItem(item));
       const style = s.isScene ? {} : (item.slideStyles?.[i] || {});
       paintLookLayers(preview, look, style, {
         verseText: s.text, referenceText: s.reference || '',
@@ -6763,7 +6801,7 @@
     get service() { return service; },
     slidesFor, sendSlide, cycleSectionLabel, focusInStack, openFullEdit, closeStack, closeFullEdit,
     effectiveTranslateTo, awaitTranslatedText,
-    paintLookLayers, renderLookThumbnail, saveService, openContextMenu, openThemePopover, themeForItem,
+    paintLookLayers, renderLookThumbnail, buildThemeTree, saveService, openContextMenu, openThemePopover, themeForItem,
     showMediaLibrary, onMediaStatus, onMediaFolderChanged, setMediaTransportVisible, onMediaLive,
     showTimerLibrary, onTimerAction, onClockAction, getTimerItem, updateSegmentParams, saveTimerScenes, saveScenePace,
     onTranscript, setAutoFollow, get autoFollow() { return autoFollow; },
