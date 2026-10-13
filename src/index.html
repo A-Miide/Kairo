@@ -951,7 +951,7 @@
          modal/dialog — see initNativeMenuBridge in app.js. -->
     <div id="import-options-modal" class="modal hidden">
         <div class="modal-overlay"></div>
-        <div class="modal-content" style="width:360px;">
+        <div class="modal-content imp-hub">
             <div class="modal-header">
                 <h2>Import</h2>
                 <button id="close-import-options" class="modal-close-btn">
@@ -959,27 +959,57 @@
                     <span>Close</span>
                 </button>
             </div>
-            <!-- Owner: "the imports here should be consistent" — these three
-                 labels now match the Add-to-playlist popover's own wording
-                 exactly (buildImportRows in service.js) for the same two
-                 actions, rather than a separately-worded "Slides from
-                 file…/clipboard…" pair that happened to drift since this
-                 modal hands off to those exact same functions
-                 (triggerQuickFile/quickImportClipboard, see app.js). "Import
-                 song file…" (not just "Song…", the Add-to-playlist menu's
-                 own label) — here it means importing a FILE straight into
-                 the Song Library, a different action from Add-to-playlist's
-                 "Song…", which browses the library instead; keeping the
-                 same bare label for two different actions was its own
-                 source of confusion. -->
-            <div class="modal-body" style="display:block;padding:8px;">
-                <div class="svc-popover-list">
-                    <button type="button" class="svc-popover-item" id="import-opt-file">Import file…</button>
-                    <button type="button" class="svc-popover-item" id="import-opt-clipboard">Paste from clipboard</button>
-                    <button type="button" class="svc-popover-item" id="import-opt-song">Import song file…</button>
-                    <div class="svc-add-menu-sep"></div>
-                    <button type="button" class="svc-popover-item" id="import-opt-theme">Theme…</button>
+            <!-- Import hub: one place that lists every format Kairo reads and
+                 where each lands. A row opens the file picker for that kind;
+                 a file dropped anywhere on the window is routed by its
+                 extension (import_hub.js). Hands off to the existing flows:
+                 quickImportFile/quickImportClipboard (service.js) and Theme
+                 Studio's importer (import-look-file). -->
+            <div class="modal-body imp-body">
+                <label class="imp-drop" id="imp-drop" tabindex="0">
+                    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15V3"/><path d="M7 8l5-5 5 5"/><path d="M4 15v4a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-4"/></svg>
+                    <span class="imp-drop-title">Drop a file here, or <u>choose one</u></span>
+                    <span class="imp-drop-sub">Kairo works out what it is from the file type</span>
+                </label>
+                <div class="imp-dest" role="radiogroup" aria-label="Add content to">
+                    <span>Add content to</span>
+                    <button type="button" class="imp-dest-btn active" data-dest="playlist">Current playlist</button>
+                    <button type="button" class="imp-dest-btn" data-dest="library">Song Library</button>
                 </div>
+                <div class="imp-list" id="imp-list">
+                    <button type="button" class="imp-row" data-kind="propresenter">
+                        <span class="imp-ico imp-ico-pp">PP</span>
+                        <span class="imp-text"><b>ProPresenter</b><small>Exact design: fonts, sizes, shapes, shadows, backgrounds and media</small></span>
+                        <span class="imp-exts"><i>.pro</i><i>.pro6</i><i>.probundle</i><i>.proplaylist</i></span>
+                    </button>
+                    <button type="button" class="imp-row" data-kind="pptx">
+                        <span class="imp-ico imp-ico-ppt">P</span>
+                        <span class="imp-text"><b>PowerPoint</b><small>One slide per slide, text and images</small></span>
+                        <span class="imp-exts"><i>.pptx</i></span>
+                    </button>
+                    <button type="button" class="imp-row" data-kind="docx">
+                        <span class="imp-ico imp-ico-doc">W</span>
+                        <span class="imp-text"><b>Word</b><small>Paragraphs become slides</small></span>
+                        <span class="imp-exts"><i>.docx</i></span>
+                    </button>
+                    <button type="button" class="imp-row" data-kind="text">
+                        <span class="imp-ico imp-ico-txt">T</span>
+                        <span class="imp-text"><b>Text</b><small>Lyrics, notes, announcements; a blank line starts a new slide</small></span>
+                        <span class="imp-exts"><i>.txt</i><i>.md</i></span>
+                    </button>
+                    <button type="button" class="imp-row" data-kind="clipboard">
+                        <span class="imp-ico imp-ico-clip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/></svg></span>
+                        <span class="imp-text"><b>Clipboard</b><small>Paste text you copied</small></span>
+                        <span class="imp-exts"><i>Paste</i></span>
+                    </button>
+                    <div class="imp-sep"></div>
+                    <button type="button" class="imp-row" data-kind="theme">
+                        <span class="imp-ico imp-ico-theme"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M7 14h10M7 10h6"/></svg></span>
+                        <span class="imp-text"><b>Theme</b><small>Opens in Theme Studio; ProPresenter themes keep their exact design</small></span>
+                        <span class="imp-exts"><i>.protheme</i><i>.kairotheme</i><i>.json</i></span>
+                    </button>
+                </div>
+                <p class="setting-hint imp-status" id="imp-status"></p>
             </div>
         </div>
     </div>
@@ -1480,7 +1510,7 @@
                             <div class="help-body">
                                 <p>Bring in existing material instead of rebuilding it by hand, from either <strong>File → Import</strong> or the <strong>+</strong> button on a playlist item:</p>
                                 <ul>
-                                    <li><strong>Import file…</strong> — text, Word, PowerPoint, and ProPresenter files (<code>.pro6</code>/<code>.pro7</code>/<code>.probundle</code>/<code>.proplaylist</code>).</li>
+                                    <li><strong>Import…</strong> opens the Import window, which lists every format Kairo reads: ProPresenter (<code>.pro</code>/<code>.pro6</code>/<code>.probundle</code>/<code>.proplaylist</code>, plus <code>.protheme</code> themes), PowerPoint (<code>.pptx</code>), Word (<code>.docx</code>) and text (<code>.txt</code>/<code>.md</code>). Pick a row, or drop a file on the window.</li>
                                     <li><strong>Paste from clipboard</strong> — pasted lyrics/text, split into slides automatically.</li>
                                 </ul>
                                 <p><strong>ProPresenter files are handled specially.</strong> Kairo auto-detects them and preserves the file's own design exactly as authored — fonts, colors, positions, images, layer structure — instead of reformatting it into a Kairo theme. The Add dialog shows a notice confirming this rather than asking you to pick a theme, since none is needed. A playlist file with several presentations imports all of them at once, each keeping its own original layout.</p>
@@ -2185,6 +2215,7 @@
     <script src="app_theme_studio.js"></script>
     <script src="app_outputs.js"></script>
     <script src="app_startup.js"></script>
+    <script src="import_hub.js"></script>
     <script src="global_search.js"></script>
 </body>
 </html>
