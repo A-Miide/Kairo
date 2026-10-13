@@ -486,6 +486,7 @@
               label: parts.length > 1 ? (hasRealLabel ? `${b.label} · ${i + 1}` : `${i + 1}`) : (hasRealLabel ? b.label : ''),
               lines, text: lines.join('\n'), reference: item.title,
               blockIndex: bi, lineStart: start, lineEnd: start + lines.length,
+              themeId: (item.slideThemes && item.slideThemes[out.length]) || null,
             });
           });
         });
@@ -645,6 +646,22 @@
       if (primary) return primary;
     }
     return list[0];
+  }
+  // Where a slide's own theme lives: on the slide's block in a Slides deck (it
+  // moves with the slide), by slide position for a song.
+  const hasSlideThemes = (item) => item.type === 'slides' || item.type === 'song';
+  function slideThemeIdOf(item, i) {
+    if (item.type === 'slides') return (item.blocks && item.blocks[i] && item.blocks[i].themeId) || null;
+    return (item.slideThemes && item.slideThemes[i]) || null;
+  }
+  function setSlideThemeId(item, i, id) {
+    if (item.type === 'slides') {
+      const b = item.blocks && item.blocks[i];
+      if (b) { if (id) b.themeId = id; else delete b.themeId; }
+    } else {
+      if (!item.slideThemes) item.slideThemes = {};
+      if (id) item.slideThemes[i] = id; else delete item.slideThemes[i];
+    }
   }
   // A slide of a Slides deck can carry its own theme (block.themeId); it wins
   // over the deck's, which wins over the output's default.
@@ -899,7 +916,7 @@
       const [id, idxStr] = liveSlideKey.split(':');
       const item = service && service.items.find(i => i.id === id);
       if (item) {
-        const eff = itemLookOverride(item) || themeForItem(item);
+        const eff = slideThemeLook(slidesFor(item)[Number(idxStr)]) || itemLookOverride(item) || themeForItem(item);
         if (themeId == null || (eff && eff.id === themeId)) { sendSlide(item, Number(idxStr), { auto: true }); did = true; }
       }
     }
@@ -2418,9 +2435,9 @@
           // Right-clicking inside a multi-slide selection re-themes the whole
           // selection; otherwise just this slide. Songs and other items keep
           // one theme for the whole item.
-          const many = item.type === 'slides' && selectedSlideIndices.size > 1 && selectedSlideIndices.has(i);
+          const many = hasSlideThemes(item) && selectedSlideIndices.size > 1 && selectedSlideIndices.has(i);
           const idx = many ? [...selectedSlideIndices].sort((a, b) => a - b) : [i];
-          return { label: many ? `Change Theme (${idx.length} slides)` : 'Change Theme', onClick: () => openThemePopover(card, item, item.type === 'slides' ? { slideIndices: idx } : {}) };
+          return { label: many ? `Change Theme (${idx.length} slides)` : 'Change Theme', onClick: () => openThemePopover(card, item, hasSlideThemes(item) ? { slideIndices: idx } : {}) };
         })(),
       ]);
       if (s.image) sections.push([{ label: 'Fit Mode', submenu: fitModeMenuItems(item) }]);
@@ -2832,17 +2849,18 @@
   // `opts.slideIndices` aims the pick at those slides of a Slides deck (the
   // slide's own theme) instead of the whole item.
   function openThemePopover(anchor, item, opts = {}) {
-    const slideIdx = (item.type === 'slides' && Array.isArray(opts.slideIndices) && opts.slideIndices.length) ? opts.slideIndices : null;
-    const slideThemes = slideIdx ? slideIdx.map(i => item.blocks[i] && item.blocks[i].themeId || null) : [];
+    const slideIdx = (hasSlideThemes(item) && Array.isArray(opts.slideIndices) && opts.slideIndices.length) ? opts.slideIndices : null;
+    const slideThemes = slideIdx ? slideIdx.map(i => slideThemeIdOf(item, i)) : [];
     const sharedSlideTheme = slideIdx && slideThemes.every(t => t === slideThemes[0]) ? slideThemes[0] : undefined;
     const currentThemeId = slideIdx ? sharedSlideTheme : item.themeId;
     const applyTheme = (id) => {
       if (slideIdx) {
-        slideIdx.forEach(i => { const b = item.blocks[i]; if (b) { if (id) b.themeId = id; else delete b.themeId; } });
+        slideIdx.forEach(i => setSlideThemeId(item, i, id));
         saveService(); refreshAfterSlideEdit(item);
       } else {
         // Re-theming a whole deck replaces any slide-by-slide choices.
         if (item.type === 'slides') (item.blocks || []).forEach(b => { delete b.themeId; });
+        delete item.slideThemes;
         item.themeId = id; saveService(); renderStack();
       }
     };
@@ -6848,7 +6866,7 @@
     get service() { return service; },
     slidesFor, sendSlide, cycleSectionLabel, focusInStack, openFullEdit, closeStack, closeFullEdit,
     effectiveTranslateTo, awaitTranslatedText,
-    paintLookLayers, renderLookThumbnail, buildThemeTree, saveService, openContextMenu, openThemePopover, themeForItem,
+    paintLookLayers, renderLookThumbnail, buildThemeTree, slideThemeIdOf, hasSlideThemes, saveService, openContextMenu, openThemePopover, themeForItem,
     showMediaLibrary, onMediaStatus, onMediaFolderChanged, setMediaTransportVisible, onMediaLive,
     showTimerLibrary, onTimerAction, onClockAction, getTimerItem, updateSegmentParams, saveTimerScenes, saveScenePace,
     onTranscript, setAutoFollow, get autoFollow() { return autoFollow; },
