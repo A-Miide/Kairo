@@ -196,31 +196,33 @@ function comboDisplay(combo) {
 
 let capturingHotkeyId = null;
 
+// One list, a row per action: its name, its keys as keycaps, and Change /
+// Clear — the keys where the eye looks for them (2026-10-12; they were small
+// grey text under each name, one tall card per action).
 function renderHotkeysList() {
   const host = document.getElementById('hotkeys-list');
   if (!host) return;
+  host.className = 'dl-list hotkeys-list';
   host.innerHTML = '';
   HOTKEY_ACTIONS.forEach(action => {
     const combo = hotkeyFor(action.id);
     const row = document.createElement('div');
-    row.className = 'lang-pack-row';
-    row.innerHTML = `<div class="lang-pack-meta"><div class="lang-pack-name">${escapeHtml(action.label)}</div>` +
-      `<div class="lang-pack-sub">${escapeHtml(comboDisplay(combo))}</div></div>`;
-    const actions = document.createElement('div');
-    actions.style.cssText = 'display:flex;gap:6px;';
+    row.className = 'dl-row';
+    const keys = combo
+      ? combo.split('+').map(p => `<kbd>${escapeHtml(COMBO_SYMBOLS[p] || p.toUpperCase())}</kbd>`).join('')
+      : '<span class="hotkey-unset">Not set</span>';
+    row.innerHTML = `<span class="dl-name">${escapeHtml(action.label)}</span><span class="hotkey-keys">${keys}</span>`;
     const changeBtn = document.createElement('button');
-    changeBtn.className = 'modal-btn secondary';
-    changeBtn.textContent = 'Change';
+    changeBtn.className = 'modal-btn secondary dl-btn';
+    changeBtn.textContent = combo ? 'Change' : 'Set';
     changeBtn.addEventListener('click', () => startHotkeyCapture(action.id, changeBtn));
-    actions.appendChild(changeBtn);
-    if (combo) {
-      const clearBtn = document.createElement('button');
-      clearBtn.className = 'modal-btn secondary';
-      clearBtn.textContent = 'Clear';
-      clearBtn.addEventListener('click', () => saveHotkey(action.id, ''));
-      actions.appendChild(clearBtn);
-    }
-    row.appendChild(actions);
+    row.appendChild(changeBtn);
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'modal-btn secondary dl-btn';
+    clearBtn.textContent = 'Clear';
+    clearBtn.style.visibility = combo ? '' : 'hidden'; // keeps the columns lined up
+    clearBtn.addEventListener('click', () => saveHotkey(action.id, ''));
+    row.appendChild(clearBtn);
     host.appendChild(row);
   });
 }

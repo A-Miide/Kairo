@@ -2789,7 +2789,7 @@ body > .lyric-follow-hud { position: fixed; left: 14px; bottom: 14px; z-index: 4
 .dl-sub { font-size: var(--fs-xs); color: var(--text-3); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .dl-sub.is-ready { color: var(--green); }
 .dl-row .dl-btn { padding: 5px 14px; font-size: var(--fs-xs); flex: none; white-space: nowrap; }
-.scripture-credits { margin-top: 4px; opacity: 0.8; }
+.scripture-credits { margin-top: 4px; font-size: 11px; opacity: 0.8; }
 .settings-pane { display: none; }
 .settings-pane.active {
   display: flex;
@@ -2857,8 +2857,9 @@ select {
 }
 
 .setting-hint {
-  font-size: 10px; color: var(--text-3); margin: 4px 0 0 0;
-  opacity: 0.7; line-height: 1.3;
+  /* Readable (2026-10-12): was 10px at 70% opacity — dark grey on dark grey. */
+  font-size: 12px; color: #8c8c93; margin: 6px 0 0 0;
+  line-height: 1.45; max-width: 62ch;
 }
 
 /* ── Custom Select Dropdown ─────────────────────────────────────── */
@@ -3059,7 +3060,7 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
 }
 
 .settings-section-label {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 800;
   letter-spacing: 1.2px;
   text-transform: uppercase;
@@ -3081,10 +3082,10 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
    align-items:stretch) — the mismatch was inside them: one hint wraps to
    2 lines, the other to 1, so the visible content (and the border below
    it) ends at different heights even though the cells themselves match.
-   Reserve 2 lines' worth (10px font, 1.3 line-height) on every hint in a
+   Reserve 2 lines' worth (12px font, 1.45 line-height) on every hint in a
    2-col row regardless of its own actual length, so short and long hints
    both bottom out at the same point. */
-.setting-row-2col .setting-hint { min-height: 26px; }
+.setting-row-2col .setting-hint { min-height: 35px; }
 @media (max-width: 620px) {
   .setting-row-2col { grid-template-columns: 1fr; }
 }
@@ -7932,3 +7933,32 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
   .ob-art-lang span:first-child { opacity: 1; }
   .ob-art-import i { opacity: 1; transform: translate(70px, var(--y, -12px)); }
 }
+
+
+/* Settings polish (2026-10-12) ─────────────────────────────────────────── */
+/* A two-way switch sized to its two words, not the pane's full width. */
+.settings-pane .toggle-group { width: fit-content; min-width: 280px; }
+.settings-pane .toggle-btn { padding: 7px 22px; }
+/* A checkbox with a title and a line saying what it does. */
+.setting-checks { display: flex; flex-direction: column; gap: 12px; margin-top: 4px; }
+.setting-checks .bs-check-label { align-items: flex-start; gap: 10px; }
+.setting-checks .bs-check-label input { margin-top: 2px; flex: none; }
+.setting-checks .bs-check-label strong { display: block; font-size: 13px; font-weight: 600; color: var(--text); }
+.setting-checks .bs-check-label .setting-hint { display: block; margin-top: 2px; }
+.hotkeys-list .dl-name { flex: 1; min-width: 0; font-weight: 500; }
+.hotkey-keys { display: flex; gap: 3px; flex: none; min-width: 72px; justify-content: flex-end; }
+.hotkey-keys kbd {
+  min-width: 22px; height: 22px; padding: 0 6px; display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border-md); border-bottom-width: 2px; border-radius: 5px;
+  background: rgba(255, 255, 255, 0.04); color: var(--text); font: 600 11px/1 var(--font, inherit);
+}
+.hotkey-unset { font-size: 11px; color: var(--text-3); }
+/* Room between one setting and the next, now that hints are readable. */
+.settings-pane .settings-section { gap: 18px; }
+.settings-pane .settings-section + .settings-section { margin-top: 26px; }
+.settings-pane .setting-group { gap: 6px; }
+.settings-pane .setting-hint { margin-top: 2px; }
+/* A download repeated down a list: the brand colour as an outline, so three
+   rows don't stack three solid red buttons (one solid red per panel). */
+.dl-row .modal-btn.primary.dl-btn { background: transparent; border: 1px solid var(--brand); color: var(--brand); }
+.dl-row .modal-btn.primary.dl-btn:hover { background: var(--brand-dim); }
