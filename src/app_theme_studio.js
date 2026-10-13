@@ -5641,8 +5641,14 @@ document.getElementById('ts-item-back-btn')?.addEventListener('click', () => clo
 function updateItemThemeLabel() {
   const label = document.getElementById('ts-item-theme-picker-label');
   if (!label || !tsItemCtx) return;
-  const resolved = window.KairoService.themeForItem(tsItemCtx.item);
-  label.textContent = tsItemCtx.item.themeId ? (resolved?.name || 'Theme') : 'Output default';
+  const { item, slideIndex } = tsItemCtx;
+  const slideThemeId = slideIndex != null ? window.KairoService.slideThemeIdOf(item, slideIndex) : null;
+  if (slideThemeId) {
+    label.textContent = looks.find(l => l.id === slideThemeId)?.name || 'Theme';
+    return;
+  }
+  const resolved = window.KairoService.themeForItem(item);
+  label.textContent = item.themeId ? (resolved?.name || 'Theme') : (window.KairoService.hasSlideThemes(item) ? 'Same as the item' : 'Output default');
 }
 
 // resolveFlexibleTime — "Ends at" used to require strict 24-hour HH:MM;
@@ -5835,7 +5841,9 @@ function renderScenePaceControls(host, item) {
 
 document.getElementById('ts-item-theme-picker-btn')?.addEventListener('click', (e) => {
   if (!tsItemCtx) return;
-  window.KairoService.openThemePopover(e.currentTarget, tsItemCtx.item);
+  // Editing one slide of a Slides deck: the pick is that slide's own theme.
+  const { item, slideIndex } = tsItemCtx;
+  window.KairoService.openThemePopover(e.currentTarget, item, window.KairoService.hasSlideThemes(item) && slideIndex != null ? { slideIndices: [slideIndex] } : {});
 });
 
 // Small duplicate of service.js's themeForItem resolution logic (item.themeId
@@ -5844,7 +5852,7 @@ document.getElementById('ts-item-theme-picker-btn')?.addEventListener('click', (
 // small layer-renderer/resolver rather than cross-file exporting one.
 function resolveItemBaseLook(item, slideIndex) {
   // A slide of a Slides deck can carry its own theme (block.themeId).
-  const slideTheme = (item.type === 'slides' && slideIndex != null) ? item.blocks?.[slideIndex]?.themeId : null;
+  const slideTheme = slideIndex != null ? window.KairoService?.slideThemeIdOf?.(item, slideIndex) : null;
   const own = slideTheme ? looks.find(l => l.id === slideTheme) : null;
   if (own) return own;
   const explicit = item.themeId ? looks.find(l => l.id === item.themeId) : null;
