@@ -74,6 +74,26 @@ fn fetch(f: &File, dest: &Path) {
     }
 }
 
+/// The verse index, built once from these models and this KJV and kept as a
+/// release file: a fresh build machine downloads it in seconds instead of
+/// embedding 31,102 verses (40+ minutes on a CI runner). Checked by its
+/// checksum and its verse count; anything else, and it's built here.
+const PREBUILT_INDEX: &str = "https://github.com/miide-Adeyemi/Kairo/releases/download/bundle-data-v1/verse_index.gemma-legacy.kvx";
+const PREBUILT_INDEX_SHA256: &str = "4dd710f743ebc1d722a940ea4a3eb3daf7f34ce83885d1c328de4bbfa8bc19db";
+
+fn fetch_prebuilt_index(target: &Path, verses: usize) -> bool {
+    let partial = target.with_extension("part");
+    let ok = Command::new("curl").args(["-fsSL", "--retry", "3", "-o"]).arg(&partial).arg(PREBUILT_INDEX).status().is_ok_and(|s| s.success())
+        && sha256(&partial).as_deref() == Some(PREBUILT_INDEX_SHA256)
+        && kairo_semantic::VerseIndex::load(&partial).is_ok_and(|i| i.len() == verses);
+    if ok {
+        std::fs::rename(&partial, target).is_ok()
+    } else {
+        let _ = std::fs::remove_file(&partial);
+        false
+    }
+}
+
 fn main() {
     let bibles = root().join("databases/bibles");
     for f in FILES {
@@ -89,6 +109,10 @@ fn main() {
     // Present and built for this numbering of the Bible.
     if kairo_semantic::VerseIndex::load(&target).is_ok_and(|i| i.len() == verses) {
         println!("verse index present: {}", target.display());
+        return;
+    }
+    if fetch_prebuilt_index(&target, verses) {
+        println!("verse index downloaded and verified: {}", target.display());
         return;
     }
     // Builds (or reuses) the cached index, then copies it into place.
