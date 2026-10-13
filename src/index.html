@@ -509,34 +509,7 @@
                 </div>
             </div>
 
-            <!-- Media transport (mute/play/seek/volume) — used to live inside
-                 #media-library-view, so setMediaTransportVisible removing
-                 .hidden from it had no visible effect at all while any OTHER
-                 view (Bible/Slides/Timer) was active, since that whole
-                 ancestor container was still display:none — exactly the gap
-                 sending a video through the Media Bin (reachable from those
-                 same views) ran into. Moved out here, a sibling of the Media
-                 Bin rather than nested under one specific view, so it's
-                 reachable the same way regardless of which one sent the
-                 video that's actually playing. -->
-            <div class="media-transport hidden" id="media-transport">
-                <button id="media-play-btn" class="ls-icon-btn" title="Play / Pause">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" id="media-play-icon"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                </button>
-                <!-- Mute button immediately followed by the volume slider —
-                     they used to sit at opposite ends of the bar (mute here,
-                     volume all the way past seek+time), which read as two
-                     unrelated controls instead of one "volume" group paired
-                     the way every other media player pairs them. -->
-                <button id="media-mute-btn" class="ls-icon-btn" title="Mute / Unmute">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" id="media-mute-icon"><polygon points="3 9 8 9 13 4 13 20 8 15 3 15 3 9" fill="currentColor" stroke="none"/><path d="M16 8a5 5 0 0 1 0 8"/><path d="M19 5a9 9 0 0 1 0 14"/></svg>
-                </button>
-                <input type="range" id="media-volume" class="media-volume" min="0" max="100" value="100" title="Volume">
-                <input type="range" id="media-seek" class="media-seek" min="0" max="1000" value="0" title="Seek">
-                <span class="media-time" id="media-time">0:00 / 0:00</span>
-            </div>
-
-            <!-- Media Bin — ProPresenter-style always-reachable media shelf.
+                        <!-- Media Bin — ProPresenter-style always-reachable media shelf.
                  Shown only under Bible/Slides/Timer (see showCenterView's
                  media-bin toggle), so it's reachable without leaving those
                  views for the Media tab — but picking an item here calls
@@ -659,6 +632,35 @@
                 <!-- Grid mode — Main plus one live copy per output that's on
                      (renderMonitorGrid). -->
                 <div class="outputs-monitor-grid hidden" id="outputs-monitor-grid"></div>
+                <!-- What's on the Media layer, under the screen it's on (2026-10-12:
+                     the owner wanted media output here). Shown whenever media
+                     is on air: its picture and name, and Clear; a video also
+                     gets play/pause, mute, volume and seek (the same controls
+                     that used to sit by the Media Bin, ids unchanged). -->
+                <div class="rs-media-strip hidden" id="media-transport">
+                    <div class="rs-media-now">
+                        <span class="rs-transition-label">Media</span>
+                        <span class="rs-media-thumb" id="media-now-thumb" aria-hidden="true"></span>
+                        <span class="rs-media-name" id="media-now-name"></span>
+                        <button id="media-now-clear" class="rs-media-clear" title="Clear the media layer">Clear</button>
+                    </div>
+                    <div class="rs-media-video hidden" id="media-video-controls">
+                        <button id="media-play-btn" class="ls-icon-btn" title="Play / Pause">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" id="media-play-icon"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                </button>
+                <!-- Mute button immediately followed by the volume slider —
+                     they used to sit at opposite ends of the bar (mute here,
+                     volume all the way past seek+time), which read as two
+                     unrelated controls instead of one "volume" group paired
+                     the way every other media player pairs them. -->
+                <button id="media-mute-btn" class="ls-icon-btn" title="Mute / Unmute">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" id="media-mute-icon"><polygon points="3 9 8 9 13 4 13 20 8 15 3 15 3 9" fill="currentColor" stroke="none"/><path d="M16 8a5 5 0 0 1 0 8"/><path d="M19 5a9 9 0 0 1 0 14"/></svg>
+                </button>
+                <input type="range" id="media-volume" class="media-volume" min="0" max="100" value="100" title="Volume">
+                <input type="range" id="media-seek" class="media-seek" min="0" max="1000" value="0" title="Seek">
+                <span class="media-time" id="media-time">0:00 / 0:00</span>
+                    </div>
+                </div>
                 <!-- Output transition — display-level (not per-theme, see
                      display.html's outputAnimation): part of the monitor card,
                      right under the screen it changes (owner, 2026-10-01: "more
@@ -666,21 +668,30 @@
                      opening Theme Studio. -->
                 <div class="rs-transition-bar" id="rs-transition-bar">
                     <span class="rs-transition-label">Transition</span>
-                    <!-- Icon-only, same square-button style as Theme Studio's
-                         align row (.ts-align-btn, already icon-only) rather
-                         than text chips — the tooltip (title) carries the name. -->
+                    <!-- Each transition named, not icon-only (2026-10-12: "tools
+                         should be well labeled"). -->
                     <div class="ts-align-group" id="rs-anim-picker">
-                        <button class="ts-align-btn" data-anim="fade" title="Fade">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6" stroke-dasharray="2.5 2.5"/></svg>
+                        <button class="ts-align-btn rs-anim-btn" data-anim="fade" title="Fade">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6" stroke-dasharray="2.5 2.5"/></svg><span>Fade</span>
                         </button>
-                        <button class="ts-align-btn" data-anim="slide-up" title="Slide">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="15" y2="12"/><polyline points="11 7 16 12 11 17"/><line x1="20" y1="5" x2="20" y2="19"/></svg>
+                        <button class="ts-align-btn rs-anim-btn" data-anim="slide-up" title="Slide">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="15" y2="12"/><polyline points="11 7 16 12 11 17"/><line x1="20" y1="5" x2="20" y2="19"/></svg><span>Slide</span>
                         </button>
-                        <button class="ts-align-btn" data-anim="cut" title="Cut (instant)">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 3 5 13 11 13 9 21 19 11 13 11 13 3"/></svg>
+                        <button class="ts-align-btn rs-anim-btn" data-anim="cut" title="Cut (instant)">
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 3 5 13 11 13 9 21 19 11 13 11 13 3"/></svg><span>Cut</span>
                         </button>
                     </div>
-                    <input type="range" id="rs-anim-speed" class="ts-anim-speed-slider" min="0.3" max="2.5" step="0.1" value="1" title="Transition speed">
+                    <!-- Three named lengths, not a slider: a live choice wants one
+                         sure click, and a bare slider read as the Media Bin's size
+                         control (2026-10-12). display.html runs 300 ms × the value. -->
+                    <div class="rs-duration" id="rs-anim-speed-row" role="group" aria-label="Transition duration">
+                        <span class="rs-transition-label">Duration</span>
+                        <div class="ts-align-group" id="rs-anim-speed">
+                            <button class="ts-align-btn rs-anim-btn" data-speed="0.5" title="0.15 s">Quick</button>
+                            <button class="ts-align-btn rs-anim-btn" data-speed="1" title="0.3 s">Normal</button>
+                            <button class="ts-align-btn rs-anim-btn" data-speed="2" title="0.6 s">Slow</button>
+                        </div>
+                    </div>
                 </div>
                 <!-- Range navigation -->
                 <div id="range-nav-bar" class="range-nav-bar" style="display:none">

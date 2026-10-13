@@ -138,6 +138,12 @@
   --icon-lg: 20px;
 }
 
+/* Focus, app-wide: a ring for the keyboard, in the app's own neutral white —
+   never the system's blue, and never on a click (2026-10-12). Fields keep
+   their own border-colour focus (.setting-input:focus etc.). */
+button:focus, [role="button"]:focus, a:focus { outline: none; }
+button:focus-visible, [role="button"]:focus-visible, a:focus-visible { outline: 2px solid rgba(255, 255, 255, 0.85); outline-offset: 2px; }
+
 /* ── Startup bootstrap overlay ───────────────────────────────────────────────
    Full-screen branded loader shown until permissions are granted and required
    resources are downloaded. Fades out and is removed once ready. Owner: "I
@@ -4555,18 +4561,22 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
 .media-folder-chip-del:hover { color: var(--red); }
 .media-folder-chip-add { font-size: 13px; font-weight: 700; padding: 5px 11px; }
 
-.media-transport {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  flex-shrink: 0;
-}
+/* The Monitoring card's media strip: what's on the Media layer and, for a
+   video, its controls — right under the screen it's on. */
+.rs-media-strip { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; border-top: 1px solid var(--border); }
+.rs-media-strip.hidden, .rs-media-video.hidden { display: none; }
+.rs-media-now { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.rs-media-thumb { flex: none; width: 34px; height: 19px; border-radius: 3px; background: #000 center / cover no-repeat; box-shadow: 0 0 0 1px var(--border-md); }
+.rs-media-thumb.is-video { background: var(--brand-dim); }
+.rs-media-name { flex: 1; min-width: 0; font-size: 12px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rs-media-clear { flex: none; height: 24px; padding: 0 10px; border-radius: var(--radius-sm); border: 1px solid var(--border-md); background: transparent; color: var(--text-2); font-size: 11px; font-weight: 600; cursor: pointer; }
+.rs-media-clear:hover { color: var(--text); border-color: rgba(255, 255, 255, 0.3); }
+.rs-media-video { display: flex; align-items: center; gap: 8px; }
 /* Active/muted state uses the brand accent (see .tb-icon-btn.active,
    .settings-nav-item.active) rather than the neutral list-selection white.
    The two range inputs below get their brand-orange fill + dark track from
    the generic input[type="range"] rules near the top of this file. */
-.media-transport #media-mute-btn.active { color: var(--brand); background: var(--brand-dim); border-color: var(--brand); }
+.rs-media-strip #media-mute-btn.active { color: var(--brand); background: var(--brand-dim); border-color: var(--brand); }
 .media-seek { flex: 1; }
 .media-volume { width: 80px; flex: none; }
 .media-time {
@@ -5458,7 +5468,11 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
   color: var(--text-3);
   flex-shrink: 0;
 }
-.rs-transition-bar .ts-anim-speed-slider { flex: 1; min-width: 40px; }
+.rs-transition-bar { flex-wrap: wrap; row-gap: 8px; }
+.rs-transition-bar .rs-anim-btn { width: auto; padding: 0 9px; gap: 5px; font-size: 11px; font-weight: 600; }
+.rs-duration { display: flex; align-items: center; gap: 8px; flex-basis: 100%; }
+.rs-duration.hidden { display: none; }
+
 /* Part of the monitor card, under the screen. */
 .rs-preview-card .rs-transition-bar { margin-top: 0; border: 0; border-top: 1px solid var(--border); border-radius: 0; background: transparent; }
 /* A bit more breathing room than the Layout tab's own tightly-packed

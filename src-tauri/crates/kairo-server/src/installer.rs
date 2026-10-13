@@ -52,9 +52,25 @@ const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 const PRUNE: [&str; 2] = ["test_wavs", "README.md"];
 
 static INSTALLING: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(Vec::new());
+/// How far each running install is (percent), for whoever asks — Settings
+/// shows a download the tour started, not just "in progress".
+static PROGRESS: std::sync::Mutex<Vec<(&'static str, i64)>> = std::sync::Mutex::new(Vec::new());
 
 pub fn installing(model: &str) -> bool {
     INSTALLING.lock().unwrap().contains(&model)
+}
+
+/// A running install's last reported percent.
+pub fn progress(model: &str) -> Option<i64> {
+    PROGRESS.lock().unwrap().iter().find(|(m, _)| *m == model).map(|(_, p)| *p)
+}
+
+fn set_progress(model: &'static str, pct: Option<i64>) {
+    let mut p = PROGRESS.lock().unwrap();
+    p.retain(|(m, _)| *m != model);
+    if let Some(pct) = pct {
+        p.push((model, pct));
+    }
 }
 
 pub(crate) type Progress = tokio::sync::mpsc::UnboundedSender<Value>;
@@ -221,13 +237,27 @@ pub async fn route(State(app): State<Shared>, Query(q): Query<std::collections::
         busy.push(key);
     }
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel::<Value>();
+    // Every progress line is remembered on its way to the caller.
+    let (step_tx, mut step_rx) = tokio::sync::mpsc::unbounded_channel::<Value>();
     tokio::spawn(async move {
-        let result = install(&app, spec, &tx).await;
-        let _ = tx.send(match result {
+        while let Some(v) = step_rx.recv().await {
+            if v["phase"] == "download" {
+                if let Some(pct) = v["pct"].as_i64() {
+                    set_progress(key, Some(pct));
+                }
+            }
+            let _ = tx.send(v);
+        }
+    });
+    set_progress(key, Some(0));
+    tokio::spawn(async move {
+        let result = install(&app, spec, &step_tx).await;
+        let _ = step_tx.send(match result {
             Ok(_) => json!({ "phase": "complete", "ok": true }),
             Err(e) => json!({ "phase": "complete", "ok": false, "error": e }),
         });
         INSTALLING.lock().unwrap().retain(|k| *k != key);
+        set_progress(key, None);
     });
     let _ = spec.approx_mb;
     ndjson_stream(rx)

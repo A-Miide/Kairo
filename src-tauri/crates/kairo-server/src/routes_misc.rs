@@ -127,7 +127,7 @@ async fn offline_status(State(app): State<Shared>, Query(q): Query<std::collecti
     let needed = if lang.to_lowercase().starts_with("en") { "en" } else { "multi" };
     Json(json!({
         "model": model, "installed": installed, "needsUpdate": installed && version.as_deref() != Some(OFFLINE_VERSION),
-        "modelPath": path, "installing": crate::installer::installing(model), "approxMB": mb, "needed": needed,
+        "modelPath": path, "installing": crate::installer::installing(model), "progress": crate::installer::progress(model), "approxMB": mb, "needed": needed,
     }))
 }
 
