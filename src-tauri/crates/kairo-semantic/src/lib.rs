@@ -2,6 +2,10 @@
 //! quantized one-vector-per-verse index (optionally fused across
 //! translations), and a cross-encoder reranker for the shortlist.
 
+// ONNX Runtime itself, on the targets where ort doesn't link its own (Cargo.toml).
+#[cfg(any(all(windows, target_env = "msvc"), all(target_os = "macos", target_arch = "x86_64")))]
+extern crate sherpa_onnx_sys as _;
+
 pub mod build;
 pub mod embedder;
 pub mod index;
