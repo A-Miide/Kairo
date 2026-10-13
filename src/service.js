@@ -1888,9 +1888,32 @@
   // What's on the media layer now — its card in the bin is outlined, so the
   // operator can see what's on air (2026-10-12). Set from the same 'media'
   // broadcast the output renders (app.js), cleared with the media layer.
+  // Videos the web view can't play are converted once by the server (video.rs):
+  // this resolves to an address that plays — the original when it already does.
+  const preparedVideo = new Map();   // original url -> converted url
+  const preparedOrigin = new Map();  // converted url -> original url
+  async function playableVideoUrl(url, { force = false, onProgress } = {}) {
+    if (preparedVideo.has(url)) return preparedVideo.get(url);
+    for (;;) {
+      let r;
+      try {
+        const res = await fetchWithTimeout(`${SERVER}/api/media/prepare`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, force }),
+        });
+        r = await res.json();
+      } catch { return null; }
+      if (r.state === 'native') return url;
+      if (r.state === 'ready') { preparedVideo.set(url, r.url); preparedOrigin.set(r.url, url); return r.url; }
+      if (r.state !== 'converting') return null;   // failed, or this install can't convert
+      onProgress?.(r.progress || 0);
+      await new Promise(res => setTimeout(res, 1000));
+      force = true;
+    }
+  }
+
   let liveMediaSrc = null;
   function onMediaLive(src, kind) {
-    liveMediaSrc = src || null;
+    liveMediaSrc = (src && preparedOrigin.get(src)) || src || null;
     // The Monitoring card's strip: what's on air, and its controls.
     const strip = document.getElementById('media-transport');
     if (strip) {
@@ -4817,6 +4840,17 @@
       v.addEventListener('loadedmetadata', () => {
         try { v.currentTime = Math.min(0.1, (v.duration || 1) / 2); } catch {}
       }, { once: true });
+      // A file the web view can't play: have the server convert it, then show that.
+      let retried = false;
+      v.addEventListener('error', async () => {
+        if (retried) return;
+        retried = true;
+        const badge = v.closest('.media-card')?.querySelector('.media-card-badge');
+        const was = badge?.textContent;
+        const out = await playableVideoUrl(item.url, { force: true, onProgress: p => { if (badge) badge.textContent = `Preparing ${p}%`; } });
+        if (badge && was) badge.textContent = out ? was : 'CAN\u2019T PLAY';
+        if (out && out !== item.url) v.src = authedMediaUrl(out);
+      });
       v.dataset.src = authedMediaUrl(item.url);
       lazyMediaObserver.observe(v);
       return v;
@@ -4941,10 +4975,20 @@
   async function sendMediaItem(item, fit) {
     const resolvedFit = fit || mediaFitPrefs.get(item.url) || 'contain';
     if (fit) mediaFitPrefs.set(item.url, fit);
+    let src = item.url;
+    if (item.kind === 'video') {
+      // The card showing it says so while a video that needs converting is made ready.
+      const badge = document.querySelector(`.media-card[data-url="${CSS.escape(item.url)}"] .media-card-badge`);
+      const was = badge?.textContent;
+      const out = await playableVideoUrl(item.url, { onProgress: p => { if (badge) badge.textContent = `Preparing ${p}%`; } });
+      if (badge && was) badge.textContent = was;
+      if (!out) { if (badge) badge.textContent = 'CAN\u2019T PLAY'; return; }
+      src = out;
+    }
     try {
       await fetchWithTimeout(`${SERVER}/api/service/send-media`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ src: item.url, kind: item.kind, fit: resolvedFit }),
+        body: JSON.stringify({ src, kind: item.kind, fit: resolvedFit }),
       });
     } catch (err) {
       if (typeof toast === 'function') toast('Send failed: ' + err.message, 'error');

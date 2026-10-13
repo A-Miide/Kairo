@@ -24,6 +24,7 @@ mod routes_library;
 mod routes_misc;
 mod translate;
 pub mod settings;
+mod video;
 mod vocabulary;
 mod ws;
 
@@ -61,6 +62,7 @@ pub struct App {
     pub(crate) triggers: Arc<library::Triggers>,
     pub(crate) segments: library::Segments,
     pub(crate) media: Arc<media::Media>,
+    pub(crate) video: Arc<video::Video>,
     pub(crate) obs: obs::Obs,
     pub(crate) translator: translate::Translator,
     pub(crate) meaning: OnceLock<Arc<kairo_semantic::MeaningService>>,
@@ -147,6 +149,7 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         segments: library::Segments::open(&cfg.app_data_dir, triggers.clone()),
         triggers,
         media: media::Media::open(&cfg.app_data_dir, hub.clone()),
+        video: video::Video::open(&cfg.app_data_dir),
         obs: obs::Obs::new(),
         translator: translate::Translator::default(),
         meaning: OnceLock::new(),
