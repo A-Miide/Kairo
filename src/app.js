@@ -2390,7 +2390,7 @@ async function loadSettings() {
     resetDeepgramKeyField();
     if (translationSettings && settings.translation) translationSettings.value = settings.translation;
     if (translationSelect && settings.translation)   translationSelect.value   = settings.translation;
-    if (bibleTranslateToSelect) bibleTranslateToSelect.value = settings.bibleTranslateTo || '';
+    if (bibleTranslateToSelect) { bibleTranslateToSelect.value = settings.bibleTranslateTo || ''; renderSecondLangModel(); }
     if (autoSendSettings)  autoSendSettings.checked  = settings.autoSend  !== false;
     updateAutoDeployBadge();
     if (showConfSettings)  showConfSettings.checked   = settings.showConfidence !== false;
@@ -2442,7 +2442,7 @@ async function loadSettings() {
 // the tour once, since the tour is about the whole app, not just that one
 // step. Re-openable anytime from Settings → Help ("Take the tour again").
 let firstRunDismissed = false;
-const ONBOARDING_STEP_COUNT = 4; // see the step panels' data-step: welcome, listening, inside, ready
+const ONBOARDING_STEP_COUNT = 5; // see the step panels' data-step: welcome, listening, standout features, inside, ready
 const ONBOARDING_LISTEN_STEP = 1;
 let onboardingStep = 0;
 
@@ -3516,8 +3516,59 @@ if (bibleTranslateToSelect) {
   bibleTranslateToSelect.addEventListener('change', () => {
     settings.bibleTranslateTo = bibleTranslateToSelect.value || null;
     saveSettingsPatch({ bibleTranslateTo: settings.bibleTranslateTo });
+    renderSecondLangModel();
   });
 }
+
+// Under the Second language picker: whether that language's slide model is on
+// this computer, with the Download right there instead of only in the list
+// below. Hidden while the picker is Off.
+var _secondLangTimer = null;
+async function renderSecondLangModel() {
+  const host = document.getElementById('second-lang-model');
+  if (!host) return;
+  clearTimeout(_secondLangTimer);
+  const code = bibleTranslateToSelect?.value;
+  if (!code) { host.hidden = true; host.innerHTML = ''; return; }
+  const name = (MT_LANGUAGES.find(l => l.code === code) || {}).name || code;
+  let s;
+  try {
+    s = await fetch(`${SERVER}/api/translate-model/status?lang=${code}`).then(r => r.json());
+  } catch { host.hidden = true; return; }
+  if (bibleTranslateToSelect.value !== code) return;
+  host.hidden = false;
+  const size = s.approxMB ? ` (${s.approxMB} MB)` : '';
+  const row = document.createElement('div');
+  row.className = 'dl-row';
+  const sub = document.createElement('span');
+  sub.className = 'dl-sub';
+  row.appendChild(sub);
+  if (s.installed) {
+    sub.textContent = `${name} slide translation is ready`;
+    sub.classList.add('is-ready');
+  } else if (s.installing) {
+    sub.textContent = `Downloading ${name}…`;
+    _secondLangTimer = setTimeout(renderSecondLangModel, 2000);
+  } else {
+    sub.textContent = `${name} slide text needs a download${size}`;
+    const btn = document.createElement('button');
+    btn.className = 'modal-btn primary dl-btn';
+    btn.textContent = 'Download';
+    btn.addEventListener('click', async () => {
+      btn.style.display = 'none';
+      sub.textContent = 'Connecting…';
+      await streamMtInstall(code, {
+        onProgress: (pct) => { sub.textContent = `Downloading ${name}… ${pct}%`; },
+        onComplete: () => { renderSecondLangModel(); refreshMtStatus(code); },
+        onError: (msg) => { sub.textContent = `Failed: ${msg}`; btn.style.display = ''; },
+      });
+    });
+    row.appendChild(btn);
+  }
+  host.innerHTML = '';
+  host.appendChild(row);
+}
+renderSecondLangModel();
 
 // Primary — real incident found while wiring the new dropdown alongside it:
 // this toolbar select (#translation-select) has existed for a while but
@@ -3601,6 +3652,7 @@ async function removeMtModel(code) {
   }
   if (btn) btn.disabled = false;
   refreshMtStatus(code);
+  renderSecondLangModel();
 }
 
 // Core NDJSON-install-stream reader, shared by the Settings row above and

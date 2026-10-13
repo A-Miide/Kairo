@@ -409,7 +409,7 @@ function renderOutputsList() {
   const host = document.getElementById('outputs-list');
   if (!host) return;
   const outputs = allConfiguredOutputs();
-  if (!outputs.some(o => o.id === selectedOutputId)) selectedOutputId = outputs[0]?.id || null;
+  if (selectedOutputId !== AUDIO_OUTPUT_ID && !outputs.some(o => o.id === selectedOutputId)) selectedOutputId = outputs[0]?.id || null;
   host.innerHTML = '';
   outputs.forEach(o => {
     // A plain <div> (not <button>) — a real on/off <input> lives inside
@@ -471,6 +471,7 @@ function renderOutputsList() {
     });
     host.appendChild(row);
   });
+  host.appendChild(buildAudioOutputRow());
   // Folded in here (not called separately at each of this function's many
   // call sites) so the Output Control matrix — which lists the exact same
   // outputs this list does — can never drift out of sync with an output
@@ -589,10 +590,138 @@ function buildOutputRowToggle(o) {
   return label;
 }
 
+// ── Audio Output ──────────────────────────────────────────────────────────
+// Sound from video on the Media layer plays through whichever screen shows it,
+// which for an HDMI display means the HDMI cable. This entry sends it to a
+// different device instead — a speaker, a mixer, this computer's own speakers.
+// The choice is applied in display.html via setSinkId (see /api/service/
+// audio-output); an engine that can't route sound says so here.
+const AUDIO_OUTPUT_ID = 'audio-out';
+
+function mediaOutputRoutable() {
+  return typeof HTMLMediaElement !== 'undefined' && typeof HTMLMediaElement.prototype.setSinkId === 'function';
+}
+function savedMediaOutput() {
+  try { return localStorage.getItem(MEDIA_OUTPUT_KEY) || ''; } catch { return ''; }
+}
+function setMediaOutput(deviceId) {
+  try { localStorage.setItem(MEDIA_OUTPUT_KEY, deviceId || ''); } catch {}
+  fetch(`${SERVER}/api/service/audio-output`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deviceId: deviceId || null }),
+  }).catch(() => {});
+}
+async function mediaOutputDevices() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return devices.filter(d => d.kind === 'audiooutput' && d.deviceId);
+  } catch { return []; }
+}
+
+function buildAudioOutputRow() {
+  const row = document.createElement('div');
+  row.className = 'outputs-list-item' + (selectedOutputId === AUDIO_OUTPUT_ID ? ' active' : '');
+  row.dataset.outputId = AUDIO_OUTPUT_ID;
+  row.tabIndex = 0;
+  row.setAttribute('role', 'button');
+  const dot = document.createElement('span');
+  dot.className = 'bs-dot';
+  dot.classList.toggle('connected', !!savedMediaOutput());
+  const info = document.createElement('span');
+  info.className = 'outputs-list-item-info';
+  const name = document.createElement('span');
+  name.className = 'outputs-list-item-name';
+  name.textContent = 'Audio Output';
+  const type = document.createElement('span');
+  type.className = 'outputs-list-item-type';
+  type.textContent = savedMediaOutput() ? 'Chosen device' : 'With the screen';
+  info.append(name, type);
+  row.append(dot, info);
+  row.addEventListener('click', () => { selectedOutputId = AUDIO_OUTPUT_ID; renderOutputsList(); renderOutputsDetail(); });
+  row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); row.click(); } });
+  return row;
+}
+
+function renderAudioOutputDetail(host) {
+  host.appendChild(detailTitle('Audio Output', null, null));
+  const intro = document.createElement('p');
+  intro.className = 'setting-hint';
+  intro.textContent = 'Sound from video on the Media layer plays through the screen that shows it \u2014 over HDMI, the display\u2019s own speakers. Pick another device to send it to a speaker, a mixer or this computer instead.';
+  host.appendChild(intro);
+
+  const group = detailGroup('Play media sound on');
+  const row = document.createElement('div');
+  row.className = 'audio-out-row';
+  const sel = document.createElement('select');
+  sel.className = 'setting-input';
+  const refresh = document.createElement('button');
+  refresh.type = 'button';
+  refresh.className = 'modal-btn secondary audio-refresh-btn';
+  refresh.title = 'Refresh device list';
+  refresh.textContent = '\u21BB';
+  row.append(sel, refresh);
+  group.appendChild(row);
+  const note = document.createElement('p');
+  note.className = 'setting-hint';
+  group.appendChild(note);
+  host.appendChild(group);
+
+  const testBtn = document.createElement('button');
+  testBtn.type = 'button';
+  testBtn.className = 'modal-btn secondary';
+  testBtn.textContent = 'Play test sound';
+  host.appendChild(testBtn);
+
+  const fill = async () => {
+    const saved = savedMediaOutput();
+    const devices = await mediaOutputDevices();
+    sel.innerHTML = '';
+    const dflt = document.createElement('option');
+    dflt.value = ''; dflt.textContent = 'With the screen (default)';
+    sel.appendChild(dflt);
+    devices.forEach(d => {
+      const o = document.createElement('option');
+      o.value = d.deviceId;
+      o.textContent = d.label || `Output ${d.deviceId.slice(0, 6)}`;
+      if (d.deviceId === saved) o.selected = true;
+      sel.appendChild(o);
+    });
+    const routable = mediaOutputRoutable();
+    sel.disabled = !routable;
+    testBtn.disabled = !routable;
+    note.textContent = routable
+      ? 'Takes effect on the next video you send. Leave it on the default to keep the sound with the screen.'
+      : 'This computer\u2019s display engine can\u2019t pick a sound device. Set the output in your system\u2019s Sound settings instead.';
+  };
+  sel.addEventListener('change', () => { setMediaOutput(sel.value); renderOutputsList(); });
+  refresh.addEventListener('click', fill);
+  testBtn.addEventListener('click', async () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const dest = ctx.createMediaStreamDestination();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      gain.gain.value = 0.15;
+      osc.frequency.value = 440;
+      osc.connect(gain).connect(dest);
+      const el = new Audio();
+      el.srcObject = dest.stream;
+      if (sel.value && el.setSinkId) await el.setSinkId(sel.value);
+      osc.start();
+      await el.play();
+      setTimeout(() => { osc.stop(); el.pause(); ctx.close(); }, 900);
+    } catch (err) {
+      note.textContent = `Couldn\u2019t play to that device: ${String(err && err.message || err)}`;
+    }
+  });
+  fill();
+}
+
 function renderOutputsDetail() {
   const host = document.getElementById('outputs-detail');
   if (!host) return;
   host.innerHTML = '';
+  if (selectedOutputId === AUDIO_OUTPUT_ID) { renderAudioOutputDetail(host); return; }
   const o = allConfiguredOutputs().find(x => x.id === selectedOutputId);
   if (!o) { host.textContent = 'Select an output.'; return; }
   if (o.type === 'display') renderDisplayDetail(host, o);
@@ -645,24 +774,89 @@ function detailTitle(text, statusEl, toggleEl) {
   return wrap;
 }
 
-// The theme <select> — same shape the old renderOutputThemePickers built
-// per-card, just returned directly for a detail panel to append.
+// The theme picker for an output: a dropdown whose rows carry a tiny preview
+// of each theme (the same thumbnail the Slides/Bible theme picker and Theme
+// Studio draw), which a native <select> can't show.
 function buildThemeSelect(outputId) {
-  const sel = document.createElement('select');
-  sel.className = 'setting-input';
-  const map = outputThemeMap();
-  looks.forEach(l => {
-    const opt = document.createElement('option');
-    opt.value = l.id; opt.textContent = l.name;
-    if (l.id === map[outputId]) opt.selected = true;
-    sel.appendChild(opt);
-  });
-  sel.addEventListener('change', () => {
-    settings.outputThemes = { ...outputThemeMap(), [outputId]: sel.value };
-    saveSettingsPatch({ outputThemes: settings.outputThemes });
-    applyOutputThemes();
-  });
-  return sel;
+  const wrap = document.createElement('div');
+  wrap.className = 'theme-pick';
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'setting-input theme-pick-trigger';
+  trigger.setAttribute('aria-haspopup', 'listbox');
+  trigger.setAttribute('aria-expanded', 'false');
+  const menu = document.createElement('div');
+  menu.className = 'theme-pick-menu';
+  menu.setAttribute('role', 'listbox');
+  menu.hidden = true;
+  wrap.appendChild(trigger);
+  wrap.appendChild(menu);
+
+  const thumbFor = (look) => {
+    const t = document.createElement('div');
+    t.className = 'ts-theme-thumb';
+    window.KairoService?.renderLookThumbnail(t, look);
+    return t;
+  };
+  const currentLook = () => {
+    const id = outputThemeMap()[outputId];
+    return looks.find(l => l.id === id) || looks[0];
+  };
+  const paintTrigger = () => {
+    const look = currentLook();
+    trigger.innerHTML = '';
+    if (look) {
+      trigger.appendChild(thumbFor(look));
+      const name = document.createElement('span');
+      name.className = 'theme-pick-name';
+      name.textContent = look.name;
+      trigger.appendChild(name);
+    }
+    const chev = document.createElement('span');
+    chev.className = 'theme-pick-chev';
+    chev.textContent = '▾';
+    chev.setAttribute('aria-hidden', 'true');
+    trigger.appendChild(chev);
+  };
+  const close = () => {
+    menu.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('mousedown', onOutside, true);
+    document.removeEventListener('keydown', onKey, true);
+  };
+  const onOutside = (e) => { if (!wrap.contains(e.target)) close(); };
+  const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); trigger.focus(); } };
+  const open = () => {
+    menu.innerHTML = '';
+    const current = currentLook();
+    const buildRow = (l) => {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.setAttribute('role', 'option');
+      row.className = 'theme-pick-item' + (current && l.id === current.id ? ' active' : '');
+      row.appendChild(thumbFor(l));
+      const name = document.createElement('span');
+      name.textContent = l.name;
+      row.appendChild(name);
+      row.addEventListener('click', () => {
+        settings.outputThemes = { ...outputThemeMap(), [outputId]: l.id };
+        saveSettingsPatch({ outputThemes: settings.outputThemes });
+        applyOutputThemes();
+        paintTrigger();
+        close();
+      });
+      return row;
+    };
+    menu.appendChild(window.KairoService.buildThemeTree(looks, buildRow, current && current.id));
+    menu.hidden = false;
+    trigger.setAttribute('aria-expanded', 'true');
+    menu.querySelector('.active')?.scrollIntoView({ block: 'nearest' });
+    document.addEventListener('mousedown', onOutside, true);
+    document.addEventListener('keydown', onKey, true);
+  };
+  trigger.addEventListener('click', () => (menu.hidden ? open() : close()));
+  paintTrigger();
+  return wrap;
 }
 
 function renderDisplayDetail(host, o) {
