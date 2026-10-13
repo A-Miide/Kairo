@@ -149,7 +149,7 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         segments: library::Segments::open(&cfg.app_data_dir, triggers.clone()),
         triggers,
         media: media::Media::open(&cfg.app_data_dir, hub.clone()),
-        video: video::Video::open(&cfg.app_data_dir),
+        video: video::Video::open(&cfg.app_data_dir, &cfg.ui_dir),
         obs: obs::Obs::new(),
         translator: translate::Translator::default(),
         meaning: OnceLock::new(),

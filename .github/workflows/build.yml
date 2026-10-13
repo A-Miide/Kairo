@@ -60,8 +60,55 @@ jobs:
             databases/bibles/verse_index.gemma-legacy.kvx
           retention-days: 3
 
+  # ── The ffmpeg that ships in the app ─────────────────────────────────────
+  # A small LGPL ffmpeg per OS, built from the official source (scripts/
+  # build-ffmpeg-*.sh) and cached until those scripts change. Kairo runs it only
+  # to convert a video its web view can't play. See docs/THIRD_PARTY.md.
+  ffmpeg:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos
+            runs-on: macos-latest
+            script: scripts/build-ffmpeg-macos.sh
+          - name: linux
+            runs-on: ubuntu-24.04
+            script: scripts/build-ffmpeg-linux.sh linux
+          # Windows is cross-built from Linux with mingw-w64.
+          - name: windows
+            runs-on: ubuntu-24.04
+            script: scripts/build-ffmpeg-linux.sh windows
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cached ffmpeg
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/bin/ffmpeg*
+          key: ffmpeg-${{ matrix.name }}-${{ hashFiles('scripts/build-ffmpeg-macos.sh', 'scripts/build-ffmpeg-linux.sh') }}
+
+      - name: Build tools
+        if: steps.cache.outputs.cache-hit != 'true' && matrix.runs-on == 'ubuntu-24.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential nasm pkg-config
+          if [ "${{ matrix.name }}" = "windows" ]; then sudo apt-get install -y mingw-w64; fi
+
+      - name: Build ffmpeg
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: ${{ matrix.script }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-${{ matrix.name }}
+          path: src-tauri/bin/ffmpeg*
+          retention-days: 3
+
   build:
-    needs: bundle-data
+    needs: [bundle-data, ffmpeg]
     permissions:
       contents: write   # tauri-action creates the draft release on a tag
     strategy:
@@ -90,6 +137,15 @@ jobs:
         with:
           name: bundle-data
           path: databases/bibles
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ffmpeg-${{ matrix.platform == 'macos-latest' && 'macos' || matrix.platform == 'windows-latest' && 'windows' || 'linux' }}
+          path: src-tauri/bin
+
+      - name: Make ffmpeg executable
+        if: matrix.platform != 'windows-latest'
+        run: chmod +x src-tauri/bin/ffmpeg
 
       # The Tauri CLI comes from npm; the app itself has no Node at runtime.
       - name: Setup Node.js
