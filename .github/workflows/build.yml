@@ -12,7 +12,9 @@ jobs:
   # from them — once, shared by every platform, cached until the Bible text
   # or the index code changes. See src-tauri/crates/kairo-eval/src/bin/bundle-data.rs.
   bundle-data:
-    runs-on: ubuntu-22.04
+    # 24.04, not 22.04: the prebuilt ONNX Runtime the engine links needs
+    # glibc 2.38 / GCC 13's libstdc++ (first CI run, 2026-10-13).
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
@@ -68,8 +70,10 @@ jobs:
             args: '--target universal-apple-darwin --config src-tauri/tauri.release.conf.json'
           - platform: windows-latest
             args: '--config src-tauri/tauri.release.conf.json'
-          - platform: ubuntu-22.04
-            # No AppImage — linuxdeploy is broken on ubuntu-22.04 + libwebkit2gtk-4.1.
+          # 24.04 for the same reason as bundle-data: the Linux app needs
+          # glibc 2.38+ (Ubuntu 24.04, Fedora 39, Debian 13 or newer).
+          - platform: ubuntu-24.04
+            # .deb and .rpm only — no AppImage.
             args: '--bundles deb,rpm --config src-tauri/tauri.release.conf.json'
 
     runs-on: ${{ matrix.platform }}
@@ -103,12 +107,12 @@ jobs:
           workspaces: './src-tauri -> target'
 
       - name: Install Linux deps
-        if: matrix.platform == 'ubuntu-22.04'
+        if: matrix.platform == 'ubuntu-24.04'
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
+            libayatana-appindicator3-dev \
             librsvg2-dev \
             patchelf \
             libssl-dev \
@@ -147,7 +151,7 @@ jobs:
             ### Install
             - **macOS**: download the `.dmg`, drag KAIRO to Applications. First launch only: right-click KAIRO → **Open** → **Open**.
             - **Windows**: run the `.msi`. If SmartScreen warns about an unrecognized publisher: **More info** → **Run anyway**.
-            - **Linux**: `.deb` (Debian/Ubuntu) or `.rpm` (Fedora/RHEL).
+            - **Linux**: `.deb` (Ubuntu 24.04+, Debian 13+) or `.rpm` (Fedora 39+).
           releaseDraft: true
           prerelease: false
           args: ${{ matrix.args }}
