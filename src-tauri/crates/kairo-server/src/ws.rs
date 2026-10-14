@@ -31,8 +31,11 @@ pub async fn root(State(app): State<Shared>, uri: Uri, headers: HeaderMap, ws: R
 }
 
 async fn forward_audio(app: &Shared, data: bytes::Bytes) {
+    crate::audio_stats::note_frame(&data);
     if let Some(tx) = app.audio.lock().await.as_ref() {
-        let _ = tx.try_send(data);
+        if tx.try_send(data).is_err() {
+            crate::audio_stats::STATS.dropped.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
     }
 }
 

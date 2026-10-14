@@ -1825,7 +1825,11 @@ async function buildCaptureGraph(deviceId, existingStream = null) {
       node.port.onmessage = (e) => {
         const d = e.data;
         if (d instanceof ArrayBuffer) sendAudioFrame(d);          // only until the worker's port is in place
-        else if (d && typeof d.peak === 'number') noteCaptureLevel(d.peak, 1024, d.gain, d.clipped);
+        else if (d && typeof d.peak === 'number') {
+          pipeline.noInput += d.noInput || 0;
+          pipeline.frames += d.frames || 0;
+          noteCaptureLevel(d.peak, 1024, d.gain, d.clipped);
+        }
       };
       const worker = captureSenderWorker();
       if (worker) {
@@ -1858,6 +1862,7 @@ async function buildCaptureGraph(deviceId, existingStream = null) {
     }
     const int16 = new Int16Array(out.length);
     for (let i = 0; i < out.length; i++) int16[i] = out[i] * 32767;
+    pipeline.frames++;
     noteCaptureLevel(peak * 32768, float32.length, level ? level.gain : 1, clipped);
     sendAudioFrame(int16.buffer);
   };
@@ -1879,11 +1884,33 @@ function noteCaptureLevel(peak, bufferLength, gain = 1, clipped = false) {
   if (peak > AUDIO_PEAK_NOISE_FLOOR) lastRealAudioAt = now;
   if (now - _lastLevelLogAt > 3000) {
     _lastLevelLogAt = now;
-    fetch(`${SERVER}/api/debug-log`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ event: 'audio-peak', data: { peak, bufferLength, gain: Math.round(gain * 100) / 100, clipped } }),
-    }).catch(() => {});
+    logAudioPipeline(peak, bufferLength, gain, clipped);
   }
+}
+
+// Every 3 s while capturing, one line for each step the audio passes through
+// in the app — the input track, the audio processing, what the audio thread
+// handed on (and render blocks that brought NO input, which reads as a level
+// of 0 but isn't silence), and the sender's connection to the server. With
+// the server's own line (server:audio) a silent spell shows where it began.
+const pipeline = { noInput: 0, frames: 0 };
+let _senderStatus = null;
+function logAudioPipeline(peak, bufferLength, gain, clipped) {
+  const track = mediaStream?.getAudioTracks?.()[0];
+  const settingsNow = track?.getSettings?.() || {};
+  const data = {
+    peak, bufferLength, gain: Math.round(gain * 100) / 100, clipped,
+    input: track ? { label: track.label, state: track.readyState, muted: track.muted, enabled: track.enabled, rate: settingsNow.sampleRate || null } : null,
+    audio: audioContext ? { state: audioContext.state, rate: audioContext.sampleRate } : null,
+    framesOut: pipeline.frames, noInputBlocks: pipeline.noInput,
+    sender: _senderStatus,
+  };
+  pipeline.frames = 0; pipeline.noInput = 0;
+  try { _captureWorker?.postMessage({ type: 'status' }); } catch {}
+  fetch(`${SERVER}/api/debug-log`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ event: 'audio-pipeline', data }),
+  }).catch(() => {});
 }
 
 // The gain the level control settled on, per input, so the next session — or
@@ -1942,7 +1969,10 @@ function noteInputSummary(peak, clipped, gain) {
 let _captureWorker = null;
 function captureSenderWorker() {
   try {
-    if (!_captureWorker) _captureWorker = new Worker('audio_sender_worker.js');
+    if (!_captureWorker) {
+      _captureWorker = new Worker('audio_sender_worker.js');
+      _captureWorker.onmessage = (e) => { if (e.data?.type === 'status') { const { type, ...st } = e.data; _senderStatus = st; } };
+    }
     _captureWorker.postMessage({ type: 'start', url: authedWsUrl(`${WS_URL}/?audio=1`) });
     return _captureWorker;
   } catch (err) {

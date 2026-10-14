@@ -641,24 +641,28 @@ async fn monitor_message(State(app): State<Shared>, Json(b): Json<Value>) -> Jso
     Json(json!({ "ok": true, "text": text }))
 }
 
+/// One line in debug.log (app data). A debugging aid, not an audit log: it
+/// keeps itself small.
+pub(crate) fn write_debug_line(app: &Shared, event: &str, data: Value) {
+    let line = json!({ "t": epoch_ms(), "event": event, "data": data });
+    let path = app.cfg.app_data_dir.join("debug.log");
+    tokio::task::spawn_blocking(move || {
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+            let _ = writeln!(f, "{line}");
+        }
+        if std::fs::metadata(&path).is_ok_and(|m| m.len() > 2 * 1024 * 1024) {
+            if let Ok(s) = std::fs::read_to_string(&path) {
+                let lines: Vec<&str> = s.lines().collect();
+                let _ = std::fs::write(&path, lines[lines.len() / 2..].join("\n"));
+            }
+        }
+    });
+}
+
 async fn debug_log(State(app): State<Shared>, Json(b): Json<Value>) -> Json<Value> {
     if let Some(event) = b["event"].as_str() {
-        let line = json!({ "t": epoch_ms(), "event": format!("client:{event}"), "data": b["data"] });
-        let path = app.cfg.app_data_dir.join("debug.log");
-        let _ = tokio::task::spawn_blocking(move || {
-            use std::io::Write;
-            if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
-                let _ = writeln!(f, "{line}");
-            }
-            // A debugging aid, not an audit log: keep it small.
-            if std::fs::metadata(&path).is_ok_and(|m| m.len() > 2 * 1024 * 1024) {
-                if let Ok(s) = std::fs::read_to_string(&path) {
-                    let lines: Vec<&str> = s.lines().collect();
-                    let _ = std::fs::write(&path, lines[lines.len() / 2..].join("\n"));
-                }
-            }
-        })
-        .await;
+        write_debug_line(&app, &format!("client:{event}"), b["data"].clone());
     }
     Json(json!({ "ok": true }))
 }

@@ -40,12 +40,15 @@ class KairoCapture extends AudioWorkletProcessor {
     this.peak = 0;                       // raw input, before the level control
     this.clipped = false;
     this.out = null;                     // the sender worker's port
+    this.noInput = 0;                    // render blocks that brought no input at all
+    this.framesOut = 0;                  // 1024-sample frames handed on
     this.lastLevelAt = 0;
     this.port.onmessage = (e) => { if (e.data && 'port' in e.data) this.out = e.data.port; };
   }
 
   process(inputs) {
     const samples = inputs[0] && inputs[0][0];
+    if (!samples) this.noInput++;   // no input connected/arriving — not the same as silence
     if (samples) {
       if (this.block.length !== samples.length) this.block = new Float32Array(samples.length);
       const { peak, clipped } = this.level ? this.level.apply(samples, this.block) : passThrough(samples, this.block);
@@ -57,15 +60,20 @@ class KairoCapture extends AudioWorkletProcessor {
         if (this.filled === this.frame.length) {
           const buf = this.frame.buffer;
           (this.out || this.port).postMessage(buf, [buf]);
+          this.framesOut++;
           this.frame = new Int16Array(1024);
           this.filled = 0;
         }
       }
     }
     // The level, ten times a second, for the meter and the dead-device checks:
-    // the raw input peak (int16 scale), the gain in use, and any clipping.
+    // the raw input peak (int16 scale), the gain in use, any clipping, and
+    // for the pipeline log how many blocks brought no input and how many
+    // frames went on.
     if (currentTime - this.lastLevelAt >= 0.1) {
-      this.port.postMessage({ peak: this.peak * 32768, gain: this.level ? this.level.gain : 1, clipped: this.clipped });
+      this.port.postMessage({ peak: this.peak * 32768, gain: this.level ? this.level.gain : 1, clipped: this.clipped, noInput: this.noInput, frames: this.framesOut });
+      this.noInput = 0;
+      this.framesOut = 0;
       this.peak = 0;
       this.clipped = false;
       this.lastLevelAt = currentTime;

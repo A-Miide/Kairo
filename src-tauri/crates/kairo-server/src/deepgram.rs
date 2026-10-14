@@ -276,6 +276,7 @@ async fn run(app: Shared, key: String, mut audio: mpsc::Receiver<Bytes>, mut sto
                     if tx.send(Message::Binary(chunk)).await.is_err() {
                         break "send failed".into();
                     }
+                    crate::audio_stats::STATS.engine_frames.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     if speech_ms_since_transcript > STUCK_SPEECH_MS {
                         eprintln!("[Deepgram] {:.0}s of speech with no transcript back — connection looks stuck, reconnecting", speech_ms_since_transcript / 1000.0);
                         break "stuck".into();
@@ -289,6 +290,7 @@ async fn run(app: Shared, key: String, mut audio: mpsc::Receiver<Bytes>, mut sto
                         if let Ok(v) = serde_json::from_str::<Value>(&t) {
                             if on_message(&app, &detector, &v, &mut pending, service) {
                                 speech_ms_since_transcript = 0.0;
+                                crate::audio_stats::STATS.engine_results.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                             }
                         }
                     }
