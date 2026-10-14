@@ -57,16 +57,16 @@ static INSTALLING: std::sync::Mutex<Vec<&'static str>> = std::sync::Mutex::new(V
 static PROGRESS: std::sync::Mutex<Vec<(&'static str, i64)>> = std::sync::Mutex::new(Vec::new());
 
 pub fn installing(model: &str) -> bool {
-    INSTALLING.lock().unwrap().contains(&model)
+    INSTALLING.lock().unwrap_or_else(std::sync::PoisonError::into_inner).contains(&model)
 }
 
 /// A running install's last reported percent.
 pub fn progress(model: &str) -> Option<i64> {
-    PROGRESS.lock().unwrap().iter().find(|(m, _)| *m == model).map(|(_, p)| *p)
+    PROGRESS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().find(|(m, _)| *m == model).map(|(_, p)| *p)
 }
 
 fn set_progress(model: &'static str, pct: Option<i64>) {
-    let mut p = PROGRESS.lock().unwrap();
+    let mut p = PROGRESS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     p.retain(|(m, _)| *m != model);
     if let Some(pct) = pct {
         p.push((model, pct));
@@ -236,7 +236,7 @@ pub async fn route(State(app): State<Shared>, Query(q): Query<std::collections::
     let multi = q.get("model").is_some_and(|m| m == "multi");
     let (key, spec): (&'static str, &'static Spec) = if multi { ("multi", &MULTI) } else { ("en", &EN) };
     {
-        let mut busy = INSTALLING.lock().unwrap();
+        let mut busy = INSTALLING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if busy.contains(&key) {
             return (StatusCode::CONFLICT, axum::Json(json!({ "error": "install already in progress" }))).into_response();
         }
@@ -262,7 +262,7 @@ pub async fn route(State(app): State<Shared>, Query(q): Query<std::collections::
             Ok(_) => json!({ "phase": "complete", "ok": true }),
             Err(e) => json!({ "phase": "complete", "ok": false, "error": e }),
         });
-        INSTALLING.lock().unwrap().retain(|k| *k != key);
+        INSTALLING.lock().unwrap_or_else(std::sync::PoisonError::into_inner).retain(|k| *k != key);
         set_progress(key, None);
     });
     let _ = spec.approx_mb;

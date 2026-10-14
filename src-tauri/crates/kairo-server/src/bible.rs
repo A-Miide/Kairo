@@ -63,7 +63,7 @@ impl Bible {
     }
 
     fn pack(&self, cache: &Mutex<HashMap<String, Pack>>, key: &str, path: PathBuf) -> Pack {
-        if let Some(p) = cache.lock().unwrap().get(key) {
+        if let Some(p) = cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(key) {
             return p.clone();
         }
         let loaded = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).map(|raw| {
@@ -79,7 +79,7 @@ impl Bible {
         if loaded.is_none() {
             eprintln!("[Translation] No pack for \"{key}\"");
         }
-        cache.lock().unwrap().insert(key.to_string(), loaded.clone());
+        cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(key.to_string(), loaded.clone());
         loaded
     }
 

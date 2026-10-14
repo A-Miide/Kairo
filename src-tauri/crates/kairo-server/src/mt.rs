@@ -129,7 +129,7 @@ pub fn installed(app: &Shared, lang: &str) -> bool {
 static INSTALLING: Mutex<Vec<&'static str>> = Mutex::new(Vec::new());
 
 fn installing(lang: &str) -> bool {
-    INSTALLING.lock().unwrap().contains(&lang)
+    INSTALLING.lock().unwrap_or_else(std::sync::PoisonError::into_inner).contains(&lang)
 }
 
 /// GET /api/translate-model/status[?lang=]
@@ -150,7 +150,7 @@ pub async fn install_route(State(app): State<Shared>, Json(b): Json<Value>) -> R
         return (StatusCode::BAD_REQUEST, Json(json!({ "error": format!("Unknown language \"{}\"", b["lang"].as_str().unwrap_or("")) }))).into_response();
     };
     {
-        let mut busy = INSTALLING.lock().unwrap();
+        let mut busy = INSTALLING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if busy.contains(&m.lang) {
             return (StatusCode::CONFLICT, Json(json!({ "error": "install already in progress" }))).into_response();
         }
@@ -163,7 +163,7 @@ pub async fn install_route(State(app): State<Shared>, Json(b): Json<Value>) -> R
             Ok(()) => json!({ "phase": "complete", "ok": true }),
             Err(e) => json!({ "phase": "complete", "ok": false, "error": e }),
         });
-        INSTALLING.lock().unwrap().retain(|l| *l != m.lang);
+        INSTALLING.lock().unwrap_or_else(std::sync::PoisonError::into_inner).retain(|l| *l != m.lang);
     });
     ndjson_stream(rx)
 }

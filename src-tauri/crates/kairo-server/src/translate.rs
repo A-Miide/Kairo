@@ -33,7 +33,7 @@ fn lang_name(lang: &str) -> Option<&'static str> {
 
 impl Translator {
     fn verse(&self, app: &Shared, lang: &str, book: &str, chapter: u64, verse: u64) -> Option<String> {
-        let mut bibles = self.bibles.lock().unwrap();
+        let mut bibles = self.bibles.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let bible = bibles.entry(lang.to_string()).or_insert_with(|| {
             let path = app.cfg.db_dir.parent().unwrap_or(&app.cfg.db_dir).join("i18n").join(format!("{lang}.json"));
             std::fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok())
@@ -42,7 +42,7 @@ impl Translator {
     }
 
     fn remember(&self, key: String, t: String) -> String {
-        let mut c = self.cache.lock().unwrap();
+        let mut c = self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if c.len() > CACHE_MAX {
             c.clear();
         }
@@ -85,7 +85,7 @@ impl Translator {
             return Ok(json!({ "text": "", "source": "none" }));
         }
         let key = format!("{lang}|{text}");
-        if let Some(t) = self.cache.lock().unwrap().get(&key) {
+        if let Some(t) = self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(&key) {
             return Ok(json!({ "text": t, "source": "cache" }));
         }
         if crate::mt::installed(app, lang) {

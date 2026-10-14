@@ -197,7 +197,7 @@ async fn sermon_notes(app: &Shared, b: &Value, date: &str) -> Result<(String, Ve
         ..Default::default()
     };
     {
-        let log = app.log.lock().unwrap();
+        let log = app.log.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         session.shown = log.shown.clone();
         session.ranges = log.ranges.clone();
     }

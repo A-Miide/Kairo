@@ -96,7 +96,7 @@ impl Media {
     }
 
     fn save(&self) {
-        let list: Vec<Value> = self.folders.lock().unwrap().iter().map(|f| json!({ "id": f.id, "name": f.name, "dirPath": f.dir })).collect();
+        let list: Vec<Value> = self.folders.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().map(|f| json!({ "id": f.id, "name": f.name, "dirPath": f.dir })).collect();
         if let Some(d) = self.manifest.parent() {
             let _ = std::fs::create_dir_all(d);
         }
@@ -109,7 +109,7 @@ impl Media {
         let mut tick = tokio::time::interval(WATCH_EVERY);
         loop {
             tick.tick().await;
-            let folders = self.folders.lock().unwrap().clone();
+            let folders = self.folders.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
             for f in folders {
                 let dir = f.dir.clone();
                 let sig = tokio::task::spawn_blocking(move || {
@@ -158,11 +158,11 @@ impl Media {
     }
 
     pub fn folders(&self) -> Vec<Value> {
-        self.folders.lock().unwrap().iter().map(|f| json!({ "id": f.id, "name": f.name, "path": f.dir })).collect()
+        self.folders.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().map(|f| json!({ "id": f.id, "name": f.name, "path": f.dir })).collect()
     }
 
     fn register(&self, name: Option<&str>, dir: PathBuf) -> Value {
-        let mut list = self.folders.lock().unwrap();
+        let mut list = self.folders.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(f) = list.iter().find(|f| f.dir == dir) {
             return json!({ "id": f.id, "name": f.name, "dirPath": f.dir });
         }
@@ -200,7 +200,7 @@ impl Media {
     }
 
     pub fn remove_folder(&self, id: &str) -> bool {
-        let mut list = self.folders.lock().unwrap();
+        let mut list = self.folders.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let before = list.len();
         list.retain(|f| f.id != id);
         let removed = list.len() != before;
@@ -210,17 +210,17 @@ impl Media {
     }
 
     pub fn folder_items(&self, id: &str) -> Option<(Vec<Value>, bool)> {
-        let f = self.folders.lock().unwrap().iter().find(|f| f.id == id).cloned()?;
+        let f = self.folders.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().find(|f| f.id == id).cloned()?;
         Some(items_in(&f.dir, |n| format!("/api/media/folders/{}/file/{}", f.id, urlencode(n))))
     }
 
     pub fn folder_file(&self, id: &str, name: &str) -> Option<PathBuf> {
-        let f = self.folders.lock().unwrap().iter().find(|f| f.id == id).cloned()?;
+        let f = self.folders.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().find(|f| f.id == id).cloned()?;
         inside(&f.dir, name)
     }
 
     pub fn write_into_folder(&self, id: &str, filename: &str, data: &[u8]) -> Result<(), MediaError> {
-        let f = self.folders.lock().unwrap().iter().find(|f| f.id == id).cloned().ok_or(MediaError("NOT_FOUND", "No such folder".into()))?;
+        let f = self.folders.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().find(|f| f.id == id).cloned().ok_or(MediaError("NOT_FOUND", "No such folder".into()))?;
         let safe = Path::new(filename).file_name().and_then(|n| n.to_str()).unwrap_or("file").to_string();
         if kind_for(&safe).is_none() {
             return Err(MediaError("BAD_TYPE", format!("Unsupported file type \"{safe}\"")));

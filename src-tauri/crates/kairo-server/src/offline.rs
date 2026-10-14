@@ -140,7 +140,7 @@ static LOADED: Mutex<Option<Loaded>> = Mutex::new(None);
 static GENERATION: AtomicU64 = AtomicU64::new(0);
 
 pub fn recognizer(dir: &std::path::Path, decoding: &Decoding) -> Result<Arc<OnlineRecognizer>, String> {
-    let mut l = LOADED.lock().unwrap();
+    let mut l = LOADED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
     GENERATION.fetch_add(1, Ordering::SeqCst);
     if let Some(r) = l.as_ref().filter(|r| r.dir == dir && r.decoding == *decoding) {
         return Ok(r.recognizer.clone());

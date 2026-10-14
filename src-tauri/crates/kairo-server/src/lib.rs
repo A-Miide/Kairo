@@ -131,7 +131,7 @@ impl App {
             auto_send: s.bool("autoSend").await != Some(false),
         };
         let (auto_send, auto_correct) = (p.auto_send, s.bool("autoCorrect").await != Some(false));
-        *self.presentation.write().unwrap() = p;
+        *self.presentation.write().unwrap_or_else(std::sync::PoisonError::into_inner) = p;
         if let Some(d) = self.detector.get() {
             d.configure(move |c| {
                 c.auto_send = auto_send;
@@ -196,7 +196,7 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         let k = Arc::new(Knowledge::build(corpus, Wordings { own: None, also }));
         let nlt = nlt.unwrap_or_else(|| k.corpus.kjv().clone());
         let bible = Arc::new(Bible::new(k, nlt, db.clone()));
-        let p = starting.presentation.read().unwrap().clone();
+        let p = starting.presentation.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
         let cfg = kairo_detect::engine::Config { auto_send: p.auto_send, ..Default::default() };
         let detector = Detector::start(bible.clone(), starting.hub.clone(), cfg, starting.presentation.clone(), rt, starting.log.clone());
         let _ = starting.bible.set(bible);
@@ -208,6 +208,10 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
 
     let router = routes::router().merge(routes_library::router()).merge(routes_misc::router())
         .layer(middleware::from_fn_with_state(app.clone(), auth))
+        // A request that panics answers 500 instead of dropping the
+        // connection; shared state stays usable (locks recover from a
+        // panic — `unwrap_or_else(PoisonError::into_inner)` throughout).
+        .layer(tower_http::catch_panic::CatchPanicLayer::new())
         .layer(tower_http::cors::CorsLayer::permissive())
         .layer(axum::extract::DefaultBodyLimit::max(500 * 1024 * 1024))
         .with_state(app.clone());
@@ -233,7 +237,7 @@ async fn follow_screen_in_obs(app: Shared) {
         let source = app.settings.str("obsTextSource").await.unwrap_or_else(|| "Scripture".into());
         match v["type"].as_str() {
             Some("detection") if v["target"] == "viewer" => {
-                let auto = app.presentation.read().unwrap().auto_send;
+                let auto = app.presentation.read().unwrap_or_else(std::sync::PoisonError::into_inner).auto_send;
                 if v["method"] != "service" && !auto {
                     continue;
                 }

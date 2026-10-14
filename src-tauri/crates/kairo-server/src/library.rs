@@ -56,7 +56,7 @@ impl Songs {
     }
 
     pub fn list(&self) -> Vec<Value> {
-        self.items.lock().unwrap().clone()
+        self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
     }
 
     pub fn add(&self, r: &Value) -> Value {
@@ -69,14 +69,14 @@ impl Songs {
             "category": category(&r["category"]),
             "blocks": if r["blocks"].is_array() { r["blocks"].clone() } else { json!([]) },
         });
-        let mut items = self.items.lock().unwrap();
+        let mut items = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         items.push(song.clone());
         save(&self.path, &items);
         song
     }
 
     pub fn update(&self, id: &str, r: &Value) -> Option<Value> {
-        let mut items = self.items.lock().unwrap();
+        let mut items = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let song = items.iter_mut().find(|s| s["id"] == id)?;
         for k in ["title", "author", "year", "themeId", "blocks"] {
             if let Some(v) = r.get(k) {
@@ -92,7 +92,7 @@ impl Songs {
     }
 
     pub fn remove(&self, id: &str) -> bool {
-        let mut items = self.items.lock().unwrap();
+        let mut items = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let before = items.len();
         items.retain(|s| s["id"] != id);
         save(&self.path, &items);
@@ -150,11 +150,11 @@ impl Triggers {
     }
 
     pub fn list(&self) -> Vec<Value> {
-        self.items.lock().unwrap().clone()
+        self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
     }
 
     pub fn is_active(&self, id: &str) -> bool {
-        self.active.lock().unwrap().contains_key(id)
+        self.active.lock().unwrap_or_else(std::sync::PoisonError::into_inner).contains_key(id)
     }
 
     pub fn add(&self, r: &Value) -> Value {
@@ -170,14 +170,14 @@ impl Triggers {
             "params": if r["params"].is_object() { r["params"].clone() } else { json!({}) },
             "lastFiredAt": null,
         });
-        let mut items = self.items.lock().unwrap();
+        let mut items = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         items.push(t.clone());
         save(&self.path, &items);
         t
     }
 
     pub fn update(&self, id: &str, r: &Value) -> Option<Value> {
-        let mut items = self.items.lock().unwrap();
+        let mut items = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let t = items.iter_mut().find(|t| t["id"] == id)?;
         if let Some(l) = r.get("label") {
             t["label"] = l.clone();
@@ -195,17 +195,17 @@ impl Triggers {
     }
 
     pub fn stop(&self, id: &str) {
-        if let Some(h) = self.active.lock().unwrap().remove(id) {
+        if let Some(h) = self.active.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(id) {
             h.abort();
         }
-        if let Some(t) = self.items.lock().unwrap().iter().find(|t| t["id"] == id) {
+        if let Some(t) = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().find(|t| t["id"] == id) {
             self.hub.broadcast(json!({ "type": "action", "actionId": t["typeId"], "target": "viewer", "triggerId": id, "payload": { "cleared": true } }));
         }
     }
 
     pub fn remove(&self, id: &str) -> bool {
         self.stop(id);
-        let mut items = self.items.lock().unwrap();
+        let mut items = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let before = items.len();
         items.retain(|t| t["id"] != id);
         save(&self.path, &items);
@@ -213,7 +213,7 @@ impl Triggers {
     }
 
     pub fn fire(&self, id: &str) -> Value {
-        let Some(t) = self.items.lock().unwrap().iter().find(|t| t["id"] == id).cloned() else { return json!({ "error": "No such trigger" }) };
+        let Some(t) = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().find(|t| t["id"] == id).cloned() else { return json!({ "error": "No such trigger" }) };
         let kind = t["typeId"].as_str().unwrap_or("").to_string();
         if kind != "stage-timer" && kind != "clock-message" {
             return json!({ "error": format!("Unknown trigger type \"{kind}\"") });
@@ -233,7 +233,7 @@ impl Triggers {
         }
         self.stop(id); // re-firing replaces the running one
         let fired = {
-            let mut items = self.items.lock().unwrap();
+            let mut items = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             let t = items.iter_mut().find(|t| t["id"] == id).expect("found above");
             t["lastFiredAt"] = json!(epoch_ms());
             let out = t.clone();
@@ -266,14 +266,14 @@ impl Triggers {
                 }
             })
         };
-        self.active.lock().unwrap().insert(id.to_string(), handle);
+        self.active.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(id.to_string(), handle);
         json!({ "ok": true, "trigger": fired })
     }
 
     /// Clock messages on screen (cleared with the timer layer).
     pub fn active_clocks(&self) -> Vec<String> {
-        let active = self.active.lock().unwrap();
-        self.items.lock().unwrap().iter().filter(|t| t["typeId"] == "clock-message" && active.contains_key(t["id"].as_str().unwrap_or(""))).filter_map(|t| t["id"].as_str().map(str::to_string)).collect()
+        let active = self.active.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().filter(|t| t["typeId"] == "clock-message" && active.contains_key(t["id"].as_str().unwrap_or(""))).filter_map(|t| t["id"].as_str().map(str::to_string)).collect()
     }
 }
 
@@ -322,7 +322,7 @@ impl Segments {
     fn seed(&self) {
         let mut changed = false;
         {
-            let mut items = self.items.lock().unwrap();
+            let mut items = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             // A segment live when the app last closed isn't running now.
             for s in items.iter_mut() {
                 if s["status"] == "live" && !self.triggers.is_active(s["triggerId"].as_str().unwrap_or("")) {
@@ -342,13 +342,13 @@ impl Segments {
             }
         }
         let pre = {
-            let items = self.items.lock().unwrap();
+            let items = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             items.iter().filter(|s| is_preservice(s["name"].as_str().unwrap_or(""))).min_by_key(|s| s["order"].as_i64().unwrap_or(0)).cloned()
         };
         if let Some(pre) = pre.filter(|p| p["preservice2Seeded"] != true) {
-            let has = self.items.lock().unwrap().iter().any(|s| s["name"].as_str().unwrap_or("").trim().eq_ignore_ascii_case(PRESERVICE_2));
+            let has = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().any(|s| s["name"].as_str().unwrap_or("").trim().eq_ignore_ascii_case(PRESERVICE_2));
             {
-                let mut items = self.items.lock().unwrap();
+                let mut items = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
                 if let Some(p) = items.iter_mut().find(|s| s["id"] == pre["id"]) {
                     p["preservice2Seeded"] = json!(true);
                 }
@@ -357,7 +357,7 @@ impl Segments {
             if !has {
                 let added = self.add(PRESERVICE_2, &Value::Object(preservice_loop(true)));
                 let pre_order = pre["order"].as_i64().unwrap_or(0);
-                let mut items = self.items.lock().unwrap();
+                let mut items = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
                 for s in items.iter_mut() {
                     let o = s["order"].as_i64().unwrap_or(0);
                     if s["id"] != added["id"] && o > pre_order {
@@ -370,9 +370,9 @@ impl Segments {
             }
         }
         if changed {
-            save(&self.path, &self.items.lock().unwrap());
+            save(&self.path, &self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner));
         }
-        if self.items.lock().unwrap().is_empty() {
+        if self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner).is_empty() {
             for name in DEFAULT_SEGMENTS {
                 let mut opts = Map::new();
                 if is_preservice(name) {
@@ -395,7 +395,7 @@ impl Segments {
 
     pub fn add(&self, name: &str, opts: &Value) -> Value {
         let trigger = self.triggers.add(&json!({ "typeId": "stage-timer", "label": name }));
-        let mut items = self.items.lock().unwrap();
+        let mut items = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let or = |k: &str, d: Value| if opts[k].is_null() { d } else { opts[k].clone() };
         let mut seg = json!({
             "id": new_id(), "name": name, "order": items.len(), "triggerId": trigger["id"], "status": "pending",
@@ -414,13 +414,13 @@ impl Segments {
     }
 
     pub fn list(&self) -> Vec<Value> {
-        let mut items = self.items.lock().unwrap().clone();
+        let mut items = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
         items.sort_by_key(|s| s["order"].as_i64().unwrap_or(0));
         items.iter().map(|s| self.with_trigger(s)).collect()
     }
 
     pub fn update(&self, id: &str, r: &Value) -> Option<Value> {
-        let mut items = self.items.lock().unwrap();
+        let mut items = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let s = items.iter_mut().find(|s| s["id"] == id)?;
         let trigger_id = s["triggerId"].as_str().unwrap_or("").to_string();
         if let Some(n) = r.get("name") {
@@ -442,7 +442,7 @@ impl Segments {
     }
 
     pub fn remove(&self, id: &str) -> bool {
-        let mut items = self.items.lock().unwrap();
+        let mut items = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let Some(s) = items.iter().find(|s| s["id"] == id).cloned() else { return false };
         self.triggers.remove(s["triggerId"].as_str().unwrap_or(""));
         items.retain(|x| x["id"] != id);
@@ -455,7 +455,7 @@ impl Segments {
 
     pub fn reorder(&self, ids: &[Value]) -> Vec<Value> {
         {
-            let mut items = self.items.lock().unwrap();
+            let mut items = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             for (i, id) in ids.iter().enumerate() {
                 if let Some(s) = items.iter_mut().find(|s| s["id"] == *id) {
                     s["order"] = json!(i);
@@ -468,7 +468,7 @@ impl Segments {
 
     pub fn start(&self, id: &str, end_at_time: Option<&Value>) -> Value {
         let (trigger_id, was_live) = {
-            let items = self.items.lock().unwrap();
+            let items = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             let Some(s) = items.iter().find(|s| s["id"] == id) else { return json!({ "error": "No such segment" }) };
             let was = items.iter().find(|x| x["status"] == "live" && x["id"] != id).map(|x| (x["id"].clone(), x["triggerId"].as_str().unwrap_or("").to_string()));
             (s["triggerId"].as_str().unwrap_or("").to_string(), was)
@@ -484,7 +484,7 @@ impl Segments {
             self.triggers.stop(t);
         }
         let out = {
-            let mut items = self.items.lock().unwrap();
+            let mut items = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             if let Some((wid, _)) = &was_live {
                 if let Some(w) = items.iter_mut().find(|x| x["id"] == *wid) {
                     w["status"] = json!("done");
@@ -501,13 +501,13 @@ impl Segments {
 
     fn set_status(&self, id: &str, status: &str) -> Value {
         let trigger_id = {
-            let items = self.items.lock().unwrap();
+            let items = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             let Some(s) = items.iter().find(|s| s["id"] == id) else { return json!({ "error": "No such segment" }) };
             s["triggerId"].as_str().unwrap_or("").to_string()
         };
         self.triggers.stop(&trigger_id);
         let out = {
-            let mut items = self.items.lock().unwrap();
+            let mut items = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             let s = items.iter_mut().find(|s| s["id"] == id).expect("found above");
             s["status"] = json!(status);
             let out = s.clone();
@@ -526,7 +526,7 @@ impl Segments {
     }
 
     pub fn stop_live(&self) {
-        let live = self.items.lock().unwrap().iter().find(|s| s["status"] == "live").and_then(|s| s["id"].as_str().map(str::to_string));
+        let live = self.items.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().find(|s| s["status"] == "live").and_then(|s| s["id"].as_str().map(str::to_string));
         if let Some(id) = live {
             self.stop(&id, true);
         }
