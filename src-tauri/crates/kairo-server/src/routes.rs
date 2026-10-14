@@ -174,7 +174,7 @@ async fn start_listening(State(app): State<Shared>, Json(body): Json<Value>) -> 
     match started {
         Ok(session) => {
             *listening = Some(session);
-            *app.keep_awake.lock().unwrap() = Some(crate::KeepAwake::hold());
+            *app.keep_awake.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(crate::KeepAwake::hold());
             Json(if engine == "offline" || engine == "browser" { json!({ "ok": true, "engine": "offline" }) } else { json!({ "ok": true }) })
         }
         Err(e) => Json(e),
@@ -191,7 +191,7 @@ async fn stop_listening(State(app): State<Shared>) -> Json<Value> {
         }
         None => {}
     }
-    app.keep_awake.lock().unwrap().take();
+    app.keep_awake.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take();
     Json(json!({ "ok": true }))
 }
 
@@ -358,7 +358,7 @@ async fn search_suggest(State(app): State<Shared>, Json(body): Json<Value>) -> J
 
 /// The church's translation and language on verses the operator will see.
 fn present(app: &Shared, bible: &crate::bible::Bible, verses: &mut [Value]) {
-    let p = app.presentation.read().unwrap().clone();
+    let p = app.presentation.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
     bible.apply_translation(verses, &p.translation);
     bible.apply_language(verses, &p.language);
 }
@@ -367,7 +367,7 @@ fn present(app: &Shared, bible: &crate::bible::Bible, verses: &mut [Value]) {
 
 async fn range_next(State(app): State<Shared>) -> Json<Value> {
     let Some((_, d)) = app.ready() else { return Json(json!({ "ok": false, "reason": "no range active" })) };
-    let active = app.hub.live.lock().unwrap().range_state.clone();
+    let active = app.hub.live.lock().unwrap_or_else(std::sync::PoisonError::into_inner).range_state.clone();
     if active.is_none() {
         return Json(json!({ "ok": false, "reason": "no range active" }));
     }
@@ -443,7 +443,7 @@ pub(crate) async fn send_service_slide(app: &Shared, verse: Value, look: Value, 
         app.hub.set_bible_on_top(true);
     } else {
         let on_top = {
-            let mut l = app.hub.live.lock().unwrap();
+            let mut l = app.hub.live.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
             l.underneath = Some(Underneath { verse: verse.clone(), look: look.clone(), next: next.clone() });
             l.bible_on_top
         };
@@ -457,7 +457,7 @@ pub(crate) async fn send_service_slide(app: &Shared, verse: Value, look: Value, 
         match verse["book"].as_str().and_then(|b| bible.find(b, verse["chapter"].as_u64().unwrap_or(0), verse["verse"].as_u64().unwrap_or(0))) {
             Some(v) => {
                 d.send(Event::OperatorSent(v));
-                app.log.lock().unwrap().shown.push(crate::notes::Shown { verse: v, at: epoch_ms(), how: crate::notes::How::Cited });
+                app.log.lock().unwrap_or_else(std::sync::PoisonError::into_inner).shown.push(crate::notes::Shown { verse: v, at: epoch_ms(), how: crate::notes::How::Cited });
             }
             None if !is_bible => d.send(Event::NonScriptureLive),
             None => {}
@@ -479,7 +479,7 @@ async fn service_send(State(app): State<Shared>, Json(body): Json<Value>) -> Res
     // keepBible: a slide the follower moved to while a verse is still being
     // read goes under the verse instead of replacing it (src/service.js).
     if body["keepBible"] == true && !verse["book"].as_str().is_some_and(|b| b != "Service") {
-        let mut l = app.hub.live.lock().unwrap();
+        let mut l = app.hub.live.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if l.bible_on_top {
             l.underneath = Some(Underneath { verse: verse.clone(), look: body["look"].clone(), next: clean_next(&body["next"]) });
             drop(l);
@@ -526,7 +526,7 @@ pub(crate) async fn clear_layer(app: &Shared, layer: &str) -> Value {
     }
     if layer == "bible" {
         app.hub.set_bible_on_top(false);
-        let under = app.hub.live.lock().unwrap().underneath.clone();
+        let under = app.hub.live.lock().unwrap_or_else(std::sync::PoisonError::into_inner).underneath.clone();
         if let Some(u) = under {
             Box::pin(send_service_slide(app, u.verse, u.look, false, false, u.next)).await;
             return json!({ "restored": true });
@@ -535,14 +535,14 @@ pub(crate) async fn clear_layer(app: &Shared, layer: &str) -> Value {
         screen_cleared(app);
         return json!({ "restored": false });
     }
-    if layer == "slide" && app.hub.live.lock().unwrap().bible_on_top {
-        app.hub.live.lock().unwrap().underneath = None;
+    if layer == "slide" && app.hub.live.lock().unwrap_or_else(std::sync::PoisonError::into_inner).bible_on_top {
+        app.hub.live.lock().unwrap_or_else(std::sync::PoisonError::into_inner).underneath = None;
         app.hub.layer_state();
         return json!({ "keptBible": true });
     }
     app.hub.broadcast(json!({ "type": "clear-layer", "target": "viewer", "layer": layer }));
     if layer == "slide" || layer == "all" {
-        app.hub.live.lock().unwrap().underneath = None;
+        app.hub.live.lock().unwrap_or_else(std::sync::PoisonError::into_inner).underneath = None;
         app.hub.set_bible_on_top(false);
         app.hub.layer_state();
         screen_cleared(app);
@@ -566,7 +566,7 @@ async fn clear_layer_route(State(app): State<Shared>, Json(body): Json<Value>) -
 /// Back: undoes the last change to what's on screen.
 async fn output_back(State(app): State<Shared>) -> Json<Value> {
     let (prev, undone) = {
-        let mut l = app.hub.live.lock().unwrap();
+        let mut l = app.hub.live.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let Some(prev) = l.history.pop_back() else { return Json(json!({ "ok": false, "reason": "Nothing earlier to go back to" })) };
         l.restoring = true;
         l.underneath = prev.underneath.clone();
@@ -582,7 +582,7 @@ async fn output_back(State(app): State<Shared>) -> Json<Value> {
         None => app.hub.broadcast(json!({ "type": "clear-layer", "target": "viewer", "layer": "slide", "restoredByBack": true })),
     }
     {
-        let mut l = app.hub.live.lock().unwrap();
+        let mut l = app.hub.live.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         l.screen_now = prev.slide.clone();
         l.bible_on_top = prev.bible_on_top;
         l.restoring = false;
@@ -619,7 +619,7 @@ async fn look_apply(State(app): State<Shared>, Json(b): Json<Value>) -> Response
         return Json(json!({ "ok": true, "outputs": count(modes) })).into_response();
     }
     if themes.is_object() {
-        app.hub.live.lock().unwrap().output_themes = themes.clone();
+        app.hub.live.lock().unwrap_or_else(std::sync::PoisonError::into_inner).output_themes = themes.clone();
         app.hub.broadcast(json!({ "type": "look-update", "themes": themes, "look": look, "layers": layers_out }));
         return Json(json!({ "ok": true, "outputs": count(themes) })).into_response();
     }

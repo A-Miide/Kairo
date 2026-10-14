@@ -117,7 +117,7 @@ fn run(
         .name("meaning".into())
         .spawn(move || {
             for r in mrx {
-                let Some(m) = models_for_thread.read().unwrap().clone() else { continue };
+                let Some(m) = models_for_thread.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone() else { continue };
                 let a = answer(&m, &r);
                 let _ = back.send(Command::Event(Event::Answer(a)));
             }
@@ -128,7 +128,7 @@ fn run(
         let now = started.elapsed().as_millis() as u64;
         let out = match cmd {
             Command::Event(Event::Reset) => {
-                *log.lock().unwrap() = ServiceLog::default();
+                *log.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = ServiceLog::default();
                 engine.handle(Event::Reset, now)
             }
             Command::Event(e) => engine.handle(e, now),
@@ -137,13 +137,13 @@ fn run(
                 continue;
             }
             Command::Meaning(m) => {
-                *models.write().unwrap() = Some(m.clone());
+                *models.write().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(m.clone());
                 meaning = Some(m);
                 engine.config_mut().meaning = true;
                 continue;
             }
         };
-        let p = presentation.read().unwrap().clone();
+        let p = presentation.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
         apply(&bible, &hub, &mut range, out.clone(), &p, &log);
         for r in out.requests {
             if meaning.is_some() {
@@ -218,11 +218,11 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
                     hub.set_bible_on_top(true);
                     let how = crate::notes::How::of(method.wire());
                     let at = epoch_ms();
-                    log.lock().unwrap().shown.extend(verses.iter().take(1).map(|v| crate::notes::Shown { verse: *v, at, how }));
+                    log.lock().unwrap_or_else(std::sync::PoisonError::into_inner).shown.extend(verses.iter().take(1).map(|v| crate::notes::Shown { verse: *v, at, how }));
                 }
             }
             Effect::RangeSet { verses, current } => {
-                log.lock().unwrap().ranges.push((verses.clone(), epoch_ms()));
+                log.lock().unwrap_or_else(std::sync::PoisonError::into_inner).ranges.push((verses.clone(), epoch_ms()));
                 range.all = verses.clone();
                 range.current = verses.iter().position(|v| *v == current).unwrap_or(0);
                 range_state(bible, hub, range);

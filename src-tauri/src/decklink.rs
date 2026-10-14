@@ -184,6 +184,6 @@ mod tests {
         let r = super::start(0, 0x48703539 /* bmdModeHD1080p5994 */, false, 59.94, h.clone());
         assert!(r.is_err());
         println!("start without card: {:?}", r.err());
-        assert!(!h.lock().unwrap().is_running());
+        assert!(!h.lock().unwrap_or_else(std::sync::PoisonError::into_inner).is_running());
     }
 }
