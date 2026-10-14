@@ -1795,11 +1795,6 @@ setInterval(() => {
 }, 500);
 
 let lastNonZeroAudioAt = 0;   // any non-zero sample at all (a real mic always has some noise)
-// The last real (non-zero) sample this session — unlike lastNonZeroAudioAt,
-// never reset by a rebuild — and how often a silent virtual input has been
-// reopened since (checkAudioSilence).
-let lastHeardSignalAt = 0;
-let _virtualReopens = 0, _virtualReopenAt = 0;
 let _lastLevelLogAt = 0;
 // One capture graph: getUserMedia stream -> 16 kHz AudioContext -> frames to
 // the server. Shared by Start and every rebuild (they used to be two copies).
@@ -1880,7 +1875,7 @@ function noteCaptureLevel(peak, bufferLength, gain = 1, clipped = false) {
   noteInputLevel(peak / 32768, clipped, gain);
   noteInputSummary(peak / 32768, clipped, gain);
   if (peak > 0) rememberInputGain(mediaStream?.getAudioTracks?.()[0]?.label || '', gain);
-  if (peak > 0) { lastNonZeroAudioAt = now; lastHeardSignalAt = now; _virtualReopens = 0; }
+  if (peak > 0) lastNonZeroAudioAt = now;
   if (peak > AUDIO_PEAK_NOISE_FLOOR) lastRealAudioAt = now;
   if (now - _lastLevelLogAt > 3000) {
     _lastLevelLogAt = now;
@@ -2047,7 +2042,6 @@ async function startListening() {
     watchAudioTrackHealth();   // OS-level "track died" → immediate rebuild
 
     lastRealAudioAt = lastNonZeroAudioAt = Date.now(); // don't warn before real audio has had a chance to arrive at all
-    lastHeardSignalAt = 0; _virtualReopens = 0; _virtualReopenAt = 0; // a new session: nothing heard yet
     audioSilenceWarning = false;
     clearInterval(audioSilenceWatchdog);
     resetSleepCheck();
@@ -2171,22 +2165,6 @@ function checkAudioSilence() {
   // playing — is never a reason: silence used to trigger a rebuild, which the
   // operator saw as the mic "reconnecting". The Deepgram connection is never
   // touched here either way.
-  // A virtual input (BlackHole…) that was carrying audio and now gives
-  // exact zeros is usually just paused — but macOS can also stop feeding an
-  // open capture of it (another app taking the device over), and then only
-  // reopening it brings the sound back (live: 4½ minutes of zeros while the
-  // service played, fixed the moment the source was changed). So reopen the
-  // SAME input, seamlessly, after 20 s of it, then 2 min, then every 5 min
-  // while it stays silent. Never the room mic instead.
-  if (captureIsVirtualInput() && lastHeardSignalAt && audioContext && !_audioHealing) {
-    const wait = [20000, 120000, 300000][Math.min(_virtualReopens, 2)];
-    if (now - lastHeardSignalAt > wait && now - _virtualReopenAt > wait) {
-      _virtualReopens++;
-      _virtualReopenAt = _audioHealAt = now;
-      restartAudioCapture('virtual-input-silent', false);
-      return;
-    }
-  }
   const stuckAtZero = !captureIsVirtualInput() && now - lastNonZeroAudioAt > 45000;
   if ((wokeFromSleep || stuckAtZero) && audioContext && !_audioHealing && now - _audioHealAt > 20000) {
     _audioHealAt = now;
