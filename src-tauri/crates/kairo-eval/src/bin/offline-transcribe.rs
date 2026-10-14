@@ -2,7 +2,7 @@
 //! would (same model, same locking, the recogniser asked every 120 ms of
 //! audio), faster than real time, into a file the replay scores.
 //!
-//! `cargo run --release -p kairo-eval --bin offline-transcribe -- <audio> <name> [--beam] [--hotwords <score>]`
+//! `cargo run --release -p kairo-eval --bin offline-transcribe -- <audio> <name> [--beam] [--hotwords <score>] [--blank-penalty <x>] [--reset-after <words>]`
 //! writes `parity/offline/<name>.json`; then `replay --offline <name>`.
 //! `--beam` decodes with beam search; `--hotwords` also favours the book names.
 
@@ -23,9 +23,13 @@ fn main() {
     let model = std::env::var_os("KAIRO_OFFLINE_MODEL").map(std::path::PathBuf::from).unwrap_or_else(|| root().join("server/models/sherpa-streaming-en"));
     let opt = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned();
     let hotwords_score: f32 = opt("--hotwords").and_then(|s| s.parse().ok()).unwrap_or(0.0);
-    let decoding = Decoding { beam: hotwords_score > 0.0 || args.iter().any(|a| a == "--beam"), hotwords_score };
+    let blank_penalty: f32 = opt("--blank-penalty").and_then(|s| s.parse().ok()).unwrap_or(kairo_server::offline::BLANK_PENALTY);
+    let decoding = Decoding { beam: hotwords_score > 0.0 || args.iter().any(|a| a == "--beam"), hotwords_score, blank_penalty };
     let rec = recognizer(&model, &decoding).expect("offline model");
     let mut heard = Transcriber::new(rec, None);
+    if let Some(n) = opt("--reset-after").and_then(|s| s.parse().ok()) {
+        heard.reset_after = n;
+    }
 
     let mut ffmpeg = Command::new("ffmpeg")
         .args(["-v", "error", "-i", audio, "-ac", "1", "-ar", "16000", "-f", "s16le", "-"])
