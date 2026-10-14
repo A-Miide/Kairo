@@ -337,6 +337,8 @@ impl Engine {
             self.check_citation_siblings(&text, false, false, now);
             if !found && self.reading.is_valid(now) && !self.announces_different_book(&text, self.t.prev_final.clone(), now) {
                 self.interim_partial(&text, now);
+            } else if !found {
+                self.on_screen_partial(&text, false, now);
             }
             self.spoken_correction(&text, false, now);
             if !found {
@@ -377,6 +379,8 @@ impl Engine {
             found = true;
         } else if !found && self.reading.is_valid(now) {
             found = self.final_partial(&text, prev_before.as_ref(), now);
+        } else if !found {
+            found = self.on_screen_partial(&text, true, now);
         }
         if !found {
             found = self.bare_number_continuation(&text, now);

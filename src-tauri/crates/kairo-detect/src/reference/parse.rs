@@ -22,7 +22,8 @@
 //! - One unrelated word right where "verse" belongs, followed by "N to M",
 //!   is a garbled verse marker.
 //! - Ranges ("to", "through", "to the end") and lists need a connector
-//!   ("and", "verse"); consecutive verses join into one range.
+//!   ("and", "verse"); consecutive verses join into one range. The one
+//!   exception is the very next verse said straight after ("4 20 21").
 //! - A book that is also an everyday word or a person's name needs "chapter"
 //!   or a verse to count as a citation.
 
@@ -299,7 +300,20 @@ impl Parser<'_> {
                 scan += 1;
             }
             if scan == before {
-                break;
+                // "Romans 4 20 21": the very next verse, said straight after,
+                // continues the range; any other bare number is unrelated.
+                let last = spans.last().map_or(start, |s| s.1);
+                let next = num(w, scan, None).filter(|n| n.value == i64::from(last) + 1);
+                match next {
+                    Some(n) if self.shape.verses(book, chapter).is_none_or(|v| last < v) => {
+                        scan += n.consumed;
+                        if let Some(s) = spans.last_mut() {
+                            s.1 = last + 1;
+                        }
+                        continue;
+                    }
+                    _ => break,
+                }
             }
             let Some(s) = num(w, scan, None) else { break };
             scan += s.consumed;

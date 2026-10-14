@@ -14,7 +14,7 @@ use crate::re::re;
 use crate::reference::i18n::localize;
 use crate::reference::numbers::{consume_number, is_ambiguous_number_word};
 use crate::reference::partial::BARE_NUMBER_FILLER;
-use crate::reference::{Partial, Verses};
+use crate::reference::{Active, Partial, Verses};
 
 const NEXT_VERSE_COOLDOWN_MS: u64 = 4_000;
 const NEXT_VERSE_MAX_GAP_MS: u64 = 180_000;
@@ -27,6 +27,9 @@ const VERSE_JUMP_COOLDOWN_MS: u64 = 2_000;
 /// A "verse N" resolution renews the context only if it reached the screen,
 /// or that verse is already up from this recently.
 const PARTIAL_CONFIRM_MAX_AGE_MS: u64 = 15_000;
+/// After the reading context lapses, "verse N" still means a verse of the
+/// passage on screen for this long after it went up.
+const ON_SCREEN_CONTEXT_MS: u64 = 120_000;
 
 static NEXT: LazyLock<regex::Regex> = LazyLock::new(|| re(r"\b(next verse|following verse|verse after (that|this|it))\b"));
 static BACK: LazyLock<regex::Regex> = LazyLock::new(|| re(r"\b(previous verse|verse before|preceding verse)\b"));
@@ -186,6 +189,40 @@ impl Engine {
             self.interim_partial(tail, now);
             false
         }
+    }
+
+    /// "verse N" said once the reading context has lapsed, against the
+    /// passage still on screen ("…direct thy paths. Verse six"). Only with
+    /// "verse" said: a bare number long after the reading means nothing.
+    pub(crate) fn on_screen_partial(&mut self, text: &str, is_final: bool, now: u64) -> bool {
+        let Some((up, at)) = self.screen.up else { return false };
+        if self.reading.is_valid(now) || now.saturating_sub(at) > ON_SCREEN_CONTEXT_MS {
+            return false;
+        }
+        if !is_final && interim_looks_incomplete(text) {
+            return false;
+        }
+        let r = self.r(up);
+        let active = Active { book: Some(r.book), chapter: Some(r.chapter as u32) };
+        let Some(p) = self.k.partials(self.cfg.lang).resolve(text, active, false) else { return false };
+        let verses = self.citation_verses(&p.citation);
+        if verses.is_empty() || verses.contains(&up) {
+            return false;
+        }
+        // The context has lapsed, so the preacher may have moved to a passage
+        // never named: only the verse's own words in what was just said put
+        // it up; otherwise it is offered.
+        let spoken = format!("{} {text}", self.recent_speech_seconds(20).join(" "));
+        if !verses.iter().any(|v| self.shares_words_with(*v, &spoken)) {
+            self.decide(Candidate::new(verses, partial_method(&p), DIRECT_PARTIAL_SCORE, Target::Suggestions).capped(), now);
+            return true;
+        }
+        if verses.len() > 1 {
+            self.set_range(verses.clone(), now);
+        }
+        let sent = self.decide(Candidate::new(verses.clone(), partial_method(&p), DIRECT_PARTIAL_SCORE, Target::Screen), now);
+        self.partial_confirms_context(sent, verses[0], &p, now);
+        true
     }
 
     /// "verse N" (or "verses 3 to 5") in a final, against the passage being read.
