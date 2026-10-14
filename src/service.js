@@ -351,6 +351,16 @@
   // that needs to know the difference and redirect to the server instead.
   function saveService() {
     markLookupCandidatesDirty();
+    // A pin for a theme the deck no longer uses goes (picking that theme
+    // again later means the theme as it is then).
+    let unpinned = false;
+    allItems().forEach(it => {
+      if (!it.themePins) return;
+      const ids = themeIdsOf(it);
+      Object.keys(it.themePins).forEach(id => { if (!ids.has(id)) { delete it.themePins[id]; unpinned = true; } });
+      if (!Object.keys(it.themePins).length) delete it.themePins;
+    });
+    if (unpinned) saveThemeVersions();
     saveAll();
     if (window.KairoItemStyleEditor?.isOpen?.()) {
       const item = window.KairoItemStyleEditor.getItem();
@@ -627,10 +637,89 @@
     return { ...base, layers: base.layers.map(l => (l === canvas ? fill : l)) };
   }
 
+  // ── Theme versions (ProPresenter-style safety, with a way forward) ──────
+  // Editing a theme never changes a deck that already uses it: the first
+  // time a theme changes, every deck using it keeps the version it had
+  // (item.themePins[themeId] = that version's hash; the version itself is
+  // stored once, in THEME_VERSIONS_KEY, however many decks share it). New
+  // decks, imports and a deliberate theme pick use the theme as it is now,
+  // and "Update to the current theme" brings a deck forward. Outputs and
+  // verses always follow the theme live.
+  const THEME_VERSIONS_KEY = 'kairo-theme-versions-v1';
+  let themeVersions = {};
+  try { themeVersions = JSON.parse(localStorage.getItem(THEME_VERSIONS_KEY) || '{}') || {}; } catch { themeVersions = {}; }
+  const parsedThemeVersions = new Map();
+  const allItems = () => playlists.flatMap(p => p.items || []);
+  function themeIdsOf(item) {
+    const ids = new Set();
+    if (!item) return ids;
+    if (item.themeId) ids.add(item.themeId);
+    (item.blocks || []).forEach(b => { if (b && b.themeId) ids.add(b.themeId); });
+    Object.values(item.slideThemes || {}).forEach(id => { if (id) ids.add(id); });
+    return ids;
+  }
+  // The look this item shows for theme `id`: the version it's pinned to, or
+  // the theme as it is now.
+  function themeLookFor(item, id) {
+    if (!id) return null;
+    const list = (typeof looks !== 'undefined' && Array.isArray(looks)) ? looks : [];
+    const live = list.find(l => l.id === id) || null;
+    const pin = item && item.themePins && item.themePins[id];
+    if (pin && themeVersions[pin]) {
+      let v = parsedThemeVersions.get(pin);
+      if (!v) { try { v = JSON.parse(themeVersions[pin]); } catch { v = null; } if (v) parsedThemeVersions.set(pin, v); }
+      if (v) return { ...v, id, name: live ? live.name : (v.name || 'Theme') };
+    }
+    return live;
+  }
+  function saveThemeVersions() {
+    const used = new Set();
+    allItems().forEach(it => Object.values(it.themePins || {}).forEach(h => used.add(h)));
+    Object.keys(themeVersions).forEach(h => { if (!used.has(h)) { delete themeVersions[h]; parsedThemeVersions.delete(h); } });
+    try { localStorage.setItem(THEME_VERSIONS_KEY, JSON.stringify(themeVersions)); return true; }
+    catch (err) { console.warn('[KAIRO] theme versions not saved (storage full?):', err.message); return false; }
+  }
+  // Theme Studio, just before it saves a changed theme: decks using it keep
+  // the version they had. Returns how many decks that was.
+  function keepThemeVersion(id, hash, json) {
+    const decks = allItems().filter(it => themeIdsOf(it).has(id) && !(it.themePins && it.themePins[id]));
+    if (!decks.length) return 0;
+    themeVersions[hash] = json;
+    decks.forEach(it => { (it.themePins || (it.themePins = {}))[id] = hash; });
+    if (!saveThemeVersions()) {
+      // No room to keep the old version: the decks follow the theme, as before.
+      decks.forEach(it => { delete it.themePins[id]; if (!Object.keys(it.themePins).length) delete it.themePins; });
+      return 0;
+    }
+    saveAll();
+    try { renderSidebar(); } catch {}
+    return decks.length;
+  }
+  const onOlderTheme = (item) => !!(item && item.themePins && Object.keys(item.themePins).length);
+  // A theme's reach, for Theme Studio: decks using it, and those still on an
+  // earlier version.
+  function themeUsage(id) {
+    const using = allItems().filter(it => themeIdsOf(it).has(id));
+    return { decks: using.length, older: using.filter(it => it.themePins && it.themePins[id]).length };
+  }
+  // Brings decks forward to the current theme: one deck (all its themes),
+  // or every deck pinned to theme `id`.
+  function updateToCurrentTheme(item, id) {
+    const targets = item ? [item] : allItems().filter(it => it.themePins && it.themePins[id]);
+    targets.forEach(it => {
+      if (!it.themePins) return;
+      if (item && !id) delete it.themePins; else { delete it.themePins[id]; if (!Object.keys(it.themePins).length) delete it.themePins; }
+    });
+    saveThemeVersions();
+    saveService();
+    try { renderSidebar(); renderStack(); } catch {}
+    if (liveSlideKey && targets.some(it => liveSlideKey.split(':')[0] === it.id)) resendLiveForThemeEdit(null);
+  }
+
   function themeForItem(item) {
     const list = (typeof looks !== 'undefined' && Array.isArray(looks)) ? looks : [];
     if (!list.length) return null;
-    const explicit = list.find(l => l.id === item.themeId);
+    const explicit = item.themeId ? themeLookFor(item, item.themeId) : null;
     if (explicit) return explicit;
     // Mirrors resolveItemBaseLook's timer branch in app.js — a segment
     // nobody's assigned a theme to yet must still resolve to something with
@@ -665,15 +754,13 @@
   }
   // A slide of a Slides deck can carry its own theme (block.themeId); it wins
   // over the deck's, which wins over the output's default.
-  function slideThemeLook(slide) {
+  function slideThemeLook(slide, item) {
     if (!slide || !slide.themeId) return null;
-    const list = (typeof looks !== 'undefined' && Array.isArray(looks)) ? looks : [];
-    return list.find(l => l.id === slide.themeId) || null;
+    return themeLookFor(item, slide.themeId);
   }
   function itemLookOverride(item) {
     if (!item || !item.themeId) return null;
-    const list = (typeof looks !== 'undefined' && Array.isArray(looks)) ? looks : [];
-    return list.find(l => l.id === item.themeId) || null;
+    return themeLookFor(item, item.themeId);
   }
 
   // ── Multi-Language translation ────────────────────────────────────────────
@@ -955,7 +1042,7 @@
       const [id, idxStr] = liveSlideKey.split(':');
       const item = service && service.items.find(i => i.id === id);
       if (item) {
-        const eff = slideThemeLook(slidesFor(item)[Number(idxStr)]) || itemLookOverride(item) || themeForItem(item);
+        const eff = slideThemeLook(slidesFor(item)[Number(idxStr)], item) || itemLookOverride(item) || themeForItem(item);
         if (themeId == null || (eff && eff.id === themeId)) { sendSlide(item, Number(idxStr), { auto: true }); did = true; }
       }
     }
@@ -1202,7 +1289,7 @@
     // slide the way a real per-slide scene needs to. Without this, the
     // live output would show whatever item-level theme happens to be
     // assigned (or nothing) instead of the slide's own preserved design.
-    const look = slide.isScene ? { layers: slide.layers || [] } : (slideThemeLook(slide) || itemLookOverride(item));
+    const look = slide.isScene ? { layers: slide.layers || [] } : (slideThemeLook(slide, item) || itemLookOverride(item));
     debugLog('send-slide', {
       itemId: item.id,
       itemType: item.type,
@@ -1573,6 +1660,14 @@
 
       body.appendChild(title);
       body.appendChild(sub);
+      if (onOlderTheme(item)) {
+        const upd = document.createElement('button');
+        upd.className = 'svc-theme-older';
+        upd.textContent = 'Theme changed · Update';
+        upd.title = 'This deck keeps the look it had before its theme was edited. Update it to the theme as it is now.';
+        upd.addEventListener('click', (e) => { e.stopPropagation(); updateToCurrentTheme(item); });
+        body.appendChild(upd);
+      }
 
       const del = document.createElement('button');
       del.className = 'svc-item-del';
@@ -2655,6 +2750,7 @@
         { label: 'Rename', onClick: () => startRenamingItemTitle(titleEl, item, () => { renderSidebar(); renderStack(); }) },
         { label: 'Duplicate', onClick: () => duplicateItem(item) },
         { label: 'Change Theme', onClick: () => openThemePopover(anchorEl, item) },
+        ...(onOlderTheme(item) ? [{ label: 'Update to the current theme', onClick: () => updateToCurrentTheme(item) }] : []),
         { label: 'Edit', onClick: () => window.KairoItemStyleEditor?.open?.(item.id, 0) },
         { label: 'Quick edit', onClick: () => openFullEdit(item.id) },
         // Auto-advance (src/lyrics_follow.js for songs, src/slide_follow.js for decks)
@@ -2877,6 +2973,7 @@
     const sharedSlideTheme = slideIdx && slideThemes.every(t => t === slideThemes[0]) ? slideThemes[0] : undefined;
     const currentThemeId = slideIdx ? sharedSlideTheme : item.themeId;
     const applyTheme = (id) => {
+      if (id && item.themePins && item.themePins[id]) { delete item.themePins[id]; if (!Object.keys(item.themePins).length) delete item.themePins; }
       if (slideIdx) {
         slideIdx.forEach(i => setSlideThemeId(item, i, id));
         saveService(); refreshAfterSlideEdit(item);
@@ -6289,7 +6386,7 @@
       // theme to apply at all; themeForItem(item) would be either the
       // wrong theme or nothing. Same convention Full-scale Edit's own
       // thumbnail painter already uses for this (renderItemSlidesList).
-      const look = s.isScene ? { layers: s.layers || [] } : (slideThemeLook(s) || themeForItem(item));
+      const look = s.isScene ? { layers: s.layers || [] } : (slideThemeLook(s, item) || themeForItem(item));
       const style = s.isScene ? {} : (item.slideStyles?.[i] || {});
       paintLookLayers(preview, look, style, {
         verseText: s.text, referenceText: s.reference || '',
@@ -6944,6 +7041,7 @@
     showTimerLibrary, onTimerAction, onClockAction, getTimerItem, updateSegmentParams, saveTimerScenes, saveScenePace,
     onTranscript, setAutoFollow, get autoFollow() { return autoFollow; },
     noteBibleVerse, onLayerState,
+    themeLookFor, keepThemeVersion, themeUsage, updateToCurrentTheme,
     resendLiveForThemeEdit, resendLiveForSlideStyleEdit, onTimerSlide, refreshThumbnails, clearLive,
     // Lets Full-scale edit's canvas (app.js's beginInlineTextEdit) double-
     // click-edit a verse-bound layer's actual words — a song lyric or a

@@ -2135,6 +2135,9 @@ body > .lyric-follow-hud { position: fixed; left: 14px; bottom: 14px; z-index: 4
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
 .svc-item-sub { font-size: var(--fs-xs); color: var(--text-3); }
+/* a deck still on the version of its theme it had before the theme was edited */
+.svc-theme-older { align-self: flex-start; margin-top: 3px; padding: 1px 7px; border: 1px solid var(--border-md); border-radius: 10px; background: none; font-size: 10px; font-weight: 600; color: var(--text-2); cursor: pointer; }
+.svc-theme-older:hover { border-color: var(--brand); color: #fff; }
 .svc-item-del {
   background: transparent; border: none; cursor: pointer;
   color: var(--text-3); font-size: 16px; line-height: 1;
@@ -6179,6 +6182,11 @@ body.ts-dragging-guide-h, body.ts-dragging-guide-h * { cursor: row-resize !impor
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+.ts-theme-label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ts-theme-label .ts-theme-name { flex: none; }
+.ts-theme-usage { font-size: 10px; line-height: 1.35; color: var(--text-3); }
+.ts-theme-usage:empty { display: none; }
+.ts-theme-usage-btn { margin-left: 2px; padding: 0; border: 0; background: none; font: inherit; font-weight: 700; color: var(--brand); cursor: pointer; }
 .ts-theme-name-input {
   flex: 1;
   min-width: 0;
