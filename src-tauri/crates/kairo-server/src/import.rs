@@ -12,6 +12,9 @@ use regex::Regex;
 use serde_json::{json, Value};
 
 const MAX_INFLATED_ENTRY_BYTES: u64 = 200 * 1024 * 1024;
+/// All of a bundle's members together, unpacked: well above any real bundle
+/// (uploads stop at ~375 MB compressed), well below a zip bomb's appetite.
+const MAX_INFLATED_TOTAL_BYTES: u64 = 1536 * 1024 * 1024;
 const MAX_WALK_DEPTH: usize = 200;
 const ZIP64_SENTINEL: u32 = 0xFFFF_FFFF;
 
@@ -57,6 +60,7 @@ pub fn unzip(buf: &[u8], want: impl Fn(&str) -> bool) -> Result<Vec<(String, Vec
     let count = u16le(buf, eocd + 10).unwrap_or(0);
     let mut p = u32le(buf, eocd + 16).unwrap_or(0) as usize;
     let mut out = Vec::new();
+    let mut total: u64 = 0;
     for _ in 0..count {
         if p + 46 > buf.len() || u32le(buf, p) != Some(0x0201_4b50) {
             break;
@@ -106,6 +110,10 @@ pub fn unzip(buf: &[u8], want: impl Fn(&str) -> bool) -> Result<Vec<(String, Vec
             flate2::read::DeflateDecoder::new(raw).take(MAX_INFLATED_ENTRY_BYTES + 1).read_to_end(&mut d).ok().filter(|_| d.len() as u64 <= MAX_INFLATED_ENTRY_BYTES).map(|_| d)
         };
         if let Some(d) = data {
+            total += d.len() as u64;
+            if total > MAX_INFLATED_TOTAL_BYTES {
+                return Err(err("this file is too large when unpacked"));
+            }
             out.push((name, d));
         }
     }

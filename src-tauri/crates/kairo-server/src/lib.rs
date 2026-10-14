@@ -320,13 +320,17 @@ fn is_static_asset(path: &str) -> bool {
 }
 
 /// Every request carries the token (header or `?token=`), except `/health`,
-/// the UI's own files, and the WebSocket upgrade (checked in its handler).
+/// reading the UI's own files, and the WebSocket upgrade (checked in its handler).
 async fn auth(State(app): State<Shared>, req: Request, next: Next) -> Response {
     if !app.cfg.auth_required() {
         return next.run(req).await;
     }
     let path = req.uri().path();
-    if path == "/health" || is_static_asset(path) {
+    // Reading the UI's files (and media images, which the pages reference
+    // by address) needs no token; changing or deleting anything always does
+    // — a DELETE to /api/media/bin/<name>.png used to pass as an "asset".
+    let reading = matches!(*req.method(), axum::http::Method::GET | axum::http::Method::HEAD);
+    if path == "/health" || (reading && is_static_asset(path)) {
         return next.run(req).await;
     }
     if token_from(req.headers(), req.uri()).as_deref() == Some(app.cfg.token.as_str()) {
@@ -356,7 +360,8 @@ fn percent_decode(s: &str) -> String {
     while i < b.len() {
         match b[i] {
             b'%' if i + 2 < b.len() => {
-                if let Ok(x) = u8::from_str_radix(&s[i + 1..i + 3], 16) {
+                // Bytes, not a str slice: "%é" must not split a character (a panic).
+                if let Some(x) = std::str::from_utf8(&b[i + 1..i + 3]).ok().and_then(|h| u8::from_str_radix(h, 16).ok()) {
                     out.push(x);
                     i += 3;
                     continue;
@@ -369,4 +374,14 @@ fn percent_decode(s: &str) -> String {
         i += 1;
     }
     String::from_utf8_lossy(&out).into_owned()
+}
+
+#[cfg(test)]
+mod auth_tests {
+    #[test]
+    fn decoding_a_malformed_address_never_panics() {
+        assert_eq!(super::percent_decode("a%20b"), "a b");
+        assert_eq!(super::percent_decode("%é"), "%é");
+        assert_eq!(super::percent_decode("50%"), "50%");
+    }
 }
