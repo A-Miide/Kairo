@@ -2095,17 +2095,17 @@ function setAudioSilenceWarning(on) {
     dot?.classList.remove('broadcasting');
     dot?.classList.add('warning');
     if (lbl) { lbl.classList.remove('broadcasting'); lbl.classList.add('warning'); lbl.textContent = 'No audio!'; }
-    // Say where to look: a loopback (BlackHole…) is fed by the Mac's Sound
-    // output, and a Multi-Output Device can quietly stop feeding it when a
-    // device comes or goes (live: AirPlay screens on the network; the
-    // speakers kept playing, BlackHole got nothing, until the output was set
-    // again). Clicking opens Settings → Audio Input and its level meter.
+    // Say where to look: a loopback (BlackHole…) only carries what's played
+    // into it, and macOS can drop the playing app's link to it (live: output
+    // set to BlackHole, the file still playing, BlackHole silent until the
+    // output was switched away and back). Clicking opens Settings → Audio
+    // Input and its level meter.
     const input = mediaStream?.getAudioTracks?.()[0]?.label || 'the selected input';
     const pill = lbl?.closest('.ls-bcast-pill');
     if (pill) {
       pill.classList.add('is-actionable');
       pill.title = LOOPBACK_INPUT_RE.test(input)
-        ? `Nothing is reaching ${input}. Check the Mac's Sound output: it must be ${input} or a Multi-Output Device that includes it. A Multi-Output Device can stop feeding it when a speaker, screen or headphones come or go — select it again in System Settings → Sound. Click for Audio settings.`
+        ? `Nothing is reaching ${input}. Check the sound is playing and the Mac's Sound output is ${input} (or a Multi-Output Device that includes it). If it is and it's still silent, macOS has dropped the playing app's link to it: in System Settings → Sound, switch the output to something else and back. Click for Audio settings.`
         : `Nothing is coming from ${input}. Check it's connected, switched on and not muted. Click for Audio settings.`;
     }
   } else {
