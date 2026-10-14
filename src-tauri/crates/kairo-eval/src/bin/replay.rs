@@ -35,7 +35,7 @@ use kairo_detect::engine::{Config, Effect, Engine, Event, MeaningThresholds, Out
 use kairo_detect::knowledge::Knowledge;
 use kairo_eval::{answer, knowledge, meaning, root};
 use kairo_semantic::MeaningService;
-use serde_json::Value;
+use serde_json::{json, Value};
 
 const DEV: &[&str] = &["enough-is-enough", "oyedepo-kingdomlaw", "shiloh2025-impartation", "2026-09-26-identity-in-christ-1", "2026-09-26-identity-in-christ-2", "2026-09-26-identity-in-christ-3"];
 const HELD_OUT: &[&str] = &["oyedepo-meditation", "shiloh2025-love-mystery"];
@@ -406,6 +406,18 @@ fn main() {
                 Some(Decision { cue, at_ms: cue_at[cue.min(cue_at.len() - 1)], target, method: o["method"].as_str()?.to_string(), verses, corrected: o.get("correctedFrom").is_some(), score: 0.0 })
             })
             .collect();
+
+        // SENDS_JSON=<dir>: what reached the screen, when — the slide-follow
+        // eval (scripts/slide-follow-eval.js) feeds these to the follower.
+        if let Ok(dir) = std::env::var("SENDS_JSON") {
+            let sends: Vec<Value> = decisions
+                .iter()
+                .filter(|d| d.target == Target::Screen)
+                .map(|d| json!({ "atMs": d.at_ms, "verses": d.verses.iter().map(|v| label(&k, *v)).collect::<Vec<_>>() }))
+                .collect();
+            let _ = std::fs::create_dir_all(&dir);
+            let _ = std::fs::write(std::path::Path::new(&dir).join(format!("{name}.json")), serde_json::to_string(&sends).unwrap_or_default());
+        }
 
         match &fixture {
             Some(f) => {

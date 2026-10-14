@@ -72,8 +72,18 @@
     + 'just now all if then than there here what who whom which when how why from by up out into over about '
     + 'him them us its also very say said says let thee thou thy ye unto hath lord god jesus christ amen yes'));
 
+  // slides: [text] or [{ text, refs: [{ book, chapter, verse, verseEnd, raw }] }]
+  // (refs from /api/slides/scripture). A written reference is matched as it
+  // is said: "Eph. 2:6" is heard as "Ephesians two six".
   function buildDeck(slides) {
-    const list = slides.map((text, idx) => ({ idx, keys: keysOf(text) }));
+    const list = slides.map((s, idx) => {
+      const text = typeof s === 'string' ? s : (s && s.text) || '';
+      const original = text;
+      const refs = (s && Array.isArray(s.refs)) ? s.refs : [];
+      let spoken = text;
+      for (const r of refs) if (r.raw) spoken = spoken.split(r.raw).join(`${r.book} ${r.chapter} ${r.verse}${r.verseEnd !== r.verse ? ' ' + r.verseEnd : ''}`);
+      return { idx, keys: keysOf(spoken), refs, text: original };
+    });
     const df = new Map();
     list.forEach((s) => new Set(s.keys).forEach((k) => df.set(k, (df.get(k) || 0) + 1)));
     const n = Math.max(1, list.length);
@@ -83,6 +93,11 @@
       // slide — "faith" in a faith sermon — still counts, just less)
       s.weight = s.keys.map((k, i) => (s.content[i] ? Math.min(1, 0.35 + Math.log(n / (df.get(k) || 1)) / Math.log(Math.max(2, n))) : 0));
       s.contentCount = s.content.filter(Boolean).length;
+      // The slide's opening: its first two content words (within the opening
+      // clause: up to ":", "—", "." or a line break). Heard
+      // exactly, in order, it's how an operator knows the next slide has begun.
+      const opening = keysOf(String(s.text || '').split(/[:—–.\n]/)[0]);
+      s.openCount = Math.min(2, opening.filter((k) => !STOP.has(k) && (k.length >= 3 || /^\d+$/.test(k))).length);
     });
     return list;
   }
@@ -91,6 +106,7 @@
     windowTokens: 40,      // recent speech scored against each slide
     recentTokens: 10,      // a match must end within the last N words heard (it's happening NOW)
     aheadWindow: 12,       // slides ahead considered at all
+    verseAhead: 4,         // a detected verse moves the deck at most this far
     minDwellMs: 1500,
   };
 
@@ -120,6 +136,13 @@
     this._lastAdvanceAt = null;
     this._lastEmitAt = 0;
   }
+
+  // Scripture references for each slide arrive after the deck goes live
+  // (src/service.js asks the server for them); the position is kept.
+  SlideFollower.prototype.setRefs = function (refs) {
+    if (!Array.isArray(refs)) return;
+    this.slides = buildDeck(this.slides.map((s, i) => ({ text: s.text, refs: refs[i] || [] })));
+  };
 
   SlideFollower.prototype.resync = function (index, now) {
     if (!this.slides[index]) return;
@@ -173,11 +196,43 @@
     // keep the tightest cluster: drop leading matches far from the rest
     while (pos.length > 2 && pos[1].j - pos[0].j > 6) pos.shift();
     const hits = new Set(pos.map((p) => slide.keys[p.si])).size;
+    // the slide's opening content words, matched in order and back to back
+    // in what was heard (no other words between them)
+    const contentIdx = slide.content.map((c, k) => (c ? k : -1)).filter((k) => k >= 0);
+    let opening = 0;
+    for (let q = 0; q < pos.length && q < contentIdx.length; q++) {
+      if (pos[q].si !== contentIdx[q]) break;
+      if (q > 0 && pos[q].j - pos[q - 1].j > 2) break;
+      if (pos[q].w < 0.5) break;          // a word on most slides proves nothing
+      opening++;
+    }
     const weight = pos.reduce((a, p) => a + p.w, 0);
     // coverage of the slide's opening (a long scripture is often only part-read)
     const head = slide.weight.filter((x, k) => slide.content[k]).slice(0, Math.max(6, pos[pos.length - 1].si + 1));
     const cover = weight / Math.max(0.0001, head.reduce((a, b) => a + b, 0));
-    return { hits, weight, cover: Math.min(1, cover), first: pos[0].j, last: pos[pos.length - 1].j, span: pos[pos.length - 1].j - pos[0].j + 1 };
+    return { hits, weight, opening, cover: Math.min(1, cover), first: pos[0].j, last: pos[pos.length - 1].j, span: pos[pos.length - 1].j - pos[0].j + 1 };
+  };
+
+  // A verse Kairo put on screen (Bible layer). If one of the next few slides
+  // carries that reference, the speaker has reached it: the deck moves there
+  // underneath the verse, so the right slide is waiting when it clears.
+  SlideFollower.prototype.noteVerse = function (v, now) {
+    if (!this.enabled || !v) return false;
+    now = now || Date.now();
+    const covers = (s) => s.refs.some((r) => r.book === v.book && r.chapter === v.chapter && v.verse >= r.verse && v.verse <= r.verseEnd);
+    const cur = this.slides[this.index];
+    if (cur && covers(cur)) return false;
+    const hi = Math.min(this.slides.length - 1, this.index + this.cfg.verseAhead);
+    for (let k = this.index + 1; k <= hi; k++) {
+      if (!covers(this.slides[k])) continue;
+      this.index = k;
+      this._lastAdvanceAt = now;
+      this._consumed = this._finalBase + this._final.length + this._interim.length;
+      this.confidence = 1;
+      this.onAdvance({ toIndex: k, confidence: 1, by: 'verse' });
+      return true;
+    }
+    return false;
   };
 
   SlideFollower.prototype.ingest = function (text, meta) {
@@ -213,11 +268,18 @@
       const mt = this._match(s, win);
       if (!mt) continue;
       const need = needFor(k - this.index, s);
-      if (mt.hits < need.hits || mt.cover < need.cover) continue;
+      // the next slide may also go on its opening alone, heard exactly
+      const openingHeard = k === this.index + 1 && s.openCount >= 2 && mt.opening >= s.openCount;
+      if (!openingHeard && (mt.hits < need.hits || mt.cover < need.cover)) continue;
       if (mt.last < win.length - this.cfg.recentTokens) continue;      // heard a while ago, not now
       if (mt.span > mt.hits * 3 + 4) continue;                          // scattered words, not the slide
-      // the current slide explains these words at least as well → stay
-      if (curMatch && curMatch.weight >= mt.weight && curMatch.last >= mt.first) continue;
+      // the current slide explains these same words at least as well → stay
+      // (judged on the matched stretch only, not on the current slide's own
+      // sentence said a moment earlier)
+      if (curMatch && curMatch.last >= mt.first) {
+        const same = this._match(cur, win.slice(mt.first, mt.last + 1));
+        if (same && same.weight >= mt.weight) continue;
+      }
       if (!pick || mt.weight > pick.mt.weight + 1) pick = { k, mt };      // nearer wins a near-tie
     }
     if (!pick) { this.confidence *= 0.9; return; }
@@ -225,7 +287,7 @@
     this._lastAdvanceAt = now;
     this._consumed = from + pick.mt.last + 1;
     this.confidence = Math.min(1, pick.mt.cover);
-    this.onAdvance({ toIndex: pick.k, confidence: this.confidence });
+    this.onAdvance({ toIndex: pick.k, confidence: this.confidence, by: 'words', heard: win.slice(pick.mt.first, pick.mt.last + 1) });
   };
 
   const API = { SlideFollower, keysOf, DEFAULTS };
