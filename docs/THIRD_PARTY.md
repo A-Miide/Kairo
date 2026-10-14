@@ -24,3 +24,34 @@ the app's `media-cache` folder.
   for the VP9 encoder; source: <https://github.com/webmproject/libvpx>.
 - A different `ffmpeg` can be used by setting `KAIRO_FFMPEG`; with none bundled
   the app uses one on the PATH.
+
+## NDI® runtime
+
+NDI® is a registered trademark of Vizrt NDI AB (<https://ndi.video>).
+
+Kairo does **not** ship NDI's files. The first time an NDI output is turned
+on and no NDI runtime is present, Kairo offers to fetch NDI's own free
+redistributable from NDI (`https://ndi.link/NDIRedistV6Apple`,
+`https://ndi.link/NDIRedistV6`), after the operator accepts NDI's licence
+(`kairo-server/src/ndi_runtime.rs`):
+
+- **macOS:** the package must be signed by NewTek (team `W8U66ET244`) and
+  notarized by Apple, and `libndi.dylib` inside it signed by the same team;
+  only that library and NDI's `libndi_licenses.txt` are kept, in the app's
+  data folder (`ndi/`). Nothing is installed system-wide; no password.
+- **Windows:** the installer must carry a valid NewTek/NDI Authenticode
+  signature; it then runs silently (Windows asks for permission once).
+- **Linux:** NDI publishes no runtime download; the user installs NDI.
+
+The sender (`src-tauri/src/ndi.rs`) loads Kairo's fetched copy first, then any
+installed NDI runtime. Help → About & credits carries NDI's trademark notice.
+Because NDI is fetched from NDI rather than shipped, Kairo's own licence
+(open source or not) is unaffected.
+
+## Blackmagic Design DeckLink
+
+Kairo is compatible with Blackmagic Design DeckLink. The DeckLink API headers
+(`/Mac/Include`, `/Win/Include`, `/Linux/Include` of the Desktop Video SDK)
+are distributed under Blackmagic's permissive header licence (kept intact in
+each file). The DeckLink driver library itself is not bundled: it comes with
+Blackmagic Desktop Video, which DeckLink owners already have installed.

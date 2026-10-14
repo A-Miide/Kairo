@@ -8162,3 +8162,9 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .osc-error { color: var(--red); }
 .osc-addresses .dl-row { gap: 12px; }
 .osc-address { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: var(--text); min-width: 190px; }
+
+/* Outputs → an NDI output with no NDI runtime: the one-click download offer. */
+.ndi-offer { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding: 14px; margin: 4px 0 14px; border: 1px solid var(--border-md); border-radius: var(--radius); background: var(--bg-hover); }
+.ndi-offer p { margin: 0; font-size: var(--fs-sm); color: var(--text); line-height: 1.45; }
+.ndi-offer .setting-hint { color: var(--text-3); font-size: 11px; }
+.ndi-offer-note:empty { display: none; }

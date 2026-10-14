@@ -120,6 +120,26 @@ impl LibNdi {
 fn candidate_libndi_paths() -> Vec<PathBuf> {
     let mut paths: Vec<PathBuf> = Vec::new();
 
+    // A copy placed beside Kairo by hand (src-tauri/bin → the app's
+    // resources, like ffmpeg), for builds made to work offline. Release
+    // builds don't ship one: Kairo fetches NDI's runtime from NDI on first
+    // use (the app-data path below). An installed NDI runtime is the fallback.
+    let lib = if cfg!(target_os = "macos") { "libndi.dylib" } else if cfg!(windows) { "Processing.NDI.Lib.x64.dll" } else { "libndi.so" };
+    if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf())) {
+        paths.push(dir.join("../Resources/bin").join(lib)); // macOS .app
+        paths.push(dir.join("bin").join(lib));              // Windows install dir
+        paths.push(dir.join("../lib/kairo/bin").join(lib)); // Linux packages
+        paths.push(dir.join("../lib/Kairo/bin").join(lib));
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        paths.push(cwd.join("src-tauri/bin").join(lib));    // running from the repo
+    }
+    // The copy Kairo fetched from NDI on first use (kairo-server ndi_runtime.rs).
+    #[cfg(target_os = "macos")]
+    if let Some(home) = std::env::var_os("HOME") {
+        paths.push(PathBuf::from(home).join("Library/Application Support/com.kairo.scripture/ndi").join(lib));
+    }
+
     #[cfg(target_os = "macos")]
     {
         paths.push("/Library/NDI SDK for Apple/lib/macOS/libndi.dylib".into());

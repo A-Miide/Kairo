@@ -590,6 +590,7 @@ function buildOutputRowToggle(o) {
         // toast() too in case that ever changes, but not relying on it.
         const msg = String(e && e.message || e || 'unknown error').replace(/^Error:\s*/, '');
         updateNativeOutput(kind, o.id, { enabled: false, lastError: msg });
+        if (kind === 'ndi' && /runtime not found/i.test(msg)) selectedOutputId = o.id; // show the download offer
         toast(`${outputTypeLabel(kind)} failed: ` + msg, 'error');
       }
     } else {
@@ -1136,6 +1137,63 @@ function renderObsDetail(host, o) {
 // top, so the user can define what kind of output they want with screen
 // resolution" — width/height live here, editable any time, not just at
 // creation (the "add" flow just seeds sensible 1920x1080 defaults).
+// NDI with no runtime on this computer: Kairo fetches NDI's own free runtime
+// from NDI (kairo-server ndi_runtime.rs — signature-checked, no installer on a
+// Mac), then turns the output on. One click; on Windows, one permission prompt.
+function buildNdiRuntimeOffer(o, invokeFn) {
+  const box = document.createElement('div');
+  box.className = 'ndi-offer';
+  const lead = document.createElement('p');
+  lead.innerHTML = '<strong>NDI needs a one-time download.</strong> Kairo fetches NDI’s free runtime straight from NDI (about 5 MB) — nothing else to install.';
+  const fine = document.createElement('p');
+  fine.className = 'setting-hint';
+  fine.innerHTML = 'NDI® is a registered trademark of Vizrt NDI AB. Downloading accepts NDI’s licence terms (<a href="https://ndi.video" target="_blank" rel="noopener">ndi.video</a>).';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'modal-btn primary';
+  btn.textContent = 'Download NDI and turn on';
+  const note = document.createElement('span');
+  note.className = 'setting-hint ndi-offer-note';
+  box.append(lead, fine, btn, note);
+
+  fetch(`${SERVER}/api/ndi/runtime`).then(r => r.json()).then(st => {
+    if (!st.available) {
+      btn.hidden = true;
+      lead.innerHTML = '<strong>NDI isn’t installed.</strong> Install the free NDI runtime from <a href="https://ndi.video/tools/" target="_blank" rel="noopener">ndi.video</a>, then turn this output on.';
+    } else if (st.platform === 'windows') {
+      note.textContent = 'Windows will ask for permission once.';
+    }
+  }).catch(() => {});
+
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = 'Downloading…';
+    note.textContent = '';
+    try {
+      await fetch(`${SERVER}/api/ndi/runtime/install`, { method: 'POST' });
+      let st;
+      for (let i = 0; i < 600; i++) {
+        await new Promise(r => setTimeout(r, 500));
+        st = await (await fetch(`${SERVER}/api/ndi/runtime`)).json();
+        if (st.percent != null && st.running) btn.textContent = `Downloading… ${st.percent}%`;
+        if (!st.running) break;
+      }
+      if (st?.error) throw new Error(st.error);
+      btn.textContent = 'Turning on…';
+      await nativeStart(invokeFn, 'ndi', { id: o.id, sourceName: o.raw.sourceName || 'KAIRO Scripture', width: o.raw.width || 1920, height: o.raw.height || 1080 });
+      updateNativeOutput('ndi', o.id, { enabled: true, lastError: null });
+      window.KairoNativeOutputs?.pushToOne?.('ndi', o.id);
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = 'Try again';
+      note.textContent = String(e?.message || e).replace(/^Error:\s*/, '');
+    }
+    renderOutputsList();
+    if (selectedOutputId === o.id) renderOutputsDetail();
+  });
+  return box;
+}
+
 function renderNativeOutputDetail(host, o) {
   const kind = o.type; // 'ndi' | 'syphon'
   const raw = o.raw;
@@ -1162,6 +1220,9 @@ function renderNativeOutputDetail(host, o) {
   // Start/Stop button is gone, buildOutputRowToggle's ndi/syphon case is
   // the one real implementation, shared with the list row's own toggle.
   host.appendChild(detailTitle(o.name, statusEl, buildOutputRowToggle(o)));
+  if (kind === 'ndi' && !raw.enabled && /runtime not found/i.test(raw.lastError || '')) {
+    host.appendChild(buildNdiRuntimeOffer(o, invokeFn));
+  }
 
   const nameGroup = detailGroup('Label (Settings only)');
   const nameInput = document.createElement('input');
