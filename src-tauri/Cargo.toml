@@ -40,6 +40,8 @@ anyhow = "1"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
+# Compiles native/decklink.cpp (DeckLink output) against vendor/decklink.
+cc = "1"
 
 [dependencies]
 # Kairo's backend, run inside the app (release builds).

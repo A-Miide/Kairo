@@ -37,6 +37,9 @@ fn main() {
                 "ndi_update_timer",
                 "output_capture",
                 "output_capture_supported",
+                "decklink_list",
+                "decklink_start",
+                "decklink_stop",
                 "syphon_available",
                 "syphon_start",
                 "syphon_stop",
@@ -78,4 +81,60 @@ fn main() {
         println!("cargo:rustc-link-arg=-Wl,-rpath,{}/Frameworks", manifest);
         println!("cargo:rerun-if-changed=Frameworks/Syphon.framework/Syphon");
     }
+    build_decklink();
+}
+
+/// DeckLink output (native/decklink.cpp over vendor/decklink's API headers).
+/// Sets cfg `kairo_decklink` when it builds; without it (no compiler step,
+/// MIDL missing on Windows) Kairo builds without DeckLink and says so in
+/// Settings rather than failing the whole build.
+fn build_decklink() {
+    use std::path::PathBuf;
+    println!("cargo:rustc-check-cfg=cfg(kairo_decklink)");
+    println!("cargo:rerun-if-changed=native/decklink.cpp");
+    let os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let manifest = PathBuf::from(std::env::var("CARGO_MANIFEST_DIR").unwrap());
+    let vendor = manifest.join("vendor/decklink");
+    let mut b = cc::Build::new();
+    b.cpp(true).file(manifest.join("native/decklink.cpp")).warnings(false);
+    match os.as_str() {
+        "macos" => {
+            b.include(vendor.join("mac")).file(vendor.join("mac/DeckLinkAPIDispatch.cpp")).flag_if_supported("-std=c++17");
+            println!("cargo:rustc-link-lib=framework=CoreFoundation");
+        }
+        "linux" => {
+            b.include(vendor.join("linux")).file(vendor.join("linux/DeckLinkAPIDispatch.cpp")).flag_if_supported("-std=c++17");
+            println!("cargo:rustc-link-lib=dl");
+            println!("cargo:rustc-link-lib=pthread");
+        }
+        "windows" => {
+            // The Windows API ships as IDL: MIDL (Windows SDK) makes the header
+            // and the interface IDs, run with the compiler's own environment.
+            let out = PathBuf::from(std::env::var("OUT_DIR").unwrap());
+            let target = std::env::var("TARGET").unwrap_or_default();
+            let win = vendor.join("win");
+            let ok = cc::windows_registry::find_tool(&target, "cl.exe").is_some_and(|cl| {
+                let mut cmd = std::process::Command::new("midl.exe");
+                for (k, v) in cl.env() {
+                    cmd.env(k, v);
+                }
+                cmd.current_dir(&out)
+                    .args(["/nologo", "/env", "x64", "/h", "DeckLinkAPI_h.h", "/iid", "DeckLinkAPI_i.c", "/I"])
+                    .arg(&win)
+                    .arg(win.join("DeckLinkAPI.idl"))
+                    .status()
+                    .is_ok_and(|s| s.success())
+            });
+            if !ok {
+                println!("cargo:warning=DeckLink output left out: MIDL (Windows SDK) not found to process the DeckLink IDL.");
+                return;
+            }
+            b.include(&out).file(out.join("DeckLinkAPI_i.c"));
+            println!("cargo:rustc-link-lib=ole32");
+            println!("cargo:rustc-link-lib=oleaut32");
+        }
+        _ => return,
+    }
+    b.compile("kairo_decklink");
+    println!("cargo:rustc-cfg=kairo_decklink");
 }

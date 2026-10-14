@@ -4,6 +4,7 @@
 // Production: uses the node binary bundled via externalBin.
 
 mod capture;
+mod decklink;
 mod ndi;
 #[cfg(target_os = "macos")]
 mod syphon;
@@ -378,6 +379,14 @@ impl NdiState {
     }
 }
 
+struct DeckLinkState(Arc<Mutex<std::collections::HashMap<String, Arc<Mutex<decklink::DeckLinkHandle>>>>>);
+impl DeckLinkState {
+    fn handle_for(&self, id: &str) -> Result<Arc<Mutex<decklink::DeckLinkHandle>>, String> {
+        let mut map = self.0.lock().map_err(|e| e.to_string())?;
+        Ok(map.entry(id.to_string()).or_insert_with(|| Arc::new(Mutex::new(decklink::DeckLinkHandle::default()))).clone())
+    }
+}
+
 // ── The server ────────────────────────────────────────────────────────────
 
 /// Starts Kairo's server inside this process (release builds; dev runs it
@@ -682,6 +691,9 @@ fn run_capture(app: AppHandle, id: String, width: u32, height: u32, fade: u32) {
                 if let Ok(h) = app2.state::<NdiState>().handle_for(&id2) {
                     if let Ok(h) = h.lock() { h.update_frame(frame.clone(), fade); }
                 }
+                if let Ok(h) = app2.state::<DeckLinkState>().handle_for(&id2) {
+                    if let Ok(h) = h.lock() { h.update_frame(frame.clone(), fade); }
+                }
                 #[cfg(target_os = "macos")]
                 if let Ok(h) = app2.state::<SyphonState>().handle_for(&id2) {
                     if let Err(e) = syphon::update_frame(frame.clone(), fade, h) { eprintln!("[Capture] Syphon: {e}"); }
@@ -698,6 +710,32 @@ fn run_capture(app: AppHandle, id: String, width: u32, height: u32, fade: u32) {
             run_capture(app2, id2, width, height, f);
         }
     });
+}
+
+// ── DeckLink (decklink.rs) ────────────────────────────────────────────────
+// Cards and their modes; start returns the frame size the card plays, which
+// the output's capture window is then made at.
+#[tauri::command]
+fn decklink_list() -> serde_json::Value {
+    decklink::list()
+}
+
+#[tauri::command]
+fn decklink_start(app: AppHandle, id: String, device: i32, mode: u32, keying: bool, fps: f64) -> Result<serde_json::Value, String> {
+    let handle = app.state::<DeckLinkState>().handle_for(&id)?;
+    if let Ok(mut h) = handle.lock() {
+        h.stop();
+    }
+    let (w, h) = decklink::start(device, mode, keying, fps, handle)?;
+    Ok(serde_json::json!({ "width": w, "height": h }))
+}
+
+#[tauri::command]
+fn decklink_stop(app: AppHandle, id: String) -> Result<(), String> {
+    let handle = app.state::<DeckLinkState>().handle_for(&id)?;
+    let mut h = handle.lock().map_err(|e| e.to_string())?;
+    h.stop();
+    Ok(())
 }
 
 // ── Syphon commands (macOS only) ──────────────────────────────────────────
@@ -871,7 +909,8 @@ pub fn run() {
         .manage(ServerProcess(Arc::new(Mutex::new(None))))
         .manage(server_config)
         .manage(NdiState(Arc::new(Mutex::new(std::collections::HashMap::new()))))
-        .manage(CaptureState::default());
+        .manage(CaptureState::default())
+        .manage(DeckLinkState(Arc::new(Mutex::new(std::collections::HashMap::new()))));
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
@@ -894,6 +933,9 @@ pub fn run() {
             ndi_update_media,
             ndi_update_timer,
             output_capture,
+            decklink_list,
+            decklink_start,
+            decklink_stop,
             output_capture_supported,
             syphon_available,
             syphon_start,
@@ -1078,6 +1120,14 @@ pub fn run() {
                     for handle in ndi_map.values() {
                         handle.lock().unwrap_or_else(|p| p.into_inner())
                             .stop_and_join(std::time::Duration::from_millis(500));
+                    }
+                }
+                // DeckLink: disable the card's output and keyer before exit.
+                {
+                    let dl_state = app.state::<DeckLinkState>();
+                    let dl_map = dl_state.0.lock().unwrap_or_else(|p| p.into_inner());
+                    for handle in dl_map.values() {
+                        handle.lock().unwrap_or_else(|p| p.into_inner()).stop();
                     }
                 }
                 #[cfg(target_os = "macos")]

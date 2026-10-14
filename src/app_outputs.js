@@ -82,12 +82,24 @@ function syphonOutputs() {
   return settings.syphonOutputs;
 }
 
+// Blackmagic DeckLink outputs (src-tauri decklink.rs): none until added.
+// { id, name, device, deviceName, mode, modeName, width, height, fps, keying, enabled }
+function decklinkOutputs() {
+  if (!Array.isArray(settings.decklinkOutputs)) settings.decklinkOutputs = [];
+  return settings.decklinkOutputs;
+}
+// The saved list for a native output kind ('ndi' | 'syphon' | 'decklink').
+function nativeOutputsOf(kind) {
+  return kind === 'ndi' ? ndiOutputs() : kind === 'decklink' ? decklinkOutputs() : syphonOutputs();
+}
+
 function allOutputKeys() {
   return [
     ...OUTPUT_DEFS.map(d => d.key),
     ...extraDisplays().map(d => d.id),
     ...ndiOutputs().map(d => d.id),
     ...syphonOutputs().map(d => d.id),
+    ...decklinkOutputs().map(d => d.id),
   ];
 }
 
@@ -345,6 +357,7 @@ function allConfiguredOutputs() {
   }
   for (const o of ndiOutputs())    list.push({ id: o.id, type: 'ndi', name: o.name, raw: o });
   for (const o of syphonOutputs()) list.push({ id: o.id, type: 'syphon', name: o.name, raw: o });
+  for (const o of decklinkOutputs()) list.push({ id: o.id, type: 'decklink', name: o.name, raw: o });
   list.push({ id: 'obs', type: 'obs', name: settings.obsName || 'OBS WebSocket' });
   return list;
 }
@@ -362,6 +375,14 @@ function allConfiguredOutputs() {
 // hidden capture window (output_capture.js — its real theme on air) opens
 // and closes with it.
 async function nativeStart(invokeFn, kind, args) {
+  if (kind === 'decklink') {
+    // The card decides the frame size (its video format); capture to match.
+    const o = decklinkOutputs().find(x => x.id === args.id) || {};
+    if (o.mode == null) throw new Error('Pick a card and a video format first.');
+    const size = await invokeFn('decklink_start', { id: o.id, device: o.device | 0, mode: o.mode, keying: !!o.keying, fps: o.fps || 30 });
+    window.KairoCapture?.open(o.id, size.width, size.height);
+    return;
+  }
   await invokeFn(`${kind}_start`, args);
   window.KairoCapture?.open(args.id, args.width, args.height);
 }
@@ -374,7 +395,7 @@ function nativeSenderLabel() {
   return document.documentElement.classList.contains('platform-win32') ? 'Spout' : 'Syphon';
 }
 function outputTypeLabel(type) {
-  return type === 'display' ? 'Display' : type === 'ndi' ? 'NDI' : type === 'syphon' ? nativeSenderLabel() : 'OBS';
+  return type === 'display' ? 'Display' : type === 'ndi' ? 'NDI' : type === 'syphon' ? nativeSenderLabel() : type === 'decklink' ? 'DeckLink' : 'OBS';
 }
 
 // Entry point — called from loadSettings and from every add/remove/rename
@@ -404,8 +425,8 @@ function autoResumeNativeOutputs() {
   nativeOutputsAutoResumeDone = true;
   const invokeFn = window.__TAURI__?.core?.invoke || window.__TAURI__?.invoke;
   if (!invokeFn) return;
-  for (const kind of ['ndi', 'syphon']) {
-    for (const o of (kind === 'ndi' ? ndiOutputs() : syphonOutputs())) {
+  for (const kind of ['ndi', 'syphon', 'decklink']) {
+    for (const o of nativeOutputsOf(kind)) {
       if (!o.enabled) continue;
       nativeStart(invokeFn, kind, {
         id: o.id, sourceName: o.sourceName || 'KAIRO Scripture',
@@ -443,7 +464,7 @@ function renderOutputsList() {
     // updated directly by that row's own detail-panel actions instead.
     if (o.id === PRIMARY_DISPLAY) dot.id = 'external-header-dot';
     else if (o.type === 'obs')    dot.id = 'obs-header-dot';
-    else if (o.type === 'ndi' || o.type === 'syphon') dot.classList.toggle('connected', !!o.raw?.enabled);
+    else if (o.type === 'ndi' || o.type === 'syphon' || o.type === 'decklink') dot.classList.toggle('connected', !!o.raw?.enabled);
 
     const info = document.createElement('span');
     info.className = 'outputs-list-item-info';
@@ -772,6 +793,7 @@ function renderOutputsDetail() {
   if (!o) { host.textContent = 'Select an output.'; return; }
   if (o.type === 'display') renderDisplayDetail(host, o);
   else if (o.type === 'obs') renderObsDetail(host, o);
+  else if (o.type === 'decklink') renderDeckLinkDetail(host, o);
   else renderNativeOutputDetail(host, o); // ndi/syphon
 }
 
@@ -1293,7 +1315,7 @@ function renderNativeOutputDetail(host, o) {
   del.textContent = `Remove this ${outputTypeLabel(kind)} output`;
   del.addEventListener('click', async () => {
     if (invokeFn && raw.enabled) { try { await nativeStop(invokeFn, kind, o.id); } catch {} }
-    const list = (kind === 'ndi' ? ndiOutputs() : syphonOutputs()).filter(x => x.id !== o.id);
+    const list = nativeOutputsOf(kind).filter(x => x.id !== o.id);
     settings[`${kind}Outputs`] = list;
     const themes = { ...outputThemeMap() }; delete themes[o.id];
     const layers = { ...outputLayerMap() }; delete layers[o.id];
@@ -1306,9 +1328,148 @@ function renderNativeOutputDetail(host, o) {
   host.appendChild(del);
 }
 
+// A Blackmagic DeckLink output: card, video format, keying, then the same
+// theme/layers as any output. Frames are the output's captured theme
+// (capture.rs), played at the format's own rate by decklink.rs.
+let decklinkCache = null;
+async function decklinkCards(refresh) {
+  if (decklinkCache && !refresh) return decklinkCache;
+  const invokeFn = window.__TAURI__?.core?.invoke || window.__TAURI__?.invoke;
+  try { decklinkCache = invokeFn ? await invokeFn('decklink_list') : { ok: false, error: 'DeckLink works in the Kairo app.' }; }
+  catch (e) { decklinkCache = { ok: false, error: String(e?.message || e) }; }
+  return decklinkCache;
+}
+
+function renderDeckLinkDetail(host, o) {
+  const raw = o.raw;
+  const invokeFn = window.__TAURI__?.core?.invoke || window.__TAURI__?.invoke;
+  const statusEl = document.createElement('span');
+  statusEl.className = 'native-output-status';
+  const dot = document.createElement('span');
+  dot.className = 'bs-dot' + (raw.enabled ? ' connected' : '');
+  const statusText = document.createElement('span');
+  statusText.textContent = raw.enabled ? `On air · ${raw.modeName || ''}` : (raw.lastError || 'Off');
+  if (!raw.enabled && raw.lastError) { statusText.classList.add('output-status-error'); statusEl.classList.add('has-error'); }
+  statusEl.append(dot, statusText);
+  host.appendChild(detailTitle(o.name, statusEl, buildOutputRowToggle(o)));
+
+  const cardsBox = document.createElement('div');
+  host.appendChild(cardsBox);
+  cardsBox.textContent = 'Looking for DeckLink cards…';
+
+  // Changing card/format/keying while on air restarts the output.
+  const restartIfLive = async () => {
+    const cur = decklinkOutputs().find(x => x.id === o.id);
+    if (!cur?.enabled || !invokeFn) return;
+    try { await nativeStop(invokeFn, 'decklink', o.id); } catch {}
+    try { await nativeStart(invokeFn, 'decklink', { id: o.id }); updateNativeOutput('decklink', o.id, { lastError: null }); }
+    catch (e) { updateNativeOutput('decklink', o.id, { enabled: false, lastError: String(e?.message || e) }); }
+    renderOutputsList(); renderOutputsDetail();
+  };
+
+  decklinkCards().then((info) => {
+    cardsBox.innerHTML = '';
+    if (!info?.ok || !(info.devices || []).length) {
+      const p = document.createElement('p');
+      p.className = 'setting-hint';
+      p.innerHTML = info?.ok
+        ? 'No DeckLink card found. Connect one (and install <a href="https://www.blackmagicdesign.com/support/family/capture-and-playback" target="_blank" rel="noopener">Blackmagic Desktop Video</a>), then '
+        : `${escapeHtml(info?.error || 'DeckLink is unavailable.')} Install <a href="https://www.blackmagicdesign.com/support/family/capture-and-playback" target="_blank" rel="noopener">Blackmagic Desktop Video</a>, then `;
+      const again = document.createElement('button');
+      again.type = 'button'; again.className = 'modal-btn secondary dl-btn'; again.textContent = 'look again';
+      again.addEventListener('click', () => { decklinkCache = null; renderOutputsDetail(); });
+      p.appendChild(again);
+      cardsBox.appendChild(p);
+      return;
+    }
+    const devices = info.devices;
+    const dev = devices.find(d => d.index === raw.device) || devices[0];
+
+    const cardGroup = detailGroup('Card');
+    const cardSel = document.createElement('select');
+    cardSel.className = 'setting-input';
+    devices.forEach(d => { const op = document.createElement('option'); op.value = d.index; op.textContent = d.name; cardSel.appendChild(op); });
+    cardSel.value = String(dev.index);
+    cardGroup.appendChild(cardSel);
+    cardsBox.appendChild(cardGroup);
+
+    const modeGroup = detailGroup('Video format');
+    const modeSel = document.createElement('select');
+    modeSel.className = 'setting-input';
+    const fillModes = (d) => {
+      modeSel.innerHTML = '';
+      const none = document.createElement('option'); none.value = ''; none.textContent = 'Choose a format…'; modeSel.appendChild(none);
+      (d.modes || []).forEach(m => { const op = document.createElement('option'); op.value = m.id; op.textContent = `${m.name} (${m.width}×${m.height})`; modeSel.appendChild(op); });
+      const cur = decklinkOutputs().find(x => x.id === o.id);
+      modeSel.value = cur && cur.device === d.index && cur.mode != null ? String(cur.mode) : '';
+    };
+    fillModes(dev);
+    modeGroup.appendChild(modeSel);
+    const modeHint = document.createElement('p');
+    modeHint.className = 'setting-hint';
+    modeHint.textContent = 'Match your switcher or router (e.g. 1080p59.94, 1080i50).';
+    modeGroup.appendChild(modeHint);
+    cardsBox.appendChild(modeGroup);
+
+    const keyGroup = document.createElement('div');
+    keyGroup.className = 'setting-group setting-checks';
+    const keyLabel = document.createElement('label');
+    keyLabel.className = 'bs-check-label';
+    const keyBox = document.createElement('input');
+    keyBox.type = 'checkbox';
+    keyBox.checked = !!raw.keying;
+    const keyText = document.createElement('span');
+    keyText.innerHTML = '<strong>Fill and key</strong><span class="setting-hint">The card puts out the graphics and a separate key signal, so a vision mixer can lay lower thirds over camera. Set the mixer’s key to pre-multiplied. Give this output a theme with a transparent background.</span>';
+    keyLabel.append(keyBox, keyText);
+    keyGroup.appendChild(keyLabel);
+    const setKeyAvailable = (d) => {
+      keyGroup.hidden = !d.keying;
+      if (!d.keying && keyBox.checked) { keyBox.checked = false; updateNativeOutput('decklink', o.id, { keying: false }); }
+    };
+    setKeyAvailable(dev);
+    cardsBox.appendChild(keyGroup);
+
+    const saveMode = (d) => {
+      const m = (d.modes || []).find(x => String(x.id) === modeSel.value);
+      updateNativeOutput('decklink', o.id, m
+        ? { device: d.index, deviceName: d.name, mode: m.id, modeName: m.name, width: m.width, height: m.height, fps: m.scale / m.duration }
+        : { device: d.index, deviceName: d.name, mode: null, modeName: null });
+    };
+    cardSel.addEventListener('change', () => {
+      const d = devices.find(x => String(x.index) === cardSel.value) || devices[0];
+      fillModes(d); setKeyAvailable(d); saveMode(d); restartIfLive();
+    });
+    modeSel.addEventListener('change', () => {
+      const d = devices.find(x => String(x.index) === cardSel.value) || devices[0];
+      saveMode(d); restartIfLive();
+    });
+    keyBox.addEventListener('change', () => { updateNativeOutput('decklink', o.id, { keying: keyBox.checked }); restartIfLive(); });
+  });
+
+  host.appendChild(detailInlineGroup('Theme', buildThemeSelect(o.id)));
+  appendOutputLayersSection(host, o.id);
+
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.className = 'modal-btn secondary display-output-del';
+  del.style.marginTop = '4px';
+  del.textContent = 'Remove this DeckLink output';
+  del.addEventListener('click', async () => {
+    if (invokeFn && raw.enabled) { try { await nativeStop(invokeFn, 'decklink', o.id); } catch {} }
+    const list = decklinkOutputs().filter(x => x.id !== o.id);
+    const themes = { ...outputThemeMap() }; delete themes[o.id];
+    const layers = { ...outputLayerMap() }; delete layers[o.id];
+    settings.decklinkOutputs = list; settings.outputThemes = themes; settings.outputLayers = layers;
+    saveSettingsPatch({ decklinkOutputs: list, outputThemes: themes, outputLayers: layers });
+    selectedOutputId = PRIMARY_DISPLAY;
+    applyOutputThemes(); applyOutputLayers();
+    renderOutputsList(); renderOutputsDetail();
+  });
+  host.appendChild(del);
+}
+
 function updateNativeOutput(kind, id, patch) {
-  const outputsFn = kind === 'ndi' ? ndiOutputs : syphonOutputs;
-  const list = outputsFn().map(x => x.id === id ? { ...x, ...patch } : x);
+  const list = nativeOutputsOf(kind).map(x => x.id === id ? { ...x, ...patch } : x);
   settings[`${kind}Outputs`] = list;
   saveSettingsPatch({ [`${kind}Outputs`]: list });
   if ('enabled' in patch && typeof refreshMonitor === 'function') refreshMonitor();
@@ -1370,6 +1531,12 @@ function wireOutputsAddMenu() {
         saveSettingsPatch({ extraDisplays: next });
         selectedOutputId = next[next.length - 1].id;
         applyOutputModes();
+      } else if (type === 'decklink') {
+        const list = decklinkOutputs();
+        const next = [...list, { id: genOutputId('decklink'), name: list.length ? `DeckLink ${list.length + 1}` : 'DeckLink', device: 0, mode: null, keying: false, enabled: false }];
+        settings.decklinkOutputs = next;
+        saveSettingsPatch({ decklinkOutputs: next });
+        selectedOutputId = next[next.length - 1].id;
       } else {
         const outputsFn = type === 'ndi' ? ndiOutputs : syphonOutputs;
         const list = outputsFn();

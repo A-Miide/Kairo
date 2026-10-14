@@ -377,6 +377,7 @@ registerActionHandler('clock-message', (msg) => window.KairoService?.onClockActi
     }
   };
   window.KairoNativeOutputs.pushToOne = function pushToOne(kind, id) {
+    if (kind === 'decklink') return; // DeckLink only ever plays captured frames
     const want = outputLayerMap()[id] || { slide: true, media: true, timer: true };
     if (want.slide !== false) tauriInvoke(`${kind}_update`, { id, verse: lastVerse, reference: lastRef }).catch(() => {});
     if (want.media !== false) {

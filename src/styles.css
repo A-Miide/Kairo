@@ -8168,3 +8168,6 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .ndi-offer p { margin: 0; font-size: var(--fs-sm); color: var(--text); line-height: 1.45; }
 .ndi-offer .setting-hint { color: var(--text-3); font-size: 11px; }
 .ndi-offer-note:empty { display: none; }
+/* Links inside setting hints and the NDI offer: the app's text colour, underlined. */
+.setting-hint a, .ndi-offer a { color: var(--text-2); text-decoration: underline; text-underline-offset: 2px; }
+.setting-hint a:hover, .ndi-offer a:hover { color: var(--text); }
