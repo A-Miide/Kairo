@@ -307,7 +307,7 @@ renderHotkeysList();
 renderOscSettings();
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TRIGGERS — dispatch into the Timer tab (server/triggers.js, service.js)
+// TRIGGERS — dispatch into the Timer tab (the server's Triggers (kairo-server library.rs), service.js)
 //   The actual UI lives in service.js as a top-bar tab (segment cards,
 //   see showTimerLibrary/onTimerAction) — this just forwards the two
 //   built-in trigger types' broadcasts there, same bridge pattern as

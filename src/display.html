@@ -393,7 +393,7 @@
     // output once. No separate fetch needed to learn the initial value —
     // the server sends it as a WS snapshot the instant this window
     // connects (same 'output-transition' message type an operator's live
-    // change broadcasts — see server.js's ws connection handler and its
+    // change broadcasts — see the server's WebSocket handler (kairo-server ws.rs) and its
     // /api/settings POST), and every later change arrives the same way,
     // live, no reload needed.
     let outputAnimation = 'fade';
@@ -1649,7 +1649,7 @@
             // Sound plays from the operator window (app.js's renderMediaPreview), through the
             // device chosen under Settings → Outputs → Audio Output; a screen shows the picture only.
             // Throttled status reports so the operator's window can drive a
-            // real seek slider without polling — see server.js's ws.on('message').
+            // real seek slider without polling — see the server's WebSocket handler (kairo-server ws.rs).
             let lastReport = 0;
             v.addEventListener('timeupdate', () => {
                 const now = Date.now();
@@ -1963,7 +1963,7 @@
         //
         // Bible vs. Slide: this same 'detection' message type carries BOTH
         // auto-detected/manually-sent scripture AND a plain Slides-tab
-        // slide (they share one send path — see server.js's /api/service/
+        // slide (they share one send path — see the server's /api/service/
         // send) — real scripture always carries book/chapter/verse, a
         // plain slide never does, so that's the classifier. No separate
         // "kind" field needed. Bible takes precedence when a message could
@@ -2142,7 +2142,7 @@
             return;
         }
 
-        // Generic action/trigger broadcast (server/triggers.js) — a
+        // Generic action/trigger broadcast (the server's Triggers (kairo-server library.rs)) — a
         // segment's stage-timer countdown or the system-clock message.
         // Two independent badges (see #timer-badge/#clock-badge above),
         // not one shared slot, so both can be showing at once without

@@ -6309,7 +6309,7 @@ function selectItemSlide(index) {
 
 // ── Item mode open/close (mirrors openThemeStudio/closeThemeStudio above) ──
 function openItemStyleEditor(itemId, slideIndex = 0) {
-  // Timer segments aren't playlist items — they live in server/segments.js,
+  // Timer segments aren't playlist items — they live in the server's Segments (kairo-server library.rs),
   // not service.items — so they don't show up in the normal lookup at all.
   // getTimerItem adapts one into the same {id, type, themeId, slideStyles}
   // shape a real item has (see service.js), which is all this editor and

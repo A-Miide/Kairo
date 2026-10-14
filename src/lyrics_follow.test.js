@@ -1,4 +1,4 @@
-// Regression tests for src/lyrics_follow.js — plain node:test, no server.js
+// Regression tests for src/lyrics_follow.js — plain node:test, no server
 // dependency (this module is pure client-side JS with a Node-compatible
 // module.exports fallback), so no orphan-watchdog teardown issue.
 'use strict';

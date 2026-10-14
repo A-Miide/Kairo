@@ -25,7 +25,7 @@
   // Shared with app.js/display.html — see design_space.js.
   const DESIGN_W = window.KAIRO_DESIGN_W, DESIGN_H = window.KAIRO_DESIGN_H;
 
-  // Kept in sync with server/translate.js's LANGUAGES map by hand — small,
+  // Kept in sync with kairo-server translate.rs's LANGUAGES map by hand — small,
   // fixed list, not worth a round-trip to /api/translate/languages just to
   // populate a 3-item picker.
   const TRANSLATE_LANGUAGES = [
@@ -534,7 +534,7 @@
       case 'scripture':
         return [{ label: item.ref, lines: [item.text || item.ref], text: item.text || '', reference: item.ref,
                   book: item.book || null, chapter: item.chapter || null, verse: item.verse || null }];
-      // A segment (server/segments.js) is a real item for editing purposes
+      // A segment (the server's Segments (kairo-server library.rs)) is a real item for editing purposes
       // ("a slide with a timer component"). Scenes (segment.scenes — a
       // storyboard, played in order across the live countdown, each with
       // its own explicit duration and complete layer set) show up here as
@@ -768,7 +768,7 @@
   // scripture, the raw text otherwise) so re-sending or re-previewing the
   // same content — or two different items that happen to share a verse —
   // never re-fetches. Scripture resolves against a real bundled translation
-  // server-side; anything else goes through Claude. See server/translate.js.
+  // server-side; anything else goes through Claude. See kairo-server translate.rs.
   const translationCache = new Map();
 
   function themeNeedsTranslation(look) {
@@ -1160,7 +1160,7 @@
   function onTranscript(msg) {
     const text = (msg && msg.text) || '';
     // words: real per-word timestamps (Deepgram always sends these; see
-    // server.js's handleTranscriptSegment) — LyricsFollower uses them for
+    // the server's handleTranscriptSegment) — LyricsFollower uses them for
     // actual audio-time-based rate tracking instead of estimating tempo
     // from wall-clock arrival timing. Absent for engines that don't provide
     // them; LyricsFollower.ingest falls back to the old estimate then.
@@ -5201,7 +5201,7 @@
 
   // ── Transport bar (mute/play/volume/seek) — remote-controls whatever the
   // display's media layer is currently showing; see display.html's
-  // applyMediaControl/reportMediaStatus and server.js's ws relay. ─────────
+  // applyMediaControl/reportMediaStatus and the server's WebSocket relay (kairo-server ws.rs). ─────────
   // The video controls in the Monitoring card's media strip (onMediaLive
   // shows the strip itself for any media).
   function setMediaTransportVisible(visible) {
@@ -5279,7 +5279,7 @@
   // Named service-segment countdowns (Preservice/Worship/Sermon/...) —
   // each segment IS a stage-timer trigger under the hood (server/
   // segments.js layers ordering + a "one live at a time" rule on top of
-  // the generic action/trigger framework in server/triggers.js). Cards
+  // the generic action/trigger framework in the server's Triggers (kairo-server library.rs)). Cards
   // mirror the slide-thumbnail visual language (black 16:9 preview +
   // bottom-left label, see .ts-item-slide-thumb) so a segment reads as
   // "a layer" the same way a slide does, per this tab's whole reason for
@@ -5442,7 +5442,7 @@
   // exactly how the slide-layer send below went missing from one of the
   // two paths and sat untested until a real end-to-end check caught it.
   // Returns {ok, error} rather than a bare boolean — the actual reason
-  // (from server/triggers.js's validate(), e.g. "That time has already
+  // (from the server's Triggers (kairo-server library.rs)'s validate(), e.g. "That time has already
   // passed today") used to only reach toast(), a permanent no-op in this
   // codebase, so every caller saw a bare failure with the real message
   // thrown away and had to fall back to a made-up generic string instead.
@@ -5531,7 +5531,7 @@
       //    test — which came across as "can't set the time" with no way
       //    through.
       //  • "Run for" — a length in minutes, resolved against the clock at
-      //    Start (server/triggers.js resolveEndAt, mode:'duration'). Always
+      //    Start (the server's Triggers (kairo-server library.rs) resolveEndAt, mode:'duration'). Always
       //    takes, so it's the one that unblocks a fast test.
       let mode = params.mode === 'duration' ? 'duration' : 'endAt';
 
@@ -5803,7 +5803,7 @@
 
   // Reordering isn't exposed in the card UI right now (kept intentionally
   // minimal — see toggleSegment above) but the backend route
-  // (/api/segments/reorder, server/segments.js) is still there if a
+  // (/api/segments/reorder, the server's Segments (kairo-server library.rs)) is still there if a
   // drag-to-reorder UI gets added later.
 
   function renderTimerGrid() {
@@ -6543,7 +6543,7 @@
     }
 
     // Transport — remote-controls the display's media <video>; see
-    // display.html's applyMediaControl and server.js's /api/service/media-control.
+    // display.html's applyMediaControl and the server's /api/service/media-control.
     document.getElementById('media-play-btn')?.addEventListener('click', () => {
       const icon = document.getElementById('media-play-icon');
       // The icon already reflects real state via onMediaStatus; use its
