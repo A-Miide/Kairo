@@ -7,7 +7,7 @@ INTERVAL="${2:-15}"
 echo "timestamp,pid,name,rss_mb,cpu_pct" > "$OUT"
 while true; do
   ts=$(date -u +%Y-%m-%dT%H:%M:%SZ)
-  for pat in "target/debug/kairo" "server/server.js"; do
+  for pat in "target/debug/kairo" "target/release/kairo" "kairo-speech-worker"; do
     ps aux | grep "$pat" | grep -v grep | while read -r line; do
       pid=$(echo "$line" | awk '{print $2}')
       cpu=$(echo "$line" | awk '{print $3}')

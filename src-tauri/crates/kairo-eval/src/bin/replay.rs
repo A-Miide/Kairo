@@ -11,7 +11,7 @@
 //! `--offline` replays the offline engine's transcriptions instead
 //! (`parity/offline/*.json`, made by `offline-transcribe`), on their own clock.
 //!
-//! Scoring follows `server/eval/run_eval.js`: a ground-truth verse counts
+//! Scoring follows `eval/run_eval.js`: a ground-truth verse counts
 //! when it reaches the screen within 30 s of where it was said; a verse sent
 //! that the sermon never cites is a wrong send (verses of a chapter cited
 //! with no verse are exempt for 10 minutes); a miss offered in Possible
@@ -385,7 +385,7 @@ fn main() {
         let (decisions, secs) = replay(&k, &golden, audio, m.as_ref(), thresholds);
         // "enough-is-enough.beam": a variant transcription of the same sermon.
         let sermon = name.split('.').next().unwrap_or(name);
-        let fixture_path = root().join("server/eval/fixtures").join(format!("{sermon}.json"));
+        let fixture_path = root().join("eval/fixtures").join(format!("{sermon}.json"));
         let fixture: Option<Value> = std::fs::read_to_string(&fixture_path).ok().and_then(|s| serde_json::from_str(&s).ok());
         let cue_at = cue_ms(&golden);
         let last_ms = *cue_at.last().unwrap_or(&0);

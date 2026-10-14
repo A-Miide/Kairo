@@ -18,7 +18,7 @@ fn main() {
     let codes: Vec<&str> = args.get(2).map_or("KJV", String::as_str).split(',').collect();
     let mut windows: Vec<String> = Vec::new();
     for name in DEV {
-        let f: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(root().join("server/eval/fixtures").join(format!("{name}.json"))).unwrap()).unwrap();
+        let f: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(root().join("eval/fixtures").join(format!("{name}.json"))).unwrap()).unwrap();
         let mut words: Vec<String> = Vec::new();
         for c in f["transcript"].as_array().unwrap() {
             words.extend(c["text"].as_str().unwrap().split_whitespace().map(str::to_string));

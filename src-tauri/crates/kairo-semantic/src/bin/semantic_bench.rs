@@ -2,9 +2,9 @@
 //! reranker) finds the verse a preacher paraphrased, and how cleanly it keeps
 //! ordinary sermon talk from looking like scripture.
 //!
-//! Cases: `server/eval/paraphrase_cases.json` (written, gapped, negatives) and
+//! Cases: `eval/paraphrase_cases.json` (written, gapped, negatives) and
 //! real paraphrases from the sermon fixtures — selected exactly as
-//! `server/eval/paraphrase_bench.js` selects them.
+//! `eval/paraphrase_bench.js` selects them.
 //!
 //!   cargo run --release -p kairo-semantic --bin semantic_bench -- \
 //!     --embedder bench/embeddinggemma.json [--translations KJV,NLT] \
@@ -223,7 +223,7 @@ fn kjv_copy(corpus: &Corpus) -> Translation {
 }
 
 fn load_cases(root: &Path, corpus: &Corpus) -> Result<(Vec<Case>, Vec<String>), Box<dyn std::error::Error>> {
-    let file: CaseFile = serde_json::from_slice(&std::fs::read(root.join("server/eval/paraphrase_cases.json"))?)?;
+    let file: CaseFile = serde_json::from_slice(&std::fs::read(root.join("eval/paraphrase_cases.json"))?)?;
     let parse = |s: &str| -> Option<VerseId> {
         let (book, cv) = s.rsplit_once(' ')?;
         let (c, v) = cv.split_once(':')?;
@@ -243,7 +243,7 @@ fn load_cases(root: &Path, corpus: &Corpus) -> Result<(Vec<Case>, Vec<String>), 
     }
     // Development sermons only; the held-out pair is scored once, at the end
     // (docs/RUST_REWRITE_PLAN.md, "Evaluation split").
-    let dir = root.join("server/eval/fixtures");
+    let dir = root.join("eval/fixtures");
     let held_out = std::env::args().any(|a| a == "--held-out");
     let split: &[&str] = if held_out {
         &["oyedepo-meditation", "shiloh2025-love-mystery"]

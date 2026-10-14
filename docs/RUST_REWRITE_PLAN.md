@@ -123,7 +123,7 @@ existing ones.
   (`ALEPH.`) removed.
 - KJV is the anchor (most English-speaking churches read it).
 - It is fused with modern-English translation(s). Candidates are benchmarked
-  with `server/eval/paraphrase_bench.js`; the winner ships.
+  with `eval/paraphrase_bench.js`; the winner ships.
 - NLT in `map.json` is missing Psalms (0/2457) and ~70 other verses. It gets
   filled only from a licensed source once Tyndale's permission arrives.
 - Note: `databases/bibles/translations/ATTRIBUTION.md` records NKJV/NIV/ESV/NASB
@@ -177,7 +177,7 @@ differ; each difference is checked against ground truth and either fixed or
 listed in `docs/RUST_REWRITE_DIFFS.md` as an intended change.
 
 1. Record a golden log from the current Node engine for every fixture in
-   `server/eval/fixtures/` and `server/eval/live_runs/`: every `detection`
+   `eval/fixtures/` and `eval/live_runs/`: every `detection`
    broadcast (target, verses, method), with a virtual clock so runs are
    repeatable.
 2. The Rust engine replays the same inputs and must produce the same log.

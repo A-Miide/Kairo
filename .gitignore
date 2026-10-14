@@ -1,6 +1,5 @@
 # Dependencies
 node_modules/
-server/node_modules/
 
 # macOS
 .DS_Store
@@ -28,13 +27,11 @@ databases/sessions/
 databases/songs/songs.json
 
 # Whisper offline-STT models (downloaded by scripts/download-whisper-model.js on first use)
-server/models/
+models/
 
-# Eval harness run output — timestamped raw results from
-# server/eval/run_eval.js, regenerated on every run. The harness code and
-# fixtures (ground truth) are source; individual run snapshots aren't. Kept
-# outside server/, which ships inside the app.
-server/eval/results/
+# Eval run output — regenerated on every run. The fixtures (ground truth)
+# and decks in eval/ are source; run snapshots aren't.
+eval/results/
 eval-results/
 
 # Tauri build output

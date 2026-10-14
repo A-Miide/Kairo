@@ -24,7 +24,7 @@ fn main() {
     let m = opt("--meaning").map(|e| meaning(&e, None, &["KJV"]));
     std::fs::create_dir_all(&out).unwrap();
     for name in names {
-        let f: Value = serde_json::from_str(&std::fs::read_to_string(root().join("server/eval/fixtures").join(format!("{name}.json"))).unwrap()).unwrap();
+        let f: Value = serde_json::from_str(&std::fs::read_to_string(root().join("eval/fixtures").join(format!("{name}.json"))).unwrap()).unwrap();
         let cues = f["transcript"].as_array().unwrap();
         let mut engine = Engine::new(k.clone(), Config::default());
         let mut session = Session::default();

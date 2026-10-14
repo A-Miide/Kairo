@@ -1,7 +1,8 @@
 // KAIRO — Tauri shell
-// Spawns the bundled Node.js binary running server/server.js.
-// Dev mode: uses system node (beforeDevCommand starts it externally).
-// Production: uses the node binary bundled via externalBin.
+// Runs the Kairo server (crates/kairo-server) in this process on a local port
+// with a per-launch token, opens the app and output windows, and owns the
+// native outputs (NDI, Syphon, Spout, DeckLink) and their capture. The offline
+// speech engine runs as a second copy of this program (see main.rs).
 
 mod capture;
 mod video_bg;

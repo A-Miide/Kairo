@@ -5,11 +5,11 @@
 // verses Kairo put on screen in the same replay (--sends, from replay with
 // SENDS_JSON; --no-verses to leave them out).
 //
-// Decks live in server/eval/slide_decks/<sermon>.json:
+// Decks live in eval/slide_decks/<sermon>.json:
 //   { sermon, slides: [{ at: "mm:ss" | null, text }] }
 // `at` is when an operator would put the slide up (the preacher starts on
 // it); null means the slide is in the deck but the preacher never got to it.
-// The transcript is server/eval/fixtures/<sermon>.json (Deepgram), or with
+// The transcript is eval/fixtures/<sermon>.json (Deepgram), or with
 // --offline, parity/offline/<sermon>.json (the local model) when present.
 //
 // Usage:
@@ -32,7 +32,7 @@ const path = require('path');
 const { SlideFollower } = require('../src/slide_follow.js');
 
 const ROOT = path.join(__dirname, '..');
-const DECKS = path.join(ROOT, 'server/eval/slide_decks');
+const DECKS = path.join(ROOT, 'eval/slide_decks');
 const args = process.argv.slice(2);
 const has = (f) => args.includes(f);
 const val = (f, d) => { const i = args.indexOf(f); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
@@ -60,7 +60,7 @@ function loadTranscript(name, deck) {
     if (Array.isArray(d.inputs) && d.inputs.length) return { live: d.inputs.map((x) => ({ now: x.t || x.audioMs, text: x.text || '', isFinal: !!x.isFinal })) };
     return null;
   }
-  const file = path.join(ROOT, 'server/eval/fixtures', `${name}.json`);
+  const file = path.join(ROOT, 'eval/fixtures', `${name}.json`);
   if (!fs.existsSync(file)) return null;
   const d = JSON.parse(fs.readFileSync(file, 'utf8'));
   return (d.transcript || []).map((s) => ({ startMs: s.startMs, text: s.text || '' }));
@@ -162,7 +162,7 @@ for (const name of names) {
     refs = (await res.json()).refs;
   } catch { if (!refsWarned) { console.log(`(no Kairo server at ${REFS_URL}: slides' scripture references not read)`); refsWarned = true; } }
   let sends = null;
-  const sendsDir = SENDS || path.join(ROOT, 'server/eval/slide_decks/sends');
+  const sendsDir = SENDS || path.join(ROOT, 'eval/slide_decks/sends');
   const sf = path.join(sendsDir, `${deck.sermon || name}.json`);
   if (!NO_VERSES && fs.existsSync(sf)) sends = JSON.parse(fs.readFileSync(sf, 'utf8'));
   for (const mode of modes) {

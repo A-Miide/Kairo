@@ -25,7 +25,7 @@ function verseText(ref) {
 }
 
 for (const r of results) {
-  const fixturePath = path.join('server/eval/fixtures', r.name.endsWith('.json') ? r.name : `${r.name}.json`);
+  const fixturePath = path.join('eval/fixtures', r.name.endsWith('.json') ? r.name : `${r.name}.json`);
   const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
   if (!r.wrongAutoSends.length) continue;
   console.log(`\n\n########## ${r.title} ##########`);

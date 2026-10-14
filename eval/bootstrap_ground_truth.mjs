@@ -27,7 +27,7 @@ function parseRef(ref) {
 }
 
 for (const r of results) {
-  const fixturePath = path.join('server/eval/fixtures', r.name.endsWith('.json') ? r.name : `${r.name}.json`);
+  const fixturePath = path.join('eval/fixtures', r.name.endsWith('.json') ? r.name : `${r.name}.json`);
   const fixture = JSON.parse(fs.readFileSync(fixturePath, 'utf8'));
   const existingKeys = new Set(
     fixture.groundTruth.map(gt => `${gt.book}|${gt.chapter}|${gt.verse ?? gt.verseStart}`)
