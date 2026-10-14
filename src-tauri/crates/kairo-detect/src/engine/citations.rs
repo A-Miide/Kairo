@@ -17,6 +17,8 @@ use crate::reference::{book_mentions, Citation, Verses};
 
 /// A citation split by a pause is joined with the previous final this long after it.
 pub const PREV_FINAL_JOIN_WINDOW_MS: u64 = 8_000;
+/// How long a cited numbered book ("First John") claims its bare name.
+const SIBLING_CONTEXT_MS: u64 = 120_000;
 /// While the offline engine's speech runs on across locks, the previous text
 /// carries this many locked words.
 const JOIN_CARRY_WORDS: usize = 12;
@@ -108,6 +110,10 @@ pub(crate) fn ends_on_growable_number(text: &str) -> bool {
 }
 
 pub(crate) fn opens_with_number(text: &str) -> bool {
+    static DIGIT_RANGE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| re(r"^\s*\d+\s*[-\u{2013}]\s*\d+\b"));
+    if DIGIT_RANGE.is_match(text) {
+        return true; // "48-57"
+    }
     let t = tokens(text);
     let w: Vec<&str> = t.iter().map(String::as_str).collect();
     !w.is_empty() && consume_number(&w, 0, None).is_some()
@@ -286,6 +292,7 @@ impl Engine {
     fn references(&mut self, text: &str, is_final: bool, sent_from_interim: &HashSet<VerseId>, continues_live: bool, now: u64) -> bool {
         let parsed = self.parse(text, now);
         let mut refs = self.resolve_ambiguous(parsed, now);
+        self.prefer_cited_sibling(&mut refs, now);
         let tail = last_raw_word(text).trim_end_matches(['.', ',', '!', '?']).to_lowercase();
         if !refs.is_empty() && is_final && DANGLING.contains(&tail.as_str()) {
             refs.clear(); // the next segment's join finishes it
@@ -304,7 +311,11 @@ impl Engine {
                     let joined_refs = if fresh.is_empty() { Vec::new() } else { self.resolve_ambiguous(fresh, now) };
                     if !joined_refs.is_empty() && split {
                         let own: HashSet<String> = refs.iter().map(|r| cite_key(&r.c)).collect();
-                        let added: Vec<Cite> = joined_refs.into_iter().filter(|r| !own.contains(&cite_key(&r.c))).collect();
+                        // Already put up from the live text, before what followed it.
+                        let added: Vec<Cite> = joined_refs
+                            .into_iter()
+                            .filter(|r| !own.contains(&cite_key(&r.c)) && !self.citation_verses(&r.c).first().is_some_and(|v| sent_from_interim.contains(v)))
+                            .collect();
                         if !added.is_empty() {
                             refs = added.into_iter().chain(refs).collect();
                         }
@@ -314,6 +325,22 @@ impl Engine {
                     }
                 }
             }
+        } else if opens_with_number(text) && text.split_whitespace().count() > 1 {
+            // Live text finishing the previous final's citation ("…John 6" |
+            // "48-57 …") goes up now, before whatever is said after it.
+            if let Some((prev, at)) = self.t.prev_final.clone() {
+                if ends_mid_citation(&prev) && now.saturating_sub(at) < PREV_FINAL_JOIN_WINDOW_MS {
+                    let prev_keys: HashSet<String> = self.parse(&prev, now).iter().map(cite_key).collect();
+                    let fresh: Vec<Citation> = self.parse(&format!("{prev} {text}"), now).into_iter().filter(|c| !prev_keys.contains(&cite_key(c))).collect();
+                    let own: HashSet<String> = refs.iter().map(|r| cite_key(&r.c)).collect();
+                    let added: Vec<Cite> = if fresh.is_empty() { Vec::new() } else { self.resolve_ambiguous(fresh, now) }.into_iter().filter(|r| !own.contains(&cite_key(&r.c))).collect();
+                    if !added.is_empty() {
+                        refs = added.into_iter().chain(refs).collect();
+                    }
+                }
+            }
+        }
+        if is_final {
             let carried = match (&self.t.prev_final, self.t.prev_continues) {
                 (Some((p, _)), true) => last_n_words(&format!("{p} {text}"), JOIN_CARRY_WORDS),
                 _ => text.to_string(),
@@ -404,7 +431,10 @@ impl Engine {
 
             if is_final {
                 if verses.len() > 1 {
-                    self.set_range(verses.clone(), now);
+                    // Set from the live text already (and maybe moved on): keep it.
+                    if self.range.all != verses {
+                        self.set_range(verses.clone(), now);
+                    }
                 } else {
                     self.clear_range(now);
                 }
@@ -449,13 +479,45 @@ impl Engine {
                 }
                 self.t.interim_sent.insert(top);
                 let single = verses.len() == 1;
-                let sent = self.decide(Candidate::new(verses, Method::Direct, 1.0, Target::Screen), now);
+                let sent = self.decide(Candidate::new(verses.clone(), Method::Direct, 1.0, Target::Screen), now);
                 if sent == Target::Screen && single {
                     self.start_citation_check(top, text, false, None, now);
+                }
+                // A range is in play as soon as it's up: its next verse, read
+                // before the sentence ends, follows it.
+                if sent == Target::Screen && !single {
+                    self.set_range(verses, now);
                 }
             }
         }
         true
+    }
+
+    /// "First John 4:4 … John 5:19": a preacher staying in a numbered book
+    /// drops its number. A book named bare while its numbered sibling was just
+    /// cited, and not itself in play, is that sibling (when it has the verse).
+    fn prefer_cited_sibling(&self, refs: &mut [Cite], now: u64) {
+        for r in refs.iter_mut() {
+            let book = r.c.book;
+            let siblings: Vec<Book> = Book::all()
+                .filter(|s| s.name().split_once(' ').is_some_and(|(n, rest)| n.parse::<u8>().is_ok() && rest == book.name()))
+                .collect();
+            if siblings.is_empty() {
+                continue;
+            }
+            let recent = |b: Book| self.sermon.iter().any(|c| c.named && c.book == b && now.saturating_sub(c.at) < SIBLING_CONTEXT_MS);
+            if recent(book) || self.active(now).book == Some(book) {
+                continue;
+            }
+            let Some(sibling) = siblings.into_iter().filter(|s| recent(*s)).max_by_key(|s| self.sermon.iter().filter(|c| c.book == *s).map(|c| c.at).max()) else { continue };
+            let first = match r.c.verses {
+                Verses::One(v) | Verses::Span(v, _) => v,
+                _ => continue,
+            };
+            if self.k.id(VerseRef::new(sibling, r.c.chapter.min(u16::MAX as u32) as u16, first.min(u16::MAX as u32) as u16)).is_some() {
+                r.c.book = sibling;
+            }
+        }
     }
 
     /// No citation: a bare book mention is context; a chapter waiting for its
