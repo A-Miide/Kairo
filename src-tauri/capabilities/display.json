@@ -1,9 +1,16 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "display-capability",
-  "description": "KAIRO output/display windows (kairo-*) — display.html only ever calls get_server_token (to authenticate its own WS connection to the local server); scoped narrowly instead of inheriting the main window's full permission set (NDI/Syphon control, app updates, window creation), none of which the output window uses.",
-  "windows": ["kairo-*"],
+  "description": "KAIRO's other windows (kairo-*: outputs, their hidden capture windows, Monitor, Identify) \u2014 only what their pages use: the server token, showing themselves and going full screen, reporting a change to capture (an NDI/Syphon/DeckLink output's capture window) and handing a full-frame video background to the app. Nothing else of the main window's (window creation, updates, outputs, clipboard): a slide or theme shown there can't reach those.",
+  "windows": [
+    "kairo-*"
+  ],
   "permissions": [
-    "allow-get-server-token"
+    "core:default",
+    "core:window:allow-show",
+    "core:window:allow-set-fullscreen",
+    "allow-get-server-token",
+    "allow-output-capture",
+    "allow-output-video"
   ]
 }

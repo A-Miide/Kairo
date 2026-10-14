@@ -387,6 +387,24 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the decklink_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-decklink-list",
+          "markdownDescription": "Enables the decklink_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the decklink_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-decklink-start",
+          "markdownDescription": "Enables the decklink_start command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the decklink_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-decklink-stop",
+          "markdownDescription": "Enables the decklink_stop command without any pre-configured scope."
+        },
+        {
           "description": "Enables the get_server_config command without any pre-configured scope.",
           "type": "string",
           "const": "allow-get-server-config",
@@ -459,6 +477,24 @@
           "markdownDescription": "Enables the ndi_update_timer command without any pre-configured scope."
         },
         {
+          "description": "Enables the output_capture command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-output-capture",
+          "markdownDescription": "Enables the output_capture command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the output_capture_supported command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-output-capture-supported",
+          "markdownDescription": "Enables the output_capture_supported command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the output_video command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-output-video",
+          "markdownDescription": "Enables the output_video command without any pre-configured scope."
+        },
+        {
           "description": "Enables the signal_main_ready command without any pre-configured scope.",
           "type": "string",
           "const": "allow-signal-main-ready",
@@ -499,6 +535,24 @@
           "type": "string",
           "const": "allow-syphon-update-timer",
           "markdownDescription": "Enables the syphon_update_timer command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the decklink_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-decklink-list",
+          "markdownDescription": "Denies the decklink_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the decklink_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-decklink-start",
+          "markdownDescription": "Denies the decklink_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the decklink_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-decklink-stop",
+          "markdownDescription": "Denies the decklink_stop command without any pre-configured scope."
         },
         {
           "description": "Denies the get_server_config command without any pre-configured scope.",
@@ -571,6 +625,24 @@
           "type": "string",
           "const": "deny-ndi-update-timer",
           "markdownDescription": "Denies the ndi_update_timer command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the output_capture command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-output-capture",
+          "markdownDescription": "Denies the output_capture command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the output_capture_supported command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-output-capture-supported",
+          "markdownDescription": "Denies the output_capture_supported command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the output_video command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-output-video",
+          "markdownDescription": "Denies the output_video command without any pre-configured scope."
         },
         {
           "description": "Denies the signal_main_ready command without any pre-configured scope.",

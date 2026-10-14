@@ -1,0 +1,14 @@
+[package]
+name = "kairo-eval"
+description = "Replays recorded sermons through the detection engine, with the meaning models, and scores the result"
+version.workspace = true
+edition.workspace = true
+publish = false
+
+[dependencies]
+kairo-bible = { path = "../kairo-bible" }
+kairo-detect = { path = "../kairo-detect" }
+kairo-semantic = { path = "../kairo-semantic" }
+kairo-server = { path = "../kairo-server" }
+serde_json.workspace = true
+sha2 = "0.10"

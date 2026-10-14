@@ -1,0 +1,25 @@
+# Windows: the offline speech engine (sherpa-onnx) ships only built against
+# the static C runtime (/MT), so everything else is built that way too —
+# mixing it with the DLL runtime (/MD, Spout's default) fails to link. It also
+# means the installer needs no Visual C++ redistributable.
+# ort's prebuilt ONNX Runtime for Windows is built /MD, so it can't be linked
+# here either; ort uses the speech engine's copy instead, as on Intel Macs.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.x86_64-pc-windows-msvc.onnxruntime]
+rustc-link-lib = []
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc.onnxruntime]
+rustc-link-lib = []
+
+# Intel Macs: ort publishes no prebuilt ONNX Runtime for x86_64-apple-darwin.
+# The offline speech engine already links ONNX Runtime (1.28.2, the same
+# release ort expects), so ort uses that copy instead of linking its own.
+# kairo-semantic links the speech engine's library on these targets, so
+# every program that uses ort finds ONNX Runtime.
+[target.x86_64-apple-darwin.onnxruntime]
+rustc-link-lib = []

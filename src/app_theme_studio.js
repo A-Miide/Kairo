@@ -139,31 +139,13 @@ function gradientCanvas(id) {
 const DEFAULT_LOOKS = [
   {
     // The default Bible theme (first, so a fresh install's outputs start on
-    // it): a cool gradient from the bundled set — Blue Hour, cyan into blue
-    // and violet with a violet glow, dark enough under white verse text
-    // (2026-10-01: "a default bible theme with a sweet gradient, something
-    // cool, not warm"). Same text layout as Full — Background.
-    id: 'full-gradient', name: 'Full — Gradient', layout: 'fullscreen', animation: 'fade',
-    groupId: 'grp-bible', groupName: 'Bible',
-    layers: [
-      gradientCanvas('blue-hour'),
-      { id: 'verse', type: 'text', name: 'Verse', visible: true, binding: 'verse', customText: '',
-        pos: { x: 210, y: 80, w: 1500, h: 700 },
-        font: { family: 'Manrope', size: 64, weight: 500, italic: false, lineHeight: 1.35, letterSpacing: 0, transform: 'none' },
-        color: '#ffffff', opacity: 100, align: 'center',
-        shadow: { ...TXT_SHADOW_SOFT }, outline: { ...NO_OUTLINE } },
-      { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '',
-        pos: { x: 210, y: 820, w: 1500, h: 0 },
-        font: { family: 'Manrope', size: 28, weight: 600, italic: false, lineHeight: 1.2, letterSpacing: 4, transform: 'uppercase' },
-        color: '#ffffff', opacity: 70, align: 'center',
-        shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
-    ],
-  },
-  {
+    // it): Kairo's own red into its darker shade (2026-10-12: the brand
+    // colours, chosen over the logo's exact orange gradient so white verse
+    // text stays readable on a projector).
     id: 'full-bg', name: 'Full — Background', layout: 'fullscreen', animation: 'fade',
     groupId: 'grp-bible', groupName: 'Bible',
     layers: [
-      poolCanvas('midnight'),
+      gradientCanvas('kairo'),
       // h bumped 440 -> 700 (y unchanged) — owner: "for full screen or block
       // themes, the text area should use a sizable height by default so
       // that text don't cut off due to the constraint." A fixed-height text
@@ -174,14 +156,35 @@ const DEFAULT_LOOKS = [
       // rely on. Reference line's own y moved down to match (was directly
       // under the old, shorter box).
       { id: 'verse', type: 'text', name: 'Verse', visible: true, binding: 'verse', customText: '',
-        pos: { x: 210, y: 80, w: 1500, h: 700 },
+        pos: { x: 210, y: 190, w: 1500, h: 700 },
         font: { family: 'Manrope', size: 64, weight: 500, italic: false, lineHeight: 1.35, letterSpacing: 0, transform: 'none' },
         color: '#ffffff', opacity: 100, align: 'center',
         shadow: { ...TXT_SHADOW_SOFT }, outline: { ...NO_OUTLINE } },
-      { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '',
+      { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '', follows: 'verse',
         pos: { x: 210, y: 820, w: 1500, h: 0 },
-        font: { family: 'Manrope', size: 28, weight: 600, italic: false, lineHeight: 1.2, letterSpacing: 4, transform: 'uppercase' },
-        color: '#ffffff', opacity: 60, align: 'center',
+        font: { family: 'Manrope', size: 28, weight: 700, italic: false, lineHeight: 1.2, letterSpacing: 4, transform: 'uppercase' },
+        color: '#ffffff', opacity: 90, align: 'center',
+        shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
+    ],
+  },
+  {
+    // A cool gradient from the bundled set — Blue Hour, cyan into blue and
+    // violet with a violet glow, dark enough under white verse text (the
+    // default from 2026-10-01 until Full — Background on Crimson replaced
+    // it). Same text layout as Full — Background.
+    id: 'full-gradient', name: 'Full — Gradient', layout: 'fullscreen', animation: 'fade',
+    groupId: 'grp-bible', groupName: 'Bible',
+    layers: [
+      gradientCanvas('blue-hour'),
+      { id: 'verse', type: 'text', name: 'Verse', visible: true, binding: 'verse', customText: '',
+        pos: { x: 210, y: 190, w: 1500, h: 700 },
+        font: { family: 'Manrope', size: 64, weight: 500, italic: false, lineHeight: 1.35, letterSpacing: 0, transform: 'none' },
+        color: '#ffffff', opacity: 100, align: 'center',
+        shadow: { ...TXT_SHADOW_SOFT }, outline: { ...NO_OUTLINE } },
+      { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '', follows: 'verse',
+        pos: { x: 210, y: 820, w: 1500, h: 0 },
+        font: { family: 'Manrope', size: 28, weight: 700, italic: false, lineHeight: 1.2, letterSpacing: 4, transform: 'uppercase' },
+        color: '#ffffff', opacity: 90, align: 'center',
         shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
     ],
   },
@@ -195,15 +198,15 @@ const DEFAULT_LOOKS = [
         fill: 'transparent', fillBefore: 'solid', color: '#000000', opacity: 100, color2: '#1c1c30', angle: 160 },
       // Same h/ref-y adjustment as Full — Background, see its own comment.
       { id: 'verse', type: 'text', name: 'Verse', visible: true, binding: 'verse', customText: '',
-        pos: { x: 210, y: 80, w: 1500, h: 700 },
+        pos: { x: 210, y: 190, w: 1500, h: 700 },
         font: { family: 'Manrope', size: 64, weight: 600, italic: false, lineHeight: 1.35, letterSpacing: 0, transform: 'none' },
         color: '#ffffff', opacity: 100, align: 'center',
         shadow: { enabled: true, color: '#000000', opacity: 85, blur: 18, x: 0, y: 4 },
         outline: { enabled: true, color: '#000000', width: 2 } },
-      { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '',
+      { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '', follows: 'verse',
         pos: { x: 210, y: 820, w: 1500, h: 0 },
         font: { family: 'Manrope', size: 28, weight: 700, italic: false, lineHeight: 1.2, letterSpacing: 4, transform: 'uppercase' },
-        color: '#ffffff', opacity: 85, align: 'center',
+        color: '#ffffff', opacity: 90, align: 'center',
         shadow: { enabled: true, color: '#000000', opacity: 85, blur: 10, x: 0, y: 2 },
         outline: { ...NO_OUTLINE } },
     ],
@@ -225,12 +228,12 @@ const DEFAULT_LOOKS = [
       { id: 'verse', type: 'text', name: 'Verse', visible: true, binding: 'verse', customText: '',
         pos: { x: 96, y: 784, w: 1728, h: 150 },
         font: { family: 'Manrope', size: 44, weight: 500, italic: false, lineHeight: 1.3, letterSpacing: 0, transform: 'none' },
-        color: '#ffffff', opacity: 100, align: 'left',
+        color: '#ffffff', opacity: 100, align: 'center',
         shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
       { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '',
         pos: { x: 96, y: 980, w: 1728, h: 0 },
         font: { family: 'Manrope', size: 22, weight: 800, italic: false, lineHeight: 1.2, letterSpacing: 6, transform: 'uppercase' },
-        color: '#ffffff', opacity: 100, align: 'left',
+        color: '#ffffff', opacity: 100, align: 'center',
         shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
     ],
   },
@@ -271,18 +274,23 @@ const DEFAULT_LOOKS = [
     layers: [
       { id: 'bg', type: 'background', name: 'Canvas', visible: true,
         fill: 'transparent', fillBefore: 'solid', color: '#000000', opacity: 100, color2: '#000000', angle: 0 },
+      // The camera half, dimmed a little so the brand panel reads as the
+      // focus (2026-10-12) — still see-through.
+      { id: 'shade', type: 'background', name: 'Other Half', visible: true,
+        fill: 'solid', color: '#000000', opacity: 35, color2: '#000000', angle: 0, radius: 0,
+        pos: { x: 960, y: 0, w: 960, h: 1080 } },
       { id: 'panel', type: 'background', name: 'Filled Half', visible: true,
-        fill: 'image', src: 'backgrounds/midnight.jpg', color: poolColor('midnight'), opacity: 100, color2: '#1c1c30', angle: 160, radius: 0,
+        fill: 'gradient', color: '#F5301A', color2: '#9E1608', opacity: 100, angle: 160, gradientStops: [{ pos: 0, color: '#F5301A' }, { pos: 100, color: '#9E1608' }], radius: 0,
         pos: { x: 0, y: 0, w: 960, h: 1080 } },
       { id: 'verse', type: 'text', name: 'Verse', visible: true, binding: 'verse', customText: '',
-        pos: { x: 88, y: 300, w: 784, h: 430 },
+        pos: { x: 88, y: 325, w: 784, h: 430 },
         font: { family: 'Manrope', size: 44, weight: 500, italic: false, lineHeight: 1.4, letterSpacing: 0, transform: 'none' },
         color: '#ffffff', opacity: 100, align: 'center',
         shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
-      { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '',
+      { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '', follows: 'verse',
         pos: { x: 88, y: 762, w: 784, h: 0 },
         font: { family: 'Manrope', size: 22, weight: 700, italic: false, lineHeight: 1.2, letterSpacing: 5, transform: 'uppercase' },
-        color: '#ffffff', opacity: 65, align: 'center',
+        color: '#ffffff', opacity: 90, align: 'center',
         shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
     ],
   },
@@ -293,18 +301,23 @@ const DEFAULT_LOOKS = [
     layers: [
       { id: 'bg', type: 'background', name: 'Canvas', visible: true,
         fill: 'transparent', fillBefore: 'solid', color: '#000000', opacity: 100, color2: '#000000', angle: 0 },
+      // The camera half, dimmed a little so the brand panel reads as the
+      // focus (2026-10-12) — still see-through.
+      { id: 'shade', type: 'background', name: 'Other Half', visible: true,
+        fill: 'solid', color: '#000000', opacity: 35, color2: '#000000', angle: 0, radius: 0,
+        pos: { x: 0, y: 0, w: 960, h: 1080 } },
       { id: 'panel', type: 'background', name: 'Filled Half', visible: true,
-        fill: 'image', src: 'backgrounds/midnight.jpg', color: poolColor('midnight'), opacity: 100, color2: '#1c1c30', angle: 160, radius: 0,
+        fill: 'gradient', color: '#F5301A', color2: '#9E1608', opacity: 100, angle: 160, gradientStops: [{ pos: 0, color: '#F5301A' }, { pos: 100, color: '#9E1608' }], radius: 0,
         pos: { x: 960, y: 0, w: 960, h: 1080 } },
       { id: 'verse', type: 'text', name: 'Verse', visible: true, binding: 'verse', customText: '',
-        pos: { x: 1048, y: 300, w: 784, h: 430 },
+        pos: { x: 1048, y: 325, w: 784, h: 430 },
         font: { family: 'Manrope', size: 44, weight: 500, italic: false, lineHeight: 1.4, letterSpacing: 0, transform: 'none' },
         color: '#ffffff', opacity: 100, align: 'center',
         shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
-      { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '',
+      { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '', follows: 'verse',
         pos: { x: 1048, y: 762, w: 784, h: 0 },
         font: { family: 'Manrope', size: 22, weight: 700, italic: false, lineHeight: 1.2, letterSpacing: 5, transform: 'uppercase' },
-        color: '#ffffff', opacity: 65, align: 'center',
+        color: '#ffffff', opacity: 90, align: 'center',
         shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
     ],
   },
@@ -329,24 +342,24 @@ const DEFAULT_LOOKS = [
         fill: 'solid', color: '#000000', opacity: 45, color2: '#0a0a12', angle: 160, radius: 0,
         pos: { x: 960, y: 0, w: 960, h: 1080 } },
       { id: 'verse', type: 'text', name: 'Verse (source)', visible: true, binding: 'verse', customText: '',
-        pos: { x: 88, y: 300, w: 784, h: 430 },
+        pos: { x: 88, y: 325, w: 784, h: 430 },
         font: { family: 'Manrope', size: 40, weight: 500, italic: false, lineHeight: 1.4, letterSpacing: 0, transform: 'none' },
         color: '#ffffff', opacity: 100, align: 'center',
         shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
-      { id: 'ref', type: 'text', name: 'Reference (source)', visible: true, binding: 'reference', customText: '',
+      { id: 'ref', type: 'text', name: 'Reference (source)', visible: true, binding: 'reference', customText: '', follows: 'verse',
         pos: { x: 88, y: 762, w: 784, h: 0 },
         font: { family: 'Manrope', size: 20, weight: 700, italic: false, lineHeight: 1.2, letterSpacing: 5, transform: 'uppercase' },
-        color: '#ffffff', opacity: 65, align: 'center',
+        color: '#ffffff', opacity: 90, align: 'center',
         shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
       { id: 'verse-translated', type: 'text', name: 'Verse (translated)', visible: true, binding: 'verse_translated', customText: '',
-        pos: { x: 1048, y: 300, w: 784, h: 430 },
+        pos: { x: 1048, y: 325, w: 784, h: 430 },
         font: { family: 'Manrope', size: 40, weight: 500, italic: false, lineHeight: 1.4, letterSpacing: 0, transform: 'none' },
         color: '#ffffff', opacity: 100, align: 'center',
         shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
-      { id: 'ref-translated', type: 'text', name: 'Reference (translated)', visible: true, binding: 'reference', customText: '',
+      { id: 'ref-translated', type: 'text', name: 'Reference (translated)', visible: true, binding: 'reference', customText: '', follows: 'verse-translated',
         pos: { x: 1048, y: 762, w: 784, h: 0 },
         font: { family: 'Manrope', size: 20, weight: 700, italic: false, lineHeight: 1.2, letterSpacing: 5, transform: 'uppercase' },
-        color: '#ffffff', opacity: 65, align: 'center',
+        color: '#ffffff', opacity: 90, align: 'center',
         shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
     ],
   },
@@ -599,7 +612,7 @@ const DEFAULT_LOOKS = [
     id: 'timer-big', name: 'Timer — Big Countdown', layout: 'fullscreen', animation: 'cut',
     groupId: 'grp-timer', groupName: 'Timer',
     layers: [
-      poolCanvas('stage'),
+      gradientCanvas('kairo'),
       { id: 'timer', type: 'text', name: 'Countdown', visible: true, binding: 'timer', customText: '',
         pos: { x: 160, y: 380, w: 1600, h: 320 },
         font: { family: 'Manrope', size: 180, weight: 800, italic: false, lineHeight: 1, letterSpacing: 0, transform: 'none' },
@@ -708,14 +721,14 @@ const DEFAULT_LOOKS = [
       { id: 'light', type: 'motion', name: 'Aurora', visible: true, opacity: 100, pos: { x: 0, y: 0, w: 1920, h: 1080 },
         graphic: { kind: 'aurora', colors: ['#6d28d9', '#0ea5e9', '#db2777'], count: 4, size: 90, intensity: 42, speed: 0.45, blend: 'glow', seed: 5 } },
       { id: 'verse', type: 'text', name: 'Verse', visible: true, binding: 'verse', customText: '',
-        pos: { x: 210, y: 80, w: 1500, h: 700 },
+        pos: { x: 210, y: 190, w: 1500, h: 700 },
         font: { family: 'Manrope', size: 64, weight: 500, italic: false, lineHeight: 1.35, letterSpacing: 0, transform: 'none' },
         color: '#ffffff', opacity: 100, align: 'center',
         shadow: { ...TXT_SHADOW_SOFT }, outline: { ...NO_OUTLINE } },
-      { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '',
+      { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '', follows: 'verse',
         pos: { x: 210, y: 820, w: 1500, h: 0 },
-        font: { family: 'Manrope', size: 28, weight: 600, italic: false, lineHeight: 1.2, letterSpacing: 4, transform: 'uppercase' },
-        color: '#ffffff', opacity: 65, align: 'center',
+        font: { family: 'Manrope', size: 28, weight: 700, italic: false, lineHeight: 1.2, letterSpacing: 4, transform: 'uppercase' },
+        color: '#ffffff', opacity: 90, align: 'center',
         shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
     ],
   },
@@ -824,6 +837,14 @@ let looks = (function loadLooks() {
     // once, and only touches a stored theme whose verse box is STILL
     // sitting at the exact old shipped default — an operator who already
     // deliberately resized it keeps their own choice untouched.
+    // References now sit just under their verse, bolder, with the verse box
+    // centred on the screen; Lower Third's text is centred (2026-10-12). Only a
+    // stored built-in still at its shipped layout changes — gated and
+    // force-persisted like the migrations above.
+    const FOLLOW_MIGRATION_KEY = 'kairo-migrated-reference-follows-verse';
+    const runFollowMigration = !localStorage.getItem(FOLLOW_MIGRATION_KEY);
+    if (runFollowMigration) localStorage.setItem(FOLLOW_MIGRATION_KEY, '1');
+    let followMigrated = false;
     const TEXTHEIGHT_MIGRATION_KEY = 'kairo-migrated-fullscreen-text-height';
     const runTextHeightMigration = !localStorage.getItem(TEXTHEIGHT_MIGRATION_KEY);
     if (runTextHeightMigration) localStorage.setItem(TEXTHEIGHT_MIGRATION_KEY, '1');
@@ -914,6 +935,30 @@ let looks = (function loadLooks() {
         if (verse?.pos?.h === 440) { verse.pos.h = 700; textHeightMigrated = true; }
         if (ref?.pos?.y === 560)   { ref.pos.y = 820;   textHeightMigrated = true; }
       }
+      if (runFollowMigration && def) {
+        const byId = id => (l.layers || []).find(ly => ly.id === id);
+        const pairs = { verse: 'ref', 'verse-translated': 'ref-translated' };
+        for (const [vId, rId] of Object.entries(pairs)) {
+          const verse = byId(vId), ref = byId(rId);
+          const shippedV = def.layers.find(ly => ly.id === vId), shippedR = def.layers.find(ly => ly.id === rId);
+          if (!verse?.pos || !ref?.pos || !shippedV?.pos || !shippedR?.follows || ref.follows) continue;
+          const wasFull  = verse.pos.y === 80 && verse.pos.h === 700 && ref.pos.y === 820;
+          const wasSplit = verse.pos.y === 300 && verse.pos.h === 430 && ref.pos.y === 762;
+          if (wasFull || wasSplit) {
+            verse.pos.y = shippedV.pos.y;
+            ref.follows = shippedR.follows;
+            // Bolder, for contrast (2026-10-12) — unless already restyled heavier.
+            if (ref.font && shippedR.font && (ref.font.weight ?? 0) < shippedR.font.weight) ref.font.weight = shippedR.font.weight;
+            if ((ref.opacity ?? 100) < shippedR.opacity) ref.opacity = shippedR.opacity;
+            followMigrated = true;
+          }
+        }
+        if (l.id === 'lower-third') {
+          (l.layers || []).forEach(ly => {
+            if (ly.type === 'text' && (ly.binding === 'verse' || ly.binding === 'reference') && ly.align === 'left') { ly.align = 'center'; followMigrated = true; }
+          });
+        }
+      }
       if (runTextHeightMigration && l.id === 'lyrics-block') {
         const verse = (l.layers || []).find(ly => ly.id === 'verse');
         if (verse?.pos?.h === 380 && verse?.pos?.y === 360) {
@@ -932,7 +977,7 @@ let looks = (function loadLooks() {
     // does (the align one is gated, so without a forced write here it would
     // silently never actually persist on an install that never happens to
     // save an unrelated theme edit — the gate key alone doesn't get you that).
-    if (alignMigrated || textHeightMigrated || backgroundMigrated) {
+    if (alignMigrated || textHeightMigrated || backgroundMigrated || followMigrated) {
       try { localStorage.setItem(LOOKS_KEY, JSON.stringify(result)); } catch {}
     }
     return result;
@@ -948,6 +993,7 @@ let looks = (function loadLooks() {
   localStorage.setItem('kairo-migrated-bible-center-align', '1');
   localStorage.setItem('kairo-migrated-fullscreen-text-height', '1');
   localStorage.setItem('kairo-migrated-builtin-backgrounds', '1');
+  localStorage.setItem('kairo-migrated-reference-follows-verse', '1');
   const legacy = JSON.parse(localStorage.getItem('kairo-looks-v2') || 'null');
   const custom = Array.isArray(legacy) ? legacy.filter(l => l && !LEGACY_BUILTIN_IDS.has(l.id)) : [];
   return [...DEFAULT_LOOKS, ...custom];
@@ -1015,7 +1061,52 @@ function tsPlayAnimations() { tsPlayBuilds = true; renderPreview(); }
 let tsItemCtx = null; // { item, slideIndex, baseLook } — set only while tsMode === 'item'
 let itemUndoStack = [], itemRedoStack = [], itemPendingCheckpoint = null, itemAutosaveTimer = null;
 
+// What each theme looked like when last saved (minus its name and group,
+// which don't change how it looks) — so the first edit after that can leave
+// decks using it on the version they had (service.js keepThemeVersion).
+const savedThemeJson = new Map();
+const themeContentJson = (l) => { const { name, groupId, groupName, ...rest } = l; return JSON.stringify(rest); };
+function themeHash(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return `${(h >>> 0).toString(36)}${str.length.toString(36)}`;
+}
+function rememberSavedThemes() { looks.forEach(l => savedThemeJson.set(l.id, themeContentJson(l))); }
+function keepDeckThemeVersions() {
+  const S = window.KairoService;
+  for (const l of looks) {
+    const now = themeContentJson(l);
+    const before = savedThemeJson.get(l.id);
+    if (before != null && before !== now && S?.keepThemeVersion) S.keepThemeVersion(l.id, themeHash(before), before);
+    savedThemeJson.set(l.id, now);
+  }
+}
+// "Used by 3 decks · 2 keep the earlier version · Update all", under the
+// selected theme's name.
+function refreshThemeUsage() {
+  const el = document.getElementById('ts-theme-usage');
+  const S = window.KairoService;
+  if (!el || !activeLook || !S?.themeUsage) return;
+  const u = S.themeUsage(activeLook.id);
+  el.innerHTML = '';
+  if (!u.decks) return;
+  el.append(`Used by ${u.decks} deck${u.decks === 1 ? '' : 's'}`);
+  if (u.older) {
+    el.append(` · ${u.older} on the earlier version `);
+    const btn = document.createElement('button');
+    btn.className = 'ts-theme-usage-btn';
+    btn.textContent = u.older === 1 ? 'Update it' : 'Update all';
+    btn.title = 'Bring the decks still on the earlier version of this theme up to date';
+    btn.addEventListener('click', (e) => { e.stopPropagation(); S.updateToCurrentTheme(null, activeLook.id); refreshThemeUsage(); });
+    el.appendChild(btn);
+  }
+}
+
+rememberSavedThemes(); // the themes as loaded, before any edit this session
+
 function saveLooks() {
+  keepDeckThemeVersions();
+  refreshThemeUsage();
   // A large embedded layer (e.g. an uncapped video data: URI — see
   // loadVideoFile's own size cap) can push `looks` past the origin's
   // storage quota; setItem throws SYNCHRONOUSLY. Uncaught, that used to
@@ -1082,7 +1173,19 @@ function buildLookRow(look, indented) {
   });
 
   item.appendChild(thumb);
-  item.appendChild(name);
+  if (look.id === activeLook?.id) {
+    const label = document.createElement('div');
+    label.className = 'ts-theme-label';
+    label.appendChild(name);
+    const usage = document.createElement('div');
+    usage.className = 'ts-theme-usage';
+    usage.id = 'ts-theme-usage';
+    label.appendChild(usage);
+    item.appendChild(label);
+    queueMicrotask(refreshThemeUsage);
+  } else {
+    item.appendChild(name);
+  }
   item.appendChild(dup);
 
   // Built-ins have no delete affordance at all — duplicate is the only
@@ -1206,6 +1309,10 @@ async function deleteThemeGroup(groupId, groupName, groupLooks) {
 function renderLooksList() {
   const el = document.getElementById('looks-list');
   if (!el) return;
+  // Emptying the list collapses its height, which snaps whatever scrolls it
+  // back to the top; keep the position so picking a row doesn't jump.
+  const scrollers = [];
+  for (let n = el; n && n !== document.body; n = n.parentElement) if (n.scrollTop) scrollers.push([n, n.scrollTop]);
   el.innerHTML = '';
   const renderedGroups = new Set();
   looks.forEach(look => {
@@ -1220,7 +1327,7 @@ function renderLooksList() {
       return;
     }
     el.appendChild(buildLookRow(look, false));
-  });
+  });  scrollers.forEach(([n, top]) => { n.scrollTop = top; });
 }
 
 function selectLook(look) {
@@ -1468,7 +1575,8 @@ function renderLayersList() {
     // Type icon
     const typeIcon = document.createElement('div');
     typeIcon.className = 'ts-layer-type-icon';
-    typeIcon.textContent = layer.type === 'image' ? '▣'
+    typeIcon.textContent = layer.type === 'pp' ? (layer.text && layer.binding !== 'none' ? 'T' : layer.fill && layer.fill.media ? '▣' : '◆')
+                         : layer.type === 'image' ? '▣'
                          : layer.type === 'image-cycle' ? '▤'
                          : layer.type === 'motion' ? '✺'
                          : layer.type === 'background' ? '■'
@@ -1772,6 +1880,19 @@ function renderStage() {
   const paintLayer = (layer) => {
     if (!layer.visible) return;
 
+    // An element imported from ProPresenter: drawn exactly by pp_render.js,
+    // with a plain box over it to select and move it by.
+    if (layer.type === 'pp') {
+      stage.appendChild(window.KairoPP.render(layer, { verseText: PREVIEW_TEXT_SAMPLE, referenceText: PREVIEW_REF_SAMPLE }, { motion: 'still', scale: pxScale }));
+      const p = layer.pos || { x: 0, y: 0, w: TS_DESIGN_W, h: TS_DESIGN_H };
+      const hit = document.createElement('div');
+      hit.style.cssText = `position:absolute;left:${p.x / TS_DESIGN_W * 100}%;top:${p.y / TS_DESIGN_H * 100}%;width:${p.w / TS_DESIGN_W * 100}%;height:${p.h / TS_DESIGN_H * 100}%;` +
+        (layer.rotation ? `transform:rotate(${layer.rotation}deg);` : '');
+      stage.appendChild(hit);
+      tsDecorateLayerEl(hit, layer, true);
+      return;
+    }
+
     if (layer.type === 'background') {
       const div = document.createElement('div');
       div.style.cssText = 'position:absolute;inset:0;';
@@ -1869,7 +1990,7 @@ function renderStage() {
       if (div.tagName === 'VIDEO') {
         div.autoplay = true; div.loop = true; div.muted = true; div.playsInline = true;
         div.style.cssText = posCss + `object-fit:${fit};`;
-        div.src = layer.src;
+        div.src = authedMediaUrl(layer.src);
         applyImageLook(div, layer);
       } else {
         // The picture is drawn one level in (tsImageArt): clipped for Ken
@@ -2045,6 +2166,8 @@ function renderStage() {
       }
 
       if (layer.binding) div.dataset.binding = layer.binding;
+      div.dataset.layerId = layer.id || '';
+      if (layer.follows) div.dataset.follows = layer.follows; // stackFollowers, end of renderStage
       div.dataset.baseSize = (layer.font.size * pxScale).toFixed(1);
       // Marquee scroll — an inner span pushed fully off the right edge
       // (padding-left:100%) and animated to translateX(-100%) so it crosses
@@ -2242,6 +2365,8 @@ function renderStage() {
       stage.appendChild(f);
     }
   }
+  // A reference following its verse sits where the output will put it.
+  stackFollowers(stage);
   // Drag-a-box selection in progress.
   if (tsMarquee && tsMarquee.armed) {
     const m = tsMarquee.box;
@@ -2521,6 +2646,15 @@ function tsBeginDrag(e, layer, mode, dir) {
   if (activeLayer !== layer) { activeLayer = layer; renderLayersList(); renderProps(); renderPreview(); }
   const stage = tsStageEl();
   if (!stage) return;
+  // Moving or resizing a layer that follows another places it yourself:
+  // it keeps the spot it's showing at, and stops following.
+  if (layer.follows) {
+    const el = stage.querySelector(`[data-layer-id="${CSS.escape(layer.id)}"]`);
+    const top = el ? parseFloat(el.style.top) : NaN;
+    if (layer.pos && Number.isFinite(top)) layer.pos.y = Math.round(top / 100 * TS_DESIGN_H);
+    delete layer.follows;
+    renderProps();
+  }
   const pos = ensurePos(layer);
   // Moving (not resizing — group-resize isn't supported) a layer that's
   // part of the current multi-selection drags every OTHER selected layer
@@ -3571,6 +3705,19 @@ function swatchField(label, color, onChange, title = '') {
   return wrap;
 }
 // A switch with its name, field-sized ("Finale ●").
+function followVerseToggle(layer) {
+  // The verse in the same column (Multi-Language has one each side).
+  const x = layer.pos?.x ?? 0;
+  const lead = (activeLook.layers || [])
+    .filter(l => l.type === 'text' && (l.binding === 'verse' || l.binding === 'verse_translated') && l.id !== layer.id)
+    .sort((a, b) => Math.abs((a.pos?.x ?? 0) - x) - Math.abs((b.pos?.x ?? 0) - x))[0];
+  if (!lead) return null;
+  return toggleField('Follows the verse', layer.follows === lead.id, on => {
+    if (on) layer.follows = lead.id; else delete layer.follows;
+    up();
+  }, 'Sits just under the verse, wherever its text ends — moving it places it yourself');
+}
+
 function toggleField(label, on, onChange, title = '') {
   const wrap = document.createElement('div');
   wrap.className = 'ts-field ts-toggle-field';
@@ -4241,6 +4388,14 @@ function transformControls(layer) {
       },
     });
     f.querySelector('input').dataset.posInput = key;
+    // A layer following its verse is placed under it, not at its own Y.
+    if (key === 'y' && layer.follows) {
+      const inp = f.querySelector('input');
+      inp.disabled = true;
+      inp.value = '';
+      inp.placeholder = 'under the verse';
+      inp.title = 'Placed just under the verse — turn off "Follows the verse", or drag it, to set its own position';
+    }
     return f;
   };
 
@@ -5360,7 +5515,10 @@ function renderTextProps(panel, layer) {
     // another). A whole-theme setting, so not in a slide's own editor.
     tsMode !== 'item' && layer.binding === 'verse_translated' && prop('Language', makeSelect([
       { label: 'None', value: '' }, { label: 'French', value: 'fr' }, { label: 'Spanish', value: 'es' }, { label: 'Portuguese', value: 'pt' },
-    ], activeLook.translateTo || '', v => { activeLook.translateTo = v || null; renderPreview(); scheduleThemeAutosave(); }))
+    ], activeLook.translateTo || '', v => { activeLook.translateTo = v || null; renderPreview(); scheduleThemeAutosave(); })),
+    // A reference that sits just under the verse wherever the verse's text
+    // ends — instead of its own fixed box.
+    layer.binding === 'reference' && followVerseToggle(layer),
   ].filter(Boolean)));
 
   renderLayoutProps(panel, layer);
@@ -5558,8 +5716,14 @@ document.getElementById('ts-item-back-btn')?.addEventListener('click', () => clo
 function updateItemThemeLabel() {
   const label = document.getElementById('ts-item-theme-picker-label');
   if (!label || !tsItemCtx) return;
-  const resolved = window.KairoService.themeForItem(tsItemCtx.item);
-  label.textContent = tsItemCtx.item.themeId ? (resolved?.name || 'Theme') : 'Output default';
+  const { item, slideIndex } = tsItemCtx;
+  const slideThemeId = slideIndex != null ? window.KairoService.slideThemeIdOf(item, slideIndex) : null;
+  if (slideThemeId) {
+    label.textContent = looks.find(l => l.id === slideThemeId)?.name || 'Theme';
+    return;
+  }
+  const resolved = window.KairoService.themeForItem(item);
+  label.textContent = item.themeId ? (resolved?.name || 'Theme') : (window.KairoService.hasSlideThemes(item) ? 'Same as the item' : 'Output default');
 }
 
 // resolveFlexibleTime — "Ends at" used to require strict 24-hour HH:MM;
@@ -5752,15 +5916,22 @@ function renderScenePaceControls(host, item) {
 
 document.getElementById('ts-item-theme-picker-btn')?.addEventListener('click', (e) => {
   if (!tsItemCtx) return;
-  window.KairoService.openThemePopover(e.currentTarget, tsItemCtx.item);
+  // Editing one slide of a Slides deck: the pick is that slide's own theme.
+  const { item, slideIndex } = tsItemCtx;
+  window.KairoService.openThemePopover(e.currentTarget, item, window.KairoService.hasSlideThemes(item) && slideIndex != null ? { slideIndices: [slideIndex] } : {});
 });
 
 // Small duplicate of service.js's themeForItem resolution logic (item.themeId
 // lookup, else the primary output's assigned theme, else the first theme) —
 // matches this codebase's existing precedent of each context owning its own
 // small layer-renderer/resolver rather than cross-file exporting one.
-function resolveItemBaseLook(item) {
-  const explicit = item.themeId ? looks.find(l => l.id === item.themeId) : null;
+function resolveItemBaseLook(item, slideIndex) {
+  // A slide of a Slides deck can carry its own theme (block.themeId).
+  const slideTheme = slideIndex != null ? window.KairoService?.slideThemeIdOf?.(item, slideIndex) : null;
+  const versionOf = (id) => window.KairoService?.themeLookFor ? window.KairoService.themeLookFor(item, id) : looks.find(l => l.id === id);
+  const own = slideTheme ? versionOf(slideTheme) : null;
+  if (own) return own;
+  const explicit = item.themeId ? versionOf(item.themeId) : null;
   if (explicit) return explicit;
   // A fresh timer segment has no themeId yet, and falling through to the
   // output's own assigned theme (built for verse/reference bindings) meant
@@ -5817,7 +5988,7 @@ function buildSyntheticLook(item, slideIndex) {
   if (item.type === 'slides' && item.blocks?.[slideIndex]?.layers) {
     return { id: `scene:${item.id}:${slideIndex}`, layers: deepClone(item.blocks[slideIndex].layers) };
   }
-  const base = resolveItemBaseLook(item);
+  const base = resolveItemBaseLook(item, slideIndex);
   const clone = deepClone(base) || { layers: [] };
   clone.id = `item-edit:${item.id}:${slideIndex}`;
   const overrides = item.slideStyles?.[slideIndex] || {};
@@ -6138,7 +6309,7 @@ function selectItemSlide(index) {
 
 // ── Item mode open/close (mirrors openThemeStudio/closeThemeStudio above) ──
 function openItemStyleEditor(itemId, slideIndex = 0) {
-  // Timer segments aren't playlist items — they live in server/segments.js,
+  // Timer segments aren't playlist items — they live in the server's Segments (kairo-server library.rs),
   // not service.items — so they don't show up in the normal lookup at all.
   // getTimerItem adapts one into the same {id, type, themeId, slideStyles}
   // shape a real item has (see service.js), which is all this editor and
@@ -6148,7 +6319,7 @@ function openItemStyleEditor(itemId, slideIndex = 0) {
     || window.KairoService?.getTimerItem?.(itemId);
   if (!item) return;
   tsMode = 'item';
-  tsItemCtx = { item, slideIndex, baseLook: resolveItemBaseLook(item) };
+  tsItemCtx = { item, slideIndex, baseLook: resolveItemBaseLook(item, slideIndex) };
   document.querySelector('.main-layout')?.classList.add('hidden-el');
   document.getElementById('service-view')?.classList.add('hidden');
   looksModal?.classList.remove('hidden');
@@ -6200,7 +6371,7 @@ function refreshItemStyleEditorSlides(itemId) {
 // the slide/synthetic-look rebuild refreshItemStyleEditorSlides already does.
 function refreshItemStyleEditorTheme(itemId) {
   if (tsMode !== 'item' || !tsItemCtx || tsItemCtx.item.id !== itemId) return;
-  tsItemCtx.baseLook = resolveItemBaseLook(tsItemCtx.item);
+  tsItemCtx.baseLook = resolveItemBaseLook(tsItemCtx.item, tsItemCtx.slideIndex);
   updateItemThemeLabel();
   refreshItemStyleEditorSlides(itemId);
 }
@@ -6441,7 +6612,7 @@ const tsShapeFlyout = (() => {
   function syncIcon() {
     if (!toolBtn) return;
     const kind = TS_SHAPE_KINDS.find(k => k.id === tsShapeDefaults.shape) || TS_SHAPE_KINDS[0];
-    toolBtn.innerHTML = tsShapeIconSvg(kind.id, 17);
+    toolBtn.innerHTML = tsShapeIconSvg(kind.id, 17) + '<span class="ts-tool-label">Shape</span>';
     toolBtn.dataset.toolName = `${kind.label} · U`;
   }
   function close() {

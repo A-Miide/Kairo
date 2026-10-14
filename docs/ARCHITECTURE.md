@@ -102,7 +102,7 @@ Where things live at runtime: in a release build, `settings.json`, `server.log`,
 | `src-tauri/` | The Rust shell: windows, menu, updater, NDI / Syphon / Spout senders, packaging config. |
 | `databases/bibles/` | `map.json` (31,008 verses with their metadata), `kjv.json`, `packs/` (public-domain and open scripture-language packs), `translations/`. The embedding model, reranker and verse vectors are not in git; installers fetch them (see Data and models). |
 | `scripts/` | Asset and data generators (backgrounds, hymn imports), release helpers, packaging. |
-| `server/eval/` | The accuracy harness and its fixtures (see Testing). |
+| `eval/` | The accuracy harness and its fixtures (see Testing). |
 | `docs/` | This file, and a landing page. |
 
 ### The server (`server/`)
@@ -259,12 +259,12 @@ for f in src/*.test.js;    do node "$f" || echo "FAILED: $f"; done
   pipeline and asserts what reaches the screen. Most come from live runs. This is the best place to
   add a regression test for a detection bug: write the preacher's words as they arrived and assert
   the verse that should (or should not) go up.
-- **`server/eval/run_eval.js`** replays real sermon transcripts through the live code path and scores
+- **`eval/run_eval.js`** replays real sermon transcripts through the live code path and scores
   recall (answer-key verses found), precision (screen sends that were right) and how many missed
   verses were still offered in Possible Matches. Recent runs: about 86% of the answer-key verses
   found, about 99% of screen sends correct. The answer keys have gaps, so check a "wrong send"
   against the transcript before believing it. Results go to `eval-results/` (git-ignored).
-- **`server/eval/ab_audio.js`** plays a real audio file through an engine in real time, for comparing
+- **`eval/ab_audio.js`** plays a real audio file through an engine in real time, for comparing
   the offline engine with Deepgram on identical audio.
 
 ## Conventions and sharp edges
@@ -294,7 +294,7 @@ Needs Node 22+, a Rust toolchain and Tauri's platform prerequisites. A few thing
 - `src-tauri/tauri.conf.json` names the original maintainer's macOS signing identity. On another
   machine a release build needs its own identity there (or ad-hoc signing); dev runs do not sign.
 - The auto-updater (`tauri-plugin-updater`) reads
-  `https://github.com/Kairo-live/Kairo/releases/latest/download/latest.json`. Its private signing
+  `https://github.com/miide-Adeyemi/Kairo/releases/latest/download/latest.json`. Its private signing
   key is not in the repository.
 - `.github/workflows/build.yml` builds macOS, Windows and Linux when a `v*` tag is pushed. It was
   written for an earlier engine stack, so check it before relying on it.
@@ -305,7 +305,7 @@ Needs Node 22+, a Rust toolchain and Tauri's platform prerequisites. A few thing
 |---|---|
 | Fix a mis-detected citation | `server/reference_parser.js`, then add a case to `reference_parser.test.js` |
 | Fix a wrong or missing verse in a real situation | `server/service_scenarios.test.js` first (reproduce it), then the layer that decided |
-| Improve the offline engine | `server/sherpa_engine.js` and `server/eval/ab_audio.js` |
+| Improve the offline engine | `server/sherpa_engine.js` and `eval/ab_audio.js` |
 | Add an output type | `src/app_outputs.js`, `src-tauri/src/` and the output handling in `display.html` |
 | Change how a theme or slide is drawn | `src/layer_geometry.js` and `display.html` (the renderer), `src/app_theme_studio.js` (the editor) |
 | Support another spoken language | `server/citation_i18n.js` and `databases/bibles/packs/` |

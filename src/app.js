@@ -229,6 +229,10 @@ function handleServerMessage(msg) {
       _actionHandlers.get(msg.actionId)?.(msg);
       break;
 
+    case 'remote': // OSC remote control (server osc.rs)
+      window.runRemoteAction?.(msg.action);
+      break;
+
     case 'worker-ready':
       workerReady = true;
       if (workerStatusEl) { workerStatusEl.textContent = 'Engine ready'; workerStatusEl.style.color = 'var(--green)'; }
@@ -303,7 +307,10 @@ function handleServerMessage(msg) {
     // mirroring it in this window's own preview so a media send has some
     // visible confirmation here too, not just on the actual output.
     case 'media':
-      if (msg.target === 'viewer') renderMediaPreview(msg.src, msg.kind, msg.fit);
+      if (msg.target === 'viewer') {
+        renderMediaPreview(msg.src, msg.kind, msg.fit);
+        window.KairoService?.onMediaLive?.(msg.src, msg.kind);
+      }
       break;
 
     // A live segment's themed countdown — mirror it into the Monitoring
@@ -314,7 +321,7 @@ function handleServerMessage(msg) {
 
     case 'clear-layer':
       if (msg.layer === 'slide' || msg.layer === 'all') clearPreviewScreen();
-      if (msg.layer === 'media' || msg.layer === 'all') clearMediaPreview();
+      if (msg.layer === 'media' || msg.layer === 'all') { clearMediaPreview(); window.KairoService?.onMediaLive?.(null); }
       if (msg.layer === 'timer' || msg.layer === 'all') window.KairoService?.onTimerSlide?.({ clear: true });
       break;
 
@@ -400,7 +407,7 @@ function handleConnectionState(state, error, errorKind) {
     // Owner: "Start Listening [should be] the universal control" — scripture
     // detection was already unconditional the moment audio starts; the
     // hymn/song lookup + auto-advance engines (content_lookup.js/
-    // lyrics_follow.js/sermon_follow.js) used to need a SEPARATE "Auto-
+    // lyrics_follow.js/slide_follow.js) used to need a SEPARATE "Auto-
     // follow" toggle remembered on top of this, which is exactly the kind
     // of silently-off state this whole product's philosophy has been
     // fighting all session ("a wrong send is worse than a missed one" cuts
@@ -458,9 +465,7 @@ const SCRIPTURE_REF_RE = new RegExp(
   `\\s+\\d{1,3}(?::\\d{1,3}(?:[-–]\\d{1,3})?)?\\b`,
   'g'
 );
-function escapeHtml(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+// escapeHtml: client_common.js (quotes too, any value).
 // Escape FIRST, then match/wrap on the escaped string — book names and digits
 // are untouched by HTML-escaping, so matches are identical either way, and this
 // ordering means the highlight spans are never built from unescaped raw text.
@@ -590,6 +595,10 @@ function handleDetection(msg) {
   if (target === 'viewer' && (topScore == null || topScore >= CLIENT_VIEWER_MIN_SCORE)) {
     showInViewer(verses, method, topScore, correctedFrom, look);
     if (method !== 'service') noteTranscriptSend(verses[0].reference);
+    // A real verse (not a playlist slide, sent as book "Service") is now the
+    // top layer; the slide follower lines the live deck up with it.
+    const v0 = verses[0];
+    if (v0 && v0.book && v0.book !== 'Service' && Number(v0.chapter) > 0) window.KairoService?.noteBibleVerse?.(v0, method !== 'service');
   } else {
     showInSuggestions(verses, method);
   }
@@ -659,24 +668,6 @@ function sendReferenceToScreen(reference) {
     body: JSON.stringify({ query: reference }),
   }).catch(err => console.warn('[KAIRO] Send failed:', err.message));
 }
-document.addEventListener('dblclick', (e) => {
-  if (e.target.closest?.('.transcript-sent-chip')) return;
-  const line = e.target.closest?.('.transcript-final');
-  if (!line || !scriptureSearchInput) return;
-  // textContent alone would also pull in the sent-chip's "→ Reference" label;
-  // strip it from a clone rather than filtering to text nodes only, since a
-  // highlighted .transcript-ref span (see highlightScriptureRefs) is itself an
-  // element node and would otherwise be silently dropped from the search text.
-  const clone = line.cloneNode(true);
-  clone.querySelectorAll('.transcript-sent-chip').forEach(el => el.remove());
-  const words = clone.textContent
-    .split(/\s+/).filter(Boolean).slice(-14).join(' ');
-  if (!words) return;
-  window.getSelection?.()?.removeAllRanges();
-  scriptureSearchInput.value = words;
-  scriptureSearchInput.focus();
-  scriptureSearchInput.dispatchEvent(new Event('input', { bubbles: true }));
-});
 
 // Render the live preview screen. A sent item can carry its own theme (e.g. a
 // ProPresenter import via Send/Flow) — when it does, paint it with the exact
@@ -1068,7 +1059,36 @@ function renderPreviewScreen(text, reference, look, translatedText = '', image =
 // preview — sending media had no feedback anywhere in the operator's own
 // UI before this (nothing here ever changed on a media send), which made a
 // working send look identical to a failed one.
+// Media comes in and goes out with the output's Transition, like the output screen does.
+let mediaPreviewGen = 0;
 function renderMediaPreview(src, kind, fit) {
+  const host = document.getElementById('slide-preview-media');
+  if (!host) return;
+  const gen = ++mediaPreviewGen;
+  const ms = Math.round(300 * outputAnimationSpeed);
+  const slide = outputAnimation === 'slide-up';
+  const reset = () => { host.style.transition = 'none'; host.style.opacity = '1'; host.style.transform = 'none'; };
+  const comeIn = () => {
+    host.style.transition = 'none'; host.style.opacity = '0'; host.style.transform = slide ? 'translateY(10px)' : 'none';
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      host.style.transition = `opacity ${ms}ms ease, transform ${ms}ms ease`; host.style.opacity = '1'; host.style.transform = 'none';
+    }));
+  };
+  if (outputAnimation === 'cut') { reset(); renderMediaPreviewNow(src, kind, fit); return; }
+  if (host.hasChildNodes() && !host.classList.contains('hidden')) {
+    host.style.transition = `opacity ${ms}ms ease, transform ${ms}ms ease`;
+    host.style.opacity = '0'; host.style.transform = slide ? 'translateY(-10px)' : 'none';
+    setTimeout(() => {
+      if (gen !== mediaPreviewGen) return;
+      renderMediaPreviewNow(src, kind, fit);
+      if (src) comeIn(); else reset();
+    }, ms + 10);
+  } else {
+    renderMediaPreviewNow(src, kind, fit);
+    if (src) comeIn(); else reset();
+  }
+}
+function renderMediaPreviewNow(src, kind, fit) {
   const host = document.getElementById('slide-preview-media');
   if (!host) return;
   host.innerHTML = '';
@@ -1098,8 +1118,21 @@ function renderMediaPreview(src, kind, fit) {
   const objectFit = fit === 'fill' ? 'fill' : (fit || 'contain');
   if (kind === 'video') {
     const v = document.createElement('video');
-    v.src = src; v.autoplay = true; v.loop = true; v.muted = true; v.playsInline = true;
+    // This is the video you hear: it starts muted so autoplay is certain, then takes
+    // its sound as soon as it plays (you've just clicked to send it), on the chosen
+    // output device and at the saved volume. The screens show the picture only.
+    v.src = authedMediaUrl(src); v.autoplay = true; v.loop = true; v.muted = true; v.playsInline = true;
     v.style.objectFit = objectFit;
+    try { const vol = parseInt(localStorage.getItem('kairo-media-volume') || '', 10); if (vol >= 0 && vol <= 100) v.volume = vol / 100; } catch {}
+    applyMediaSink(v);
+    if (!window.KairoService?.mediaMuted?.()) {
+      v.addEventListener('playing', () => { v.muted = false; if (v.paused) v.muted = true; }, { once: true });
+    }
+    // The transport bar under the preview reads this video (see service.js's onMediaStatus).
+    const report = () => window.KairoService?.onMediaStatus?.({
+      kind: 'video', local: true, currentTime: v.currentTime || 0, duration: Number.isFinite(v.duration) ? v.duration : 0, paused: v.paused,
+    });
+    ['loadedmetadata', 'timeupdate', 'play', 'pause', 'seeked'].forEach(ev => v.addEventListener(ev, report));
     host.appendChild(v);
   } else {
     const img = document.createElement('img');
@@ -1311,10 +1344,10 @@ function buildCandidateCard(v, method, isSent = false) {
   card.dataset.at = String(Date.now());
   card.innerHTML = `
     <div class="cand-row">
-      <span class="cand-ref">${v.reference}</span>
+      <span class="cand-ref">${escapeHtml(String(v.reference || ''))}</span>
       ${conf ? `<span class="cand-badge ${tier}">${conf}</span>` : ''}
     </div>
-    <div class="cand-text">${cleanVerseText(v.text)}</div>
+    <div class="cand-text">${escapeHtml(cleanVerseText(v.text || ''))}</div>
     <div class="cand-actions">
       <button class="cand-send">Send to Air</button>
     </div>
@@ -1366,13 +1399,13 @@ function buildQueueRow(v, method, correctedFrom = null) {
   card.className = 'locked-verse-card' + (correctedFrom ? ' corrected' : '');
   const abbr = refToBadgeAbbr(v.reference);
   const correctedChip = correctedFrom
-    ? `<span class="corrected-chip" title="Auto-corrected from ${correctedFrom}">corrected from ${correctedFrom}</span>`
+    ? `<span class="corrected-chip" title="Auto-corrected from ${escapeHtml(String(correctedFrom))}">corrected from ${escapeHtml(String(correctedFrom))}</span>`
     : '';
   card.innerHTML = `
-    <div class="history-book-badge">${abbr}</div>
+    <div class="history-book-badge">${escapeHtml(String(abbr || ''))}</div>
     <div class="history-card-content">
-      <div class="lvc-ref">${v.reference}${correctedChip}</div>
-      <div class="lvc-text">${cleanVerseText(v.text)}</div>
+      <div class="lvc-ref">${escapeHtml(String(v.reference || ''))}${correctedChip}</div>
+      <div class="lvc-text">${escapeHtml(cleanVerseText(v.text || ''))}</div>
     </div>
     <div class="lvc-actions">
       <button class="lvc-send-btn" title="Send to screen">Send</button>
@@ -1413,7 +1446,8 @@ setInterval(() => {
 }, 10000);
 
 function updateSuggestionCount() {
-  const count = queueList?.children.length ?? 0;
+  // Suggestions only — not the empty-state line the list shows when there are none.
+  const count = queueList?.querySelectorAll(':scope > :not(.display-empty)').length ?? 0;
   if (suggestionCount) suggestionCount.textContent = count;
   const badge = document.getElementById('suggestion-count-badge');
   if (badge) badge.textContent = count;
@@ -1539,10 +1573,10 @@ function buildRangeCard(v, isActive) {
   const abbr = refToBadgeAbbr(v.reference);
 
   card.innerHTML = `
-    <div class="history-book-badge range-book-badge">${abbr}</div>
+    <div class="history-book-badge range-book-badge">${escapeHtml(String(abbr || ''))}</div>
     <div class="history-card-content">
-      <div class="lvc-ref">${v.reference}</div>
-      <div class="lvc-text">${cleanVerseText(v.text || v.kjv_text || '')}</div>
+      <div class="lvc-ref">${escapeHtml(String(v.reference || ''))}</div>
+      <div class="lvc-text">${escapeHtml(cleanVerseText(v.text || v.kjv_text || ''))}</div>
     </div>
     <div class="lvc-actions">
       <button class="lvc-send-btn" title="Send to ProPresenter">Send</button>
@@ -1599,7 +1633,7 @@ function buildRangeCard(v, isActive) {
 // verse everywhere' call for every manual send" per its own comment (Send
 // button, double-click, Candidates promote, range cards, direct search
 // hits), so this reaches all of those. It does NOT reach the fully-
-// automatic live-listening path, which broadcasts through server.js's own
+// automatic live-listening path, which broadcasts through the server's own
 // detection pipeline and relies on the display window's own stored theme
 // rather than a look sent per-request — a real limitation of this
 // interpretation, not yet covered.
@@ -1759,6 +1793,12 @@ setInterval(() => {
 }, 500);
 
 let lastNonZeroAudioAt = 0;   // any non-zero sample at all (a real mic always has some noise)
+// A virtual input's silent spell (checkAudioSilence): the last real sample
+// this session (never reset by a rebuild), the spell already reopened once,
+// and the reopen still waiting to hear whether sound came back.
+let lastHeardSignalAt = 0;
+let _silentReopenFor = 0;
+let _silentReopenPending = null;
 let _lastLevelLogAt = 0;
 // One capture graph: getUserMedia stream -> 16 kHz AudioContext -> frames to
 // the server. Shared by Start and every rebuild (they used to be two copies).
@@ -1789,7 +1829,11 @@ async function buildCaptureGraph(deviceId, existingStream = null) {
       node.port.onmessage = (e) => {
         const d = e.data;
         if (d instanceof ArrayBuffer) sendAudioFrame(d);          // only until the worker's port is in place
-        else if (d && typeof d.peak === 'number') noteCaptureLevel(d.peak, 1024, d.gain, d.clipped);
+        else if (d && typeof d.peak === 'number') {
+          pipeline.noInput += d.noInput || 0;
+          pipeline.frames += d.frames || 0;
+          noteCaptureLevel(d.peak, 1024, d.gain, d.clipped);
+        }
       };
       const worker = captureSenderWorker();
       if (worker) {
@@ -1822,6 +1866,7 @@ async function buildCaptureGraph(deviceId, existingStream = null) {
     }
     const int16 = new Int16Array(out.length);
     for (let i = 0; i < out.length; i++) int16[i] = out[i] * 32767;
+    pipeline.frames++;
     noteCaptureLevel(peak * 32768, float32.length, level ? level.gain : 1, clipped);
     sendAudioFrame(int16.buffer);
   };
@@ -1839,15 +1884,43 @@ function noteCaptureLevel(peak, bufferLength, gain = 1, clipped = false) {
   noteInputLevel(peak / 32768, clipped, gain);
   noteInputSummary(peak / 32768, clipped, gain);
   if (peak > 0) rememberInputGain(mediaStream?.getAudioTracks?.()[0]?.label || '', gain);
-  if (peak > 0) lastNonZeroAudioAt = now;
+  if (peak > 0) {
+    lastNonZeroAudioAt = lastHeardSignalAt = now;
+    if (_silentReopenPending) {
+      _healLog('sound came back after reopening the silent input', { input: _silentReopenPending.input, afterMs: now - _silentReopenPending.at });
+      _silentReopenPending = null;
+    }
+  }
   if (peak > AUDIO_PEAK_NOISE_FLOOR) lastRealAudioAt = now;
   if (now - _lastLevelLogAt > 3000) {
     _lastLevelLogAt = now;
-    fetch(`${SERVER}/api/debug-log`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ event: 'audio-peak', data: { peak, bufferLength, gain: Math.round(gain * 100) / 100, clipped } }),
-    }).catch(() => {});
+    logAudioPipeline(peak, bufferLength, gain, clipped);
   }
+}
+
+// Every 3 s while capturing, one line for each step the audio passes through
+// in the app — the input track, the audio processing, what the audio thread
+// handed on (and render blocks that brought NO input, which reads as a level
+// of 0 but isn't silence), and the sender's connection to the server. With
+// the server's own line (server:audio) a silent spell shows where it began.
+const pipeline = { noInput: 0, frames: 0 };
+let _senderStatus = null;
+function logAudioPipeline(peak, bufferLength, gain, clipped) {
+  const track = mediaStream?.getAudioTracks?.()[0];
+  const settingsNow = track?.getSettings?.() || {};
+  const data = {
+    peak, bufferLength, gain: Math.round(gain * 100) / 100, clipped,
+    input: track ? { label: track.label, state: track.readyState, muted: track.muted, enabled: track.enabled, rate: settingsNow.sampleRate || null } : null,
+    audio: audioContext ? { state: audioContext.state, rate: audioContext.sampleRate } : null,
+    framesOut: pipeline.frames, noInputBlocks: pipeline.noInput,
+    sender: _senderStatus,
+  };
+  pipeline.frames = 0; pipeline.noInput = 0;
+  try { _captureWorker?.postMessage({ type: 'status' }); } catch {}
+  fetch(`${SERVER}/api/debug-log`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ event: 'audio-pipeline', data }),
+  }).catch(() => {});
 }
 
 // The gain the level control settled on, per input, so the next session — or
@@ -1906,7 +1979,10 @@ function noteInputSummary(peak, clipped, gain) {
 let _captureWorker = null;
 function captureSenderWorker() {
   try {
-    if (!_captureWorker) _captureWorker = new Worker('audio_sender_worker.js');
+    if (!_captureWorker) {
+      _captureWorker = new Worker('audio_sender_worker.js');
+      _captureWorker.onmessage = (e) => { if (e.data?.type === 'status') { const { type, ...st } = e.data; _senderStatus = st; } };
+    }
     _captureWorker.postMessage({ type: 'start', url: authedWsUrl(`${WS_URL}/?audio=1`) });
     return _captureWorker;
   } catch (err) {
@@ -1983,7 +2059,7 @@ async function startListening() {
       // fix (go set it up in Settings), unlike a genuine runtime error (a
       // rejected/invalid key, a real network failure) which a redirect
       // wouldn't actually resolve — so only these two specific, well-known
-      // error strings (from startDeepgram/startOffline in server.js) trigger
+      // error strings (from startDeepgram/startOffline in the server (kairo-server)) trigger
       // the jump; anything else just logs, matching the previous behavior's
       // (silent) fallback rather than guessing at what an unknown error needs.
       const missingKey   = serverEngine === 'deepgram' && /no deepgram api key/i.test(d.error);
@@ -2006,6 +2082,7 @@ async function startListening() {
     watchAudioTrackHealth();   // OS-level "track died" → immediate rebuild
 
     lastRealAudioAt = lastNonZeroAudioAt = Date.now(); // don't warn before real audio has had a chance to arrive at all
+    lastHeardSignalAt = _silentReopenFor = 0; _silentReopenPending = null; // a new session: nothing heard yet
     audioSilenceWarning = false;
     clearInterval(audioSilenceWatchdog);
     resetSleepCheck();
@@ -2059,11 +2136,26 @@ function setAudioSilenceWarning(on) {
     dot?.classList.remove('broadcasting');
     dot?.classList.add('warning');
     if (lbl) { lbl.classList.remove('broadcasting'); lbl.classList.add('warning'); lbl.textContent = 'No audio!'; }
+    // Say where to look: a loopback (BlackHole…) only carries what's played
+    // into it, and macOS can drop the playing app's link to it (live: output
+    // set to BlackHole, the file still playing, BlackHole silent until the
+    // output was switched away and back). Clicking opens Settings → Audio
+    // Input and its level meter.
+    const input = mediaStream?.getAudioTracks?.()[0]?.label || 'the selected input';
+    const pill = lbl?.closest('.ls-bcast-pill');
+    if (pill) {
+      pill.classList.add('is-actionable');
+      pill.title = LOOPBACK_INPUT_RE.test(input)
+        ? `Nothing is reaching ${input}. Check the sound is playing and the Mac's Sound output is ${input} (or a Multi-Output Device that includes it). If it is and it's still silent, macOS has dropped the playing app's link to it: in System Settings → Sound, switch the output to something else and back. Click for Audio settings.`
+        : `Nothing is coming from ${input}. Check it's connected, switched on and not muted. Click for Audio settings.`;
+    }
   } else {
     // Back to the listening state — or Idle when this clears because
     // listening just stopped (it used to leave "Broadcasting" up after Stop).
     dot?.classList.remove('warning');
     dot?.classList.toggle('broadcasting', isListening);
+    const pill = lbl?.closest('.ls-bcast-pill');
+    if (pill) { pill.classList.remove('is-actionable'); pill.removeAttribute('title'); }
     if (lbl) {
       lbl.classList.remove('warning');
       lbl.classList.toggle('broadcasting', isListening);
@@ -2129,6 +2221,29 @@ function checkAudioSilence() {
   // playing — is never a reason: silence used to trigger a rebuild, which the
   // operator saw as the mic "reconnecting". The Deepgram connection is never
   // touched here either way.
+  // A virtual input (BlackHole…) that carried sound and then gives exact
+  // zeros for 20 s: reopen it ONCE for that silent spell, seamlessly, and
+  // log whether sound came back. Live, such a spell (4½ minutes) couldn't
+  // be placed: nothing playing into the input, or WebKit's link to it gone
+  // quiet (its audio runs on the Mac's output device, which can be the same
+  // BlackHole). If the reopen brings sound back, it was the link — and this
+  // fixed it; if not, nothing is reaching the input (the warning says what
+  // to check). Never the room mic, and never a loop.
+  if (captureIsVirtualInput() && lastHeardSignalAt && audioContext && !_audioHealing
+      && now - lastHeardSignalAt > 20000 && _silentReopenFor !== lastHeardSignalAt) {
+    _silentReopenFor = lastHeardSignalAt;
+    const input = mediaStream?.getAudioTracks?.()[0]?.label || '';
+    const pending = { at: now, input };
+    _silentReopenPending = pending;
+    _audioHealAt = now;
+    restartAudioCapture('virtual-input-silent', false);
+    setTimeout(() => {
+      if (_silentReopenPending !== pending) return;
+      _healLog('still silent after reopening the input — nothing is reaching it', { input });
+      _silentReopenPending = null;
+    }, 30000);
+    return;
+  }
   const stuckAtZero = !captureIsVirtualInput() && now - lastNonZeroAudioAt > 45000;
   if ((wokeFromSleep || stuckAtZero) && audioContext && !_audioHealing && now - _audioHealAt > 20000) {
     _audioHealAt = now;
@@ -2404,7 +2519,7 @@ async function loadSettings() {
     resetDeepgramKeyField();
     if (translationSettings && settings.translation) translationSettings.value = settings.translation;
     if (translationSelect && settings.translation)   translationSelect.value   = settings.translation;
-    if (bibleTranslateToSelect) bibleTranslateToSelect.value = settings.bibleTranslateTo || '';
+    if (bibleTranslateToSelect) { bibleTranslateToSelect.value = settings.bibleTranslateTo || ''; renderSecondLangModel(); }
     if (autoSendSettings)  autoSendSettings.checked  = settings.autoSend  !== false;
     updateAutoDeployBadge();
     if (showConfSettings)  showConfSettings.checked   = settings.showConfidence !== false;
@@ -2421,7 +2536,7 @@ async function loadSettings() {
     // currentOutputThemes stayed {} for an entire session on a fresh
     // launch. Anything server-side that depends on knowing the primary
     // output's theme (e.g. attachBibleTranslations gating on the Multi-
-    // Language layout — see primaryOutputTranslateLang in server.js)
+    // Language layout — see primaryOutputTranslateLang in the server (kairo-server))
     // silently did nothing until the operator happened to open Settings
     // and touch a picker, which is exactly why the Multi-Language theme
     // looked like it "worked sometimes and not others."
@@ -2434,6 +2549,7 @@ async function loadSettings() {
     if (sttLang) sttLang.value = settings.sttLanguage || 'en-US';
     const vocab = document.getElementById('custom-keyterms');
     if (vocab) vocab.value = settings.customKeyterms || '';
+    renderLearnedTerms();
     const bibleLang = document.getElementById('bible-language');
     if (bibleLang) bibleLang.value = settings.bibleLanguage || 'en';
     renderLangPacks();
@@ -2456,7 +2572,8 @@ async function loadSettings() {
 // the tour once, since the tour is about the whole app, not just that one
 // step. Re-openable anytime from Settings → Help ("Take the tour again").
 let firstRunDismissed = false;
-const ONBOARDING_STEP_COUNT = 7; // steps 0..6, see the step panels' data-step
+const ONBOARDING_STEP_COUNT = 5; // see the step panels' data-step: welcome, listening, standout features, inside, ready
+const ONBOARDING_LISTEN_STEP = 1;
 let onboardingStep = 0;
 
 function showFirstRunBannerIfNeeded(s) {
@@ -2473,42 +2590,79 @@ function showFirstRunBannerIfNeeded(s) {
 function openOnboardingWizard() {
   const modal = document.getElementById('first-run-modal');
   if (!modal) return;
+  // The brand lockup, from the loading screen — one copy of the artwork.
+  const brand = document.getElementById('ob-brand');
+  const mark = document.querySelector('.bootstrap-mark');
+  if (brand && mark && !brand.firstChild) brand.appendChild(mark.cloneNode(true));
   modal.classList.remove('hidden');
   const input = document.getElementById('first-run-deepgram-key');
   if (input) input.value = '';
-  syncToggleGroup('first-run-engine-toggle', 'engine', 'deepgram'); // always starts on the Deepgram tab
+  syncToggleGroup('first-run-engine-toggle', 'engine', 'deepgram'); // always starts on Deepgram
   goToOnboardingStep(0);
-  // Defer focus so the overlay has laid out before we focus inside it.
-  setTimeout(() => input?.focus(), 50);
+  // Nothing is focused for the operator (a focused button wears the
+  // system's blue ring); Enter still moves on — see the keydown below.
 }
-
-const ONBOARDING_STEP_TITLES = [
-  'Welcome to KAIRO', 'Playlist', 'Slides', 'Timer', 'Themes', 'Outputs', "You're all set",
-];
 
 function renderOnboardingProgress() {
   const host = document.getElementById('onboarding-progress');
   if (!host) return;
   host.innerHTML = '';
   for (let i = 0; i < ONBOARDING_STEP_COUNT; i++) {
-    const dot = document.createElement('span');
-    dot.style.cssText = `height:4px;flex:1;border-radius:2px;background:${i <= onboardingStep ? 'var(--accent,#6aa6ff)' : 'var(--surface-2)'};`;
-    host.appendChild(dot);
+    const seg = document.createElement('span');
+    if (i <= onboardingStep) seg.className = 'is-done';
+    host.appendChild(seg);
   }
 }
+
+// The last step dims the app and rings the real Start Listening button, the
+// step's card sitting just under it.
+function placeOnboardingSpotlight() {
+  const modal = document.getElementById('first-run-modal');
+  const spot = document.getElementById('ob-spot');
+  const target = document.getElementById('listen-btn');
+  if (!modal || !spot || !target || !modal.classList.contains('is-spotlight')) return;
+  const r = target.getBoundingClientRect();
+  const pad = 6;
+  Object.assign(spot.style, { left: `${r.left - pad}px`, top: `${r.top - pad}px`, width: `${r.width + pad * 2}px`, height: `${r.height + pad * 2}px` });
+  modal.style.setProperty('--ob-card-top', `${r.bottom + 18}px`);
+}
+window.addEventListener('resize', placeOnboardingSpotlight);
+
+// The input picker on the last step mirrors Settings → Audio's own list (the
+// one capture reads), so choosing here is choosing there.
+async function syncOnboardingMicList() {
+  const pick = document.getElementById('first-run-mic');
+  if (!pick || !audioSourceSettings) return;
+  await populateAudioDevices();
+  pick.innerHTML = '';
+  // Real devices only (the list's "Loading devices…" placeholder has no id).
+  [...audioSourceSettings.options].filter(o => o.value).forEach(o => pick.appendChild(new Option(o.textContent, o.value, false, o.selected)));
+  if (!pick.options.length) pick.appendChild(new Option('No input yet — allow microphone access, or choose one in Settings → Audio', ''));
+}
+document.getElementById('first-run-mic')?.addEventListener('change', (e) => {
+  if (!audioSourceSettings || !e.target.value) return;
+  audioSourceSettings.value = e.target.value;
+  audioSourceSettings.dispatchEvent(new Event('change'));
+});
 
 function goToOnboardingStep(n) {
   onboardingStep = Math.max(0, Math.min(ONBOARDING_STEP_COUNT - 1, n));
   document.querySelectorAll('.onboarding-step').forEach(el => {
     el.classList.toggle('hidden', Number(el.dataset.step) !== onboardingStep);
   });
-  const title = document.getElementById('onboarding-step-title');
-  if (title) title.textContent = ONBOARDING_STEP_TITLES[onboardingStep] || 'Welcome to KAIRO';
   renderOnboardingProgress();
-  document.getElementById('onboarding-back')?.classList.toggle('hidden', onboardingStep === 0);
   const isLast = onboardingStep === ONBOARDING_STEP_COUNT - 1;
-  document.getElementById('onboarding-next')?.classList.toggle('hidden', isLast);
+  document.getElementById('onboarding-back')?.classList.toggle('hidden', onboardingStep === 0);
+  const next = document.getElementById('onboarding-next');
+  if (next) {
+    next.classList.toggle('hidden', isLast);
+    next.textContent = onboardingStep === 0 ? 'Get started' : 'Next';
+  }
   document.getElementById('first-run-save')?.classList.toggle('hidden', !isLast);
+  const modal = document.getElementById('first-run-modal');
+  modal?.classList.toggle('is-spotlight', isLast);
+  if (isLast) { placeOnboardingSpotlight(); syncOnboardingMicList(); }
+  if (onboardingStep === ONBOARDING_LISTEN_STEP) setTimeout(() => document.getElementById('first-run-deepgram-key')?.focus(), 60);
 }
 
 // Real, non-blocking validation on the way OUT of the speech-engine step —
@@ -2550,7 +2704,9 @@ async function markOnboardingComplete() {
 
 function closeFirstRunModal() {
   firstRunDismissed = true;
-  document.getElementById('first-run-modal')?.classList.add('hidden');
+  const modal = document.getElementById('first-run-modal');
+  modal?.classList.add('hidden');
+  modal?.classList.remove('is-spotlight');
   markOnboardingComplete();
 }
 
@@ -2558,14 +2714,9 @@ async function saveFirstRunChoice() {
   const engine = readToggleGroup('first-run-engine-toggle', 'engine') || 'deepgram';
 
   if (engine === 'browser') {
-    // Offline chosen — no key needed. Persist the engine choice so it
-    // sticks (and so bootstrapStartup()/Settings both see it), then, if the
-    // model isn't already installed, kick off the same download this
-    // modal's own #first-run-offline-install-btn would (wireOfflineModelInstaller
-    // already fully owns its progress UI) rather than silently leaving the
-    // resilience path unfetched until the operator happens to revisit
-    // Settings. The download runs server-side regardless of whether this
-    // modal stays open, so closing it early (Skip/X) never interrupts it.
+    // Offline chosen — no key needed. Persist the engine choice so it sticks
+    // (bootstrapStartup()/Settings both see it). A download started from the
+    // tour's own button runs server-side whether or not the tour stays open.
     try {
       await fetch(`${SERVER}/api/settings`, {
         method: 'POST',
@@ -2578,9 +2729,10 @@ async function saveFirstRunChoice() {
       toast('Could not save — try again in Settings', 'error');
       return;
     }
-    const installBtn = document.getElementById('first-run-offline-install-btn');
-    if (installBtn && installBtn.style.display !== 'none') installBtn.click();
-    else closeFirstRunModal();
+    // The choice is saved; the model downloads only when the operator asks
+    // (2026-10-12: finishing the tour used to start the 465 MB download
+    // unasked). Settings → Audio offers it, and Start Listening says so.
+    closeFirstRunModal();
     return;
   }
 
@@ -2668,6 +2820,11 @@ async function saveCurrentSettings() {
 }
 
 settingsBtn?.addEventListener('click',    () => { settingsModal?.classList.remove('hidden'); showFirstSettingsPane(); });
+// "No audio!" in Live Status opens Audio Input (the first pane) to check the feed.
+document.querySelector('.ls-bcast-pill')?.addEventListener('click', (e) => {
+  if (!e.currentTarget.classList.contains('is-actionable')) return;
+  settingsModal?.classList.remove('hidden'); showFirstSettingsPane();
+});
 closeSettingsBtn?.addEventListener('click', closeModal);
 cancelSettingsBtn?.addEventListener('click', closeModal);
 saveSettingsBtn?.addEventListener('click',  saveCurrentSettings);
@@ -2677,12 +2834,28 @@ document.querySelector('.modal-overlay')?.addEventListener('click', closeModal);
 document.getElementById('first-run-save')?.addEventListener('click', saveFirstRunChoice);
 document.getElementById('first-run-skip')?.addEventListener('click', closeFirstRunModal);
 document.getElementById('close-first-run')?.addEventListener('click', closeFirstRunModal);
-document.querySelector('#first-run-modal .modal-overlay')?.addEventListener('click', closeFirstRunModal);
+document.addEventListener('keydown', (e) => {
+  const modal = document.getElementById('first-run-modal');
+  if (!modal || modal.classList.contains('hidden')) return;
+  if (e.key === 'Escape') closeFirstRunModal();
+  // Enter with nothing in particular focused: the step's main button.
+  if (e.key === 'Enter' && (document.activeElement === document.body || !modal.contains(document.activeElement))) {
+    e.preventDefault();
+    const last = onboardingStep === ONBOARDING_STEP_COUNT - 1;
+    document.getElementById(last ? 'first-run-save' : 'onboarding-next')?.click();
+  }
+});
 document.getElementById('first-run-deepgram-key')?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') document.getElementById('onboarding-next')?.click();
 });
 document.getElementById('onboarding-next')?.addEventListener('click', async () => {
-  if (onboardingStep === 0) await checkOnboardingSpeechSetup();
+  // Leaving the listening step with neither engine ready shows the gentle
+  // nudge and stays put once, so it's actually read.
+  if (onboardingStep === ONBOARDING_LISTEN_STEP) {
+    await checkOnboardingSpeechSetup();
+    const warning = document.getElementById('onboarding-speech-warning');
+    if (warning && !warning.classList.contains('hidden') && !warning.dataset.seen) { warning.dataset.seen = '1'; return; }
+  }
   goToOnboardingStep(onboardingStep + 1);
 });
 document.getElementById('onboarding-back')?.addEventListener('click', () => goToOnboardingStep(onboardingStep - 1));
@@ -3114,6 +3287,7 @@ document.getElementById('output-back-btn')?.addEventListener('click', () => {
 });
 // Lit while a scripture covers a live slide — Clear Bible is the way back to it.
 function handleLayerState(msg) {
+  window.KairoService?.onLayerState?.(msg);
   const btn = document.getElementById('clear-bible-layer-btn');
   if (!btn) return;
   const covering = !!(msg.bibleOnTop && msg.slideUnderneath);
@@ -3124,7 +3298,7 @@ document.getElementById('clear-slide-layer-btn')?.addEventListener('click', () =
 document.getElementById('clear-media-layer-btn')?.addEventListener('click', () => clearOutputLayer('media'));
 // 'timer' has no client-side preview to clear (unlike slide/media, the
 // countdown only ever exists on the actual output) — the server-side stop
-// is the whole effect; see clear-layer's handling in server.js.
+// is the whole effect; see clear-layer's handling in the server (kairo-server).
 document.getElementById('clear-timer-layer-btn')?.addEventListener('click', () => clearOutputLayer('timer'));
 document.getElementById('clear-all-layers-btn')?.addEventListener('click', () => clearOutputLayer('all'));
 
@@ -3246,6 +3420,21 @@ populateAudioOutputDevices();
 // Re-apply the saved device to a freshly (re)connected display window —
 // otherwise it only ever learns the choice from a change event, not on
 // its own (re)connect.
+// Sends the preview video's sound to the device chosen under Outputs → Audio Output.
+function applyMediaSink(v) {
+  const id = localStorage.getItem(MEDIA_OUTPUT_KEY) || '';
+  const target = v || document.querySelector('#slide-preview-media video');
+  if (target && typeof target.setSinkId === 'function') target.setSinkId(id).catch(() => {});
+}
+window.applyMediaSink = applyMediaSink;
+(function reapplySavedMediaVolume() {
+  const v = parseInt(localStorage.getItem('kairo-media-volume') || '', 10);
+  if (!(v >= 0 && v < 100)) return;
+  fetch(`${SERVER}/api/service/media-control`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'volume', value: v / 100 }),
+  }).catch(() => {});
+})();
 (function reapplySavedAudioOutput() {
   const deviceId = localStorage.getItem(MEDIA_OUTPUT_KEY) || '';
   if (!deviceId) return;
@@ -3288,14 +3477,28 @@ function wireOfflineModelInstaller(ids) {
   // whatever the update download actually is.
   const downloadLabel = installBtn.textContent;
 
+  let pollTimer = null;
   async function refreshStatus() {
     try {
       const r = await fetch(`${SERVER}/api/offline/status?model=${model}`);
       const s = await r.json();
       if (s.installing) {
-        statusLine.textContent = 'Install in progress…';
+        // Started here or anywhere else (the tour): the same progress, and
+        // it keeps updating until it's done.
+        const pct = typeof s.progress === 'number' ? s.progress : null;
+        statusLine.textContent = pct == null ? 'Downloading…' : `Downloading… ${pct}%`;
+        statusLine.style.color = '';
         installBtn.style.display = 'none';
-      } else if (s.needsUpdate) {
+        if (progressWrap) progressWrap.style.display = '';
+        if (progressBar && pct != null) progressBar.style.width = `${pct}%`;
+        if (progressText) progressText.textContent = pct == null ? 'Starting…' : `${pct}%`;
+        clearTimeout(pollTimer);
+        pollTimer = setTimeout(() => { if (group.style.display !== 'none') refreshStatus(); }, 1000);
+        return;
+      }
+      clearTimeout(pollTimer);
+      if (progressWrap && s.installed) progressWrap.style.display = 'none';
+      if (s.needsUpdate) {
         // A model IS present and working (isModelPresent) — just not the
         // MODEL_VERSION this build ships (see sherpa_installer.js's own
         // comment). Distinct from "not installed" so it doesn't read as a
@@ -3329,14 +3532,22 @@ function wireOfflineModelInstaller(ids) {
   // so without this listener the panel stayed hidden (and the download
   // button with it) any time Offline was already the saved engine when
   // Settings was opened, not just when the operator toggled it live.
+  // Only the model the spoken language needs shows: English, or the other-
+  // languages one — never both, so the two never read as the same download
+  // twice. (The first-run wizard's copy is always English: it runs before a
+  // spoken language is chosen.)
   function syncVisibility() {
     const active = engineToggle?.querySelector('.toggle-btn.active');
     const isOffline = active?.dataset.engine === 'browser';
-    group.style.display = isOffline ? '' : 'none';
-    if (isOffline) refreshStatus();
+    const spoken = String(document.getElementById('stt-language')?.value || settings.sttLanguage || 'en-US').toLowerCase();
+    const needed = ids.alwaysEnglish || (model === 'multi') !== spoken.startsWith('en');
+    const show = isOffline && needed;
+    group.style.display = show ? '' : 'none';
+    if (show) refreshStatus();
   }
   engineToggle?.addEventListener('click', () => setTimeout(syncVisibility, 0));
   engineToggle?.addEventListener('toggle-change', syncVisibility);
+  document.getElementById('stt-language')?.addEventListener('change', syncVisibility);
   syncVisibility();
 
   installBtn.addEventListener('click', async () => {
@@ -3407,7 +3618,7 @@ wireOfflineModelInstaller({
   engineToggle: 'speech-engine-toggle',
 });
 wireOfflineModelInstaller({
-  model: 'multi', name: 'Other languages',
+  model: 'multi', name: 'Offline model for other languages',
   group: 'offline-multi-installer-group', statusLine: 'offline-multi-status-line', installBtn: 'offline-multi-install-btn',
   progressWrap: 'offline-multi-progress-wrap', progressBar: 'offline-multi-progress-bar', progressText: 'offline-multi-progress-text',
   engineToggle: 'speech-engine-toggle',
@@ -3415,7 +3626,7 @@ wireOfflineModelInstaller({
 wireOfflineModelInstaller({
   group: 'first-run-offline-group', statusLine: 'first-run-offline-status-line', installBtn: 'first-run-offline-install-btn',
   progressWrap: 'first-run-offline-progress-wrap', progressBar: 'first-run-offline-progress-bar', progressText: 'first-run-offline-progress-text',
-  engineToggle: 'first-run-engine-toggle',
+  engineToggle: 'first-run-engine-toggle', alwaysEnglish: true,
 });
 
 // ── Local translation-model installer UI ─────────────────────────────────
@@ -3455,8 +3666,59 @@ if (bibleTranslateToSelect) {
   bibleTranslateToSelect.addEventListener('change', () => {
     settings.bibleTranslateTo = bibleTranslateToSelect.value || null;
     saveSettingsPatch({ bibleTranslateTo: settings.bibleTranslateTo });
+    renderSecondLangModel();
   });
 }
+
+// Under the Second language picker: whether that language's slide model is on
+// this computer, with the Download right there instead of only in the list
+// below. Hidden while the picker is Off.
+var _secondLangTimer = null;
+async function renderSecondLangModel() {
+  const host = document.getElementById('second-lang-model');
+  if (!host) return;
+  clearTimeout(_secondLangTimer);
+  const code = bibleTranslateToSelect?.value;
+  if (!code) { host.hidden = true; host.innerHTML = ''; return; }
+  const name = (MT_LANGUAGES.find(l => l.code === code) || {}).name || code;
+  let s;
+  try {
+    s = await fetch(`${SERVER}/api/translate-model/status?lang=${code}`).then(r => r.json());
+  } catch { host.hidden = true; return; }
+  if (bibleTranslateToSelect.value !== code) return;
+  host.hidden = false;
+  const size = s.approxMB ? ` (${s.approxMB} MB)` : '';
+  const row = document.createElement('div');
+  row.className = 'dl-row';
+  const sub = document.createElement('span');
+  sub.className = 'dl-sub';
+  row.appendChild(sub);
+  if (s.installed) {
+    sub.textContent = `${name} slide translation is ready`;
+    sub.classList.add('is-ready');
+  } else if (s.installing) {
+    sub.textContent = `Downloading ${name}…`;
+    _secondLangTimer = setTimeout(renderSecondLangModel, 2000);
+  } else {
+    sub.textContent = `${name} slide text needs a download${size}`;
+    const btn = document.createElement('button');
+    btn.className = 'modal-btn primary dl-btn';
+    btn.textContent = 'Download';
+    btn.addEventListener('click', async () => {
+      btn.style.display = 'none';
+      sub.textContent = 'Connecting…';
+      await streamMtInstall(code, {
+        onProgress: (pct) => { sub.textContent = `Downloading ${name}… ${pct}%`; },
+        onComplete: () => { renderSecondLangModel(); refreshMtStatus(code); },
+        onError: (msg) => { sub.textContent = `Failed: ${msg}`; btn.style.display = ''; },
+      });
+    });
+    row.appendChild(btn);
+  }
+  host.innerHTML = '';
+  host.appendChild(row);
+}
+renderSecondLangModel();
 
 // Primary — real incident found while wiring the new dropdown alongside it:
 // this toolbar select (#translation-select) has existed for a while but
@@ -3472,28 +3734,23 @@ translationSelect?.addEventListener('change', () => {
   saveSettingsPatch({ translation: settings.translation });
 });
 
+// One compact row per language: what it is, its size and state, one action
+// — Download (the brand's primary action), or Ready with Remove to free the
+// space (2026-10-12: the old cards were twice the height for the same).
 function renderMtModelList() {
   const host = document.getElementById('mt-model-list');
   if (!host) return;
   host.innerHTML = '';
   MT_LANGUAGES.forEach(({ code, name }) => {
     const row = document.createElement('div');
-    row.className = 'lang-pack-row';
-
-    const meta = document.createElement('div');
-    meta.className = 'lang-pack-meta';
-    meta.innerHTML = `<div class="lang-pack-name">${name}</div><div class="lang-pack-sub" id="mt-sub-${code}">Checking…</div>`;
-
+    row.className = 'dl-row';
+    row.innerHTML = `<span class="dl-name">${name}</span><span class="dl-sub" id="mt-sub-${code}">Checking…</span>`;
     const btn = document.createElement('button');
-    btn.className = 'modal-btn secondary';
     btn.id = `mt-btn-${code}`;
     btn.style.display = 'none';
-    btn.addEventListener('click', () => installMtModel(code));
-
-    row.appendChild(meta);
+    btn.addEventListener('click', () => (btn.dataset.action === 'remove' ? removeMtModel(code) : installMtModel(code)));
     row.appendChild(btn);
     host.appendChild(row);
-
     refreshMtStatus(code);
   });
 }
@@ -3503,28 +3760,49 @@ async function refreshMtStatus(code) {
   const btn = document.getElementById(`mt-btn-${code}`);
   if (!sub || !btn) return;
   try {
-    const r = await fetch(`${SERVER}/api/translate-model/status?lang=${code}`);
-    const s = await r.json();
+    const s = await fetch(`${SERVER}/api/translate-model/status?lang=${code}`).then(r => r.json());
+    const size = s.approxMB ? `${s.approxMB} MB` : '';
     if (s.installed) {
-      sub.textContent = '✓ Installed';
-      sub.style.color = 'var(--accent)';
-      btn.style.display = 'none';
+      sub.textContent = `Ready${size ? ' · ' + size : ''}`;
+      sub.classList.add('is-ready');
+      btn.className = 'modal-btn secondary dl-btn';
+      btn.textContent = 'Remove';
+      btn.dataset.action = 'remove';
+      btn.style.display = '';
       clearInterval(_mtPollTimers[code]); delete _mtPollTimers[code];
     } else if (s.installing) {
-      sub.textContent = 'Downloading in the background…';
-      sub.style.color = '';
+      sub.textContent = 'Downloading…';
+      sub.classList.remove('is-ready');
       btn.style.display = 'none';
       if (!_mtPollTimers[code]) _mtPollTimers[code] = setInterval(() => refreshMtStatus(code), 2000);
     } else {
-      sub.textContent = `Not downloaded${s.approxMB ? ` (~${s.approxMB}MB)` : ''}`;
-      sub.style.color = '';
+      sub.textContent = size;
+      sub.classList.remove('is-ready');
+      btn.className = 'modal-btn primary dl-btn';
       btn.textContent = 'Download';
+      btn.dataset.action = 'download';
       btn.style.display = '';
       clearInterval(_mtPollTimers[code]); delete _mtPollTimers[code];
     }
   } catch {
-    sub.textContent = 'Cannot reach server.';
+    sub.textContent = 'Cannot reach the server.';
   }
+}
+
+async function removeMtModel(code) {
+  const btn = document.getElementById(`mt-btn-${code}`);
+  if (btn) btn.disabled = true;
+  try {
+    const r = await fetch(`${SERVER}/api/translate-model/remove`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lang: code }),
+    });
+    if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || `HTTP ${r.status}`);
+  } catch (err) {
+    toast(`Could not remove it: ${err.message}`, 'error');
+  }
+  if (btn) btn.disabled = false;
+  refreshMtStatus(code);
+  renderSecondLangModel();
 }
 
 // Core NDJSON-install-stream reader, shared by the Settings row above and
@@ -3645,7 +3923,7 @@ async function renderInlineTranslateUpsell(container, code) {
   // retroactively download the french bible... so the translation can be
   // correct." Investigated — there was never actually a missing download:
   // every MT_LANGUAGES entry has a real, already-bundled Bible translation
-  // (databases/i18n/{code}.json — server.js's translate() tries this FIRST,
+  // (databases/i18n/{code}.json — the server's translate() tries this FIRST,
   // before ever touching the MT model), so scripture on the Multi-Language
   // split theme already works the instant a language is picked, zero
   // setup. This model download is only for translating NON-scripture slide/
@@ -3845,18 +4123,66 @@ if (document.documentElement.classList.contains('platform-darwin')) {
 // own startDragging() sidesteps the app-region/compositing path entirely —
 // there's nothing left for that bug class to trigger on.
 (function wireWindowDrag() {
-  const region = document.querySelector('.top-bar-center');
-  if (!region) return;
-  region.addEventListener('mousedown', (e) => {
+  // The whole top bar moves the window except its controls. The empty part of
+  // the centre column alone was too small once the tab pill filled it: at most
+  // widths there was almost nothing to grab.
+  const bar = document.querySelector('.top-bar');
+  if (!bar) return;
+  const INTERACTIVE = 'button, a, input, select, textarea, label, [role="button"], [contenteditable], .tb-group, .window-controls, .listen-btn, #mic-display';
+  bar.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return; // left-click only — matches native drag-region behavior
-    // .top-bar-center now also hosts the Bible/Slides/Songs/Media/Theme
-    // Studio tabs (centering them in the bar) — only start a window drag
-    // when the empty space itself was clicked, not a tab button.
-    if (e.target !== region) return;
+    if (e.target.closest(INTERACTIVE)) return;
     const win = window.__TAURI__?.window?.getCurrentWindow?.();
     win?.startDragging?.().catch(() => {});
   });
 })();
 
+// Windows / Linux window controls (macOS uses the system's traffic lights).
+(function wireWindowControls() {
+  const win = () => window.__TAURI__?.window?.getCurrentWindow?.();
+  document.getElementById('minimize-btn')?.addEventListener('click', () => win()?.minimize?.().catch(() => {}));
+  document.getElementById('maximize-btn')?.addEventListener('click', () => win()?.toggleMaximize?.().catch(() => {}));
+  document.getElementById('close-btn')?.addEventListener('click', () => win()?.close?.().catch(() => {}));
+  // Double-clicking the empty part of the bar maximises, as on every desktop.
+  document.querySelector('.top-bar')?.addEventListener('dblclick', (e) => {
+    if (e.target.closest('button, a, input, select, textarea, label, [role="button"], .tb-group, .window-controls')) return;
+    win()?.toggleMaximize?.().catch(() => {});
+  });
+})();
+
 // ── Boot ───────────────────────────────────────────────────────────────────
 populateAudioDevices();
+
+// Names learned from past services (server vocabulary.rs): shown under
+// Church vocabulary so the operator sees what Deepgram is being told, and
+// can drop one that's wrong.
+async function renderLearnedTerms(terms) {
+  const box = document.getElementById('learned-keyterms');
+  const list = document.getElementById('learned-keyterms-list');
+  if (!box || !list) return;
+  if (!terms) {
+    try { terms = (await (await fetch(`${SERVER}/api/vocabulary/learned`)).json()).terms || []; }
+    catch { return; }
+  }
+  list.innerHTML = '';
+  terms.forEach(t => {
+    const chip = document.createElement('span');
+    chip.className = 'learned-term' + (t.inUse ? ' in-use' : '');
+    chip.title = `Heard ${t.count} times in ${t.services} services${t.inUse ? ' — passed to transcription' : ''}`;
+    chip.textContent = t.term;
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'learned-term-remove';
+    x.setAttribute('aria-label', `Forget ${t.term}`);
+    x.textContent = '×';
+    x.addEventListener('click', async () => {
+      try {
+        const r = await fetch(`${SERVER}/api/vocabulary/forget`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ term: t.term }) });
+        renderLearnedTerms((await r.json()).terms || []);
+      } catch {}
+    });
+    chip.appendChild(x);
+    list.appendChild(chip);
+  });
+  box.hidden = terms.length === 0;
+}

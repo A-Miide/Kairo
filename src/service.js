@@ -25,7 +25,7 @@
   // Shared with app.js/display.html — see design_space.js.
   const DESIGN_W = window.KAIRO_DESIGN_W, DESIGN_H = window.KAIRO_DESIGN_H;
 
-  // Kept in sync with server/translate.js's LANGUAGES map by hand — small,
+  // Kept in sync with kairo-server translate.rs's LANGUAGES map by hand — small,
   // fixed list, not worth a round-trip to /api/translate/languages just to
   // populate a 3-item picker.
   const TRANSLATE_LANGUAGES = [
@@ -351,6 +351,16 @@
   // that needs to know the difference and redirect to the server instead.
   function saveService() {
     markLookupCandidatesDirty();
+    // A pin for a theme the deck no longer uses goes (picking that theme
+    // again later means the theme as it is then).
+    let unpinned = false;
+    allItems().forEach(it => {
+      if (!it.themePins) return;
+      const ids = themeIdsOf(it);
+      Object.keys(it.themePins).forEach(id => { if (!ids.has(id)) { delete it.themePins[id]; unpinned = true; } });
+      if (!Object.keys(it.themePins).length) delete it.themePins;
+    });
+    if (unpinned) saveThemeVersions();
     saveAll();
     if (window.KairoItemStyleEditor?.isOpen?.()) {
       const item = window.KairoItemStyleEditor.getItem();
@@ -486,6 +496,7 @@
               label: parts.length > 1 ? (hasRealLabel ? `${b.label} · ${i + 1}` : `${i + 1}`) : (hasRealLabel ? b.label : ''),
               lines, text: lines.join('\n'), reference: item.title,
               blockIndex: bi, lineStart: start, lineEnd: start + lines.length,
+              themeId: (item.slideThemes && item.slideThemes[out.length]) || null,
             });
           });
         });
@@ -512,18 +523,18 @@
         return (item.blocks || []).map((b, i) => b.layers
           ? { label: b.label || `Slide ${i + 1}`, isScene: true, blockIndex: i, layers: b.layers, canvasSize: b.canvasSize, text: b.text || '', reference: '' }
           : b.image
-          ? { label: b.label || `Slide ${i + 1}`, image: b.image, text: '', reference: '' }
+          ? { label: b.label || `Slide ${i + 1}`, image: b.image, text: '', reference: '', themeId: b.themeId || null }
           : {
               label: b.label || `Slide ${i + 1}`,
               lines: (b.text || '').split('\n'),
-              text: b.text || '', reference: '',
+              text: b.text || '', reference: '', themeId: b.themeId || null,
             });
       case 'image':
         return [{ label: item.title, image: item.src, text: '', reference: item.title }];
       case 'scripture':
         return [{ label: item.ref, lines: [item.text || item.ref], text: item.text || '', reference: item.ref,
                   book: item.book || null, chapter: item.chapter || null, verse: item.verse || null }];
-      // A segment (server/segments.js) is a real item for editing purposes
+      // A segment (the server's Segments (kairo-server library.rs)) is a real item for editing purposes
       // ("a slide with a timer component"). Scenes (segment.scenes — a
       // storyboard, played in order across the live countdown, each with
       // its own explicit duration and complete layer set) show up here as
@@ -626,10 +637,89 @@
     return { ...base, layers: base.layers.map(l => (l === canvas ? fill : l)) };
   }
 
+  // ── Theme versions (ProPresenter-style safety, with a way forward) ──────
+  // Editing a theme never changes a deck that already uses it: the first
+  // time a theme changes, every deck using it keeps the version it had
+  // (item.themePins[themeId] = that version's hash; the version itself is
+  // stored once, in THEME_VERSIONS_KEY, however many decks share it). New
+  // decks, imports and a deliberate theme pick use the theme as it is now,
+  // and "Update to the current theme" brings a deck forward. Outputs and
+  // verses always follow the theme live.
+  const THEME_VERSIONS_KEY = 'kairo-theme-versions-v1';
+  let themeVersions = {};
+  try { themeVersions = JSON.parse(localStorage.getItem(THEME_VERSIONS_KEY) || '{}') || {}; } catch { themeVersions = {}; }
+  const parsedThemeVersions = new Map();
+  const allItems = () => playlists.flatMap(p => p.items || []);
+  function themeIdsOf(item) {
+    const ids = new Set();
+    if (!item) return ids;
+    if (item.themeId) ids.add(item.themeId);
+    (item.blocks || []).forEach(b => { if (b && b.themeId) ids.add(b.themeId); });
+    Object.values(item.slideThemes || {}).forEach(id => { if (id) ids.add(id); });
+    return ids;
+  }
+  // The look this item shows for theme `id`: the version it's pinned to, or
+  // the theme as it is now.
+  function themeLookFor(item, id) {
+    if (!id) return null;
+    const list = (typeof looks !== 'undefined' && Array.isArray(looks)) ? looks : [];
+    const live = list.find(l => l.id === id) || null;
+    const pin = item && item.themePins && item.themePins[id];
+    if (pin && themeVersions[pin]) {
+      let v = parsedThemeVersions.get(pin);
+      if (!v) { try { v = JSON.parse(themeVersions[pin]); } catch { v = null; } if (v) parsedThemeVersions.set(pin, v); }
+      if (v) return { ...v, id, name: live ? live.name : (v.name || 'Theme') };
+    }
+    return live;
+  }
+  function saveThemeVersions() {
+    const used = new Set();
+    allItems().forEach(it => Object.values(it.themePins || {}).forEach(h => used.add(h)));
+    Object.keys(themeVersions).forEach(h => { if (!used.has(h)) { delete themeVersions[h]; parsedThemeVersions.delete(h); } });
+    try { localStorage.setItem(THEME_VERSIONS_KEY, JSON.stringify(themeVersions)); return true; }
+    catch (err) { console.warn('[KAIRO] theme versions not saved (storage full?):', err.message); return false; }
+  }
+  // Theme Studio, just before it saves a changed theme: decks using it keep
+  // the version they had. Returns how many decks that was.
+  function keepThemeVersion(id, hash, json) {
+    const decks = allItems().filter(it => themeIdsOf(it).has(id) && !(it.themePins && it.themePins[id]));
+    if (!decks.length) return 0;
+    themeVersions[hash] = json;
+    decks.forEach(it => { (it.themePins || (it.themePins = {}))[id] = hash; });
+    if (!saveThemeVersions()) {
+      // No room to keep the old version: the decks follow the theme, as before.
+      decks.forEach(it => { delete it.themePins[id]; if (!Object.keys(it.themePins).length) delete it.themePins; });
+      return 0;
+    }
+    saveAll();
+    try { renderSidebar(); } catch {}
+    return decks.length;
+  }
+  const onOlderTheme = (item) => !!(item && item.themePins && Object.keys(item.themePins).length);
+  // A theme's reach, for Theme Studio: decks using it, and those still on an
+  // earlier version.
+  function themeUsage(id) {
+    const using = allItems().filter(it => themeIdsOf(it).has(id));
+    return { decks: using.length, older: using.filter(it => it.themePins && it.themePins[id]).length };
+  }
+  // Brings decks forward to the current theme: one deck (all its themes),
+  // or every deck pinned to theme `id`.
+  function updateToCurrentTheme(item, id) {
+    const targets = item ? [item] : allItems().filter(it => it.themePins && it.themePins[id]);
+    targets.forEach(it => {
+      if (!it.themePins) return;
+      if (item && !id) delete it.themePins; else { delete it.themePins[id]; if (!Object.keys(it.themePins).length) delete it.themePins; }
+    });
+    saveThemeVersions();
+    saveService();
+    try { renderSidebar(); renderStack(); } catch {}
+    if (liveSlideKey && targets.some(it => liveSlideKey.split(':')[0] === it.id)) resendLiveForThemeEdit(null);
+  }
+
   function themeForItem(item) {
     const list = (typeof looks !== 'undefined' && Array.isArray(looks)) ? looks : [];
     if (!list.length) return null;
-    const explicit = list.find(l => l.id === item.themeId);
+    const explicit = item.themeId ? themeLookFor(item, item.themeId) : null;
     if (explicit) return explicit;
     // Mirrors resolveItemBaseLook's timer branch in app.js — a segment
     // nobody's assigned a theme to yet must still resolve to something with
@@ -646,10 +736,31 @@
     }
     return list[0];
   }
+  // Where a slide's own theme lives: on the slide's block in a Slides deck (it
+  // moves with the slide), by slide position for a song.
+  const hasSlideThemes = (item) => item.type === 'slides' || item.type === 'song';
+  function slideThemeIdOf(item, i) {
+    if (item.type === 'slides') return (item.blocks && item.blocks[i] && item.blocks[i].themeId) || null;
+    return (item.slideThemes && item.slideThemes[i]) || null;
+  }
+  function setSlideThemeId(item, i, id) {
+    if (item.type === 'slides') {
+      const b = item.blocks && item.blocks[i];
+      if (b) { if (id) b.themeId = id; else delete b.themeId; }
+    } else {
+      if (!item.slideThemes) item.slideThemes = {};
+      if (id) item.slideThemes[i] = id; else delete item.slideThemes[i];
+    }
+  }
+  // A slide of a Slides deck can carry its own theme (block.themeId); it wins
+  // over the deck's, which wins over the output's default.
+  function slideThemeLook(slide, item) {
+    if (!slide || !slide.themeId) return null;
+    return themeLookFor(item, slide.themeId);
+  }
   function itemLookOverride(item) {
     if (!item || !item.themeId) return null;
-    const list = (typeof looks !== 'undefined' && Array.isArray(looks)) ? looks : [];
-    return list.find(l => l.id === item.themeId) || null;
+    return themeLookFor(item, item.themeId);
   }
 
   // ── Multi-Language translation ────────────────────────────────────────────
@@ -657,7 +768,7 @@
   // scripture, the raw text otherwise) so re-sending or re-previewing the
   // same content — or two different items that happen to share a verse —
   // never re-fetches. Scripture resolves against a real bundled translation
-  // server-side; anything else goes through Claude. See server/translate.js.
+  // server-side; anything else goes through Claude. See kairo-server translate.rs.
   const translationCache = new Map();
 
   function themeNeedsTranslation(look) {
@@ -709,9 +820,9 @@
   //    full Song Bank).
   //  • src/lyrics_follow.js — once a SONG is live, chases an exact token
   //    position (sung verbatim from a known script).
-  //  • src/sermon_follow.js — once a 'slides' deck with its own Auto-
-  //    Advance turned on is live, tracks position by distinctive
-  //    vocabulary (a sermon is paraphrased, not recited).
+  //  • src/slide_follow.js — once a 'slides' deck (not turned Off) is
+  //    live, moves it on when a slide's own words are heard in order, or
+  //    when Kairo puts up a verse one of the next slides carries.
   // Only one position-tracking engine is ever live at once; the lookup
   // engine runs alongside it independently, so it can still catch the
   // NEXT song starting while the current one is still being tracked. Fed
@@ -749,13 +860,6 @@
     const i = slidesFor(item).findIndex(s => s.blockIndex === blockIdx);
     return i < 0 ? null : i;
   }
-  // Flat deck shape sermon_follow.js expects — a 'slides' item's blocks are
-  // already one slide each (unlike a song's verse/chorus blocks, which
-  // expand into several slides apiece via the "Lines per slide" delimiter),
-  // so this is just the plain text list, no block/slide translation needed.
-  function sermonShapeForFollow(item) {
-    return { title: item.title || 'Sermon', slides: (item.blocks || []).map(b => b.text || '') };
-  }
   // A slide's own label doubles as its auto-advance trigger phrase for an
   // image block that has no spoken text of its own to match against —
   // owner: "if they name the image a custom name, or even the image file
@@ -773,47 +877,13 @@
     if (b.imageFileName) return b.imageFileName.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ');
     return '';
   }
-  // Exact-script shape for an announcement/prepared-slide deck — reuses
-  // lyrics_follow.js's own engine (it's just token alignment against a
-  // known text, the exact same problem a hymn's verse/chorus is), treating
-  // each slide as its own one-slide "block". Owner: "the moment the person
-  // matches the first few words, it should send and immediately prepare
-  // for the next one." A text slide's own lines are the script; an image
-  // slide's "script" is its trigger phrase (see imageTriggerPhrase).
-  function announcementShapeForFollow(item) {
-    return {
-      title: item.title || 'Slides',
-      blocks: (item.blocks || []).map((b, i) => ({
-        label: b.label || `Slide ${i + 1}`,
-        lines: b.image ? [imageTriggerPhrase(b)] : (b.lines || (b.text || '').split('\n')),
-      })),
-    };
-  }
-  // A 'slides' item picks ONE of two tracking engines, since they make
-  // genuinely different tradeoffs (see openItemContextMenu's submenu):
-  //  'sermon' — src/sermon_follow.js, paraphrase-tolerant, tracks by
-  //             distinctive vocabulary (a sermon outline is talked AROUND,
-  //             not read verbatim).
-  //  'script' — src/lyrics_follow.js, exact alignment against the slide's
-  //             own text (an announcement is read close to verbatim off
-  //             the slide, or matched by an image's own name), with a wide
-  //             maxBlockSkip so a presenter jumping straight to a later
-  //             item in the deck is still caught, not just sequential +1.
-  // Owner: "work on the automatic movement" — an UNSET item now defaults to
-  // 'script' (exact-wording) rather than neither, matching how a 'song'
-  // already auto-follows with no per-item toggle needed. This is safe by
-  // construction, not just by policy: a genuine photo set or wording-free
-  // deck has no label/filename/text for LyricsFollower to align against
-  // (see imageTriggerPhrase — empty block = no keys = never independently
-  // advances), so it simply stays inert either way. An operator who wants a
-  // SPECIFIC deck to never react to ambient speech regardless can still
-  // explicitly turn it Off — a real, distinct value from "never touched",
-  // not just item.followMode being falsy the way it used to be.
+  // A 'slides' deck follows the speaker (src/slide_follow.js) unless the
+  // operator turned it Off for that deck. A deck with no words to match (a
+  // photo set with no names) simply never moves on its own.
   function followModeOf(item) {
     if (!item || item.type !== 'slides') return null;
     if (item.followMode === 'off') return null;
-    if (item.followMode === 'sermon') return 'sermon';
-    return 'script';
+    return 'slide'; // src/slide_follow.js — one behaviour for every deck
   }
   // Kept as a thin alias — several call sites below only care "is SOME
   // slides-follow engine eligible", not which one.
@@ -840,45 +910,125 @@
       followItemId = item.id;
       const blockIdx = fromIndex != null ? (slidesFor(item)[fromIndex]?.blockIndex ?? 0) : null;
       if (blockIdx != null) follower.resync(blockIdx);
-    } else if (followModeOf(item) === 'script') {
-      const LF = window.KairoLyricsFollow;
-      if (!LF) return;
-      const blocks = (item.blocks || []).length;
-      follower = new LF.LyricsFollower(announcementShapeForFollow(item), {
-        // Search the whole rest of the deck, not just +1/+2 — a presenter
-        // jumping straight to a later item is the expected case here, not
-        // a rare exception the way a dropped verse is for a song.
-        config: { maxBlockSkip: Math.max(1, blocks - 1) },
-        onAdvance: (e) => {
-          const idx = firstSlideOfBlock(item, e.toBlockIdx);
-          if (idx == null || `${item.id}:${idx}` === liveSlideKey) return;
-          followerAdvancing = true;
-          Promise.resolve(sendSlide(item, idx, { auto: true, follow: true })).finally(() => { followerAdvancing = false; });
-        },
-        onPosition: (s) => renderFollowHud(s),
-      });
-      followItemId = item.id;
-      const blockIdx = fromIndex != null ? (slidesFor(item)[fromIndex]?.blockIndex ?? 0) : null;
-      if (blockIdx != null) follower.resync(blockIdx);
-    } else if (followModeOf(item) === 'sermon') {
-      const SF = window.KairoSermonFollow;
+    } else if (followModeOf(item) === 'slide') {
+      const SF = window.KairoSlideFollow;
       if (!SF) return;
-      follower = new SF.SermonFollower(sermonShapeForFollow(item), {
-        onAdvance: (e) => {
-          if (e.toIndex == null || `${item.id}:${e.toIndex}` === liveSlideKey) return;
-          followerAdvancing = true;
-          Promise.resolve(sendSlide(item, e.toIndex, { auto: true, follow: true })).finally(() => { followerAdvancing = false; });
-        },
+      const texts = (item.blocks || []).map(b => (b.image && !b.text) ? imageTriggerPhrase(b) : (b.text || ''));
+      const f = new SF.SlideFollower({ slides: texts }, {
+        onAdvance: (e) => onSlideFollowAdvance(item, e),
         onPosition: (s) => renderFollowHud(s),
       });
+      follower = f;
       followItemId = item.id;
       if (fromIndex != null) follower.resync(fromIndex);
+      slideScriptureRefs(texts).then((refs) => { if (follower === f && refs) f.setRefs(refs); });
     } else {
       return;
     }
     renderFollowHud(follower.snapshot());
   }
   function stopFollower() { follower = null; followItemId = null; renderFollowHud(null); }
+
+  // ── Slide follow and the Bible layer ──────────────────────────────────────
+  // Bible is the top layer: a verse covers the live slide. What's up there
+  // now (app.js tells us), and whether Kairo put it up itself.
+  let bibleOnTop = false;
+  let bibleLive = null; // { book, chapter, verse, text, auto, at }
+  // A verse Kairo put up stays at least this long, so moving straight on
+  // never flashes it (the next slide waits underneath, then takes over).
+  const VERSE_MIN_MS = 4000;
+  let pendingTakeover = null;
+  let ownVerseRef = null; // a verse the slide follower sent through the Bible
+
+  function onLayerState(msg) {
+    bibleOnTop = !!(msg && msg.bibleOnTop);
+    if (!bibleOnTop) bibleLive = null;
+  }
+  // A verse went live. Auto-detected ones (and the follower's own) can move
+  // the deck to the slide that carries them; one sent by hand never does.
+  function noteBibleVerse(v, auto) {
+    if (!v || !v.book) return;
+    const own = ownVerseRef && v.reference === ownVerseRef;
+    bibleLive = { book: v.book, chapter: Number(v.chapter), verse: Number(v.verse), text: v.text || '', auto: !!auto || own, at: Date.now() };
+    if (pendingTakeover) { clearTimeout(pendingTakeover); pendingTakeover = null; } // a new verse: it stays
+    bibleOnTop = true;
+    if (bibleLive.auto && !own && follower && follower.noteVerse) follower.noteVerse({ book: v.book, chapter: bibleLive.chapter, verse: bibleLive.verse });
+  }
+
+  const slideRefsCache = new Map();
+  async function slideScriptureRefs(texts) {
+    const key = texts.join('\u0001');
+    if (slideRefsCache.has(key)) return slideRefsCache.get(key);
+    try {
+      const res = await fetchWithTimeout(`${SERVER}/api/slides/scripture`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texts }),
+      });
+      const refs = (await res.json()).refs || null;
+      if (refs) slideRefsCache.set(key, refs);
+      return refs;
+    } catch { return null; }
+  }
+
+  // The follower moved the deck. Bible on top decides what the congregation sees:
+  //  - the verse stays when the deck moved because of it, when the new slide
+  //    carries it, when it was sent by hand, or when the words heard are
+  //    still the verse being read;
+  //  - otherwise the speaker has moved on, and the new slide replaces it.
+  // A scripture slide reached by its words, with its verse not up, is shown
+  // through the Bible (the church's Bible theme), not as a slide.
+  function onSlideFollowAdvance(item, e) {
+    const idx = e.toIndex;
+    if (idx == null || `${item.id}:${idx}` === liveSlideKey) return;
+    const s = follower && follower.slides ? follower.slides[idx] : null;
+    const refs = (s && s.refs) || [];
+    const covers = (v) => !!v && refs.some(r => r.book === v.book && r.chapter === v.chapter && v.verse >= r.verse && v.verse <= r.verseEnd);
+    let keepBible = false;
+    if (bibleOnTop && bibleLive) {
+      keepBible = e.by === 'verse' || covers(bibleLive) || !bibleLive.auto || stillTheVerse(e.heard, bibleLive.text);
+    }
+    // Moved on from a verse that only just went up: the slide goes under it
+    // now and takes over once the verse has been up VERSE_MIN_MS.
+    const young = !keepBible && bibleOnTop && bibleLive && Date.now() - bibleLive.at < VERSE_MIN_MS;
+    followerAdvancing = true;
+    Promise.resolve(sendSlide(item, idx, { auto: true, follow: true, keepBible: keepBible || young })).finally(() => { followerAdvancing = false; });
+    if (young) {
+      const verse = bibleLive;
+      if (pendingTakeover) clearTimeout(pendingTakeover);
+      pendingTakeover = setTimeout(() => {
+        pendingTakeover = null;
+        if (bibleOnTop && bibleLive === verse) clearBibleLayer();
+      }, VERSE_MIN_MS - (Date.now() - verse.at));
+    }
+    const text = (s && s.text) || '';
+    const scriptureLed = refs.length && refs[0].raw && text.trim().indexOf(refs[0].raw) <= 2;
+    if (e.by === 'words' && scriptureLed && !(bibleOnTop && covers(bibleLive))) sendVerseThroughBible(refs[0]);
+  }
+  function clearBibleLayer() {
+    fetchWithTimeout(`${SERVER}/api/service/clear-layer`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ layer: 'bible' }),
+    }).catch((err) => debugLog('slide-follow-clear-failed', { error: err.message }));
+  }
+  // Are the words that moved the deck really the verse on screen being read?
+  function stillTheVerse(heard, verseText) {
+    const KF = window.KairoSlideFollow;
+    if (!KF || !heard || !heard.length || !verseText) return false;
+    const verse = new Set(KF.keysOf(verseText));
+    return heard.filter(k => verse.has(k)).length / heard.length >= 0.6;
+  }
+  async function sendVerseThroughBible(ref) {
+    try {
+      const res = await fetchWithTimeout(`${SERVER}/api/lookup`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ book: ref.book, chapter: ref.chapter, verse: ref.verse }),
+      });
+      const v = (await res.json()).result;
+      if (!v) return;
+      ownVerseRef = v.reference;
+      await fetchWithTimeout(`${SERVER}/api/service/send`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ verse: v }),
+      });
+    } catch (err) { debugLog('slide-follow-verse-failed', { ref, error: err.message }); }
+  }
 
   // Called by app.js after a Theme Studio / Full-Edit autosave — if the
   // edited theme (or per-slide style) is what's LIVE right now, re-push it
@@ -892,7 +1042,7 @@
       const [id, idxStr] = liveSlideKey.split(':');
       const item = service && service.items.find(i => i.id === id);
       if (item) {
-        const eff = itemLookOverride(item) || themeForItem(item);
+        const eff = slideThemeLook(slidesFor(item)[Number(idxStr)], item) || itemLookOverride(item) || themeForItem(item);
         if (themeId == null || (eff && eff.id === themeId)) { sendSlide(item, Number(idxStr), { auto: true }); did = true; }
       }
     }
@@ -1010,7 +1160,7 @@
   function onTranscript(msg) {
     const text = (msg && msg.text) || '';
     // words: real per-word timestamps (Deepgram always sends these; see
-    // server.js's handleTranscriptSegment) — LyricsFollower uses them for
+    // the server's handleTranscriptSegment) — LyricsFollower uses them for
     // actual audio-time-based rate tracking instead of estimating tempo
     // from wall-clock arrival timing. Absent for engines that don't provide
     // them; LyricsFollower.ingest falls back to the old estimate then.
@@ -1107,7 +1257,7 @@
     };
   }
 
-  async function sendSlide(item, index, { auto = false, follow = false } = {}) {
+  async function sendSlide(item, index, { auto = false, follow = false, keepBible = false } = {}) {
     const slide = slidesFor(item)[index];
     if (!slide) return;
     liveSlideKey = `${item.id}:${index}`;
@@ -1139,7 +1289,7 @@
     // slide the way a real per-slide scene needs to. Without this, the
     // live output would show whatever item-level theme happens to be
     // assigned (or nothing) instead of the slide's own preserved design.
-    const look = slide.isScene ? { layers: slide.layers || [] } : itemLookOverride(item);
+    const look = slide.isScene ? { layers: slide.layers || [] } : (slideThemeLook(slide, item) || itemLookOverride(item));
     debugLog('send-slide', {
       itemId: item.id,
       itemType: item.type,
@@ -1159,6 +1309,7 @@
           look,
           auto,
           follow,
+          keepBible,
           next: nextSlideInfo(item, index),
           verse: {
             reference: slide.reference || '',
@@ -1509,6 +1660,14 @@
 
       body.appendChild(title);
       body.appendChild(sub);
+      if (onOlderTheme(item)) {
+        const upd = document.createElement('button');
+        upd.className = 'svc-theme-older';
+        upd.textContent = 'Theme changed · Update';
+        upd.title = 'This deck keeps the look it had before its theme was edited. Update it to the theme as it is now.';
+        upd.addEventListener('click', (e) => { e.stopPropagation(); updateToCurrentTheme(item); });
+        body.appendChild(upd);
+      }
 
       const del = document.createElement('button');
       del.className = 'svc-item-del';
@@ -1771,7 +1930,7 @@
   async function fetchAllMediaItemsForBin() {
     const items = [];
     const binP = fetchWithTimeout(`${SERVER}/api/media/bin`).then(r => r.json())
-      .then(bin => (bin.items || []).forEach(it => items.push(it)))
+      .then(bin => (bin.items || []).forEach(it => items.push({ ...it, binSource: 'bin' })))
       .catch(() => {});
     // Smart folders are fetched in parallel, not one round-trip per folder
     // in sequence — the Media Bin's first paint used to wait on N serial
@@ -1779,7 +1938,7 @@
     const foldersP = fetchWithTimeout(`${SERVER}/api/media/folders`).then(r => r.json())
       .then(foldersRes => Promise.all((foldersRes.folders || []).map(folder =>
         fetchWithTimeout(`${SERVER}/api/media/folders/${folder.id}/items`).then(r => r.json())
-          .then(res => (res.items || []).forEach(it => items.push(it)))
+          .then(res => (res.items || []).forEach(it => items.push({ ...it, binSource: folder.id, binSourceName: folder.name })))
           .catch(() => {})
       )))
       .catch(() => {});
@@ -1795,7 +1954,8 @@
 
   function buildMediaBinCard(item) {
     const card = document.createElement('button');
-    card.className = 'media-card';
+    card.className = 'media-card' + (item.url === liveMediaSrc ? ' is-live' : '');
+    card.dataset.url = item.url;
     // Owner: "add a dropzone highlight for where the user wants to drag
     // from media bin directly to slides grid." The Media Bin strip is the
     // one place Media content is ever visible AT THE SAME TIME as another
@@ -1842,9 +2002,9 @@
     }
     const label = document.createElement('div');
     label.className = 'media-card-label';
-    label.textContent = item.name;
+    label.textContent = mediaLabel(item);
     card.appendChild(label);
-    card.title = `Send "${item.name}" to the media layer`;
+    card.title = `Send "${mediaLabel(item)}" to the media layer`;
     // Same call the Media tab's own grid uses (buildMediaCard, above) — the
     // Media Bin is just a second, always-reachable place to trigger it from
     // Bible/Slides/Timer, not a different mechanism. An earlier version of
@@ -1873,18 +2033,110 @@
     return card;
   }
 
+  // A file the bin stored as "<time>-<random>-crimson.jpg" (so two uploads
+  // of one name never collide) is shown by the name it was added with.
+  const mediaLabel = (item) => String(item.name || '').replace(/^\d{10,}-[0-9a-f]{8}-/, '');
+
+  // What's on the media layer now — its card in the bin is outlined, so the
+  // operator can see what's on air (2026-10-12). Set from the same 'media'
+  // broadcast the output renders (app.js), cleared with the media layer.
+  // Videos the web view can't play are converted once by the server (video.rs):
+  // this resolves to an address that plays — the original when it already does.
+  const preparedVideo = new Map();   // original url -> converted url
+  const preparedOrigin = new Map();  // converted url -> original url
+  async function playableVideoUrl(url, { force = false, onProgress } = {}) {
+    if (preparedVideo.has(url)) return preparedVideo.get(url);
+    for (;;) {
+      let r;
+      try {
+        const res = await fetchWithTimeout(`${SERVER}/api/media/prepare`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url, force }),
+        });
+        r = await res.json();
+      } catch { return null; }
+      if (r.state === 'native') return url;
+      if (r.state === 'ready') { preparedVideo.set(url, r.url); preparedOrigin.set(r.url, url); return r.url; }
+      if (r.state !== 'converting') return null;   // failed, or this install can't convert
+      onProgress?.(r.progress || 0);
+      await new Promise(res => setTimeout(res, 1000));
+      force = true;
+    }
+  }
+
+  let liveMediaSrc = null;
+  function onMediaLive(src, kind) {
+    liveMediaSrc = (src && preparedOrigin.get(src)) || src || null;
+    // Under the Monitoring screen: the video controls, only while a video is on air.
+    const strip = document.getElementById('media-transport');
+    if (strip) {
+      const isVideo = !!liveMediaSrc && kind === 'video';
+      strip.classList.toggle('hidden', !isVideo);
+      setMediaTransportVisible(isVideo);
+    }
+    document.querySelectorAll('.media-card[data-url]').forEach(c => c.classList.toggle('is-live', !!liveMediaSrc && c.dataset.url === liveMediaSrc));
+  }
+
+  // The bin shows one folder at a time when asked (or everything), and its
+  // thumbnails at the size the operator picks — both remembered.
+  const MEDIA_BIN_FOLDER_KEY = 'kairo-media-bin-folder';
+  const MEDIA_BIN_THUMB_KEY = 'kairo-media-bin-thumb';
+  let mediaBinItems = [];
+  const readPref = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
+  const writePref = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+
+  function paintMediaBin() {
+    const strip = document.getElementById('media-bin-strip');
+    const folderSel = document.getElementById('media-bin-folder');
+    if (!strip) return;
+    // The folder menu: everything, the bin's own items, then each folder.
+    if (folderSel) {
+      const want = readPref(MEDIA_BIN_FOLDER_KEY) || 'all';
+      const folders = new Map();
+      mediaBinItems.forEach(it => { if (it.binSource !== 'bin') folders.set(it.binSource, it.binSourceName || 'Folder'); });
+      const options = [['all', 'All media'], ['bin', 'Media Bin'], ...folders];
+      folderSel.innerHTML = '';
+      options.forEach(([v, label]) => {
+        const o = document.createElement('option');
+        o.value = v; o.textContent = label;
+        folderSel.appendChild(o);
+      });
+      folderSel.value = options.some(([v]) => v === want) ? want : 'all';
+    }
+    const source = folderSel?.value || 'all';
+    const shown = source === 'all' ? mediaBinItems : mediaBinItems.filter(it => it.binSource === source);
+    strip.innerHTML = '';
+    if (!shown.length) {
+      strip.innerHTML = mediaBinItems.length
+        ? '<div class="svc-empty">Nothing in this folder yet.</div>'
+        : '<div class="svc-empty">No media yet — add some from the Media tab.</div>';
+      return;
+    }
+    shown.forEach(item => strip.appendChild(buildMediaBinCard(item)));
+  }
+
   async function renderMediaBinStrip() {
     const strip = document.getElementById('media-bin-strip');
     if (!strip) return;
-    strip.innerHTML = '<div class="svc-empty">Loading…</div>';
-    const items = await fetchAllMediaItemsForBin();
-    strip.innerHTML = '';
-    if (!items.length) {
-      strip.innerHTML = '<div class="svc-empty">No media yet — add some from the Media tab.</div>';
-      return;
-    }
-    items.forEach(item => strip.appendChild(buildMediaBinCard(item)));
+    if (!mediaBinItems.length) strip.innerHTML = '<div class="svc-empty">Loading…</div>';
+    mediaBinItems = await fetchAllMediaItemsForBin();
+    paintMediaBin();
   }
+
+  document.getElementById('media-bin-folder')?.addEventListener('change', (e) => {
+    writePref(MEDIA_BIN_FOLDER_KEY, e.target.value);
+    paintMediaBin();
+  });
+  (function initMediaBinThumbSize() {
+    const slider = document.getElementById('media-bin-size');
+    const strip = document.getElementById('media-bin-strip');
+    if (!slider || !strip) return;
+    const saved = parseInt(readPref(MEDIA_BIN_THUMB_KEY) || '', 10);
+    if (saved > 0) slider.value = String(saved);
+    const apply = () => strip.style.setProperty('--mb-thumb', slider.value + 'px');
+    apply();
+    slider.addEventListener('input', apply);
+    slider.addEventListener('change', () => writePref(MEDIA_BIN_THUMB_KEY, slider.value));
+  })();
 
   document.getElementById('media-bin-toggle-btn')?.addEventListener('click', toggleMediaBin);
   document.getElementById('media-bin-hide-btn')?.addEventListener('click', toggleMediaBin);
@@ -1896,37 +2148,19 @@
   // relationship — dragging UP (mouse Y decreasing) has to grow it, and the
   // element being resized (.media-bin) IS the splitter's own parent, not a
   // separate sibling pane.
-  const MEDIA_BIN_H_KEY = 'kairo-media-bin-h';
+  // The bin is as tall as the Live Transcript box beside it, so the two
+  // shelves line up along the bottom of the window; the splitter between the
+  // playlist and the transcript (left column) is the one control for both.
   function initMediaBinResize() {
     const bin = document.getElementById('media-bin');
-    const splitter = document.getElementById('media-bin-splitter');
-    if (!bin || !splitter) return;
-    const saved = parseInt(localStorage.getItem(MEDIA_BIN_H_KEY) || '', 10);
-    if (saved > 0) bin.style.height = saved + 'px';
-
-    let startY = 0, startH = 0;
-    const MIN_H = 90, MAX_H = 400; // matches .media-bin's own min-/max-height in styles.css
-    const onMove = (e) => {
-      const h = Math.max(MIN_H, Math.min(MAX_H, startH + (startY - e.clientY)));
-      bin.style.height = h + 'px';
+    const transcript = document.querySelector('.ls-transcript-section');
+    if (!bin || !transcript) return;
+    const match = () => {
+      const h = Math.round(transcript.getBoundingClientRect().height);
+      if (h > 0) bin.style.height = h + 'px';
     };
-    const onUp = () => {
-      document.removeEventListener('mousemove', onMove);
-      document.removeEventListener('mouseup', onUp);
-      splitter.classList.remove('dragging');
-      document.body.style.userSelect = '';
-      try { localStorage.setItem(MEDIA_BIN_H_KEY, String(bin.offsetHeight)); } catch {}
-    };
-    splitter.addEventListener('mousedown', (e) => {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      startY = e.clientY;
-      startH = bin.offsetHeight;
-      splitter.classList.add('dragging');
-      document.body.style.userSelect = 'none';
-      document.addEventListener('mousemove', onMove);
-      document.addEventListener('mouseup', onUp);
-    });
+    new ResizeObserver(match).observe(transcript);
+    match();
   }
   initMediaBinResize();
 
@@ -2325,7 +2559,14 @@
       // Edit jumps straight to THIS slide (index i), not always slide 0.
       sections.push([
         { label: 'Edit', onClick: () => window.KairoItemStyleEditor?.open?.(item.id, i) },
-        { label: 'Change Theme', onClick: () => openThemePopover(card, item) },
+        (() => {
+          // Right-clicking inside a multi-slide selection re-themes the whole
+          // selection; otherwise just this slide. Songs and other items keep
+          // one theme for the whole item.
+          const many = hasSlideThemes(item) && selectedSlideIndices.size > 1 && selectedSlideIndices.has(i);
+          const idx = many ? [...selectedSlideIndices].sort((a, b) => a - b) : [i];
+          return { label: many ? `Change Theme (${idx.length} slides)` : 'Change Theme', onClick: () => openThemePopover(card, item, hasSlideThemes(item) ? { slideIndices: idx } : {}) };
+        })(),
       ]);
       if (s.image) sections.push([{ label: 'Fit Mode', submenu: fitModeMenuItems(item) }]);
       // Real gap: a song's section label (Verse/Chorus/Bridge/etc) was only
@@ -2509,9 +2750,10 @@
         { label: 'Rename', onClick: () => startRenamingItemTitle(titleEl, item, () => { renderSidebar(); renderStack(); }) },
         { label: 'Duplicate', onClick: () => duplicateItem(item) },
         { label: 'Change Theme', onClick: () => openThemePopover(anchorEl, item) },
+        ...(onOlderTheme(item) ? [{ label: 'Update to the current theme', onClick: () => updateToCurrentTheme(item) }] : []),
         { label: 'Edit', onClick: () => window.KairoItemStyleEditor?.open?.(item.id, 0) },
         { label: 'Quick edit', onClick: () => openFullEdit(item.id) },
-        // Auto-advance mode (src/lyrics_follow.js or src/sermon_follow.js)
+        // Auto-advance (src/lyrics_follow.js for songs, src/slide_follow.js for decks)
         // — opt-in per item, unlike a song (which always auto-follows once
         // Start Listening is on): a 'slides' deck is just as often
         // announcements or a photo set that should never react to ambient
@@ -2587,10 +2829,8 @@
 
   function followModeMenuItems(item) {
     const setMode = (mode) => {
-      // 'off' is a real, explicit value now — distinct from unset, which
-      // defaults to 'script' automatically (see followModeOf). Storing null
-      // here would just mean "never touched" again and silently re-enable
-      // the default the operator just tried to turn off.
+      // 'off' is a real, explicit value — distinct from unset, which
+      // follows by default (see followModeOf).
       item.followMode = mode;
       saveService();
       // Live right now with Start Listening already on: start/stop
@@ -2602,18 +2842,8 @@
     };
     const current = followModeOf(item);
     return [
-      {
-        label: 'Off', selected: !current,
-        onClick: () => setMode('off'),
-      },
-      {
-        label: 'Announcement (exact wording)', selected: current === 'script',
-        onClick: () => setMode('script'),
-      },
-      {
-        label: 'Sermon outline (paraphrase-tolerant)', selected: current === 'sermon',
-        onClick: () => setMode('sermon'),
-      },
+      { label: 'Off', selected: !current, onClick: () => setMode('off') },
+      { label: 'Follow the speaker', selected: !!current, onClick: () => setMode('on') },
     ];
   }
 
@@ -2702,9 +2932,11 @@
   function buildImportRows(list, destination) {
     const fileRow = document.createElement('button');
     fileRow.className = 'svc-popover-item';
-    fileRow.textContent = 'Import file…';
+    fileRow.textContent = 'Import…';
     fileRow.addEventListener('click', () => {
       closePopover();
+      // The Import window lists every format; fall back to the bare picker.
+      if (window.KairoImport) { window.KairoImport.open({ destination }); return; }
       const input = document.getElementById('quick-import-file');
       if (input) { input.dataset.destination = destination; input.click(); }
     });
@@ -2733,20 +2965,38 @@
     });
   }
 
-  function openThemePopover(anchor, item) {
+  // `opts.slideIndices` aims the pick at those slides of a Slides deck (the
+  // slide's own theme) instead of the whole item.
+  function openThemePopover(anchor, item, opts = {}) {
+    const slideIdx = (hasSlideThemes(item) && Array.isArray(opts.slideIndices) && opts.slideIndices.length) ? opts.slideIndices : null;
+    const slideThemes = slideIdx ? slideIdx.map(i => slideThemeIdOf(item, i)) : [];
+    const sharedSlideTheme = slideIdx && slideThemes.every(t => t === slideThemes[0]) ? slideThemes[0] : undefined;
+    const currentThemeId = slideIdx ? sharedSlideTheme : item.themeId;
+    const applyTheme = (id) => {
+      if (id && item.themePins && item.themePins[id]) { delete item.themePins[id]; if (!Object.keys(item.themePins).length) delete item.themePins; }
+      if (slideIdx) {
+        slideIdx.forEach(i => setSlideThemeId(item, i, id));
+        saveService(); refreshAfterSlideEdit(item);
+      } else {
+        // Re-theming a whole deck replaces any slide-by-slide choices.
+        if (item.type === 'slides') (item.blocks || []).forEach(b => { delete b.themeId; });
+        delete item.slideThemes;
+        item.themeId = id; saveService(); renderStack();
+      }
+    };
     openPopover(anchor, (pop) => {
       const label = document.createElement('div');
       label.className = 'svc-popover-label';
-      label.textContent = 'Theme';
+      label.textContent = slideIdx ? (slideIdx.length === 1 ? 'Theme for this slide' : `Theme for ${slideIdx.length} slides`) : 'Theme';
       pop.appendChild(label);
       const list = document.createElement('div');
       list.className = 'svc-popover-list';
 
       const dflt = document.createElement('button');
-      dflt.className = 'svc-popover-item' + (!item.themeId ? ' active' : '');
-      dflt.textContent = 'Output default';
+      dflt.className = 'svc-popover-item' + (!currentThemeId ? ' active' : '');
+      dflt.textContent = slideIdx ? 'Same as the deck' : 'Output default';
       dflt.addEventListener('click', () => {
-        item.themeId = null; saveService(); renderStack(); renderFullEditHeader();
+        applyTheme(null); renderFullEditHeader();
         window.KairoItemStyleEditor?.refreshTheme?.(item.id);
         closePopover();
       });
@@ -2758,10 +3008,9 @@
       // as unrelated flat rows with no preview, which read as a completely
       // different (and unhelpfully longer) picker than the one in Theme
       // Studio for the exact same set of themes.
-      const renderedGroups = new Set();
       const buildRow = (l) => {
         const b = document.createElement('button');
-        b.className = 'svc-popover-item has-thumb' + (item.themeId === l.id ? ' active' : '');
+        b.className = 'svc-popover-item has-thumb' + (currentThemeId === l.id ? ' active' : '');
         const thumb = document.createElement('div');
         thumb.className = 'ts-theme-thumb';
         renderLookThumbnail(thumb, l);
@@ -2770,7 +3019,7 @@
         b.appendChild(thumb);
         b.appendChild(label);
         b.addEventListener('click', () => {
-          item.themeId = l.id; saveService(); renderStack();
+          applyTheme(l.id);
           if (activeItemId === item.id) renderFullEdit();
           window.KairoItemStyleEditor?.refreshTheme?.(item.id);
           // Any theme with a verse_translated layer (not just the one
@@ -2786,24 +3035,12 @@
             // which pinned the reopened popover to the top-left corner
             // instead of back under the button. Re-find the fresh one.
             const freshAnchor = document.querySelector(`.svc-card[data-id="${CSS.escape(item.id)}"] .svc-card-actions-btn`);
-            openThemePopover(freshAnchor && freshAnchor.isConnected ? freshAnchor : anchor, item);
+            openThemePopover(freshAnchor && freshAnchor.isConnected ? freshAnchor : anchor, item, opts);
           } else closePopover();
         });
         return b;
       };
-      all.forEach(l => {
-        if (l.groupId) {
-          if (renderedGroups.has(l.groupId)) return;
-          renderedGroups.add(l.groupId);
-          const groupLabel = document.createElement('div');
-          groupLabel.className = 'svc-popover-group-label';
-          groupLabel.textContent = l.groupName || 'Theme';
-          list.appendChild(groupLabel);
-          all.filter(g => g.groupId === l.groupId).forEach(g => list.appendChild(buildRow(g)));
-          return;
-        }
-        list.appendChild(buildRow(l));
-      });
+      list.appendChild(buildThemeTree(all, buildRow, currentThemeId));
       pop.appendChild(list);
 
       // Use themeForItem (not a raw id lookup against `all`) so this also
@@ -2872,7 +3109,6 @@
       list.className = 'svc-popover-list';
       // Same clustering + thumbnails as the per-item theme popover above —
       // see its own comment for why.
-      const renderedGroups = new Set();
       const buildRow = (l) => {
         const b = document.createElement('button');
         b.className = 'svc-popover-item has-thumb' + (l.id === current ? ' active' : '');
@@ -2898,19 +3134,7 @@
         });
         return b;
       };
-      all.forEach(l => {
-        if (l.groupId) {
-          if (renderedGroups.has(l.groupId)) return;
-          renderedGroups.add(l.groupId);
-          const groupLabel = document.createElement('div');
-          groupLabel.className = 'svc-popover-group-label';
-          groupLabel.textContent = l.groupName || 'Theme';
-          list.appendChild(groupLabel);
-          all.filter(g => g.groupId === l.groupId).forEach(g => list.appendChild(buildRow(g)));
-          return;
-        }
-        list.appendChild(buildRow(l));
-      });
+      list.appendChild(buildThemeTree(all, buildRow, current));
       pop.appendChild(list);
 
       if (current === 'multi-language') {
@@ -3041,7 +3265,7 @@
     // theme deliberately built with ONLY a reference/citation layer (no verse
     // layer at all) has nothing else to show, so its reference must still
     // paint even when verseText is empty.
-    const hasVerseLayer = layers.some(l => l.type === 'text' && l.binding === 'verse' && l.visible !== false);
+    const hasVerseLayer = layers.some(l => (l.type === 'text' || l.type === 'pp') && l.binding === 'verse' && l.visible !== false);
     // opts.motion: 'live' animates motion layers (the operator's Live
     // Preview and timer monitor); anything else — thumbnails, slide lists,
     // timer cards — shows them paused. opts.builds plays each layer's
@@ -3052,6 +3276,13 @@
       if (layer.visible === false) return;
       // The slide's own rotation / accent colour / photo look, if any.
       layer = withLayerOverride(layer, (style || {})[layer.id]);
+
+      // An element imported from ProPresenter, drawn exactly (pp_render.js).
+      if (layer.type === 'pp') {
+        if (layer.binding === 'reference' && hasVerseLayer && !content?.verseText) return;
+        host.appendChild(window.KairoPP.render(layer, content || {}, { motion: motionMode, scale }));
+        return;
+      }
 
       if (layer.type === 'background') {
         const bgOv = (style || {})[layer.id] || {};
@@ -3120,7 +3351,7 @@
           v.style.height = (p.h / DESIGN_H * 100) + '%';
           if (layer.rotation) v.style.transform = `rotate(${layer.rotation}deg)`;
           applyImageLook(v, layer);
-          v.src = layer.src;
+          v.src = authedMediaUrl(layer.src);
           host.appendChild(v);
           v.play().catch(() => {});
           return;
@@ -3216,6 +3447,8 @@
       // paint — app.js's onTimerAction writes each tick into
       // [data-binding="timer"], mirroring display.html's real output.
       if (layer.binding) d.dataset.binding = layer.binding;
+      d.dataset.layerId = layer.id || '';
+      if (layer.follows) d.dataset.follows = layer.follows; // stackFollowers, below
       const p = layer.pos || { x: 100, y: 400, w: DESIGN_W - 200, h: 0 };
       const box = ov.pos || p;
       d.style.position = 'absolute';
@@ -3339,6 +3572,17 @@
       const anim = animOf(layer);
       for (let i = before; i < host.childNodes.length; i++) window.KairoMotion.animateLayer(host.childNodes[i], anim, { builds: !!opts.builds, unit });
     });
+    // Long verses shrink to their box as on the output; then a reference
+    // following its verse is placed (again next frame, for a host only now
+    // being attached or sized).
+    const fitAndStack = () => {
+      host.querySelectorAll('[data-binding="verse"],[data-binding="verse_translated"]').forEach(el => {
+        if (el.style.height && !el.isContentEditable) fitTextToBox(el);
+      });
+      stackFollowers(host);
+    };
+    fitAndStack();
+    requestAnimationFrame(fitAndStack);
   }
 
   // Small live preview of a look's layers, shared by every theme picker in
@@ -3362,6 +3606,58 @@
     container.appendChild(inner);
     paintLookLayers(inner, look, {}, { verseText: 'Sample text', referenceText: 'Reference', translatedText: '' });
     container.classList.toggle('is-transparent-thumb', inner.classList.contains('is-alpha'));
+  }
+
+  // One grouped theme list for every theme picker (per-item, Bible, outputs):
+  // each parent (Bible, Lyrics, Slides, an imported bundle) is a row with a
+  // chevron that opens its themes, each with its small preview. Themes that
+  // belong to no group stay as plain rows. The group holding the current
+  // theme starts open; the rest start closed.
+  function buildThemeTree(allLooks, buildRow, currentId) {
+    const root = document.createElement('div');
+    root.className = 'thm-tree';
+    const seen = new Set();
+    allLooks.forEach(l => {
+      if (!l.groupId) { root.appendChild(buildRow(l)); return; }
+      if (seen.has(l.groupId)) return;
+      seen.add(l.groupId);
+      const kids = allLooks.filter(g => g.groupId === l.groupId);
+      const group = document.createElement('div');
+      group.className = 'thm-group';
+      const head = document.createElement('button');
+      head.type = 'button';
+      head.className = 'thm-group-head';
+      const open = kids.some(k => k.id === currentId);
+      head.setAttribute('aria-expanded', String(open));
+      const thumb = document.createElement('div');
+      thumb.className = 'ts-theme-thumb';
+      renderLookThumbnail(thumb, kids.find(k => k.id === currentId) || kids[0]);
+      const name = document.createElement('span');
+      name.className = 'thm-group-name';
+      name.textContent = l.groupName || 'Theme';
+      const count = document.createElement('span');
+      count.className = 'thm-group-count';
+      count.textContent = String(kids.length);
+      const chev = document.createElement('span');
+      chev.className = 'thm-group-chev';
+      chev.setAttribute('aria-hidden', 'true');
+      chev.textContent = '▾';
+      head.append(thumb, name, count, chev);
+      const body = document.createElement('div');
+      body.className = 'thm-group-body';
+      body.hidden = !open;
+      group.classList.toggle('is-open', open);
+      kids.forEach(k => body.appendChild(buildRow(k)));
+      head.addEventListener('click', () => {
+        const nowOpen = body.hidden;
+        body.hidden = !nowOpen;
+        group.classList.toggle('is-open', nowOpen);
+        head.setAttribute('aria-expanded', String(nowOpen));
+      });
+      group.append(head, body);
+      root.appendChild(group);
+    });
+    return root;
   }
 
   // Write a flow row's edited text back into whatever storage that slide
@@ -3918,6 +4214,21 @@
       // slide, but leaving a stale value from a previous dialog use around
       // for no reason is its own small confusion to avoid).
       if (isSceneImport) themeSel.value = '';
+      // Shown as the same thumbnail dropdown as every other theme picker;
+      // the hidden <select> stays the value store confirmAddConfirm reads.
+      if (typeof buildThemeDropdown === 'function') {
+        themeSel.hidden = true;
+        let pick = themeSel.parentElement.querySelector('.theme-pick');
+        if (!pick) {
+          pick = buildThemeDropdown({
+            value: () => themeSel.value,
+            onPick: (id) => { themeSel.value = id; },
+            defaultLabel: 'Output default',
+          });
+          themeSel.after(pick);
+        }
+        pick.refresh();
+      }
     }
 
     const delimGroup = document.getElementById('ac-delim-group');
@@ -4217,7 +4528,7 @@
   // layer — see app.js's openMediaLibraryPicker/addMediaToCurrentSlide,
   // which pushes into activeLook.layers, a different thing entirely).
   // Appends a real new block to a 'slides' item, filename captured so the
-  // announcement follower (announcementShapeForFollow/imageTriggerPhrase)
+  // slide follower (imageTriggerPhrase)
   // has something to match on even before the operator names it. The
   // click-based bridge (dragging works too now — wireMediaBinDropTarget
   // above — but only from the Media Bin strip, which is the one place
@@ -4689,7 +5000,18 @@
       v.addEventListener('loadedmetadata', () => {
         try { v.currentTime = Math.min(0.1, (v.duration || 1) / 2); } catch {}
       }, { once: true });
-      v.dataset.src = item.url;
+      // A file the web view can't play: have the server convert it, then show that.
+      let retried = false;
+      v.addEventListener('error', async () => {
+        if (retried) return;
+        retried = true;
+        const badge = v.closest('.media-card')?.querySelector('.media-card-badge');
+        const was = badge?.textContent;
+        const out = await playableVideoUrl(item.url, { force: true, onProgress: p => { if (badge) badge.textContent = `Preparing ${p}%`; } });
+        if (badge && was) badge.textContent = out ? was : 'CAN\u2019T PLAY';
+        if (out && out !== item.url) v.src = authedMediaUrl(out);
+      });
+      v.dataset.src = authedMediaUrl(item.url);
       lazyMediaObserver.observe(v);
       return v;
     }
@@ -4703,7 +5025,7 @@
 
   function buildMediaCard(item, { isRecent } = {}) {
     const card = document.createElement('button');
-    card.className = 'media-card';
+    card.className = 'media-card' + (item.url === liveMediaSrc ? ' is-live' : '');
     card.dataset.url = item.url;
     card.appendChild(buildMediaThumb(item));
     if (item.kind === 'video') {
@@ -4725,9 +5047,9 @@
     }
     const label = document.createElement('div');
     label.className = 'media-card-label';
-    label.textContent = item.name;
+    label.textContent = mediaLabel(item);
     card.appendChild(label);
-    card.title = `Send "${item.name}" to the media layer`;
+    card.title = `Send "${mediaLabel(item)}" to the media layer`;
     card.addEventListener('click', () => sendMediaItem(item));
     card.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -4813,10 +5135,20 @@
   async function sendMediaItem(item, fit) {
     const resolvedFit = fit || mediaFitPrefs.get(item.url) || 'contain';
     if (fit) mediaFitPrefs.set(item.url, fit);
+    let src = item.url;
+    if (item.kind === 'video') {
+      // The card showing it says so while a video that needs converting is made ready.
+      const badge = document.querySelector(`.media-card[data-url="${CSS.escape(item.url)}"] .media-card-badge`);
+      const was = badge?.textContent;
+      const out = await playableVideoUrl(item.url, { onProgress: p => { if (badge) badge.textContent = `Preparing ${p}%`; } });
+      if (badge && was) badge.textContent = was;
+      if (!out) { if (badge) badge.textContent = 'CAN\u2019T PLAY'; return; }
+      src = out;
+    }
     try {
       await fetchWithTimeout(`${SERVER}/api/service/send-media`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ src: item.url, kind: item.kind, fit: resolvedFit }),
+        body: JSON.stringify({ src, kind: item.kind, fit: resolvedFit }),
       });
     } catch (err) {
       if (typeof toast === 'function') toast('Send failed: ' + err.message, 'error');
@@ -4869,12 +5201,27 @@
 
   // ── Transport bar (mute/play/volume/seek) — remote-controls whatever the
   // display's media layer is currently showing; see display.html's
-  // applyMediaControl/reportMediaStatus and server.js's ws relay. ─────────
+  // applyMediaControl/reportMediaStatus and the server's WebSocket relay (kairo-server ws.rs). ─────────
+  // The video controls in the Monitoring card's media strip (onMediaLive
+  // shows the strip itself for any media).
   function setMediaTransportVisible(visible) {
-    document.getElementById('media-transport')?.classList.toggle('hidden', !visible);
+    document.getElementById('media-video-controls')?.classList.toggle('hidden', !visible);
   }
 
   function mediaControl(action, value) {
+    // The preview is always silent (the output carries the sound), so only
+    // play, pause and seek apply to it.
+    const pv = previewVideo();
+    if (pv) {
+      if (action === 'play') pv.play().catch(() => {});
+      else if (action === 'pause') pv.pause();
+      else if (action === 'seek' && typeof value === 'number') { try { pv.currentTime = value; } catch {} }
+      else if (action === 'mute') pv.muted = true;
+      else if (action === 'unmute') { pv.muted = false; pv.play().catch(() => {}); }
+      else if (action === 'volume' && typeof value === 'number') pv.volume = Math.max(0, Math.min(1, value));
+    }
+    if (action === 'mute') mediaMutedState = true;
+    if (action === 'unmute') mediaMutedState = false;
     fetchWithTimeout(`${SERVER}/api/service/media-control`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, value }),
@@ -4895,7 +5242,15 @@
   // own image — see renderTimerScene, which shares this same layer), the
   // transport bar has nothing left to control and must hide instead of
   // sitting there with a seek bar frozen at 0:00/0:00 looking broken.
-  function onMediaStatus({ currentTime, duration, paused, kind }) {
+  // The video playing in the Monitor's own preview. It is what the transport
+  // bar shows and drives, so the controls work whether or not an output screen
+  // is open; the output gets the same commands through the server.
+  const previewVideo = () => document.querySelector('#slide-preview-media video');
+  let mediaMutedState = false; // the transport's mute button; a new video starts that way
+
+  function onMediaStatus({ currentTime, duration, paused, kind, local }) {
+    // An output's own report only counts when there's no preview video to read.
+    if (!local && previewVideo()) return;
     if (kind && kind !== 'video') { setMediaTransportVisible(false); return; }
     setMediaTransportVisible(true);
     const seek = document.getElementById('media-seek');
@@ -4924,7 +5279,7 @@
   // Named service-segment countdowns (Preservice/Worship/Sermon/...) —
   // each segment IS a stage-timer trigger under the hood (server/
   // segments.js layers ordering + a "one live at a time" rule on top of
-  // the generic action/trigger framework in server/triggers.js). Cards
+  // the generic action/trigger framework in the server's Triggers (kairo-server library.rs)). Cards
   // mirror the slide-thumbnail visual language (black 16:9 preview +
   // bottom-left label, see .ts-item-slide-thumb) so a segment reads as
   // "a layer" the same way a slide does, per this tab's whole reason for
@@ -5087,7 +5442,7 @@
   // exactly how the slide-layer send below went missing from one of the
   // two paths and sat untested until a real end-to-end check caught it.
   // Returns {ok, error} rather than a bare boolean — the actual reason
-  // (from server/triggers.js's validate(), e.g. "That time has already
+  // (from the server's Triggers (kairo-server library.rs)'s validate(), e.g. "That time has already
   // passed today") used to only reach toast(), a permanent no-op in this
   // codebase, so every caller saw a bare failure with the real message
   // thrown away and had to fall back to a made-up generic string instead.
@@ -5176,7 +5531,7 @@
       //    test — which came across as "can't set the time" with no way
       //    through.
       //  • "Run for" — a length in minutes, resolved against the clock at
-      //    Start (server/triggers.js resolveEndAt, mode:'duration'). Always
+      //    Start (the server's Triggers (kairo-server library.rs) resolveEndAt, mode:'duration'). Always
       //    takes, so it's the one that unblocks a fast test.
       let mode = params.mode === 'duration' ? 'duration' : 'endAt';
 
@@ -5448,7 +5803,7 @@
 
   // Reordering isn't exposed in the card UI right now (kept intentionally
   // minimal — see toggleSegment above) but the backend route
-  // (/api/segments/reorder, server/segments.js) is still there if a
+  // (/api/segments/reorder, the server's Segments (kairo-server library.rs)) is still there if a
   // drag-to-reorder UI gets added later.
 
   function renderTimerGrid() {
@@ -5882,6 +6237,12 @@
     throw new Error('clipboard unavailable');
   }
 
+  // Pasted text is named after its first three words ("Amazing Grace How").
+  function pastedTitle(text) {
+    const words = String(text || '').replace(/[^\p{L}\p{N}'’\s-]/gu, ' ').split(/\s+/).filter(Boolean).slice(0, 3);
+    return words.length ? words.join(' ') : 'Pasted content';
+  }
+
   async function quickImportClipboard(destination = 'playlist') {
     try {
       const text = await readClipboardText();
@@ -5892,7 +6253,7 @@
       // "keep as-is" defaulting and multi-item (.proplaylist) handling
       // consistent regardless of which of the three entry points (quick
       // file, quick clipboard, or the paste-dialog fallback) was used.
-      beginImportResult(d, 'Pasted content', { destination });
+      beginImportResult(d, pastedTitle(text), { destination });
     } catch (err) {
       // Permission denied or nothing to read — fall back to the paste dialog.
       openImport({ destination });
@@ -5943,6 +6304,7 @@
       // stale result over it.
       if (myGeneration !== importGeneration) return;
       importPending = d;
+      d.__title = file.name.replace(/\.[^.]+$/, '');
       const count = d.items ? d.items.length : d.blocks.length;
       const label = d.items ? `presentation${count === 1 ? '' : 's'}` : `slide${count === 1 ? '' : 's'}`;
       if (st) st.textContent = `${count} ${label} found in ${file.name}${d.note ? ` (${d.note})` : ''} — press “Add slides”.`;
@@ -5970,7 +6332,7 @@
       return;
     }
     closeImport();
-    beginImportResult(d, 'Pasted content', { destination: importDestination });
+    beginImportResult(d, (importPending === d && d.__title) || pastedTitle(ta?.value), { destination: importDestination });
   }
 
   // ── Grid/List + scale, applied to expanded card previews ─────────────────
@@ -6024,7 +6386,7 @@
       // theme to apply at all; themeForItem(item) would be either the
       // wrong theme or nothing. Same convention Full-scale Edit's own
       // thumbnail painter already uses for this (renderItemSlidesList).
-      const look = s.isScene ? { layers: s.layers || [] } : themeForItem(item);
+      const look = s.isScene ? { layers: s.layers || [] } : (slideThemeLook(s, item) || themeForItem(item));
       const style = s.isScene ? {} : (item.slideStyles?.[i] || {});
       paintLookLayers(preview, look, style, {
         verseText: s.text, referenceText: s.reference || '',
@@ -6050,8 +6412,15 @@
 
     function setActive(anim) {
       picker.querySelectorAll('.ts-align-btn').forEach(b => b.classList.toggle('active', b.dataset.anim === anim));
-      speedInput.classList.toggle('hidden', anim === 'cut');
+      document.getElementById('rs-anim-speed-row')?.classList.toggle('hidden', anim === 'cut');
     }
+    // Quick / Normal / Slow; a value saved before (any length) shows as the nearest.
+    const showDuration = (value) => {
+      const opts = [...speedInput.querySelectorAll('[data-speed]')];
+      const nearest = opts.reduce((a, b) => (Math.abs(b.dataset.speed - value) < Math.abs(a.dataset.speed - value) ? b : a), opts[0]);
+      opts.forEach(o => o.classList.toggle('active', o === nearest));
+    };
+    showDuration(1);
 
     // If the operator touches the picker before this initial fetch
     // resolves, its own POST already applied the real change — the fetch
@@ -6062,7 +6431,7 @@
     fetchWithTimeout(`${SERVER}/api/settings`).then(r => r.json()).then(s => {
       if (userTouched) return;
       setActive(s.outputAnimation || 'fade');
-      if (typeof s.outputAnimationSpeed === 'number' && s.outputAnimationSpeed > 0) speedInput.value = s.outputAnimationSpeed;
+      if (typeof s.outputAnimationSpeed === 'number' && s.outputAnimationSpeed > 0) showDuration(s.outputAnimationSpeed);
     }).catch(() => { if (!userTouched) setActive('fade'); });
 
     picker.addEventListener('click', (e) => {
@@ -6076,20 +6445,16 @@
       }).catch(() => {});
     });
 
-    // Debounced — 'input' fires continuously while dragging, and each
-    // change here is a real settings-file write plus a broadcast, not
-    // just a local style update.
-    let speedTimer = null;
-    speedInput.addEventListener('input', () => {
+    speedInput.addEventListener('click', (e) => {
+      const btn = e.target.closest('[data-speed]');
+      if (!btn) return;
       userTouched = true;
-      clearTimeout(speedTimer);
-      const value = parseFloat(speedInput.value);
-      speedTimer = setTimeout(() => {
-        fetchWithTimeout(`${SERVER}/api/settings`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ outputAnimationSpeed: value }),
-        }).catch(() => {});
-      }, 200);
+      const value = parseFloat(btn.dataset.speed);
+      showDuration(value);
+      fetchWithTimeout(`${SERVER}/api/settings`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ outputAnimationSpeed: value }),
+      }).catch(() => {});
     });
   }
 
@@ -6178,7 +6543,7 @@
     }
 
     // Transport — remote-controls the display's media <video>; see
-    // display.html's applyMediaControl and server.js's /api/service/media-control.
+    // display.html's applyMediaControl and the server's /api/service/media-control.
     document.getElementById('media-play-btn')?.addEventListener('click', () => {
       const icon = document.getElementById('media-play-icon');
       // The icon already reflects real state via onMediaStatus; use its
@@ -6201,7 +6566,10 @@
       if (duration > 0) mediaControl('seek', (Number(mediaSeekInput.value) / 1000) * duration);
       mediaSeeking = false;
     });
-    document.getElementById('media-volume')?.addEventListener('input', (e) => {
+    const mediaVolumeBar = document.getElementById('media-volume');
+    try { const v = parseInt(localStorage.getItem('kairo-media-volume') || '', 10); if (v >= 0 && v <= 100 && mediaVolumeBar) mediaVolumeBar.value = String(v); } catch {}
+    mediaVolumeBar?.addEventListener('input', (e) => {
+      try { localStorage.setItem('kairo-media-volume', e.target.value); } catch {}
       mediaControl('volume', Number(e.target.value) / 100);
     });
 
@@ -6668,10 +7036,12 @@
     get service() { return service; },
     slidesFor, sendSlide, cycleSectionLabel, focusInStack, openFullEdit, closeStack, closeFullEdit,
     effectiveTranslateTo, awaitTranslatedText,
-    paintLookLayers, renderLookThumbnail, saveService, openContextMenu, openThemePopover, themeForItem,
-    showMediaLibrary, onMediaStatus, onMediaFolderChanged, setMediaTransportVisible,
+    paintLookLayers, renderLookThumbnail, buildThemeTree, slideThemeIdOf, hasSlideThemes, mediaMuted: () => mediaMutedState, saveService, openContextMenu, openThemePopover, themeForItem,
+    showMediaLibrary, onMediaStatus, onMediaFolderChanged, setMediaTransportVisible, onMediaLive,
     showTimerLibrary, onTimerAction, onClockAction, getTimerItem, updateSegmentParams, saveTimerScenes, saveScenePace,
     onTranscript, setAutoFollow, get autoFollow() { return autoFollow; },
+    noteBibleVerse, onLayerState,
+    themeLookFor, keepThemeVersion, themeUsage, updateToCurrentTheme,
     resendLiveForThemeEdit, resendLiveForSlideStyleEdit, onTimerSlide, refreshThumbnails, clearLive,
     // Lets Full-scale edit's canvas (app.js's beginInlineTextEdit) double-
     // click-edit a verse-bound layer's actual words — a song lyric or a
@@ -6690,6 +7060,8 @@
     // this same "Paste from clipboard" flow the Slides/Songs add-menus
     // already use, rather than a second implementation of clipboard import.
     quickImportClipboard,
+    advanceLiveSlide,
+    quickImportFile,
     // The global search overlay (global_search.js).
     prefetchForSearch, searchContent, openFound,
   };

@@ -21,6 +21,10 @@
   });
 
   window.KairoGradients = [
+    // Kairo's own red, into its darker shade — the default Bible and timer
+    // canvases (2026-10-12: the app's brand colours, deep enough at the far
+    // end to keep white verse text readable on a projector).
+    g('kairo', 'Kairo Red', 135, [[0, '#F5301A'], [100, '#9E1608']]),
     // ── Vector gradient colour set ──
     g('sunrise', 'Sunrise', 180, [[0, '#fec900'], [45, '#ff8800'], [100, '#ca3e00']]),
     g('orchid-night', 'Orchid Night', 180, [[0, '#f941bb'], [100, '#1f0e55']]),

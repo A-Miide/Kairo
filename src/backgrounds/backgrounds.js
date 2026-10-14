@@ -102,18 +102,6 @@
       "thumb": "backgrounds/thumbs/charcoal.jpg"
     },
     {
-      "id": "stage",
-      "name": "Stage Lights",
-      "tone": "dark",
-      "tags": [
-        "worship",
-        "beams"
-      ],
-      "color": "#2b2f48",
-      "src": "backgrounds/stage.jpg",
-      "thumb": "backgrounds/thumbs/stage.jpg"
-    },
-    {
       "id": "golden-bokeh",
       "name": "Golden Bokeh",
       "tone": "dark",

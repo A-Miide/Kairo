@@ -269,7 +269,14 @@
             color: rgba(255, 255, 255, 0.45);
             text-align: right;
         }
-    </style>
+        /* Capture mode: the page is see-through where nothing is drawn, and the
+       app snapshots it over black and over white to recover that
+       transparency (src-tauri capture.rs) — for keying, NDI alpha and a video
+       background the app plays itself (video_bg.rs), hidden here. */
+    html.is-capture body { background: transparent; }
+    html.is-capture[data-cap-bg="white"] { background: #fff; }
+    .cap-under { visibility: hidden !important; }
+</style>
 </head>
 <body>
     <div id="stage">
@@ -298,12 +305,23 @@
         </div>
     </div>
 
+    <script>
+    // Capture mode (?capture=1, see "Capture mode" below): the hidden window
+    // behind an NDI / Syphon output sits off-screen, where WebKit never fires
+    // requestAnimationFrame — text fitting and the end of a change would never
+    // run. Frames come from timers there instead, before any script uses them.
+    if (new URLSearchParams(location.search).get('capture') === '1') {
+        window.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 16);
+        window.cancelAnimationFrame = (id) => clearTimeout(id);
+    }
+    </script>
     <script src="client_common.js"></script>
     <script src="design_space.js"></script>
     <script src="word_split.js"></script>
     <script src="color_utils.js"></script>
     <script src="layer_geometry.js"></script>
     <script src="motion_graphics.js"></script>
+    <script src="pp_render.js"></script>
     <script>
     'use strict';
 
@@ -313,7 +331,10 @@
     // renders exactly what the real screen shows, but stays silent — no media
     // status reports, no audio, never touches the app window.
     const MONITOR     = params.get('monitor') === '1';
+    // The hidden window behind an NDI / Syphon output (see "Capture mode" below).
+    const CAPTURE     = params.get('capture') === '1';
     if (MONITOR) document.documentElement.classList.add('is-monitor');
+    if (CAPTURE) document.documentElement.classList.add('is-capture');
     function sendToServer(msg) { if (MONITOR) return; try { ws?.send(JSON.stringify(msg)); } catch {} }
     const legacyLayout  = params.get('layout') || 'fullscreen';
     const legacyOpacity = parseInt(params.get('opacity') || '80', 10) / 100;
@@ -372,7 +393,7 @@
     // output once. No separate fetch needed to learn the initial value —
     // the server sends it as a WS snapshot the instant this window
     // connects (same 'output-transition' message type an operator's live
-    // change broadcasts — see server.js's ws connection handler and its
+    // change broadcasts — see the server's WebSocket handler (kairo-server ws.rs) and its
     // /api/settings POST), and every later change arrives the same way,
     // live, no reload needed.
     let outputAnimation = 'fade';
@@ -451,20 +472,27 @@
         // Text only (this output's Shows setting): the words, nothing else —
         // no background, shapes, pictures, video or motion graphics. Behind
         // them: black, or this output's key (Keying).
-        if (outputMode === 'text') layers = layers.filter(l => l.type === 'text');
+        if (outputMode === 'text') layers = layers.filter(l => l.type === 'text' || (l.type === 'pp' && (l.binding === 'verse' || l.binding === 'reference')));
         // Only themes that actually pair a reference/translation caption with
         // a verse layer get the "no caption without a verse line" guard below
         // — a theme deliberately built with ONLY a reference/citation layer
         // (no verse layer at all) has nothing else to show, so its reference
         // must still paint even when verseText is empty. Same rule
         // paintLookLayers (service.js) applies for every preview.
-        const hasVerseLayer = layers.some(l => l.type === 'text' && l.binding === 'verse' && l.visible !== false);
+        const hasVerseLayer = layers.some(l => (l.type === 'text' || l.type === 'pp') && l.binding === 'verse' && l.visible !== false);
         const animOf = (layer) => animOverride(layer, (styleByLayerId || {})[layer.id]);
         const paintLayer = (layer) => {
             if (!layer.visible) return;
             // The slide's own rotation / accent colour / photo look, if any
             // (see layer_geometry.js's withLayerOverride).
             layer = withLayerOverride(layer, (styleByLayerId || {})[layer.id]);
+
+            // An element imported from ProPresenter, drawn exactly (pp_render.js).
+            if (layer.type === 'pp') {
+                if (layer.binding === 'reference' && hasVerseLayer && !verseText) return;
+                frag.appendChild(window.KairoPP.render(layer, { verseText, referenceText: verseRef, translatedText, timerText }, { motion: 'live', textOnly: outputMode === 'text' }));
+                return;
+            }
 
             // Image layer — always free-positioned, drawn in layer order.
             // Video is added the same way (Theme Studio's file picker/native
@@ -493,7 +521,7 @@
                     v.style.height = (p.h / DESIGN_H * 100) + '%';
                     if (layer.rotation) v.style.transform = `rotate(${layer.rotation}deg)`;
                     applyImageLook(v, layer);
-                    v.src = layer.src;
+                    v.src = authedMediaUrl(layer.src);
                     frag.appendChild(v);
                     // Belt-and-suspenders alongside the declarative autoplay
                     // attribute — caught, not awaited, so a decode failure
@@ -741,6 +769,8 @@
                 const div = document.createElement('div');
                 div.className = 'display-layer';
                 div.dataset.binding = layer.binding || 'custom';
+                div.dataset.layerId = layer.id || '';
+                if (layer.follows) div.dataset.follows = layer.follows; // see stackFollowers (layer_geometry.js)
                 if (hasTimerTemplate) div.dataset.timerTemplate = layer.customText;
                 div.dataset.layerId = layer.id || '';
 
@@ -1027,6 +1057,8 @@
     function fitVerse() {
         fitTextLayer('verse');
         fitTextLayer('verse_translated');
+        // A reference following its verse is placed once the verse has its size.
+        stackFollowers(stage);
     }
 
     function fitTextLayer(binding) {
@@ -1529,6 +1561,42 @@
     // from whatever the slide layer is showing. No native <video> controls —
     // this is the output the congregation sees; every control lives in the
     // operator's window and reaches here via WS (see handleMessage below).
+    // What the operator sends or clears on the media layer comes in and goes out with
+    // the output's Transition (Fade / Slide / Cut, and its length), like the slide layer.
+    // Media a theme draws as its own background is swapped with renderMediaStage directly.
+    let mediaGen = 0;
+    function transitionMedia(src, kind, fit, motion) {
+        const gen = ++mediaGen;
+        const animType = outputAnimation;
+        const ms = Math.round(300 * outputAnimationSpeed);
+        const reset = () => { mediaLayer.style.transition = 'none'; mediaLayer.style.opacity = '1'; mediaLayer.style.transform = 'none'; };
+        if (animType === 'cut' || MONITOR) { reset(); renderMediaStage(src, kind, fit, motion); return; }
+        const ease = `opacity ${ms}ms ease, transform ${ms}ms ease`;
+        const comeIn = () => {
+            // Start just off (no transition yet), force a layout, then play in.
+            mediaLayer.style.transition = 'none';
+            mediaLayer.style.opacity = '0';
+            mediaLayer.style.transform = animType === 'slide-up' ? 'translateY(16px)' : 'none';
+            mediaLayer.offsetHeight;
+            mediaLayer.style.transition = ease;
+            mediaLayer.style.opacity = '1';
+            mediaLayer.style.transform = 'none';
+        };
+        if (mediaLayer.hasChildNodes()) {
+            mediaLayer.style.transition = ease;
+            mediaLayer.style.opacity = '0';
+            mediaLayer.style.transform = animType === 'slide-up' ? 'translateY(-16px)' : 'none';
+            setTimeout(() => {
+                if (gen !== mediaGen) return;   // a newer send or clear took over
+                renderMediaStage(src, kind, fit, motion);
+                if (src) comeIn(); else reset();
+            }, ms + 20);
+        } else {
+            renderMediaStage(src, kind, fit, motion);
+            if (src) comeIn(); else reset();
+        }
+    }
+
     function renderMediaStage(src, kind, fit, motion) {
         // Media goes out on the full theme only — and a text-only or stage
         // screen must not play a video's sound alongside the main screen.
@@ -1556,7 +1624,7 @@
         const objectFit = fit || 'contain';
         if (kind === 'video') {
             const v = document.createElement('video');
-            v.src = src;
+            v.src = authedMediaUrl(src);
             v.autoplay = true;
             v.loop = true;
             // Every modern engine (Chrome, and WebKit — what Tauri actually
@@ -1578,11 +1646,10 @@
             if (!MONITOR && mediaSinkId && typeof v.setSinkId === 'function') {
                 v.setSinkId(mediaSinkId).catch(() => {});
             }
-            if (!mediaMuted && !MONITOR) {
-                v.addEventListener('playing', () => { v.muted = false; }, { once: true });
-            }
+            // Sound plays from the operator window (app.js's renderMediaPreview), through the
+            // device chosen under Settings → Outputs → Audio Output; a screen shows the picture only.
             // Throttled status reports so the operator's window can drive a
-            // real seek slider without polling — see server.js's ws.on('message').
+            // real seek slider without polling — see the server's WebSocket handler (kairo-server ws.rs).
             let lastReport = 0;
             v.addEventListener('timeupdate', () => {
                 const now = Date.now();
@@ -1616,7 +1683,7 @@
     function applyMediaControl(action, value) {
         const v = currentMediaVideo();
         if (action === 'mute') { mediaMuted = true; if (v) v.muted = true; }
-        else if (action === 'unmute') { mediaMuted = false; if (v && !MONITOR) v.muted = false; }
+        else if (action === 'unmute') { mediaMuted = false; }
         else if (action === 'play') { if (v) v.play().catch(() => {}); }
         else if (action === 'pause') { if (v) v.pause(); }
         else if (action === 'seek') { if (v && typeof value === 'number') v.currentTime = value; }
@@ -1672,6 +1739,12 @@
     }
 
     // ── Show verse (smart update: re-render on first verse, in-place after) ──
+    // Does the theme on air bind slide text into an imported ProPresenter box?
+    function lookHasPpText() {
+        const layers = (activeLook || FALLBACK_LOOK).layers || [];
+        return layers.some(l => l && l.type === 'pp' && l.visible !== false && l.binding && l.binding !== 'none');
+    }
+
     function showVerse(text, ref, isRangeActive = false, translatedText = '', styleByLayerId = {}, timerText = '') {
         const wasEmpty = !currentVerseText && !currentVerseRef && !currentTimerText;
         // Also compare the style override — the exact same slide re-sent
@@ -1699,6 +1772,13 @@
 
         if (wasEmpty || stage.children.length === 0) {
             // First verse or blank stage — do a full render with fade
+            renderStage(text, ref, true, translatedText, currentStyleByLayerId, timerText);
+        } else if (lookHasPpText()) {
+            // An imported ProPresenter text box (pp_render.js) is its own
+            // run-by-run layout, not a [data-binding] element the in-place
+            // swap below could update — that swap left the previous slide's
+            // words on screen. Rebuild instead (renderStage keeps the
+            // transition).
             renderStage(text, ref, true, translatedText, currentStyleByLayerId, timerText);
         } else if (styleChanged) {
             // Text unchanged but the layout override changed — the in-place
@@ -1883,7 +1963,7 @@
         //
         // Bible vs. Slide: this same 'detection' message type carries BOTH
         // auto-detected/manually-sent scripture AND a plain Slides-tab
-        // slide (they share one send path — see server.js's /api/service/
+        // slide (they share one send path — see the server's /api/service/
         // send) — real scripture always carries book/chapter/verse, a
         // plain slide never does, so that's the classifier. No separate
         // "kind" field needed. Bible takes precedence when a message could
@@ -1961,7 +2041,7 @@
         if (msg.type === 'clear-layer') {
             if (msg.layer === 'slide' || msg.layer === 'all') { clearDisplay(); noteConfidenceSlide(null); }
             if (msg.layer === 'timer' || msg.layer === 'all') updateConfidenceTimer({ cleared: true });
-            if (msg.layer === 'media' || msg.layer === 'all') renderMediaStage(null);
+            if (msg.layer === 'media' || msg.layer === 'all') transitionMedia(null);
             // Cosmetic only — the server-side clear-timer/clear-all handlers
             // actually stop the live segment's trigger *before* sending this,
             // so nothing broadcasts a fresh remainingMs a moment later to
@@ -1986,7 +2066,7 @@
 
         if (msg.type === 'media' && msg.target === 'viewer') {
             if (!outputLayers.media) return;
-            renderMediaStage(msg.src, msg.kind, msg.fit);
+            transitionMedia(msg.src, msg.kind, msg.fit);
             return;
         }
 
@@ -2041,6 +2121,7 @@
         if (msg.type === 'output-transition') {
             if (msg.animation) outputAnimation = msg.animation;
             if (typeof msg.speed === 'number' && msg.speed > 0) outputAnimationSpeed = msg.speed;
+            if (CAPTURE) captureTransition();
             return;
         }
 
@@ -2061,7 +2142,7 @@
             return;
         }
 
-        // Generic action/trigger broadcast (server/triggers.js) — a
+        // Generic action/trigger broadcast (the server's Triggers (kairo-server library.rs)) — a
         // segment's stage-timer countdown or the system-clock message.
         // Two independent badges (see #timer-badge/#clock-badge above),
         // not one shared slot, so both can be showing at once without
@@ -2445,6 +2526,112 @@
     // short timer, not requestAnimationFrame — an invisible surface never
     // gets a compositing pass to synchronize against, so rAF here would
     // simply never fire (confirmed the hard way on the main window).
+    // ── Capture mode (?capture=1) ──────────────────────────────────────
+    // The hidden window behind an NDI / Syphon output (src/output_capture.js,
+    // src-tauri capture.rs): it renders this output's theme like a screen
+    // would, and asks the app to snapshot it whenever what it shows changes.
+    // Changes are drawn at once here; the output itself blends old into new
+    // for a Fade (a snapshot takes ~64 ms, too slow to film a transition).
+    // Timers only: a hidden window never gets requestAnimationFrame.
+    let captureFadeMs = 0;
+    function captureTransition() {
+        captureFadeMs = outputAnimation === 'cut' ? 0 : Math.round(300 * outputAnimationSpeed);
+        outputAnimation = 'cut';
+    }
+    if (CAPTURE) {
+        captureTransition();
+        const outputParam = params.get('output') || '';
+        const capW = Math.max(16, parseInt(params.get('w'), 10) || 1920);
+        const capH = Math.max(16, parseInt(params.get('h'), 10) || 1080);
+        const invoke = window.__TAURI__?.core?.invoke;
+        let wait = null, fade = 0;
+        // A full-frame video background is played by the app itself at the
+        // output's own rate (src-tauri video_bg.rs): here it isn't drawn —
+        // nor anything it covers — so the snapshots carry only what sits on
+        // top of it, with transparency. Anything smaller or see-through stays
+        // in the snapshots as before.
+        let baseVideo = null, baseKey = '';
+        const refused = new WeakSet(); // the app couldn't play these: they stay in the snapshots
+        const fullFrame = (v) => {
+            const r = v.getBoundingClientRect(), cs = getComputedStyle(v);
+            return r.left <= 1 && r.top <= 1 && r.right >= innerWidth - 1 && r.bottom >= innerHeight - 1
+                && parseFloat(cs.opacity) >= 0.99 && cs.visibility !== 'hidden' && cs.display !== 'none'
+                && (!cs.borderRadius || cs.borderRadius === '0px') && (!cs.transform || cs.transform === 'none')
+                && !cs.animationName.includes('kenburns') && /^\/api\//.test(new URL(v.currentSrc || v.src, location.href).pathname);
+        };
+        // The topmost (latest in the page) full-frame video; the one already
+        // handed over stays while it's still there (it's hidden now).
+        const pickBaseVideo = () => {
+            let best = null;
+            document.querySelectorAll('#media-layer video, #slide-layer video').forEach(v => {
+                if (refused.has(v)) return;
+                if (v === baseVideo ? v.isConnected : fullFrame(v)) best = v;
+            });
+            return best;
+        };
+        const syncBaseVideo = () => {
+            const v = pickBaseVideo();
+            const src = v ? new URL(v.currentSrc || v.src, location.href) : null;
+            if (src) src.searchParams.delete('token');
+            const key = src ? `${src.pathname}${src.search}|${getComputedStyle(v).objectFit}` : '';
+            if (v === baseVideo && key === baseKey) return;
+            document.querySelectorAll('.cap-under').forEach(e => e.classList.remove('cap-under'));
+            baseVideo = v; baseKey = key;
+            if (v) {
+                // the video, everything drawn before it in its layer, and the media layer under a theme's own
+                v.classList.add('cap-under');
+                for (let e = v.previousElementSibling; e; e = e.previousElementSibling) e.classList.add('cap-under');
+                if (v.closest('#slide-layer')) document.getElementById('media-layer')?.classList.add('cap-under');
+                try { v.pause(); } catch {}
+            }
+            invoke('output_video', { id: outputParam, url: src ? src.pathname + src.search : null, fit: v ? getComputedStyle(v).objectFit : null, width: capW, height: capH })
+                .catch((err) => {
+                    // The app can't play it: draw it here again, as before.
+                    console.warn('[capture] video background stays in the snapshots:', err);
+                    if (!v || baseVideo !== v) return;
+                    refused.add(v);
+                    document.querySelectorAll('.cap-under').forEach(e => e.classList.remove('cap-under'));
+                    baseVideo = null; baseKey = '';
+                    v.play().catch(() => {});
+                    request(0);
+                });
+        };
+        const request = (fadeMs) => {
+            if (!invoke) return;
+            fade = Math.max(fade, fadeMs);
+            clearTimeout(wait);
+            // Long enough for layout, images and fonts of a change to settle.
+            wait = setTimeout(() => {
+                syncBaseVideo();
+                const f = fade; fade = 0;
+                invoke('output_capture', { id: outputParam, width: capW, height: capH, fadeMs: f }).catch(() => {});
+            }, 60);
+        };
+        const timer = document.getElementById('timer-layer');
+        let settle = [];
+        new MutationObserver((records) => {
+            // The app switching the backdrop between its two snapshots isn't a change.
+            records = records.filter(r => !(r.target === document.documentElement && r.attributeName === 'data-cap-bg'));
+            if (!records.length) return;
+            // The timer ticking or a clock isn't a slide change: no fade.
+            const onlyTimer = records.every(r => timer && timer.contains(r.target));
+            request(onlyTimer ? 0 : captureFadeMs);
+            if (!onlyTimer) {
+                // Background images and fonts of a new slide can land after
+                // it's drawn (a CSS background announces nothing): look again.
+                settle.forEach(clearTimeout);
+                settle = [350, 1100].map(ms => setTimeout(() => request(0), ms));
+            }
+        }).observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+        document.addEventListener('load', () => request(0), true);   // images that finish later
+        document.fonts?.ready?.then(() => request(0));
+        // A playing video: as often as a snapshot allows.
+        setInterval(() => {
+            if ([...document.querySelectorAll('video')].some(v => v !== baseVideo && !v.paused && !v.ended)) request(0);
+        }, 70);
+        setTimeout(() => request(0), 300);
+    }
+
     setTimeout(() => {
         if (MONITOR) return;   // a monitor copy lives inside the operator window
         const w = window.__TAURI__?.window?.getCurrentWindow?.();
