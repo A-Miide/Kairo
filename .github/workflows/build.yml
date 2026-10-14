@@ -26,7 +26,12 @@ jobs:
             databases/bibles/model
             databases/bibles/reranker_model
             databases/bibles/verse_index.gemma-legacy.kvx
-          key: bundle-data-${{ hashFiles('databases/bibles/kjv.json', 'src-tauri/crates/kairo-eval/src/bin/bundle-data.rs', 'src-tauri/crates/kairo-semantic/src/**', 'src-tauri/crates/kairo-semantic/bench/gemma-legacy.json') }}
+          # Only what changes the data: the Bible text, the builder (which
+          # pins the models and the prebuilt index by checksum) and the
+          # model's settings. Not every source file of the meaning engine —
+          # a tidy-up there used to throw the cache away and spend ~10
+          # minutes compiling, only to download the same prebuilt index.
+          key: bundle-data-${{ hashFiles('databases/bibles/kjv.json', 'src-tauri/crates/kairo-eval/src/bin/bundle-data.rs', 'src-tauri/crates/kairo-semantic/bench/gemma-legacy.json') }}
 
       - name: Setup Rust
         if: steps.cache.outputs.cache-hit != 'true'
