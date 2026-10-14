@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-decklink-list"
+description = "Enables the decklink_list command without any pre-configured scope."
+commands.allow = ["decklink_list"]
+
+[[permission]]
+identifier = "deny-decklink-list"
+description = "Denies the decklink_list command without any pre-configured scope."
+commands.deny = ["decklink_list"]

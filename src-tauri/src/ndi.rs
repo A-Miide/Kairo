@@ -286,7 +286,7 @@ pub fn is_libndi_available() -> bool {
 /// DEFAULT_FRAME_W/H above rather than producing a zero-size/invalid frame.
 pub fn start(source_name: &str, width: i32, height: i32, shared: Arc<Mutex<NdiHandle>>) -> Result<(), String> {
     let lib = LibNdi::try_load()
-        .ok_or_else(|| "NDI runtime not found. Install NDI Tools from ndi.video/tools (free) and try again.".to_string())?;
+        .ok_or_else(|| "NDI runtime not found on this computer.".to_string())?;
 
     let frame_w = if width > 0 { width } else { DEFAULT_FRAME_W };
     let frame_h = if height > 0 { height } else { DEFAULT_FRAME_H };

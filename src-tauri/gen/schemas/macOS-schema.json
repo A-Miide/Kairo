@@ -387,6 +387,24 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the decklink_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-decklink-list",
+          "markdownDescription": "Enables the decklink_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the decklink_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-decklink-start",
+          "markdownDescription": "Enables the decklink_start command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the decklink_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-decklink-stop",
+          "markdownDescription": "Enables the decklink_stop command without any pre-configured scope."
+        },
+        {
           "description": "Enables the get_server_config command without any pre-configured scope.",
           "type": "string",
           "const": "allow-get-server-config",
@@ -511,6 +529,24 @@
           "type": "string",
           "const": "allow-syphon-update-timer",
           "markdownDescription": "Enables the syphon_update_timer command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the decklink_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-decklink-list",
+          "markdownDescription": "Denies the decklink_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the decklink_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-decklink-start",
+          "markdownDescription": "Denies the decklink_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the decklink_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-decklink-stop",
+          "markdownDescription": "Denies the decklink_stop command without any pre-configured scope."
         },
         {
           "description": "Denies the get_server_config command without any pre-configured scope.",
