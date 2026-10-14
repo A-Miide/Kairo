@@ -9,7 +9,7 @@
 // service but not yet live, bring it up — the same way a verse just gets
 // sent the moment it's recognised.
 //
-// Deliberately separate from src/lyrics_follow.js and src/sermon_follow.js,
+// Deliberately separate from src/lyrics_follow.js and src/slide_follow.js,
 // which is a different job: THIS decides WHICH item should be live; THOSE
 // two track position WITHIN an item that already is. Once this brings a
 // song or sermon deck up, the existing per-item auto-follow machinery

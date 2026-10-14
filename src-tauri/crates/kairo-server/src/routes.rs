@@ -26,6 +26,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/search", post(search))
         .route("/api/search/lookup", post(search_lookup))
         .route("/api/search/suggest", post(search_suggest))
+        .route("/api/slides/scripture", post(slides_scripture))
         .route("/api/range/next", post(range_next))
         .route("/api/range/clear", post(range_clear))
         .route("/api/range/jump-to", post(range_jump))
@@ -215,6 +216,40 @@ async fn lookup(State(app): State<Shared>, Json(body): Json<Value>) -> Response 
 
 /// A typed reference ("john 3 16", "rom 8:28-30"), tried as spoken and then
 /// with "chapter" put after each leading word.
+/// POST /api/slides/scripture {texts: [..]} → {refs: [[{book, chapter, verse,
+/// verseEnd, raw}], ..]}: the scripture references written on each slide of a
+/// deck ("– Eph. 2:6-8", "Matt. 21:23-27/ Mak. 11:28-33"), for the slide
+/// follower (src/slide_follow.js) to line up with what is read and detected.
+async fn slides_scripture(State(app): State<Shared>, Json(body): Json<Value>) -> Json<Value> {
+    static WRITTEN: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+        regex::Regex::new(r"(?:\b[1-3]\s?)?\b[A-Za-z]{2,}\.?\s*\d{1,3}\s*:\s*\d{1,3}(?:\s*[-–]\s*\d{1,3})?").expect("reference pattern")
+    });
+    let Some((bible, _)) = app.ready() else { return Json(json!({ "refs": [] })) };
+    let texts = body["texts"].as_array().cloned().unwrap_or_default();
+    let refs: Vec<Value> = texts
+        .iter()
+        .map(|t| {
+            let text = t.as_str().unwrap_or("");
+            let found: Vec<Value> = WRITTEN
+                .find_iter(text)
+                .filter_map(|m| {
+                    let raw = m.as_str();
+                    let c = typed_reference(bible, &raw.replace('–', "-"))?;
+                    let (verse, end) = match &c.verses {
+                        Verses::One(v) => (*v, *v),
+                        Verses::Span(a, b) => (*a, *b),
+                        Verses::Spans(s) => (s.first()?.0, s.last()?.1),
+                        Verses::Chapter => return None,
+                    };
+                    Some(json!({ "book": c.book.name(), "chapter": c.chapter, "verse": verse, "verseEnd": end, "raw": raw }))
+                })
+                .collect();
+            Value::Array(found)
+        })
+        .collect();
+    Json(json!({ "refs": refs }))
+}
+
 fn typed_reference(app: &crate::bible::Bible, query: &str) -> Option<kairo_detect::reference::Citation> {
     let q: String = query.trim().to_lowercase().chars().map(|c| if ".,!?;".contains(c) { ' ' } else { c }).collect();
     let parser = app.k.parser(Lang::En);
@@ -366,25 +401,33 @@ fn clean_next(next: &Value) -> Value {
     json!({ "text": s("text", 2000), "reference": s("reference", 200), "label": s("label", 60), "image": next["image"].as_bool().unwrap_or(false) })
 }
 
-/// Is a Live Queue slide really a Bible passage (a citation in it, or a verse's own words)?
+/// Is a Live Queue slide really a Bible passage — one the Bible layer should
+/// show instead? Only when the slide IS the passage: it opens with a
+/// reference ("Romans 8:28 And we know…"), is nothing but a reference
+/// ("Joel 2:1-11"), or its whole text is a verse word for word. A statement
+/// that cites a verse at the end ("…lost it to abuse – Gen. 3:1-19") is a
+/// slide like any other.
 fn is_scripture_slide(bible: &crate::bible::Bible, verse: &Value) -> bool {
     let text = format!("{} {}", verse["reference"].as_str().unwrap_or(""), verse["text"].as_str().unwrap_or(""));
-    let text = text.split_whitespace().collect::<Vec<_>>().join(" ");
-    if text.is_empty() {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    if words.is_empty() {
         return false;
     }
-    if bible.k.parser(Lang::En).parse_all(&text, Active::default()).iter().any(|c| !matches!(c.verses, Verses::Chapter)) {
+    let parser = bible.k.parser(Lang::En);
+    let cites = |t: &str| parser.parse_all(t, Active::default()).into_iter().any(|c| !matches!(c.verses, Verses::Chapter));
+    let opening = words.iter().take(4).copied().collect::<Vec<_>>().join(" ");
+    if cites(&opening) {
         return true;
     }
-    text.split_whitespace().count() >= 6
-        && kairo_detect::lexical::verbatim(&bible.k.lexicon, &text, 6, 1)
-            .first()
-            .is_some_and(|h| h.score >= 0.95 || h.matched_idf.is_some_and(|m| m >= kairo_detect::engine::scoring::VERBATIM_CERTAIN_IDF))
+    words.len() >= 6
+        && kairo_detect::lexical::verbatim(&bible.k.lexicon, &words.join(" "), 6, 1).first().is_some_and(|h| h.score >= 0.95)
 }
 
 /// Puts a Live Queue slide (or a verse) up. Returns where it landed.
 pub(crate) async fn send_service_slide(app: &Shared, verse: Value, look: Value, auto: bool, follow: bool, next: Value) -> &'static str {
-    let is_bible = verse["book"].is_string();
+    // A real verse has a book and a chapter; a playlist slide is sent as
+    // book "Service", chapter 0 (display.html tells them apart the same way).
+    let is_bible = verse["book"].as_str().is_some_and(|b| !b.is_empty() && b != "Service") && verse["chapter"].as_u64().unwrap_or(0) > 0;
     if follow && !is_bible {
         if let Some((bible, _)) = app.ready() {
             if is_scripture_slide(bible, &verse) {
@@ -429,6 +472,17 @@ async fn service_send(State(app): State<Shared>, Json(body): Json<Value>) -> Res
     let verse = body["verse"].clone();
     if verse.is_null() {
         return (StatusCode::BAD_REQUEST, Json(json!({ "error": "No slide provided" }))).into_response();
+    }
+    // keepBible: a slide the follower moved to while a verse is still being
+    // read goes under the verse instead of replacing it (src/service.js).
+    if body["keepBible"] == true && !verse["book"].as_str().is_some_and(|b| b != "Service") {
+        let mut l = app.hub.live.lock().unwrap();
+        if l.bible_on_top {
+            l.underneath = Some(Underneath { verse: verse.clone(), look: body["look"].clone(), next: clean_next(&body["next"]) });
+            drop(l);
+            app.hub.layer_state();
+            return Json(json!({ "ok": true, "underBible": true, "skipped": Value::Null })).into_response();
+        }
     }
     let landed = send_service_slide(&app, verse, body["look"].clone(), body["auto"] == true, body["follow"] == true, clean_next(&body["next"])).await;
     Json(json!({ "ok": true, "underBible": landed == "under-bible", "skipped": if landed == "scripture-slide" { json!("scripture") } else { Value::Null } })).into_response()

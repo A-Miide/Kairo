@@ -407,7 +407,7 @@ function handleConnectionState(state, error, errorKind) {
     // Owner: "Start Listening [should be] the universal control" — scripture
     // detection was already unconditional the moment audio starts; the
     // hymn/song lookup + auto-advance engines (content_lookup.js/
-    // lyrics_follow.js/sermon_follow.js) used to need a SEPARATE "Auto-
+    // lyrics_follow.js/slide_follow.js) used to need a SEPARATE "Auto-
     // follow" toggle remembered on top of this, which is exactly the kind
     // of silently-off state this whole product's philosophy has been
     // fighting all session ("a wrong send is worse than a missed one" cuts
@@ -597,6 +597,10 @@ function handleDetection(msg) {
   if (target === 'viewer' && (topScore == null || topScore >= CLIENT_VIEWER_MIN_SCORE)) {
     showInViewer(verses, method, topScore, correctedFrom, look);
     if (method !== 'service') noteTranscriptSend(verses[0].reference);
+    // A real verse (not a playlist slide, sent as book "Service") is now the
+    // top layer; the slide follower lines the live deck up with it.
+    const v0 = verses[0];
+    if (v0 && v0.book && v0.book !== 'Service' && Number(v0.chapter) > 0) window.KairoService?.noteBibleVerse?.(v0, method !== 'service');
   } else {
     showInSuggestions(verses, method);
   }
@@ -3199,6 +3203,7 @@ document.getElementById('output-back-btn')?.addEventListener('click', () => {
 });
 // Lit while a scripture covers a live slide — Clear Bible is the way back to it.
 function handleLayerState(msg) {
+  window.KairoService?.onLayerState?.(msg);
   const btn = document.getElementById('clear-bible-layer-btn');
   if (!btn) return;
   const covering = !!(msg.bibleOnTop && msg.slideUnderneath);

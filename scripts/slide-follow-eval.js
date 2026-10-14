@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // Slide-follow eval: replays a real sermon transcript, at real pace, against
 // a slide deck whose every slide carries the moment it should come up, and
-// scores how the slide followers (src/sermon_follow.js — "sermon" mode,
-// tracks by distinctive vocabulary; src/lyrics_follow.js — "script" mode,
-// exact wording) keep up.
+// scores how the slide follower (src/slide_follow.js) keeps up, given the
+// verses Kairo put on screen in the same replay (--sends, from replay with
+// SENDS_JSON; --no-verses to leave them out).
 //
 // Decks live in server/eval/slide_decks/<sermon>.json:
 //   { sermon, slides: [{ at: "mm:ss" | null, text }] }
@@ -13,8 +13,8 @@
 // --offline, parity/offline/<sermon>.json (the local model) when present.
 //
 // Usage:
-//   node scripts/slide-follow-eval.js                      every deck, both modes
-//   node scripts/slide-follow-eval.js enough-is-enough --mode sermon --verbose
+//   node scripts/slide-follow-eval.js                      every deck
+//   node scripts/slide-follow-eval.js enough-is-enough --verbose
 //   node scripts/slide-follow-eval.js --offline
 //
 // Scoring, per slide that should come up:
@@ -29,8 +29,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const { LyricsFollower } = require('../src/lyrics_follow.js');
-const { SermonFollower } = require('../src/sermon_follow.js');
 const { SlideFollower } = require('../src/slide_follow.js');
 
 const ROOT = path.join(__dirname, '..');
@@ -38,10 +36,13 @@ const DECKS = path.join(ROOT, 'server/eval/slide_decks');
 const args = process.argv.slice(2);
 const has = (f) => args.includes(f);
 const val = (f, d) => { const i = args.indexOf(f); return i >= 0 && args[i + 1] ? args[i + 1] : d; };
-const modes = val('--mode', 'new,sermon,script').split(',');
+const modes = val('--mode', 'slide').split(',');
 const VERBOSE = has('--verbose');
 const OFFLINE = has('--offline');
 const EARLY_GRACE_MS = 2000;
+const NO_VERSES = has('--no-verses');
+const SENDS = val('--sends', null); // dir of <sermon>.json from replay with SENDS_JSON
+const REFS_URL = val('--server', 'http://127.0.0.1:7790');
 const only = args.filter((a, i) => !a.startsWith('--') && !['--mode'].includes(args[i - 1]));
 
 // A scripture slide opens with its reference ("Romans 4:20-21 …", "1 John 5:4 …").
@@ -80,30 +81,33 @@ function* deliveries(segs) {
   }
 }
 
-function run(deck, segs, mode) {
+function run(deck, segs, mode, refs, sends) {
   const slides = deck.slides;
   const advances = [];
   let follower;
-  if (mode === 'new') {
-    follower = new SlideFollower({ slides: slides.map((s) => s.text) }, { onAdvance: (e) => advances.push({ to: e.toIndex }) });
-  } else if (mode === 'sermon') {
-    follower = new SermonFollower({ slides: slides.map((s) => s.text) }, {
-      onAdvance: (e) => advances.push({ to: e.toIndex }),
-    });
-  } else {
-    const song = { title: deck.sermon, blocks: slides.map((s, i) => ({ label: `Slide ${i + 1}`, lines: [s.text] })) };
-    follower = new LyricsFollower(song, {
-      config: { maxBlockSkip: Math.max(1, slides.length - 1) },
-      onAdvance: (e) => advances.push({ to: e.toBlockIdx }),
-    });
+  if (mode === 'slide') {
+    follower = new SlideFollower({ slides: slides.map((s, i) => ({ text: s.text, refs: refs ? refs[i] : [] })) }, { onAdvance: (e) => advances.push({ to: e.toIndex, by: e.by }) });
   }
   follower.resync(0, 1); // (a 0 clock reads as "use Date.now()")
   let clock = 0;
+  // verses Kairo sent, as the follower would hear of them (one "Book C:V" each)
+  const verses = (sends || []).flatMap((x) => x.verses.slice(0, 1).map((ref) => {
+    const m = /^(.+) (\d+):(\d+)$/.exec(ref);
+    return m && { at: x.atMs, v: { book: m[1], chapter: +m[2], verse: +m[3] }, ref };
+  })).filter(Boolean).sort((a, b) => a.at - b.at);
   for (const d of deliveries(segs)) {
     clock = d.now;
     const before = advances.length;
+    while (verses.length && verses[0].at <= d.now) {
+      const x = verses.shift();
+      const n = advances.length;
+      follower.noteVerse(x.v, x.at);
+      for (let k = n; k < advances.length; k++) { advances[k].at = x.at; advances[k].heard = `[verse sent: ${x.ref}]`; }
+    }
+    const mid = advances.length;
     follower.ingest(d.text, { now: d.now, isFinal: d.isFinal });
-    for (let k = before; k < advances.length; k++) { advances[k].at = d.now; advances[k].heard = d.text; }
+    for (let k = before; k < mid; k++) if (advances[k].at != null) continue;
+    for (let k = mid; k < advances.length; k++) { advances[k].at = d.now; advances[k].heard = d.text; }
   }
   return { advances, end: clock };
 }
@@ -143,15 +147,26 @@ function score(deck, result) {
   return { caught, missed, early, total: due.length - 1, medianLatency: med, rightShare: right / Math.max(1, shown), rows, kind };
 }
 
-const files = fs.readdirSync(DECKS).filter((f) => f.endsWith('.json')).map((f) => f.replace(/\.json$/, ''));
+let refsWarned = false;
+(async () => {
+const files = fs.readdirSync(DECKS).filter((f) => f.endsWith('.json') && fs.statSync(path.join(DECKS, f)).isFile()).map((f) => f.replace(/\.json$/, ''));
 const names = only.length ? only : files;
 const totals = {};
 for (const name of names) {
   const deck = JSON.parse(fs.readFileSync(path.join(DECKS, `${name}.json`), 'utf8'));
   const segs = loadTranscript(deck.sermon || name, deck);
   if (!segs) { console.log(`${name}: no ${OFFLINE ? 'offline ' : ''}transcript — skipped`); continue; }
+  let refs = null;
+  try {
+    const res = await fetch(`${REFS_URL}/api/slides/scripture`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texts: deck.slides.map((x) => x.text) }) });
+    refs = (await res.json()).refs;
+  } catch { if (!refsWarned) { console.log(`(no Kairo server at ${REFS_URL}: slides' scripture references not read)`); refsWarned = true; } }
+  let sends = null;
+  const sendsDir = SENDS || path.join(ROOT, 'server/eval/slide_decks/sends');
+  const sf = path.join(sendsDir, `${deck.sermon || name}.json`);
+  if (!NO_VERSES && fs.existsSync(sf)) sends = JSON.parse(fs.readFileSync(sf, 'utf8'));
   for (const mode of modes) {
-    const r = run(deck, segs, mode);
+    const r = run(deck, segs, mode, refs, sends);
     const s = score(deck, r);
     const group = `${mode}${deck.heldOut ? ' held-out' : ''}`;
     const t = totals[group] || (totals[group] = { caught: 0, missed: 0, early: 0, total: 0, right: 0, n: 0, st: [0, 0], sc: [0, 0] });
@@ -167,3 +182,4 @@ for (const name of names) {
 for (const [mode, t] of Object.entries(totals)) {
   console.log(`ALL [${mode}]  caught ${t.caught}/${t.total} (statements ${t.st[0]}/${t.st[1]}, scripture ${t.sc[0]}/${t.sc[1]})  early ${t.early}  right slide ${(t.right / t.n * 100).toFixed(0)}% of the time`);
 }
+})();

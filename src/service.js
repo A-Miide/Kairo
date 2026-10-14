@@ -733,9 +733,9 @@
   //    full Song Bank).
   //  • src/lyrics_follow.js — once a SONG is live, chases an exact token
   //    position (sung verbatim from a known script).
-  //  • src/sermon_follow.js — once a 'slides' deck with its own Auto-
-  //    Advance turned on is live, tracks position by distinctive
-  //    vocabulary (a sermon is paraphrased, not recited).
+  //  • src/slide_follow.js — once a 'slides' deck (not turned Off) is
+  //    live, moves it on when a slide's own words are heard in order, or
+  //    when Kairo puts up a verse one of the next slides carries.
   // Only one position-tracking engine is ever live at once; the lookup
   // engine runs alongside it independently, so it can still catch the
   // NEXT song starting while the current one is still being tracked. Fed
@@ -773,13 +773,6 @@
     const i = slidesFor(item).findIndex(s => s.blockIndex === blockIdx);
     return i < 0 ? null : i;
   }
-  // Flat deck shape sermon_follow.js expects — a 'slides' item's blocks are
-  // already one slide each (unlike a song's verse/chorus blocks, which
-  // expand into several slides apiece via the "Lines per slide" delimiter),
-  // so this is just the plain text list, no block/slide translation needed.
-  function sermonShapeForFollow(item) {
-    return { title: item.title || 'Sermon', slides: (item.blocks || []).map(b => b.text || '') };
-  }
   // A slide's own label doubles as its auto-advance trigger phrase for an
   // image block that has no spoken text of its own to match against —
   // owner: "if they name the image a custom name, or even the image file
@@ -797,47 +790,13 @@
     if (b.imageFileName) return b.imageFileName.replace(/\.[^.]+$/, '').replace(/[-_]+/g, ' ');
     return '';
   }
-  // Exact-script shape for an announcement/prepared-slide deck — reuses
-  // lyrics_follow.js's own engine (it's just token alignment against a
-  // known text, the exact same problem a hymn's verse/chorus is), treating
-  // each slide as its own one-slide "block". Owner: "the moment the person
-  // matches the first few words, it should send and immediately prepare
-  // for the next one." A text slide's own lines are the script; an image
-  // slide's "script" is its trigger phrase (see imageTriggerPhrase).
-  function announcementShapeForFollow(item) {
-    return {
-      title: item.title || 'Slides',
-      blocks: (item.blocks || []).map((b, i) => ({
-        label: b.label || `Slide ${i + 1}`,
-        lines: b.image ? [imageTriggerPhrase(b)] : (b.lines || (b.text || '').split('\n')),
-      })),
-    };
-  }
-  // A 'slides' item picks ONE of two tracking engines, since they make
-  // genuinely different tradeoffs (see openItemContextMenu's submenu):
-  //  'sermon' — src/sermon_follow.js, paraphrase-tolerant, tracks by
-  //             distinctive vocabulary (a sermon outline is talked AROUND,
-  //             not read verbatim).
-  //  'script' — src/lyrics_follow.js, exact alignment against the slide's
-  //             own text (an announcement is read close to verbatim off
-  //             the slide, or matched by an image's own name), with a wide
-  //             maxBlockSkip so a presenter jumping straight to a later
-  //             item in the deck is still caught, not just sequential +1.
-  // Owner: "work on the automatic movement" — an UNSET item now defaults to
-  // 'script' (exact-wording) rather than neither, matching how a 'song'
-  // already auto-follows with no per-item toggle needed. This is safe by
-  // construction, not just by policy: a genuine photo set or wording-free
-  // deck has no label/filename/text for LyricsFollower to align against
-  // (see imageTriggerPhrase — empty block = no keys = never independently
-  // advances), so it simply stays inert either way. An operator who wants a
-  // SPECIFIC deck to never react to ambient speech regardless can still
-  // explicitly turn it Off — a real, distinct value from "never touched",
-  // not just item.followMode being falsy the way it used to be.
+  // A 'slides' deck follows the speaker (src/slide_follow.js) unless the
+  // operator turned it Off for that deck. A deck with no words to match (a
+  // photo set with no names) simply never moves on its own.
   function followModeOf(item) {
     if (!item || item.type !== 'slides') return null;
     if (item.followMode === 'off') return null;
-    if (item.followMode === 'sermon') return 'sermon';
-    return 'script';
+    return 'slide'; // src/slide_follow.js — one behaviour for every deck
   }
   // Kept as a thin alias — several call sites below only care "is SOME
   // slides-follow engine eligible", not which one.
@@ -864,45 +823,125 @@
       followItemId = item.id;
       const blockIdx = fromIndex != null ? (slidesFor(item)[fromIndex]?.blockIndex ?? 0) : null;
       if (blockIdx != null) follower.resync(blockIdx);
-    } else if (followModeOf(item) === 'script') {
-      const LF = window.KairoLyricsFollow;
-      if (!LF) return;
-      const blocks = (item.blocks || []).length;
-      follower = new LF.LyricsFollower(announcementShapeForFollow(item), {
-        // Search the whole rest of the deck, not just +1/+2 — a presenter
-        // jumping straight to a later item is the expected case here, not
-        // a rare exception the way a dropped verse is for a song.
-        config: { maxBlockSkip: Math.max(1, blocks - 1) },
-        onAdvance: (e) => {
-          const idx = firstSlideOfBlock(item, e.toBlockIdx);
-          if (idx == null || `${item.id}:${idx}` === liveSlideKey) return;
-          followerAdvancing = true;
-          Promise.resolve(sendSlide(item, idx, { auto: true, follow: true })).finally(() => { followerAdvancing = false; });
-        },
-        onPosition: (s) => renderFollowHud(s),
-      });
-      followItemId = item.id;
-      const blockIdx = fromIndex != null ? (slidesFor(item)[fromIndex]?.blockIndex ?? 0) : null;
-      if (blockIdx != null) follower.resync(blockIdx);
-    } else if (followModeOf(item) === 'sermon') {
-      const SF = window.KairoSermonFollow;
+    } else if (followModeOf(item) === 'slide') {
+      const SF = window.KairoSlideFollow;
       if (!SF) return;
-      follower = new SF.SermonFollower(sermonShapeForFollow(item), {
-        onAdvance: (e) => {
-          if (e.toIndex == null || `${item.id}:${e.toIndex}` === liveSlideKey) return;
-          followerAdvancing = true;
-          Promise.resolve(sendSlide(item, e.toIndex, { auto: true, follow: true })).finally(() => { followerAdvancing = false; });
-        },
+      const texts = (item.blocks || []).map(b => (b.image && !b.text) ? imageTriggerPhrase(b) : (b.text || ''));
+      const f = new SF.SlideFollower({ slides: texts }, {
+        onAdvance: (e) => onSlideFollowAdvance(item, e),
         onPosition: (s) => renderFollowHud(s),
       });
+      follower = f;
       followItemId = item.id;
       if (fromIndex != null) follower.resync(fromIndex);
+      slideScriptureRefs(texts).then((refs) => { if (follower === f && refs) f.setRefs(refs); });
     } else {
       return;
     }
     renderFollowHud(follower.snapshot());
   }
   function stopFollower() { follower = null; followItemId = null; renderFollowHud(null); }
+
+  // ── Slide follow and the Bible layer ──────────────────────────────────────
+  // Bible is the top layer: a verse covers the live slide. What's up there
+  // now (app.js tells us), and whether Kairo put it up itself.
+  let bibleOnTop = false;
+  let bibleLive = null; // { book, chapter, verse, text, auto, at }
+  // A verse Kairo put up stays at least this long, so moving straight on
+  // never flashes it (the next slide waits underneath, then takes over).
+  const VERSE_MIN_MS = 4000;
+  let pendingTakeover = null;
+  let ownVerseRef = null; // a verse the slide follower sent through the Bible
+
+  function onLayerState(msg) {
+    bibleOnTop = !!(msg && msg.bibleOnTop);
+    if (!bibleOnTop) bibleLive = null;
+  }
+  // A verse went live. Auto-detected ones (and the follower's own) can move
+  // the deck to the slide that carries them; one sent by hand never does.
+  function noteBibleVerse(v, auto) {
+    if (!v || !v.book) return;
+    const own = ownVerseRef && v.reference === ownVerseRef;
+    bibleLive = { book: v.book, chapter: Number(v.chapter), verse: Number(v.verse), text: v.text || '', auto: !!auto || own, at: Date.now() };
+    if (pendingTakeover) { clearTimeout(pendingTakeover); pendingTakeover = null; } // a new verse: it stays
+    bibleOnTop = true;
+    if (bibleLive.auto && !own && follower && follower.noteVerse) follower.noteVerse({ book: v.book, chapter: bibleLive.chapter, verse: bibleLive.verse });
+  }
+
+  const slideRefsCache = new Map();
+  async function slideScriptureRefs(texts) {
+    const key = texts.join('\u0001');
+    if (slideRefsCache.has(key)) return slideRefsCache.get(key);
+    try {
+      const res = await fetchWithTimeout(`${SERVER}/api/slides/scripture`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ texts }),
+      });
+      const refs = (await res.json()).refs || null;
+      if (refs) slideRefsCache.set(key, refs);
+      return refs;
+    } catch { return null; }
+  }
+
+  // The follower moved the deck. Bible on top decides what the congregation sees:
+  //  - the verse stays when the deck moved because of it, when the new slide
+  //    carries it, when it was sent by hand, or when the words heard are
+  //    still the verse being read;
+  //  - otherwise the speaker has moved on, and the new slide replaces it.
+  // A scripture slide reached by its words, with its verse not up, is shown
+  // through the Bible (the church's Bible theme), not as a slide.
+  function onSlideFollowAdvance(item, e) {
+    const idx = e.toIndex;
+    if (idx == null || `${item.id}:${idx}` === liveSlideKey) return;
+    const s = follower && follower.slides ? follower.slides[idx] : null;
+    const refs = (s && s.refs) || [];
+    const covers = (v) => !!v && refs.some(r => r.book === v.book && r.chapter === v.chapter && v.verse >= r.verse && v.verse <= r.verseEnd);
+    let keepBible = false;
+    if (bibleOnTop && bibleLive) {
+      keepBible = e.by === 'verse' || covers(bibleLive) || !bibleLive.auto || stillTheVerse(e.heard, bibleLive.text);
+    }
+    // Moved on from a verse that only just went up: the slide goes under it
+    // now and takes over once the verse has been up VERSE_MIN_MS.
+    const young = !keepBible && bibleOnTop && bibleLive && Date.now() - bibleLive.at < VERSE_MIN_MS;
+    followerAdvancing = true;
+    Promise.resolve(sendSlide(item, idx, { auto: true, follow: true, keepBible: keepBible || young })).finally(() => { followerAdvancing = false; });
+    if (young) {
+      const verse = bibleLive;
+      if (pendingTakeover) clearTimeout(pendingTakeover);
+      pendingTakeover = setTimeout(() => {
+        pendingTakeover = null;
+        if (bibleOnTop && bibleLive === verse) clearBibleLayer();
+      }, VERSE_MIN_MS - (Date.now() - verse.at));
+    }
+    const text = (s && s.text) || '';
+    const scriptureLed = refs.length && refs[0].raw && text.trim().indexOf(refs[0].raw) <= 2;
+    if (e.by === 'words' && scriptureLed && !(bibleOnTop && covers(bibleLive))) sendVerseThroughBible(refs[0]);
+  }
+  function clearBibleLayer() {
+    fetchWithTimeout(`${SERVER}/api/service/clear-layer`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ layer: 'bible' }),
+    }).catch((err) => debugLog('slide-follow-clear-failed', { error: err.message }));
+  }
+  // Are the words that moved the deck really the verse on screen being read?
+  function stillTheVerse(heard, verseText) {
+    const KF = window.KairoSlideFollow;
+    if (!KF || !heard || !heard.length || !verseText) return false;
+    const verse = new Set(KF.keysOf(verseText));
+    return heard.filter(k => verse.has(k)).length / heard.length >= 0.6;
+  }
+  async function sendVerseThroughBible(ref) {
+    try {
+      const res = await fetchWithTimeout(`${SERVER}/api/lookup`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ book: ref.book, chapter: ref.chapter, verse: ref.verse }),
+      });
+      const v = (await res.json()).result;
+      if (!v) return;
+      ownVerseRef = v.reference;
+      await fetchWithTimeout(`${SERVER}/api/service/send`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ verse: v }),
+      });
+    } catch (err) { debugLog('slide-follow-verse-failed', { ref, error: err.message }); }
+  }
 
   // Called by app.js after a Theme Studio / Full-Edit autosave — if the
   // edited theme (or per-slide style) is what's LIVE right now, re-push it
@@ -1131,7 +1170,7 @@
     };
   }
 
-  async function sendSlide(item, index, { auto = false, follow = false } = {}) {
+  async function sendSlide(item, index, { auto = false, follow = false, keepBible = false } = {}) {
     const slide = slidesFor(item)[index];
     if (!slide) return;
     liveSlideKey = `${item.id}:${index}`;
@@ -1183,6 +1222,7 @@
           look,
           auto,
           follow,
+          keepBible,
           next: nextSlideInfo(item, index),
           verse: {
             reference: slide.reference || '',
@@ -2617,7 +2657,7 @@
         { label: 'Change Theme', onClick: () => openThemePopover(anchorEl, item) },
         { label: 'Edit', onClick: () => window.KairoItemStyleEditor?.open?.(item.id, 0) },
         { label: 'Quick edit', onClick: () => openFullEdit(item.id) },
-        // Auto-advance mode (src/lyrics_follow.js or src/sermon_follow.js)
+        // Auto-advance (src/lyrics_follow.js for songs, src/slide_follow.js for decks)
         // — opt-in per item, unlike a song (which always auto-follows once
         // Start Listening is on): a 'slides' deck is just as often
         // announcements or a photo set that should never react to ambient
@@ -2693,10 +2733,8 @@
 
   function followModeMenuItems(item) {
     const setMode = (mode) => {
-      // 'off' is a real, explicit value now — distinct from unset, which
-      // defaults to 'script' automatically (see followModeOf). Storing null
-      // here would just mean "never touched" again and silently re-enable
-      // the default the operator just tried to turn off.
+      // 'off' is a real, explicit value — distinct from unset, which
+      // follows by default (see followModeOf).
       item.followMode = mode;
       saveService();
       // Live right now with Start Listening already on: start/stop
@@ -2708,18 +2746,8 @@
     };
     const current = followModeOf(item);
     return [
-      {
-        label: 'Off', selected: !current,
-        onClick: () => setMode('off'),
-      },
-      {
-        label: 'Announcement (exact wording)', selected: current === 'script',
-        onClick: () => setMode('script'),
-      },
-      {
-        label: 'Sermon outline (paraphrase-tolerant)', selected: current === 'sermon',
-        onClick: () => setMode('sermon'),
-      },
+      { label: 'Off', selected: !current, onClick: () => setMode('off') },
+      { label: 'Follow the speaker', selected: !!current, onClick: () => setMode('on') },
     ];
   }
 
@@ -4403,7 +4431,7 @@
   // layer — see app.js's openMediaLibraryPicker/addMediaToCurrentSlide,
   // which pushes into activeLook.layers, a different thing entirely).
   // Appends a real new block to a 'slides' item, filename captured so the
-  // announcement follower (announcementShapeForFollow/imageTriggerPhrase)
+  // slide follower (imageTriggerPhrase)
   // has something to match on even before the operator names it. The
   // click-based bridge (dragging works too now — wireMediaBinDropTarget
   // above — but only from the Media Bin strip, which is the one place
@@ -6915,6 +6943,7 @@
     showMediaLibrary, onMediaStatus, onMediaFolderChanged, setMediaTransportVisible, onMediaLive,
     showTimerLibrary, onTimerAction, onClockAction, getTimerItem, updateSegmentParams, saveTimerScenes, saveScenePace,
     onTranscript, setAutoFollow, get autoFollow() { return autoFollow; },
+    noteBibleVerse, onLayerState,
     resendLiveForThemeEdit, resendLiveForSlideStyleEdit, onTimerSlide, refreshThumbnails, clearLive,
     // Lets Full-scale edit's canvas (app.js's beginInlineTextEdit) double-
     // click-edit a verse-bound layer's actual words — a song lyric or a
