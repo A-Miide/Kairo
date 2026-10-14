@@ -33,7 +33,7 @@ fn words(n: u32) -> String {
     let under_100 = |n: u32| -> String {
         if n < 20 {
             ONES[n as usize].to_string()
-        } else if n % 10 == 0 {
+        } else if n.is_multiple_of(10) {
             TENS[(n / 10) as usize].to_string()
         } else {
             format!("{} {}", TENS[(n / 10) as usize], ONES[(n % 10) as usize])
@@ -41,7 +41,7 @@ fn words(n: u32) -> String {
     };
     if n < 100 {
         under_100(n)
-    } else if n % 100 == 0 {
+    } else if n.is_multiple_of(100) {
         format!("{} hundred", ONES[(n / 100) as usize])
     } else {
         format!("{} hundred and {}", ONES[(n / 100) as usize], under_100(n % 100))
@@ -179,7 +179,7 @@ fn ordinal(n: u32) -> String {
             UNITS[n].into()
         } else if n < 20 {
             TEENS[n - 10].into()
-        } else if n % 10 == 0 {
+        } else if n.is_multiple_of(10) {
             TENS_ORD[n / 10].into()
         } else {
             format!("{} {}", TENS[n / 10], UNITS[n % 10])

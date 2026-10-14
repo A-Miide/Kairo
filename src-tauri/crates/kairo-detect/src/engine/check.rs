@@ -144,7 +144,7 @@ impl Engine {
     }
 
     fn speech_before_citation(&self, text: &str, book: Book, is_final: bool, now: u64) -> String {
-        let last = book.name().to_lowercase().split(' ').last().unwrap_or("").to_string();
+        let last = book.name().to_lowercase().split(' ').next_back().unwrap_or("").to_string();
         let stem = last.strip_suffix('s').unwrap_or(&last).to_string();
         let cut = re(&format!(r"(?i)\b{}s?\b", regex::escape(&stem))).find_iter(text).last().map_or(0, |m| m.start());
         let here = if cut > 0 { &text[..cut] } else { "" };

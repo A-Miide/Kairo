@@ -566,7 +566,7 @@ fn render_frame(
     // Subtle bottom 38% darker band — lower-third look. Only drawn when
     // there's verse/reference text to sit on; skipped for a bare Media-only
     // frame so a plain background image shows completely clean.
-    let band_h = (frame_h as f32 * 0.38) as f32;
+    let band_h = frame_h as f32 * 0.38;
     if !verse.is_empty() || !reference.is_empty() {
         let mut band_paint = tiny_skia::Paint::default();
         band_paint.set_color(SkColor::from_rgba8(10, 14, 20, if media.is_some() { 190 } else { 255 }));
@@ -648,7 +648,7 @@ fn blit_cover_image(pixmap: &mut Pixmap, img: &image::RgbaImage) {
             let (r, g, b, a) = (px[0] as u16, px[1] as u16, px[2] as u16, px[3] as u16);
             let idx = ((y * pw + x) * 4) as usize;
             if idx + 3 >= data.len() { continue; }
-            data[idx + 0] = (r * a / 255) as u8;
+            data[idx] = (r * a / 255) as u8;
             data[idx + 1] = (g * a / 255) as u8;
             data[idx + 2] = (b * a / 255) as u8;
             data[idx + 3] = a as u8;

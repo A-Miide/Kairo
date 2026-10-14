@@ -478,7 +478,7 @@ async fn service_send(State(app): State<Shared>, Json(body): Json<Value>) -> Res
     }
     // keepBible: a slide the follower moved to while a verse is still being
     // read goes under the verse instead of replacing it (src/service.js).
-    if body["keepBible"] == true && !verse["book"].as_str().is_some_and(|b| b != "Service") {
+    if body["keepBible"] == true && verse["book"].as_str().is_none_or(|b| b == "Service") {
         let mut l = app.hub.live.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if l.bible_on_top {
             l.underneath = Some(Underneath { verse: verse.clone(), look: body["look"].clone(), next: clean_next(&body["next"]) });

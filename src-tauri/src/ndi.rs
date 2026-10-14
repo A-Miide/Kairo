@@ -86,7 +86,7 @@ impl LibNdi {
     /// Try every known NDI install location, return the first one that loads.
     fn try_load() -> Option<Self> {
         for path in candidate_libndi_paths() {
-            if let Some(lib) = unsafe { Library::new(&path) }.ok() {
+            if let Ok(lib) = unsafe { Library::new(&path) } {
                 if let Some(loaded) = Self::resolve_symbols(lib) {
                     eprintln!("[NDI] Loaded libndi from {}", path.display());
                     return Some(loaded);
@@ -489,7 +489,7 @@ fn render_frame(
     // there's actual verse/reference text to put on it; skip it over a bare
     // Media-only frame (nothing to letterbox) so a plain background image
     // shows completely clean.
-    let band_h = (frame_h as f32 * 0.38) as f32;
+    let band_h = frame_h as f32 * 0.38;
     if !verse.is_empty() || !reference.is_empty() {
         let mut band_paint = tiny_skia::Paint::default();
         band_paint.set_color(SkColor::from_rgba8(10, 14, 20, if media.is_some() { 190 } else { 255 }));
@@ -592,7 +592,7 @@ fn render_frame(
                 // the overwhelming common case for a background image).
                 let idx = ((y * pw + x) * 4) as usize;
                 if idx + 3 >= data.len() { continue; }
-                data[idx + 0] = (r * a / 255) as u8;
+                data[idx] = (r * a / 255) as u8;
                 data[idx + 1] = (g * a / 255) as u8;
                 data[idx + 2] = (b * a / 255) as u8;
                 data[idx + 3] = a as u8;
@@ -673,12 +673,12 @@ fn render_frame(
             let src_r = c.r();
             let src_g = c.g();
             let src_b = c.b();
-            let dst_r = pixmap_data[idx + 0];
+            let dst_r = pixmap_data[idx];
             let dst_g = pixmap_data[idx + 1];
             let dst_b = pixmap_data[idx + 2];
             let dst_a = pixmap_data[idx + 3];
             let inv_a = 255 - alpha as u16;
-            pixmap_data[idx + 0] = ((src_r as u16 * alpha as u16 + dst_r as u16 * inv_a) / 255) as u8;
+            pixmap_data[idx] = ((src_r as u16 * alpha as u16 + dst_r as u16 * inv_a) / 255) as u8;
             pixmap_data[idx + 1] = ((src_g as u16 * alpha as u16 + dst_g as u16 * inv_a) / 255) as u8;
             pixmap_data[idx + 2] = ((src_b as u16 * alpha as u16 + dst_b as u16 * inv_a) / 255) as u8;
             pixmap_data[idx + 3] = (alpha as u16 + (dst_a as u16 * inv_a) / 255).min(255) as u8;

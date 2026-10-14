@@ -432,7 +432,7 @@ impl Engine {
             .filter(|(k, (_, at))| {
                 **k != v
                     && now.saturating_sub(*at) <= STREAM_RELATIVE_MS
-                    && !self.screen.recent_detections.get(*k).is_some_and(|t| now.saturating_sub(*t) < SHOWN_RECENTLY_MS)
+                    && self.screen.recent_detections.get(*k).is_none_or(|t| now.saturating_sub(*t) >= SHOWN_RECENTLY_MS)
                     && !twins.contains(*k)
             })
             .map(|(_, a)| a)

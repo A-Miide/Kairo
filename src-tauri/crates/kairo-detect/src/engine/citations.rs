@@ -128,7 +128,7 @@ fn ends_mid_citation(text: &str) -> bool {
 
 /// The text after the last mention of a book (or else of its chapter number).
 pub(crate) fn text_after_book_mention(text: &str, book: Book, chapter: u32) -> String {
-    let last = book.name().to_lowercase().split(' ').last().unwrap_or("").to_string();
+    let last = book.name().to_lowercase().split(' ').next_back().unwrap_or("").to_string();
     let stem = last.strip_suffix('s').unwrap_or(&last);
     let after = |pattern: String| re(&pattern).find_iter(text).last().map(|m| m.end());
     if let Some(end) = after(format!(r"(?i)\b{}s?\b", regex::escape(stem))) {
@@ -667,7 +667,7 @@ impl Engine {
                 continue;
             }
             let group: Vec<Book> = std::iter::once(c.book).chain(c.alternatives.iter().copied()).collect();
-            let word = c.book.name().to_lowercase().split(' ').last().unwrap_or("").to_string();
+            let word = c.book.name().to_lowercase().split(' ').next_back().unwrap_or("").to_string();
             let ordinal = self.ordinal_said_before(&word).and_then(|n| group.iter().copied().find(|b| b.name().starts_with(&format!("{n} "))));
             let active = self.active(now).book.filter(|b| group.contains(b));
             let last_cited = self.sermon.iter().rev().find(|s| s.named && now.saturating_sub(s.at) < LAST_CITED_CHOOSES_MS).map(|s| s.book).filter(|b| group.contains(b));
@@ -904,7 +904,7 @@ impl Engine {
 pub(crate) fn book_is_announced(tokens: &[String], book: Book) -> bool {
     const BIGRAMS: &[&str] = &["book of", "gospel of", "according to", "epistle of", "epistle to", "letter of", "letter to"];
     const VERBS: &[&str] = &["turn", "turning", "open", "go", "look"];
-    let last = book.name().to_lowercase().split(' ').last().unwrap_or("").to_string();
+    let last = book.name().to_lowercase().split(' ').next_back().unwrap_or("").to_string();
     let stem = last.strip_suffix('s').unwrap_or(&last).to_string();
     let plural = format!("{stem}s");
     let mut found = false;
