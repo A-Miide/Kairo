@@ -37,6 +37,7 @@ fn main() {
                 "ndi_update_timer",
                 "output_capture",
                 "output_capture_supported",
+                "output_video",
                 "decklink_list",
                 "decklink_start",
                 "decklink_stop",

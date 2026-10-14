@@ -2,9 +2,14 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-capability",
   "description": "KAIRO main window capabilities",
-  "windows": ["main", "kairo-*"],
+  "windows": [
+    "main",
+    "kairo-*"
+  ],
   "remote": {
-    "urls": ["http://127.0.0.1:*"]
+    "urls": [
+      "http://127.0.0.1:*"
+    ]
   },
   "permissions": [
     "core:default",
@@ -47,6 +52,7 @@
     "allow-syphon-stop",
     "allow-syphon-update",
     "allow-syphon-update-media",
-    "allow-syphon-update-timer"
+    "allow-syphon-update-timer",
+    "allow-output-video"
   ]
 }

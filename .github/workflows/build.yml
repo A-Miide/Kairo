@@ -62,8 +62,9 @@ jobs:
 
   # ── The ffmpeg that ships in the app ─────────────────────────────────────
   # A small LGPL ffmpeg per OS, built from the official source (scripts/
-  # build-ffmpeg-*.sh) and cached until those scripts change. Kairo runs it only
-  # to convert a video its web view can't play. See docs/THIRD_PARTY.md.
+  # build-ffmpeg-*.sh) and cached until those scripts change. Kairo runs it to
+  # convert a video its web view can't play, and to play a video background
+  # under an NDI / Syphon / DeckLink output (src-tauri video_bg.rs). See docs/THIRD_PARTY.md.
   ffmpeg:
     strategy:
       fail-fast: false

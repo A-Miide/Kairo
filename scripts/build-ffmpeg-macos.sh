@@ -51,9 +51,9 @@ for ARCH in "${ARCHS[@]}"; do
       --disable-ffplay --disable-ffprobe --disable-shared --enable-static \
       --enable-zlib --enable-videotoolbox \
       --enable-demuxer="$DEMUXERS" --enable-decoder="$DECODERS" --enable-parser="$PARSERS" \
-      --enable-encoder=h264_videotoolbox,aac --enable-muxer=mp4 \
+      --enable-encoder=h264_videotoolbox,aac,rawvideo --enable-muxer=mp4,rawvideo \
       --enable-protocol=file,pipe \
-      --enable-filter=scale,format,null,anull,aresample,aformat,setsar,fps \
+      --enable-filter=scale,format,null,anull,aresample,aformat,setsar,fps,crop,pad \
       --enable-bsf=aac_adtstoasc,extract_extradata \
       ${EXTRA[@]+"${EXTRA[@]}"} >"$WORK/configure-$ARCH.log" 2>&1 || { tail -30 "$WORK/configure-$ARCH.log" >&2; exit 1; }
     make -j"$(sysctl -n hw.ncpu)" ffmpeg >"$WORK/make-$ARCH.log" 2>&1 || { tail -30 "$WORK/make-$ARCH.log" >&2; exit 1; }

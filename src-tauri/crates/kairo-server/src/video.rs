@@ -50,6 +50,11 @@ pub struct Video {
 }
 
 impl Video {
+    /// The ffmpeg this copy of Kairo uses, if any.
+    pub fn ffmpeg_path(&self) -> Option<&std::path::Path> {
+        self.ffmpeg.as_deref()
+    }
+
     /// `ui_dir` is the app's `src` folder; the bundled ffmpeg sits beside it in `bin`.
     pub fn open(app_data_dir: &Path, ui_dir: &Path) -> Arc<Self> {
         let cache = app_data_dir.join("media-cache");

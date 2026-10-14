@@ -4,6 +4,7 @@
 // Production: uses the node binary bundled via externalBin.
 
 mod capture;
+mod video_bg;
 mod decklink;
 mod ndi;
 #[cfg(target_os = "macos")]
@@ -678,7 +679,7 @@ fn run_capture(app: AppHandle, id: String, width: u32, height: u32, fade: u32) {
         return;
     };
     let (app2, id2) = (app.clone(), id.clone());
-    let _ = capture::snapshot(&window, width, height, move |r| {
+    let _ = capture::snapshot_alpha(&window, width, height, move |r| {
         match r {
             Ok(frame) => {
                 // Diagnostics: KAIRO_CAPTURE_DUMP=<dir> saves each frame as a PNG.
@@ -688,15 +689,11 @@ fn run_capture(app: AppHandle, id: String, width: u32, height: u32, fade: u32) {
                     if let Some(img) = image::RgbaImage::from_raw(frame.width, frame.height, rgba) { let _ = img.save(&path); }
                 }
                 let frame = Arc::new(frame);
-                if let Ok(h) = app2.state::<NdiState>().handle_for(&id2) {
-                    if let Ok(h) = h.lock() { h.update_frame(frame.clone(), fade); }
-                }
-                if let Ok(h) = app2.state::<DeckLinkState>().handle_for(&id2) {
-                    if let Ok(h) = h.lock() { h.update_frame(frame.clone(), fade); }
-                }
-                #[cfg(target_os = "macos")]
-                if let Ok(h) = app2.state::<SyphonState>().handle_for(&id2) {
-                    if let Err(e) = syphon::update_frame(frame.clone(), fade, h) { eprintln!("[Capture] Syphon: {e}"); }
+                // A moving background playing under this output: the
+                // snapshot is what sits on top of it (video_bg.rs mixes).
+                let playing = app2.state::<VideoBgState>().0.lock().ok().and_then(|m| m.get(&id2).map(|v| v.set_overlay(frame.clone(), fade)));
+                if playing.is_none() {
+                    push_frame(&app2, &id2, frame, fade);
                 }
             }
             Err(e) => eprintln!("[Capture] {id2}: {e}"),
@@ -710,6 +707,58 @@ fn run_capture(app: AppHandle, id: String, width: u32, height: u32, fade: u32) {
             run_capture(app2, id2, width, height, f);
         }
     });
+}
+
+/// A finished frame to every sender of output `id`.
+fn push_frame(app: &AppHandle, id: &str, frame: Arc<capture::Frame>, fade: u32) {
+    if let Ok(h) = app.state::<NdiState>().handle_for(id) {
+        if let Ok(h) = h.lock() { h.update_frame(frame.clone(), fade); }
+    }
+    if let Ok(h) = app.state::<DeckLinkState>().handle_for(id) {
+        if let Ok(h) = h.lock() { h.update_frame(frame.clone(), fade); }
+    }
+    #[cfg(target_os = "macos")]
+    if let Ok(h) = app.state::<SyphonState>().handle_for(id) {
+        if let Err(e) = syphon::update_frame(frame, fade, h) { eprintln!("[Capture] Syphon: {e}"); }
+    }
+}
+
+// Full-frame video backgrounds under NDI / Syphon / DeckLink (video_bg.rs):
+// the output's capture window reports the video it stopped drawing (its URL
+// on the local server, and how it was fitted), or that there's none now.
+#[derive(Default)]
+struct VideoBgState(Mutex<std::collections::HashMap<String, video_bg::VideoBg>>);
+
+#[tauri::command]
+async fn output_video(app: AppHandle, id: String, url: Option<String>, fit: Option<String>, width: u32, height: u32) -> Result<(), String> {
+    let Some(url) = url.filter(|u| !u.is_empty()) else {
+        if let Some(v) = app.state::<VideoBgState>().0.lock().map_err(|e| e.to_string())?.remove(&id) { v.stop(); }
+        return Ok(());
+    };
+    let fit = fit.unwrap_or_else(|| "contain".into());
+    // The file behind the address, and the bundled ffmpeg, from the server.
+    let (port, token) = { let c = app.state::<ServerConfig>(); (c.port, c.token.clone()) };
+    let resolved: serde_json::Value = reqwest::Client::new()
+        .post(format!("http://127.0.0.1:{port}/api/media/resolve"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "url": url }))
+        .send().await.map_err(|e| e.to_string())?
+        .json().await.map_err(|e| e.to_string())?;
+    let (Some(file), Some(ffmpeg)) = (resolved["path"].as_str(), resolved["ffmpeg"].as_str()) else {
+        return Err(resolved["error"].as_str().unwrap_or("video not found").to_string());
+    };
+    let file = std::path::PathBuf::from(file);
+    let state = app.state::<VideoBgState>();
+    let mut map = state.0.lock().map_err(|e| e.to_string())?;
+    if map.get(&id).is_some_and(|v| v.file == file && v.fit == fit) {
+        return Ok(());
+    }
+    if let Some(old) = map.remove(&id) { old.stop(); }
+    let (app2, id2) = (app.clone(), id.clone());
+    let (w, h) = (width.clamp(16, 7680), height.clamp(16, 4320));
+    let v = video_bg::VideoBg::start(std::path::Path::new(ffmpeg), file, &fit, w, h, 30, move |frame| push_frame(&app2, &id2, frame, 0))?;
+    map.insert(id, v);
+    Ok(())
 }
 
 // ── DeckLink (decklink.rs) ────────────────────────────────────────────────
@@ -910,6 +959,17 @@ pub fn run() {
         .manage(server_config)
         .manage(NdiState(Arc::new(Mutex::new(std::collections::HashMap::new()))))
         .manage(CaptureState::default())
+        .manage(VideoBgState::default())
+        // An output's capture window closing ends its video background.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                if let Some(id) = window.label().strip_prefix("kairo-cap-") {
+                    if let Some(v) = window.app_handle().state::<VideoBgState>().0.lock().ok().and_then(|mut m| m.remove(id)) {
+                        v.stop();
+                    }
+                }
+            }
+        })
         .manage(DeckLinkState(Arc::new(Mutex::new(std::collections::HashMap::new()))));
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
@@ -933,6 +993,7 @@ pub fn run() {
             ndi_update_media,
             ndi_update_timer,
             output_capture,
+            output_video,
             decklink_list,
             decklink_start,
             decklink_stop,
