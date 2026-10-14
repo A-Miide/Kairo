@@ -7859,7 +7859,7 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .ob-link { display: inline-block; margin-top: 10px; font-size: 12px; font-weight: 600; color: var(--brand); text-decoration: none; }
 .ob-setup { margin-top: 22px; max-width: 520px; }
 
-/* 1 · the welcome and its feature reel: seven chapters, one idea each
+/* 1 · the welcome and its feature reel: six chapters, one idea each
    (onboarding_reel.js plays them in turn). A chapter's motion only runs
    while it is on (.is-on), so it starts fresh each time; every element's
    resting style is the chapter's last frame (what reduced motion shows).
@@ -7965,34 +7965,7 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .obr-s2.is-on .obr-pills span:nth-child(3) { animation-delay: 2.7s; }
 .obr-s2.is-on .obr-pills span:nth-child(4) { animation-delay: 2.85s; }
 
-/* 3 · songs follow the singers: the live slide moves on line by line, the
-   ring walks the slide list */
-.obr-s3-live { left: 4cqw; top: 6cqw; width: 60cqw; aspect-ratio: 16 / 9; background: radial-gradient(120% 100% at 70% 10%, #3c4fa8 0%, #1d2455 55%, #0e1230 100%); }
-.obr-s3-live p { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; margin: 0; padding: 0 5cqw; text-align: center; font-size: 3.6cqw; font-weight: 600; line-height: 1.25; opacity: 0; }
-.obr-s3-live p:last-child { opacity: 1; }
-.obr-s3-side { left: 68cqw; top: 6cqw; width: 28cqw; height: 33.75cqw; padding: 2cqw; display: flex; flex-direction: column; justify-content: space-between; }
-.obr-s3-side .obr-bars { height: 6cqw; }
-.obr-switch { display: flex; align-items: center; gap: 1cqw; font-size: 1.7cqw; font-weight: 600; color: #fff; }
-.obr-switch i { position: relative; width: 4.4cqw; height: 2.5cqw; border-radius: 1.3cqw; background: var(--brand); }
-.obr-switch i::after { content: ''; position: absolute; top: 0.3cqw; left: 2.2cqw; width: 1.9cqw; height: 1.9cqw; border-radius: 50%; background: #fff; }
-.obr-thumbs { position: absolute; left: 4cqw; right: 4cqw; top: 44cqw; display: grid; grid-template-columns: repeat(4, 1fr); gap: 2cqw; }
-.obr-thumbs i { aspect-ratio: 16 / 9; display: flex; align-items: center; justify-content: center; border-radius: 0.9cqw; background: linear-gradient(160deg, #2c3a80, #121738); }
-.obr-thumbs s { padding: 0 0.8cqw; font-size: 1.3cqw; font-weight: 600; text-decoration: none; text-align: center; color: rgba(255, 255, 255, 0.85); }
-/* the ring sits on a quarter of the row and steps one slide at a time */
-.obr-ring { position: absolute; left: 0; top: 0; width: calc((100% - 6cqw) / 4); aspect-ratio: 16 / 9; box-sizing: border-box; border: 0.4cqw solid var(--brand); border-radius: 1.1cqw; box-shadow: 0 0 2cqw rgba(245, 48, 26, 0.5); transform: translateX(calc(300% + 6cqw)); }
-.obr-s3.is-on .obr-s3-live p { animation: obr-pass 1.05s var(--obr-ease) both; }
-.obr-s3.is-on .obr-s3-live p:nth-child(2) { animation-delay: 0.95s; }
-.obr-s3.is-on .obr-s3-live p:nth-child(3) { animation-delay: 1.9s; }
-.obr-s3.is-on .obr-s3-live p:nth-child(4) { animation: obr-in 0.45s var(--obr-ease) both; animation-delay: 2.85s; }
-.obr-s3.is-on .obr-ring { animation: obr-ring 3s both; }
-@keyframes obr-ring {
-  0%, 28% { transform: none; animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); }
-  34%, 60% { transform: translateX(calc(100% + 2cqw)); animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); }
-  66%, 92% { transform: translateX(calc(200% + 4cqw)); animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); }
-  98%, 100% { transform: translateX(calc(300% + 6cqw)); }
-}
-
-/* 4 · any Bible, by voice: the call is heard, KJV gives way to NIV, and
+/* 3 · any Bible, by voice: the call is heard, KJV gives way to NIV, and
    Yoruba joins beside it */
 .obr-s4-say { left: 4cqw; right: 4cqw; top: 5cqw; height: 9cqw; padding: 0 2.4cqw; display: flex; align-items: center; gap: 2cqw; }
 .obr-s4-say p { margin: 0; font-size: 2.4cqw; color: var(--text-2); }
@@ -8025,7 +7998,7 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .obr-langs > div:nth-child(2) { --k: 1; } .obr-langs > div:nth-child(3) { --k: 2; } .obr-langs > div:nth-child(4) { --k: 3; }
 .obr-langs > div:nth-child(5) { --k: 4; } .obr-langs > div:nth-child(6) { --k: 5; } .obr-langs > div:nth-child(7) { --k: 6; }
 
-/* 5 · bring your library: files land as slides */
+/* 4 · bring your library: files land as slides */
 .obr-files { position: absolute; left: 4cqw; top: 6cqw; bottom: 6cqw; width: 30cqw; display: flex; flex-direction: column; justify-content: space-between; }
 .obr-files span { display: flex; align-items: center; gap: 1.4cqw; height: 9.5cqw; padding: 0 1.8cqw; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 1.4cqw; background: rgba(255, 255, 255, 0.05); font-size: 2cqw; font-weight: 600; color: #fff; }
 .obr-files b { display: flex; align-items: center; justify-content: center; min-width: 6.6cqw; height: 4.6cqw; padding: 0 0.6cqw; border-radius: 0.8cqw; background: rgba(245, 48, 26, 0.18); font-size: 1.6cqw; color: var(--brand); }
@@ -8053,7 +8026,7 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .obr-grid i:nth-child(5) { --k: 4; } .obr-grid i:nth-child(6) { --k: 5; } .obr-grid i:nth-child(7) { --k: 6; }
 .obr-grid i:nth-child(8) { --k: 7; } .obr-grid i:nth-child(9) { --k: 8; }
 
-/* 6 · sermon notes: the page writes itself */
+/* 5 · sermon notes: the page writes itself */
 .obr-doc { left: 16cqw; right: 16cqw; top: 5cqw; bottom: 5cqw; padding: 3.4cqw 4.4cqw; display: flex; flex-direction: column; gap: 2.6cqw; background: #f7f5f0; border: 0; box-shadow: 0 2.4cqw 6cqw rgba(0, 0, 0, 0.5); }
 .obr-doc h4 { margin: 0; font-family: Georgia, 'Times New Roman', serif; font-size: 4.2cqw; font-weight: 700; color: #1b1712; }
 .obr-doc p { display: flex; flex-wrap: wrap; align-items: center; gap: 1cqw; margin: 0; font-size: 2.6cqw; font-weight: 600; color: #2a2118; }
@@ -8066,7 +8039,7 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .obr-doc .obr-pr { margin-top: auto; padding-top: 1.6cqw; border-top: 1px solid rgba(42, 33, 24, 0.15); font-weight: 400; color: #4a3f33; }
 @keyframes obr-write { from { opacity: 0; clip-path: inset(0 100% 0 0); } to { opacity: 1; clip-path: inset(0 0 0 0); } }
 
-/* 7 · offline: the connection drops, the listening carries on */
+/* 6 · offline: the connection drops, the listening carries on */
 .obr-offline { position: absolute; left: 0; right: 0; top: 7cqw; display: flex; flex-direction: column; align-items: center; gap: 1.6cqw; }
 .obr-offline svg { width: 10cqw; height: 10cqw; fill: none; stroke: #fff; stroke-width: 1.6; stroke-linecap: round; }
 .obr-offline circle { fill: #fff; stroke: none; }
