@@ -3,6 +3,7 @@
 //! outputs. Runs inside the Tauri app, or on its own for development
 //! (`cargo run -p kairo-server`).
 
+pub mod audio_stats;
 pub mod bible;
 pub mod config;
 mod deepgram;
@@ -167,6 +168,7 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
     });
     app.refresh_presentation().await;
     tokio::spawn(osc::run(app.clone()));
+    audio_stats::spawn_reporter(app.clone());
     let obs_app = app.clone();
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;

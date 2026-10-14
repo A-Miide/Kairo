@@ -368,6 +368,7 @@ pub async fn start(app: Shared) -> Result<Session, Value> {
                     got = true;
                     let samples: Vec<f32> = chunk.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect();
                     heard.accept(&samples);
+                    crate::audio_stats::STATS.engine_frames.fetch_add(1, Ordering::Relaxed);
                 }
                 if stopping {
                     if let Some(h) = heard.finish() {
@@ -383,6 +384,7 @@ pub async fn start(app: Shared) -> Result<Session, Value> {
                 }
                 last_pump = Instant::now();
                 for h in heard.pump() {
+                    crate::audio_stats::STATS.engine_results.fetch_add(1, Ordering::Relaxed);
                     tell(h);
                 }
             }
