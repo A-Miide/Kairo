@@ -210,6 +210,8 @@ async fn run(app: Shared, key: String, mut audio: mpsc::Receiver<Bytes>, mut sto
     let mut gap: Vec<Bytes> = Vec::new();
     let mut gap_bytes = 0usize;
     let mut pending = Pending::default();
+    // Names heard are counted per service (see vocabulary::observe).
+    let service = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64);
     state(&app, "connecting", None);
 
     let lock_pending = |pending: &mut Pending, why: &str| {
@@ -285,7 +287,7 @@ async fn run(app: Shared, key: String, mut audio: mpsc::Receiver<Bytes>, mut sto
                 msg = rx.next() => match msg {
                     Some(Ok(Message::Text(t))) => {
                         if let Ok(v) = serde_json::from_str::<Value>(&t) {
-                            if on_message(&app, &detector, &v, &mut pending) {
+                            if on_message(&app, &detector, &v, &mut pending, service) {
                                 speech_ms_since_transcript = 0.0;
                             }
                         }
@@ -317,7 +319,7 @@ async fn run(app: Shared, key: String, mut audio: mpsc::Receiver<Bytes>, mut sto
                                 Some(Ok(Message::Text(t))) => {
                                     if let Ok(v) = serde_json::from_str::<Value>(&t) {
                                         let is_final = v["is_final"] == true;
-                                        on_message(&app, &detector, &v, &mut pending);
+                                        on_message(&app, &detector, &v, &mut pending, service);
                                         if is_final { break; }
                                     }
                                 }
@@ -343,6 +345,7 @@ async fn run(app: Shared, key: String, mut audio: mpsc::Receiver<Bytes>, mut sto
 }
 
 async fn finish(app: &Shared, done: Option<oneshot::Sender<()>>) {
+    crate::vocabulary::flush(app);
     *app.audio.lock().await = None;
     state(app, "disconnected", None);
     if let Some(d) = done {
@@ -366,7 +369,7 @@ fn speech_ms(chunk: &[u8]) -> f64 {
 }
 
 /// One message from Deepgram. Returns whether a transcript came back.
-fn on_message(app: &Shared, detector: &crate::detect::Detector, v: &Value, pending: &mut Pending) -> bool {
+fn on_message(app: &Shared, detector: &crate::detect::Detector, v: &Value, pending: &mut Pending, service: u64) -> bool {
     match v["type"].as_str() {
         Some("Results") => {
             let alt = &v["channel"]["alternatives"][0];
@@ -389,6 +392,9 @@ fn on_message(app: &Shared, detector: &crate::detect::Detector, v: &Value, pendi
                 *pending = Pending { text: text.clone(), confidence };
             }
             let words = alt.get("words").filter(|w| w.is_array()).cloned();
+            if is_final {
+                crate::vocabulary::observe(app, &text, service);
+            }
             detector.speech(&app.hub, &text, is_final, confidence, v["speech_final"] == true, words, false);
             true
         }

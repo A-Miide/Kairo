@@ -2462,6 +2462,7 @@ async function loadSettings() {
     if (sttLang) sttLang.value = settings.sttLanguage || 'en-US';
     const vocab = document.getElementById('custom-keyterms');
     if (vocab) vocab.value = settings.customKeyterms || '';
+    renderLearnedTerms();
     const bibleLang = document.getElementById('bible-language');
     if (bibleLang) bibleLang.value = settings.bibleLanguage || 'en';
     renderLangPacks();
@@ -4058,3 +4059,37 @@ if (document.documentElement.classList.contains('platform-darwin')) {
 
 // ── Boot ───────────────────────────────────────────────────────────────────
 populateAudioDevices();
+
+// Names learned from past services (server vocabulary.rs): shown under
+// Church vocabulary so the operator sees what Deepgram is being told, and
+// can drop one that's wrong.
+async function renderLearnedTerms(terms) {
+  const box = document.getElementById('learned-keyterms');
+  const list = document.getElementById('learned-keyterms-list');
+  if (!box || !list) return;
+  if (!terms) {
+    try { terms = (await (await fetch(`${SERVER}/api/vocabulary/learned`)).json()).terms || []; }
+    catch { return; }
+  }
+  list.innerHTML = '';
+  terms.forEach(t => {
+    const chip = document.createElement('span');
+    chip.className = 'learned-term' + (t.inUse ? ' in-use' : '');
+    chip.title = `Heard ${t.count} times in ${t.services} services${t.inUse ? ' — passed to transcription' : ''}`;
+    chip.textContent = t.term;
+    const x = document.createElement('button');
+    x.type = 'button';
+    x.className = 'learned-term-remove';
+    x.setAttribute('aria-label', `Forget ${t.term}`);
+    x.textContent = '×';
+    x.addEventListener('click', async () => {
+      try {
+        const r = await fetch(`${SERVER}/api/vocabulary/forget`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ term: t.term }) });
+        renderLearnedTerms((await r.json()).terms || []);
+      } catch {}
+    });
+    chip.appendChild(x);
+    list.appendChild(chip);
+  });
+  box.hidden = terms.length === 0;
+}
