@@ -646,7 +646,9 @@ async fn monitor_message(State(app): State<Shared>, Json(b): Json<Value>) -> Jso
 pub(crate) fn write_debug_line(app: &Shared, event: &str, data: Value) {
     let line = json!({ "t": epoch_ms(), "event": event, "data": data });
     let path = app.cfg.app_data_dir.join("debug.log");
-    tokio::task::spawn_blocking(move || {
+    // A plain thread, so any thread can log (the speech engine's supervisor
+    // isn't on the async runtime).
+    std::thread::spawn(move || {
         use std::io::Write;
         if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
             let _ = writeln!(f, "{line}");
