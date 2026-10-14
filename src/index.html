@@ -1812,35 +1812,82 @@
                     <div class="ob-copy">
                         <p class="ob-eyebrow">Welcome to Kairo</p>
                         <h2 class="ob-title">Scripture on screen the moment it&rsquo;s spoken.</h2>
-                        <p class="ob-lede">Kairo listens to the sermon and puts up the verse &mdash; cited, read aloud or quoted &mdash; in your theme, on every screen.</p>
+                        <p class="ob-lede">Kairo listens to the sermon and puts up the verse, follows the songs, and runs every screen in its own look &mdash; online or off.</p>
                     </div>
-                    <!-- Motion graphic (CSS only, one 10 s loop — styles.css "ob-film"):
-                         the sermon is heard, "John 3:16" is caught, the verse lands
-                         on the projector in its theme, then on the livestream and
-                         the lobby, each in its own look. Reduced motion: the last frame. -->
-                    <div class="ob-film" aria-hidden="true">
-                        <div class="obf-listen">
-                            <div class="obf-mic"><i></i><i></i><i></i><i></i><i></i></div>
-                            <p class="obf-words"><span style="--i:0">&hellip;turn</span> <span style="--i:1">with</span> <span style="--i:2">me</span> <span style="--i:3">to</span> <span class="obf-cite"><span style="--i:4">John</span> <span style="--i:5">three</span> <span style="--i:6">sixteen.</span></span> <span style="--i:7">For</span> <span style="--i:8">God</span> <span style="--i:9">so</span> <span style="--i:10">loved</span> <span style="--i:11">the</span> <span style="--i:12">world&hellip;</span></p>
-                        </div>
-                        <div class="obf-chip"><i></i>John 3:16</div>
-                        <div class="obf-row">
-                            <div class="obf-screen obf-main">
-                                <span class="obf-tag">Projector</span>
-                                <p class="obf-verse"><span>For God so loved the world,</span> <span>that he gave his only begotten Son</span></p>
-                                <b class="obf-ref">John 3:16</b>
-                            </div>
-                            <div class="obf-side">
-                                <div class="obf-screen obf-stream">
-                                    <span class="obf-tag">Livestream</span>
-                                    <div class="obf-third"><p>For God so loved the world&hellip;</p><b>John 3:16</b></div>
+                    <!-- The feature reel: seven short chapters, one idea each, played in
+                         turn (onboarding_reel.js; styles.css "ob-reel"). Each chapter's
+                         motion starts when it comes on; its resting state is its last
+                         frame, which is what reduced motion shows. -->
+                    <div class="ob-reel">
+                        <div class="obr-stage" aria-hidden="true">
+                            <!-- 1 · catches every verse -->
+                            <div class="obr-scene obr-s1" data-title="Catches every verse" data-sub="Cited, read aloud or quoted &mdash; on screen the moment it&rsquo;s said.">
+                                <div class="obr-card obr-tx">
+                                    <div class="obr-row"><span class="obr-kind">Cited</span><p>&hellip;turn with me to <mark>John 3:16</mark></p><b class="obr-chip">John 3:16</b></div>
+                                    <div class="obr-row"><span class="obr-kind">Read aloud</span><p><mark>The Lord is my shepherd; I shall not want</mark></p><b class="obr-chip">Psalm 23:1</b></div>
+                                    <div class="obr-row"><span class="obr-kind">Quoted</span><p>&hellip;all things <mark>work together for good</mark></p><b class="obr-chip">Romans 8:28</b></div>
                                 </div>
-                                <div class="obf-screen obf-lobby">
-                                    <span class="obf-tag">Lobby</span>
-                                    <p>For God so loved the world&hellip;</p><b>John 3:16</b>
+                                <div class="obr-screen obr-theme obr-s1-screen">
+                                    <div class="obr-v"><p>For God so loved the world&hellip;</p><b>John 3:16</b></div>
+                                    <div class="obr-v"><p>The Lord is my shepherd; I shall not want.</p><b>Psalm 23:1</b></div>
+                                    <div class="obr-v"><p>All things work together for good to them that love God&hellip;</p><b>Romans 8:28</b></div>
                                 </div>
                             </div>
+                            <!-- 2 · every screen, its own look -->
+                            <div class="obr-scene obr-s2" data-title="Every screen, its own look" data-sub="Projector, livestream and lobby &mdash; each in its own theme, from one click.">
+                                <div class="obr-screen obr-theme obr-s2-main"><span class="obr-tag">Projector</span><p>For God so loved the world&hellip;</p><b>John 3:16</b></div>
+                                <div class="obr-screen obr-s2-stream"><span class="obr-tag">Livestream</span><div class="obr-third"><p>For God so loved the world&hellip;</p><b>John 3:16</b></div></div>
+                                <div class="obr-screen obr-s2-lobby"><span class="obr-tag">Lobby</span><p>For God so loved the world&hellip;</p><b>John 3:16</b></div>
+                                <div class="obr-pills"><span>HDMI</span><span>NDI</span><span>Syphon</span><span>DeckLink SDI</span></div>
+                            </div>
+                            <!-- 3 · songs follow the singers -->
+                            <div class="obr-scene obr-s3" data-title="Songs follow the singers" data-sub="Kairo hears the song start, brings it up, and moves the slides as the room sings.">
+                                <div class="obr-screen obr-s3-live">
+                                    <p>Amazing grace, how sweet the sound</p>
+                                    <p>That saved a wretch like me</p>
+                                    <p>I once was lost, but now am found</p>
+                                    <p>Was blind, but now I see</p>
+                                </div>
+                                <div class="obr-card obr-s3-side"><span class="obr-kind">Listening</span><div class="obr-bars"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div><span class="obr-switch"><i></i>Following the song</span></div>
+                                <div class="obr-thumbs"><i><s>Amazing grace</s></i><i><s>That saved a wretch</s></i><i><s>I once was lost</s></i><i><s>Was blind</s></i><b class="obr-ring"></b></div>
+                            </div>
+                            <!-- 4 · any Bible, by voice -->
+                            <div class="obr-scene obr-s4" data-hold="13500" data-title="Any Bible, by voice" data-sub="Say &ldquo;switch to the NIV&rdquo; and the screen follows. Put a second language beside it &mdash; eight built in.">
+                                <div class="obr-card obr-s4-say"><div class="obr-bars"><i></i><i></i><i></i><i></i><i></i></div><p>&hellip;let&rsquo;s <mark>switch to the NIV</mark></p></div>
+                                <div class="obr-screen obr-theme obr-s4-screen">
+                                    <div class="obr-s4-col">
+                                        <div class="obr-swap"><p class="obr-kjv">For God so loved the world, that he gave his only begotten Son&hellip;</p><p class="obr-niv">For God so loved the world that he gave his one and only Son&hellip;</p></div>
+                                        <div class="obr-swap"><b class="obr-kjv">John 3:16 &middot; KJV</b><b class="obr-niv">John 3:16 &middot; NIV</b></div>
+                                    </div>
+                                    <div class="obr-s4-col obr-yo"><div class="obr-langs"><div><p>Nítorí Ọlọ́run fẹ́ aráyé tó bẹ́ẹ̀ gẹ́ẹ́, tí ó fi ọmọ rẹ̀ kan ṣoṣo fún ni&hellip;</p><b>John 3:16 &middot; Yorùbá</b></div><div><p>Nʼihi na Chineke hụrụ ụwa nʼanya, nke a mere o jiri nye Ọkpara ọ mụrụ naanị ya&hellip;</p><b>John 3:16 &middot; Igbo</b></div><div><p>Gama Allah ya ƙaunaci duniya sosai har ya ba da wanda yake Ɗaya kuma Makaɗaicin Ɗansa&hellip;</p><b>John 3:16 &middot; Hausa</b></div><div><p>Maana Mungu aliupenda ulimwengu hivi hata akamtoa Mwana wake wa pekee&hellip;</p><b>John 3:16 &middot; Kiswahili</b></div><div><p>Car Dieu a tant aimé le monde qu’il a donné son Fils unique&hellip;</p><b>John 3:16 &middot; Français</b></div><div><p>Porque de tal manera amó Dios al mundo, que ha dado á su Hijo unigénito&hellip;</p><b>John 3:16 &middot; Español</b></div><div><p>Porque Deus amou o mundo de tal maneira, que deu o seu Filho unigenito&hellip;</p><b>John 3:16 &middot; Português</b></div><div><p>Also hat GOtt die Welt geliebet, daß er seinen eingeborenen Sohn gab&hellip;</p><b>John 3:16 &middot; Deutsch</b></div></div></div>
+                                </div>
+                            </div>
+                            <!-- 5 · bring your library -->
+                            <div class="obr-scene obr-s5" data-title="Bring your library" data-sub="ProPresenter, PowerPoint and Word come in looking as they did. 286 hymns built in.">
+                                <div class="obr-files"><span><b>.pro</b>ProPresenter</span><span><b>.pptx</b>PowerPoint</span><span><b>.docx</b>Word</span><span><b>&#9835;</b>286 hymns</span></div>
+                                <div class="obr-grid"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+                            </div>
+                            <!-- 6 · sermon notes -->
+                            <div class="obr-scene obr-s6" data-title="Sermon notes, written for you" data-sub="The points, the quotable lines and every scripture &mdash; ready when the sermon ends.">
+                                <div class="obr-card obr-doc">
+                                    <span class="obr-kind">Sermon notes</span>
+                                    <h4>So loved the world</h4>
+                                    <p class="obr-pt">1 &middot; Love that gives <b>John 3:16</b><b>Romans 5:8</b></p>
+                                    <p class="obr-q">&ldquo;Love is proven by what it gives.&rdquo;</p>
+                                    <p class="obr-pt">2 &middot; Love that stays <b>Romans 8:38</b></p>
+                                    <p class="obr-pt">3 &middot; Love that sends <b>1 John 4:11</b></p>
+                                    <p class="obr-pr">Prayer &middot; Lord, teach us to love like this.</p>
+                                </div>
+                            </div>
+                            <!-- 7 · offline -->
+                            <div class="obr-scene obr-s7" data-title="Keeps listening offline" data-sub="No internet on Sunday? Speech runs on this computer.">
+                                <div class="obr-offline"><svg viewBox="0 0 24 24"><path d="M2 8.5a15 15 0 0 1 20 0M5 12a10 10 0 0 1 14 0M8.5 15.5a5 5 0 0 1 7 0"/><circle cx="12" cy="19" r="1.2"/><path class="obr-slash" d="M4 3l16 18"/></svg><span>Offline &middot; on this computer</span></div>
+                                <div class="obr-card obr-s7-tx"><div class="obr-bars"><i></i><i></i><i></i><i></i><i></i></div><p>&hellip;and we know that all things work together for good&hellip;</p></div>
+                                <b class="obr-chip obr-s7-chip">Romans 8:28</b>
+                            </div>
                         </div>
+                        <div class="obr-caption"><h3 class="obr-title">Catches every verse</h3><p class="obr-sub">Cited, read aloud or quoted &mdash; on screen the moment it&rsquo;s said.</p></div>
+                        <div class="obr-rail"></div>
                     </div>
                 </section>
 
@@ -2280,5 +2327,6 @@
     <script src="app_startup.js"></script>
     <script src="import_hub.js"></script>
     <script src="global_search.js"></script>
+    <script src="onboarding_reel.js"></script>
 </body>
 </html>

@@ -7859,101 +7859,230 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .ob-link { display: inline-block; margin-top: 10px; font-size: 12px; font-weight: 600; color: var(--brand); text-decoration: none; }
 .ob-setup { margin-top: 22px; max-width: 520px; }
 
-/* 1 · the welcome and its motion graphic: one 10 s loop told in beats —
-   the sermon streams in word by word (0–2 s), "John three sixteen" is caught
-   and drops as a chip into the projector (1.2–3.3 s), the verse lands in its
-   theme (3.1–4.4 s), the projector steps aside as the livestream and lobby
-   slide out from behind it, each in its own look (5–6.8 s), hold, reset.
-   The un-animated styles are the last frame (what reduced motion shows). */
-.ob-welcome { display: grid; grid-template-columns: 1fr 1.1fr; gap: 40px; align-items: center; }
-.ob-film { --obf: 10s; position: relative; container-type: inline-size; }
-.obf-listen {
-  position: relative; z-index: 2; display: flex; gap: 12px; align-items: flex-start; height: 76px; box-sizing: border-box;
-  padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: rgba(255, 255, 255, 0.035);
-  animation: obf-card var(--obf) cubic-bezier(0.2, 0.7, 0.2, 1) infinite;
+/* 1 · the welcome and its feature reel: seven chapters, one idea each
+   (onboarding_reel.js plays them in turn). A chapter's motion only runs
+   while it is on (.is-on), so it starts fresh each time; every element's
+   resting style is the chapter's last frame (what reduced motion shows).
+   Sizes are in cqw of the stage, so the picture scales as one. */
+.ob-welcome { display: grid; grid-template-columns: 0.85fr 1.25fr; gap: 40px; align-items: center; }
+.ob-reel { --obr-ease: cubic-bezier(0.2, 0.7, 0.2, 1); min-width: 0; }
+.obr-stage {
+  position: relative; aspect-ratio: 16 / 10; overflow: hidden; container-type: inline-size;
+  border-radius: 14px; background: radial-gradient(120% 90% at 50% 0%, #1d1d23, #111114 70%);
+  box-shadow: 0 30px 70px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.07);
 }
-@keyframes obf-card { 0% { opacity: 0; transform: translateY(8px); } 4%, 92% { opacity: 1; transform: none; } 97%, 100% { opacity: 0; transform: none; } }
-.obf-mic { display: flex; gap: 3px; align-items: center; height: 20px; flex: none; margin-top: 2px; }
-.obf-mic i { width: 3px; height: 100%; border-radius: 2px; background: var(--brand); transform: scaleY(0.35); animation: obf-bars 0.9s ease-in-out infinite; }
-.obf-mic i:nth-child(2) { animation-duration: 1.1s; animation-delay: -0.3s; }
-.obf-mic i:nth-child(3) { animation-duration: 0.8s; animation-delay: -0.5s; }
-.obf-mic i:nth-child(4) { animation-duration: 1.25s; animation-delay: -0.2s; }
-.obf-mic i:nth-child(5) { animation-duration: 0.95s; animation-delay: -0.7s; }
-@keyframes obf-bars { 0%, 100% { transform: scaleY(0.3); } 50% { transform: scaleY(1); } }
-.obf-words { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text-2); }
-/* Each word arrives on its own beat (0.12 s apart) and leaves on the same
-   rhythm at the end, so the transcript wipes out left to right. */
-.obf-words span { display: inline-block; animation: obf-word var(--obf) cubic-bezier(0.2, 0.7, 0.2, 1) infinite both; animation-delay: calc(0.2s + var(--i) * 0.12s); }
-@keyframes obf-word { 0% { opacity: 0; transform: translateY(5px); filter: blur(3px); } 3%, 76% { opacity: 1; transform: none; filter: none; } 79%, 100% { opacity: 0; transform: translateY(-3px); filter: none; } }
-/* the cited words light up together once the last of them is heard (≈1.2 s) */
-.obf-words .obf-cite { padding: 1px 3px; margin: 0 -3px; border-radius: 4px; color: #fff; font-weight: 700; background: rgba(245, 48, 26, 0.35); animation: obf-catch var(--obf) ease-out infinite; }
-@keyframes obf-catch { 0%, 11.5% { background: transparent; color: var(--text-2); font-weight: 400; } 13.5%, 88% { background: rgba(245, 48, 26, 0.35); color: #fff; font-weight: 700; } 92%, 100% { background: transparent; color: var(--text-2); font-weight: 400; } }
+.obr-scene { position: absolute; inset: 0; opacity: 0; transform: scale(1.015); transition: opacity 0.45s ease, transform 0.6s var(--obr-ease); pointer-events: none; }
+.obr-scene.is-on { opacity: 1; transform: none; }
+.obr-caption { margin-top: 16px; min-height: 52px; }
+.obr-caption.is-in { animation: obr-cap 0.5s var(--obr-ease) both; }
+@keyframes obr-cap { from { opacity: 0; transform: translateY(6px); } }
+.obr-title { margin: 0 0 4px; font-size: 16px; font-weight: 700; color: #fff; }
+.obr-sub { margin: 0; font-size: 13px; line-height: 1.45; color: var(--text-2); }
+.obr-rail { display: flex; gap: 6px; margin-top: 12px; }
+.obr-seg { flex: 1; height: 14px; padding: 0; border: 0; background: none; cursor: pointer; display: flex; align-items: center; }
+.obr-seg i { position: relative; display: block; width: 100%; height: 3px; overflow: hidden; border-radius: 2px; background: rgba(255, 255, 255, 0.12); }
+.obr-seg i::after { content: ''; position: absolute; inset: 0; background: var(--brand); transform: scaleX(0); transform-origin: left; }
+.obr-seg:hover i { background: rgba(255, 255, 255, 0.22); }
+.obr-seg.is-done i::after { transform: none; }
+.obr-seg.is-on i::after { animation: obr-fill var(--obr-hold, 4.5s) linear both; }
+.ob-reel.is-still .obr-seg.is-on i::after { animation: none; transform: none; }
+@keyframes obr-fill { to { transform: none; } }
 
-/* the chip: dips (anticipation), pops, settles, then drops in an arc into the
-   centre of the projector and melts into it as the theme fills */
-.obf-chip {
-  position: absolute; z-index: 3; top: 62px; left: 50%; display: flex; gap: 6px; align-items: center; height: 26px; padding: 0 11px;
-  border-radius: 13px; background: var(--brand); color: #fff; font-size: 12px; font-weight: 700; white-space: nowrap;
-  box-shadow: 0 8px 22px rgba(245, 48, 26, 0.45); opacity: 0; transform: translate(-50%, 0);
-  animation: obf-chip var(--obf) infinite;
+/* shared pieces */
+.obr-card { position: absolute; box-sizing: border-box; border: 1px solid rgba(255, 255, 255, 0.09); border-radius: 1.8cqw; background: rgba(255, 255, 255, 0.04); }
+.obr-screen { position: absolute; overflow: hidden; border-radius: 1.4cqw; background: #18181d; box-shadow: 0 2cqw 5cqw rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.07); color: #fff; }
+.obr-theme { background: radial-gradient(120% 95% at 30% 15%, #FF5A3D 0%, #F5301A 38%, #8E1407 100%); }
+.obr-tag { position: absolute; z-index: 2; top: 1.2cqw; left: 1.3cqw; padding: 0.3cqw 0.9cqw; border-radius: 0.6cqw; background: rgba(0, 0, 0, 0.42); font-size: 1.35cqw; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 255, 255, 0.88); }
+.obr-kind { font-size: 1.4cqw; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--brand); }
+.obr-chip { display: inline-flex; align-items: center; height: 3.6cqw; padding: 0 1.4cqw; border-radius: 1.8cqw; background: var(--brand); color: #fff; font-size: 1.7cqw; font-weight: 700; white-space: nowrap; box-shadow: 0 1cqw 2.6cqw rgba(245, 48, 26, 0.4); }
+.obr-stage mark { padding: 0 0.4cqw; border-radius: 0.6cqw; background: rgba(245, 48, 26, 0.35); color: #fff; font-weight: 700; }
+.obr-bars { display: flex; gap: 0.5cqw; align-items: center; height: 3.2cqw; }
+.obr-bars i { width: 0.55cqw; height: 100%; border-radius: 0.3cqw; background: var(--brand); transform: scaleY(0.35); }
+.obr-scene.is-on .obr-bars i { animation: obr-bars 0.9s ease-in-out infinite; }
+.obr-scene.is-on .obr-bars i:nth-child(2n) { animation-duration: 1.15s; animation-delay: -0.3s; }
+.obr-scene.is-on .obr-bars i:nth-child(3n) { animation-duration: 0.8s; animation-delay: -0.55s; }
+.obr-scene.is-on .obr-bars i:nth-child(5n) { animation-duration: 1.3s; animation-delay: -0.2s; }
+@keyframes obr-bars { 0%, 100% { transform: scaleY(0.3); } 50% { transform: scaleY(1); } }
+/* the common moves: in (rise + fade), pop (dip, overshoot, settle), and a
+   pass (in, hold, out) for things that make way for the next */
+@keyframes obr-in { from { opacity: 0; transform: translateY(1.6cqw); } }
+@keyframes obr-pop { 0% { opacity: 0; transform: scale(0.6); } 25% { opacity: 1; transform: scale(0.55, 0.5); } 65% { transform: scale(1.08, 1.1); } 100% { opacity: 1; transform: none; } }
+@keyframes obr-pass { 0% { opacity: 0; transform: translateY(1.2cqw); } 14%, 84% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-0.8cqw); } }
+
+/* 1 · catches every verse: three ways of saying it, three verses up */
+.obr-tx { left: 4cqw; top: 6cqw; width: 50cqw; bottom: 6cqw; padding: 1.4cqw 2.4cqw; display: flex; flex-direction: column; justify-content: space-around; }
+.obr-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6cqw 1.4cqw; }
+.obr-row .obr-kind { width: 100%; }
+.obr-row p { margin: 0; font-size: 2.2cqw; line-height: 1.35; color: var(--text-2); }
+.obr-row .obr-chip { height: 3.2cqw; font-size: 1.5cqw; }
+.obr-s1-screen { left: 58cqw; top: 19.5cqw; width: 38cqw; aspect-ratio: 16 / 9; }
+.obr-v { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1cqw; padding: 0 3cqw; text-align: center; opacity: 0; }
+.obr-v:last-child { opacity: 1; }
+.obr-v p { margin: 0; font-size: 2.3cqw; font-weight: 600; line-height: 1.3; }
+.obr-v b, .obr-s2-main b { font-size: 1.3cqw; letter-spacing: 0.2em; text-transform: uppercase; opacity: 0.9; }
+.obr-s1.is-on .obr-row { animation: obr-in 0.5s var(--obr-ease) both; }
+.obr-s1.is-on .obr-row:nth-child(2) { animation-delay: 1.25s; }
+.obr-s1.is-on .obr-row:nth-child(3) { animation-delay: 2.5s; }
+.obr-s1.is-on .obr-row .obr-chip { animation: obr-pop 0.45s ease-out both; animation-delay: 0.55s; }
+.obr-s1.is-on .obr-row:nth-child(2) .obr-chip { animation-delay: 1.8s; }
+.obr-s1.is-on .obr-row:nth-child(3) .obr-chip { animation-delay: 3.05s; }
+.obr-s1.is-on .obr-s1-screen { animation: obr-screen-on 0.6s ease-out both; animation-delay: 0.7s; }
+@keyframes obr-screen-on { from { background: #18181d; } }
+.obr-s1.is-on .obr-v { animation: obr-pass 1.3s var(--obr-ease) both; animation-delay: 0.8s; }
+.obr-s1.is-on .obr-v:nth-child(2) { animation-delay: 2.05s; }
+.obr-s1.is-on .obr-v:nth-child(3) { animation: obr-in 0.5s var(--obr-ease) both; animation-delay: 3.3s; }
+
+/* 2 · every screen, its own look */
+.obr-s2-main { left: 4cqw; top: 6cqw; width: 56cqw; aspect-ratio: 16 / 9; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.2cqw; text-align: center; }
+.obr-s2-main p { margin: 0; font-size: 3.2cqw; font-weight: 600; }
+.obr-s2-main b { font-size: 1.6cqw; }
+.obr-s2-stream, .obr-s2-lobby { left: 63cqw; width: 33cqw; aspect-ratio: 16 / 9; }
+.obr-s2-stream { top: 6cqw; background: linear-gradient(160deg, #3b4150 0%, #20242d 55%, #15171d 100%); }
+.obr-s2-stream::before { content: ''; position: absolute; left: 38%; bottom: 0; width: 26%; height: 72%; border-radius: 50% 50% 8px 8px / 30% 30% 8px 8px; background: rgba(255, 255, 255, 0.07); }
+.obr-third { position: absolute; left: 6%; right: 6%; bottom: 9%; display: flex; flex-direction: column; gap: 0.2cqw; padding: 0.8cqw 1.2cqw; border-left: 0.4cqw solid var(--brand); border-radius: 0.4cqw; background: rgba(10, 10, 14, 0.85); }
+.obr-third p { margin: 0; font-size: 1.6cqw; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.obr-third b { font-size: 1.15cqw; letter-spacing: 0.14em; text-transform: uppercase; color: var(--brand); }
+.obr-s2-lobby { top: 27.5cqw; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.6cqw; padding: 0 2cqw; text-align: center; background: linear-gradient(180deg, #f6f1e7, #e9e1d0); color: #2a2118; }
+.obr-s2-lobby .obr-tag { background: rgba(0, 0, 0, 0.55); }
+.obr-s2-lobby p { margin: 0; font-family: Georgia, 'Times New Roman', serif; font-size: 2.2cqw; font-style: italic; }
+.obr-s2-lobby b { font-size: 1.15cqw; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(42, 33, 24, 0.7); }
+.obr-pills { position: absolute; left: 4cqw; right: 4cqw; bottom: 6cqw; display: flex; gap: 1.4cqw; }
+.obr-pills span { padding: 0.9cqw 1.8cqw; border: 1px solid rgba(255, 255, 255, 0.14); border-radius: 2cqw; background: rgba(255, 255, 255, 0.05); font-size: 1.7cqw; font-weight: 700; color: #fff; }
+.obr-s2.is-on .obr-s2-main { animation: obr-in 0.55s var(--obr-ease) both; animation-delay: 0.15s; }
+.obr-s2.is-on .obr-s2-stream, .obr-s2.is-on .obr-s2-lobby { animation: obr-slide 0.8s both; animation-delay: 0.85s; }
+.obr-s2.is-on .obr-s2-lobby { animation-delay: 1.15s; }
+@keyframes obr-slide {
+  0% { opacity: 0; transform: translate(-60%, 0) scale(0.82); animation-timing-function: ease-in; }
+  45% { opacity: 1; transform: translate(-12%, -5%) scale(0.96) rotate(-2deg); animation-timing-function: ease-out; }
+  78% { transform: translate(1.5%, 0) scale(1.01) rotate(0.4deg); animation-timing-function: ease-in-out; }
+  100% { opacity: 1; transform: none; }
 }
-.obf-chip i { width: 6px; height: 6px; border-radius: 50%; background: #fff; }
-@keyframes obf-chip {
-  0%, 13% { opacity: 0; transform: translate(-50%, 0) scale(0.6); animation-timing-function: ease-in; }
-  14.5% { opacity: 1; transform: translate(-50%, 2px) scale(0.55, 0.5); animation-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1); }
-  17% { opacity: 1; transform: translate(-50%, -3px) scale(1.08, 1.1); animation-timing-function: ease-out; }
-  19%, 23.5% { opacity: 1; transform: translate(-50%, 0) scale(1); animation-timing-function: ease-in; }
-  27.5% { opacity: 1; transform: translate(calc(-50% + 4cqw), calc(14px + 7cqw)) rotate(-5deg) scale(1.02); animation-timing-function: ease-out; }
-  31.5% { opacity: 1; transform: translate(-50%, calc(44px + 18cqw)) rotate(0deg) scale(0.85); }
-  34%, 100% { opacity: 0; transform: translate(-50%, calc(44px + 18cqw)) scale(1.5); }
+.obr-s2.is-on .obr-third { animation: obr-in 0.45s var(--obr-ease) both; animation-delay: 1.7s; }
+.obr-s2.is-on .obr-s2-lobby p, .obr-s2.is-on .obr-s2-lobby b { animation: obr-fade 0.5s ease-out both; animation-delay: 1.9s; }
+@keyframes obr-fade { from { opacity: 0; } }
+.obr-s2.is-on .obr-pills span { animation: obr-pop 0.4s ease-out both; animation-delay: 2.4s; }
+.obr-s2.is-on .obr-pills span:nth-child(2) { animation-delay: 2.55s; }
+.obr-s2.is-on .obr-pills span:nth-child(3) { animation-delay: 2.7s; }
+.obr-s2.is-on .obr-pills span:nth-child(4) { animation-delay: 2.85s; }
+
+/* 3 · songs follow the singers: the live slide moves on line by line, the
+   ring walks the slide list */
+.obr-s3-live { left: 4cqw; top: 6cqw; width: 60cqw; aspect-ratio: 16 / 9; background: radial-gradient(120% 100% at 70% 10%, #3c4fa8 0%, #1d2455 55%, #0e1230 100%); }
+.obr-s3-live p { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; margin: 0; padding: 0 5cqw; text-align: center; font-size: 3.6cqw; font-weight: 600; line-height: 1.25; opacity: 0; }
+.obr-s3-live p:last-child { opacity: 1; }
+.obr-s3-side { left: 68cqw; top: 6cqw; width: 28cqw; height: 33.75cqw; padding: 2cqw; display: flex; flex-direction: column; justify-content: space-between; }
+.obr-s3-side .obr-bars { height: 6cqw; }
+.obr-switch { display: flex; align-items: center; gap: 1cqw; font-size: 1.7cqw; font-weight: 600; color: #fff; }
+.obr-switch i { position: relative; width: 4.4cqw; height: 2.5cqw; border-radius: 1.3cqw; background: var(--brand); }
+.obr-switch i::after { content: ''; position: absolute; top: 0.3cqw; left: 2.2cqw; width: 1.9cqw; height: 1.9cqw; border-radius: 50%; background: #fff; }
+.obr-thumbs { position: absolute; left: 4cqw; right: 4cqw; top: 44cqw; display: grid; grid-template-columns: repeat(4, 1fr); gap: 2cqw; }
+.obr-thumbs i { aspect-ratio: 16 / 9; display: flex; align-items: center; justify-content: center; border-radius: 0.9cqw; background: linear-gradient(160deg, #2c3a80, #121738); }
+.obr-thumbs s { padding: 0 0.8cqw; font-size: 1.3cqw; font-weight: 600; text-decoration: none; text-align: center; color: rgba(255, 255, 255, 0.85); }
+/* the ring sits on a quarter of the row and steps one slide at a time */
+.obr-ring { position: absolute; left: 0; top: 0; width: calc((100% - 6cqw) / 4); aspect-ratio: 16 / 9; box-sizing: border-box; border: 0.4cqw solid var(--brand); border-radius: 1.1cqw; box-shadow: 0 0 2cqw rgba(245, 48, 26, 0.5); transform: translateX(calc(300% + 6cqw)); }
+.obr-s3.is-on .obr-s3-live p { animation: obr-pass 1.05s var(--obr-ease) both; }
+.obr-s3.is-on .obr-s3-live p:nth-child(2) { animation-delay: 0.95s; }
+.obr-s3.is-on .obr-s3-live p:nth-child(3) { animation-delay: 1.9s; }
+.obr-s3.is-on .obr-s3-live p:nth-child(4) { animation: obr-in 0.45s var(--obr-ease) both; animation-delay: 2.85s; }
+.obr-s3.is-on .obr-ring { animation: obr-ring 3s both; }
+@keyframes obr-ring {
+  0%, 28% { transform: none; animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); }
+  34%, 60% { transform: translateX(calc(100% + 2cqw)); animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); }
+  66%, 92% { transform: translateX(calc(200% + 4cqw)); animation-timing-function: cubic-bezier(0.65, 0, 0.35, 1); }
+  98%, 100% { transform: translateX(calc(300% + 6cqw)); }
 }
 
-/* the outputs: projector (64 %) and a column of two smaller screens */
-.obf-row { position: relative; display: grid; grid-template-columns: 64% 1fr; gap: 3cqw; margin-top: 42px; }
-.obf-screen { position: relative; overflow: hidden; border-radius: 10px; background: #141418; box-shadow: 0 18px 44px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.07); }
-.obf-tag { position: absolute; z-index: 2; top: 7px; left: 8px; padding: 2px 6px; border-radius: 4px; background: rgba(0, 0, 0, 0.4); font-size: 8px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 255, 255, 0.85); }
-.obf-main {
-  z-index: 2; aspect-ratio: 16 / 9; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.6cqw; padding: 0 5cqw; text-align: center;
-  animation: obf-main var(--obf) cubic-bezier(0.65, 0, 0.35, 1) infinite;
-}
-/* centred while it is the only screen, steps left as the others arrive */
-@keyframes obf-main { 0%, 50% { transform: translateX(28.125%); } 57%, 94% { transform: none; } 100% { transform: translateX(28.125%); } }
-.obf-main::before { content: ''; position: absolute; inset: 0; background: radial-gradient(120% 90% at 30% 20%, #FF5A3D 0%, #F5301A 35%, #8E1407 100%); animation: obf-theme var(--obf) ease-out infinite; }
-@keyframes obf-theme { 0%, 31% { opacity: 0; transform: scale(1.12); } 35%, 91% { opacity: 1; transform: none; } 96%, 100% { opacity: 0; transform: none; } }
-.obf-verse, .obf-ref { position: relative; margin: 0; color: #fff; }
-.obf-verse { font-size: 3cqw; font-weight: 600; line-height: 1.3; }
-.obf-verse span { display: inline-block; animation: obf-rise var(--obf) cubic-bezier(0.2, 0.7, 0.2, 1) infinite both; animation-delay: 3.4s; }
-.obf-verse span + span { animation-delay: 3.7s; }
-.obf-ref { font-size: 1.7cqw; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; opacity: 0.9; animation: obf-rise var(--obf) cubic-bezier(0.2, 0.7, 0.2, 1) infinite both; animation-delay: 4s; }
-/* (own clock: starts at its delay; gone again before the loop restarts) */
-@keyframes obf-rise { 0% { opacity: 0; transform: translateY(1.6cqw); } 4%, 52% { opacity: 1; transform: none; } 56%, 100% { opacity: 0; transform: none; } }
+/* 4 · any Bible, by voice: the call is heard, KJV gives way to NIV, and
+   Yoruba joins beside it */
+.obr-s4-say { left: 4cqw; right: 4cqw; top: 5cqw; height: 9cqw; padding: 0 2.4cqw; display: flex; align-items: center; gap: 2cqw; }
+.obr-s4-say p { margin: 0; font-size: 2.4cqw; color: var(--text-2); }
+.obr-s4-screen { left: 4cqw; right: 4cqw; top: 18cqw; bottom: 5cqw; display: grid; grid-template-columns: 1fr 1fr; }
+.obr-s4-col { position: relative; display: flex; flex-direction: column; justify-content: center; gap: 1.2cqw; padding: 0 3.6cqw; }
+.obr-s4-col p { margin: 0; font-size: 2.6cqw; font-weight: 600; line-height: 1.3; }
+.obr-s4-col b { position: relative; font-size: 1.35cqw; letter-spacing: 0.16em; text-transform: uppercase; opacity: 0.9; }
+/* KJV and NIV share one place; KJV rests hidden (the last frame is NIV) */
+.obr-swap { display: grid; }
+.obr-swap > * { grid-area: 1 / 1; }
+.obr-swap .obr-kjv { opacity: 0; }
+.obr-yo { border-left: 1px solid rgba(255, 255, 255, 0.25); }
+.obr-yo p { font-size: 2.3cqw; }
+.obr-s4.is-on mark { animation: obr-mark 0.4s ease-out both; animation-delay: 1s; }
+@keyframes obr-mark { from { background: transparent; color: var(--text-2); font-weight: 400; } }
+.obr-s4.is-on .obr-s4-say p { animation: obr-in 0.5s var(--obr-ease) both; animation-delay: 0.2s; }
+.obr-s4.is-on .obr-kjv { animation: obr-out 0.45s ease-in both; animation-delay: 1.5s; }
+@keyframes obr-out { 0% { opacity: 1; transform: none; } 100% { opacity: 0; transform: translateY(-1cqw); } }
+.obr-s4.is-on .obr-niv { animation: obr-in 0.5s var(--obr-ease) both; animation-delay: 1.75s; }
+/* with one column only until Yoruba comes in, then the screen opens up */
+.obr-s4.is-on .obr-s4-screen { animation: obr-split 0.7s cubic-bezier(0.65, 0, 0.35, 1) both; animation-delay: 2.6s; }
+@keyframes obr-split { from { grid-template-columns: 1fr 0fr; } }
+.obr-s4.is-on .obr-yo { animation: obr-fade 0.5s ease-out both; animation-delay: 2.9s; }
+/* the second screen walks through every language pack, one at a time */
+.obr-langs { display: grid; }
+.obr-langs > div { grid-area: 1 / 1; display: flex; flex-direction: column; justify-content: center; gap: 1.2cqw; opacity: 0; }
+.obr-langs > div:last-child { opacity: 1; }
+.obr-s4.is-on .obr-langs > div { animation: obr-pass 1.35s var(--obr-ease) both; animation-delay: calc(3s + var(--k, 0) * 1.25s); }
+.obr-s4.is-on .obr-langs > div:last-child { animation: obr-in 0.5s var(--obr-ease) both; animation-delay: calc(3s + 7 * 1.25s); }
+.obr-langs > div:nth-child(2) { --k: 1; } .obr-langs > div:nth-child(3) { --k: 2; } .obr-langs > div:nth-child(4) { --k: 3; }
+.obr-langs > div:nth-child(5) { --k: 4; } .obr-langs > div:nth-child(6) { --k: 5; } .obr-langs > div:nth-child(7) { --k: 6; }
 
-.obf-side { display: flex; flex-direction: column; justify-content: space-between; gap: 2cqw; }
-.obf-side .obf-screen { flex: 1; animation: obf-out var(--obf) infinite both; }
-.obf-lobby { animation-delay: 0.3s !important; }
-/* tucked behind the projector, then out along a slight arc, settling */
-@keyframes obf-out {
-  0%, 51% { opacity: 0; transform: translate(-70%, 0) scale(0.8) rotate(0deg); animation-timing-function: ease-in; }
-  55% { opacity: 1; transform: translate(-20%, -6%) scale(0.95) rotate(-2deg); animation-timing-function: ease-out; }
-  59% { opacity: 1; transform: translate(2%, 0) scale(1.01) rotate(0.5deg); animation-timing-function: ease-in-out; }
-  61.5%, 90% { opacity: 1; transform: none; }
-  95%, 100% { opacity: 0; transform: none; }
+/* 5 · bring your library: files land as slides */
+.obr-files { position: absolute; left: 4cqw; top: 6cqw; bottom: 6cqw; width: 30cqw; display: flex; flex-direction: column; justify-content: space-between; }
+.obr-files span { display: flex; align-items: center; gap: 1.4cqw; height: 9.5cqw; padding: 0 1.8cqw; border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 1.4cqw; background: rgba(255, 255, 255, 0.05); font-size: 2cqw; font-weight: 600; color: #fff; }
+.obr-files b { display: flex; align-items: center; justify-content: center; min-width: 6.6cqw; height: 4.6cqw; padding: 0 0.6cqw; border-radius: 0.8cqw; background: rgba(245, 48, 26, 0.18); font-size: 1.6cqw; color: var(--brand); }
+.obr-grid { position: absolute; left: 40cqw; right: 4cqw; top: 6cqw; bottom: 6cqw; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 1.6cqw; }
+.obr-grid i { border-radius: 1cqw; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.06); background: linear-gradient(135deg, #F5301A, #8E1407); }
+.obr-grid i::before { content: ''; display: block; margin: 40% 22% 0; height: 10%; border-radius: 0.4cqw; background: rgba(255, 255, 255, 0.75); }
+.obr-grid i:nth-child(2), .obr-grid i:nth-child(7) { background: linear-gradient(160deg, #2c3a80, #121738); }
+.obr-grid i:nth-child(3), .obr-grid i:nth-child(8) { background: linear-gradient(180deg, #f6f1e7, #e2d8c3); }
+.obr-grid i:nth-child(3)::before, .obr-grid i:nth-child(8)::before { background: rgba(42, 33, 24, 0.55); }
+.obr-grid i:nth-child(4), .obr-grid i:nth-child(9) { background: linear-gradient(160deg, #3b4150, #15171d); }
+.obr-grid i:nth-child(6) { background: linear-gradient(135deg, #0f6b5c, #06302a); }
+.obr-s5.is-on .obr-files span { animation: obr-file 0.9s both; }
+.obr-s5.is-on .obr-files span:nth-child(2) { animation-delay: 0.35s; }
+.obr-s5.is-on .obr-files span:nth-child(3) { animation-delay: 0.7s; }
+.obr-s5.is-on .obr-files span:nth-child(4) { animation-delay: 1.05s; }
+/* each file arrives from the left, nudges right as it is sent, settles */
+@keyframes obr-file {
+  0% { opacity: 0; transform: translateX(-3cqw); animation-timing-function: ease-out; }
+  40% { opacity: 1; transform: none; animation-timing-function: ease-in-out; }
+  62% { transform: translateX(1.6cqw); border-color: rgba(245, 48, 26, 0.6); animation-timing-function: ease-out; }
+  100% { opacity: 1; transform: none; }
 }
-/* livestream: a camera picture with a lower third */
-.obf-stream { background: linear-gradient(160deg, #3b4150 0%, #20242d 55%, #15171d 100%); }
-.obf-stream::before { content: ''; position: absolute; left: 38%; bottom: 0; width: 26%; height: 72%; border-radius: 50% 50% 8px 8px / 30% 30% 8px 8px; background: rgba(255, 255, 255, 0.07); }
-.obf-third { position: absolute; left: 6%; right: 6%; bottom: 9%; display: flex; flex-direction: column; gap: 2px; padding: 0.8cqw 1.4cqw; border-left: 2px solid var(--brand); border-radius: 3px; background: rgba(10, 10, 14, 0.82); animation: obf-third var(--obf) cubic-bezier(0.2, 0.7, 0.2, 1) infinite; }
-@keyframes obf-third { 0%, 59% { opacity: 0; transform: translateY(70%); } 64%, 100% { opacity: 1; transform: none; } }
-.obf-third p { margin: 0; font-size: 1.75cqw; line-height: 1.25; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.obf-third b { font-size: 1.3cqw; letter-spacing: 0.14em; text-transform: uppercase; color: var(--brand); }
-/* lobby: a quiet light theme */
-.obf-lobby { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.6cqw; padding: 0 2.4cqw; text-align: center; background: linear-gradient(180deg, #f6f1e7, #e9e1d0); }
-.obf-lobby .obf-tag { background: rgba(0, 0, 0, 0.55); }
-.obf-lobby p, .obf-lobby b { margin: 0; color: #2a2118; }
-.obf-lobby p, .obf-lobby b { animation: obf-ink var(--obf) ease-out infinite both; }
-.obf-lobby p { font-family: Georgia, 'Times New Roman', serif; font-size: 2.2cqw; font-style: italic; line-height: 1.25; }
-.obf-lobby b { font-size: 1.3cqw; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(42, 33, 24, 0.7); animation-delay: 0.15s; }
-@keyframes obf-ink { 0%, 64% { opacity: 0; } 69%, 92% { opacity: 1; } 96%, 100% { opacity: 0; } }
+.obr-s5.is-on .obr-grid i { animation: obr-pop 0.45s ease-out both; animation-delay: calc(0.6s + var(--k, 0) * 0.17s); }
+.obr-grid i:nth-child(2) { --k: 1; } .obr-grid i:nth-child(3) { --k: 2; } .obr-grid i:nth-child(4) { --k: 3; }
+.obr-grid i:nth-child(5) { --k: 4; } .obr-grid i:nth-child(6) { --k: 5; } .obr-grid i:nth-child(7) { --k: 6; }
+.obr-grid i:nth-child(8) { --k: 7; } .obr-grid i:nth-child(9) { --k: 8; }
+
+/* 6 · sermon notes: the page writes itself */
+.obr-doc { left: 16cqw; right: 16cqw; top: 5cqw; bottom: 5cqw; padding: 3.4cqw 4.4cqw; display: flex; flex-direction: column; gap: 2.6cqw; background: #f7f5f0; border: 0; box-shadow: 0 2.4cqw 6cqw rgba(0, 0, 0, 0.5); }
+.obr-doc h4 { margin: 0; font-family: Georgia, 'Times New Roman', serif; font-size: 4.2cqw; font-weight: 700; color: #1b1712; }
+.obr-doc p { display: flex; flex-wrap: wrap; align-items: center; gap: 1cqw; margin: 0; font-size: 2.6cqw; font-weight: 600; color: #2a2118; }
+.obr-doc p b { padding: 0.3cqw 1cqw; border-radius: 1cqw; background: rgba(245, 48, 26, 0.12); font-size: 1.6cqw; color: #c8240f; }
+.obr-doc .obr-q { padding-left: 1.6cqw; border-left: 0.4cqw solid var(--brand); font-family: Georgia, 'Times New Roman', serif; font-style: italic; font-weight: 400; color: #4a3f33; }
+.obr-s6.is-on .obr-doc { animation: obr-in 0.55s var(--obr-ease) both; }
+.obr-s6.is-on .obr-doc > * { animation: obr-write 0.55s var(--obr-ease) both; animation-delay: calc(0.45s + var(--k, 0) * 0.5s); }
+.obr-doc > :nth-child(2) { --k: 0.4; } .obr-doc > :nth-child(3) { --k: 1; } .obr-doc > :nth-child(4) { --k: 2; }
+.obr-doc > :nth-child(5) { --k: 3; } .obr-doc > :nth-child(6) { --k: 4; } .obr-doc > :nth-child(7) { --k: 5; }
+.obr-doc .obr-pr { margin-top: auto; padding-top: 1.6cqw; border-top: 1px solid rgba(42, 33, 24, 0.15); font-weight: 400; color: #4a3f33; }
+@keyframes obr-write { from { opacity: 0; clip-path: inset(0 100% 0 0); } to { opacity: 1; clip-path: inset(0 0 0 0); } }
+
+/* 7 · offline: the connection drops, the listening carries on */
+.obr-offline { position: absolute; left: 0; right: 0; top: 7cqw; display: flex; flex-direction: column; align-items: center; gap: 1.6cqw; }
+.obr-offline svg { width: 10cqw; height: 10cqw; fill: none; stroke: #fff; stroke-width: 1.6; stroke-linecap: round; }
+.obr-offline circle { fill: #fff; stroke: none; }
+.obr-offline .obr-slash { stroke: var(--brand); stroke-width: 2; stroke-dasharray: 26; }
+.obr-offline span { padding: 0.8cqw 1.8cqw; border-radius: 2cqw; background: rgba(255, 255, 255, 0.07); font-size: 1.8cqw; font-weight: 700; color: #fff; }
+.obr-s7-tx { left: 10cqw; right: 10cqw; top: 33cqw; height: 10cqw; padding: 0 2.6cqw; display: flex; align-items: center; gap: 2cqw; }
+.obr-s7-tx p { margin: 0; font-size: 2.3cqw; color: var(--text-2); }
+.obr-s7-chip { position: absolute; left: 50%; top: 46.5cqw; transform: translateX(-50%); }
+.obr-s7.is-on .obr-offline svg { animation: obr-in 0.5s var(--obr-ease) both; }
+.obr-s7.is-on .obr-slash { animation: obr-draw 0.5s ease-in-out both; animation-delay: 0.6s; }
+@keyframes obr-draw { from { stroke-dashoffset: 26; } }
+.obr-s7.is-on .obr-offline span { animation: obr-in 0.45s var(--obr-ease) both; animation-delay: 1s; }
+.obr-s7.is-on .obr-s7-tx { animation: obr-in 0.5s var(--obr-ease) both; animation-delay: 1.5s; }
+.obr-s7.is-on .obr-s7-tx p { animation: obr-write 1.2s steps(24) both; animation-delay: 1.8s; }
+.obr-s7.is-on .obr-s7-chip { animation: obr-chip-in 0.5s ease-out both; animation-delay: 3.1s; }
+@keyframes obr-chip-in { 0% { opacity: 0; transform: translateX(-50%) scale(0.6); } 40% { opacity: 1; transform: translateX(-50%) scale(0.55, 0.5); } 75% { transform: translateX(-50%) scale(1.08, 1.1); } 100% { opacity: 1; transform: translateX(-50%); } }
 
 /* 2 · how it listens: two choice cards */
 .ob-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 26px; max-width: 640px; background: none; border: none; padding: 0; }
