@@ -27,6 +27,20 @@ pub fn router() -> Router<Shared> {
         .route("/api/translate-model/install", post(crate::mt::install_route))
         .route("/api/translate-model/remove", post(crate::mt::remove_route))
         .route("/api/theme/import-protheme", post(theme_import))
+        .route("/api/vocabulary/learned", get(learned_terms))
+        .route("/api/vocabulary/forget", post(forget_term))
+}
+
+/// Names learned from past services (Settings → Church vocabulary).
+async fn learned_terms(State(app): State<Shared>) -> Json<Value> {
+    Json(json!({ "terms": crate::vocabulary::learned_all(&app) }))
+}
+
+async fn forget_term(State(app): State<Shared>, Json(b): Json<Value>) -> Json<Value> {
+    if let Some(t) = b["term"].as_str() {
+        crate::vocabulary::forget(&app, t);
+    }
+    Json(json!({ "ok": true, "terms": crate::vocabulary::learned_all(&app) }))
 }
 
 fn unprocessable(e: crate::import::ImportError) -> axum::response::Response {

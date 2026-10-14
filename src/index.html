@@ -1624,6 +1624,13 @@
                     <label class="setting-label" for="custom-keyterms">Church vocabulary</label>
                     <textarea id="custom-keyterms" class="setting-input" rows="3" placeholder="Pastor Mensah&#10;Grace Chapel&#10;Shiloh"></textarea>
                         <p class="setting-hint">Names transcription may miss — your pastor, your church, local places. One per line, up to 40. Applies from the next Start Listening.</p>
+                    <!-- Names Kairo picked up from past services (vocabulary.rs):
+                         heard in 2+ services; the top 20 are passed to Deepgram
+                         as hints with the list above. app.js renderLearnedTerms. -->
+                    <div id="learned-keyterms" class="learned-terms" hidden>
+                        <span class="learned-terms-label">Learned from your services</span>
+                        <div class="learned-terms-list" id="learned-keyterms-list"></div>
+                    </div>
                 </div>
                 </div>
             </div>
