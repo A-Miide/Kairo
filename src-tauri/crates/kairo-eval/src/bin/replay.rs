@@ -113,7 +113,9 @@ fn ground_truth(k: &Knowledge, fixture: &Value) -> Vec<GroundTruth> {
         } else if let (Some(a), Some(b)) = (g["verseStart"].as_u64(), g["verseEnd"].as_u64()) {
             (a..=b).filter_map(id).collect()
         } else if let Some(r) = g["ranges"].as_array() {
-            r.iter().flat_map(|x| (x["start"].as_u64().unwrap_or(1)..=x["end"].as_u64().unwrap_or(0)).filter_map(id)).collect()
+            // The fixtures spell them verseStart/verseEnd (start/end accepted too).
+            let n = |x: &Value, a: &str, b: &str| x[a].as_u64().or_else(|| x[b].as_u64());
+            r.iter().flat_map(|x| (n(x, "verseStart", "start").unwrap_or(1)..=n(x, "verseEnd", "end").unwrap_or(0)).filter_map(id)).collect()
         } else {
             Vec::new()
         };
