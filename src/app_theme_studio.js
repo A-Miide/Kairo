@@ -1061,7 +1061,52 @@ function tsPlayAnimations() { tsPlayBuilds = true; renderPreview(); }
 let tsItemCtx = null; // { item, slideIndex, baseLook } — set only while tsMode === 'item'
 let itemUndoStack = [], itemRedoStack = [], itemPendingCheckpoint = null, itemAutosaveTimer = null;
 
+// What each theme looked like when last saved (minus its name and group,
+// which don't change how it looks) — so the first edit after that can leave
+// decks using it on the version they had (service.js keepThemeVersion).
+const savedThemeJson = new Map();
+const themeContentJson = (l) => { const { name, groupId, groupName, ...rest } = l; return JSON.stringify(rest); };
+function themeHash(str) {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+  return `${(h >>> 0).toString(36)}${str.length.toString(36)}`;
+}
+function rememberSavedThemes() { looks.forEach(l => savedThemeJson.set(l.id, themeContentJson(l))); }
+function keepDeckThemeVersions() {
+  const S = window.KairoService;
+  for (const l of looks) {
+    const now = themeContentJson(l);
+    const before = savedThemeJson.get(l.id);
+    if (before != null && before !== now && S?.keepThemeVersion) S.keepThemeVersion(l.id, themeHash(before), before);
+    savedThemeJson.set(l.id, now);
+  }
+}
+// "Used by 3 decks · 2 keep the earlier version · Update all", under the
+// selected theme's name.
+function refreshThemeUsage() {
+  const el = document.getElementById('ts-theme-usage');
+  const S = window.KairoService;
+  if (!el || !activeLook || !S?.themeUsage) return;
+  const u = S.themeUsage(activeLook.id);
+  el.innerHTML = '';
+  if (!u.decks) return;
+  el.append(`Used by ${u.decks} deck${u.decks === 1 ? '' : 's'}`);
+  if (u.older) {
+    el.append(` · ${u.older} on the earlier version `);
+    const btn = document.createElement('button');
+    btn.className = 'ts-theme-usage-btn';
+    btn.textContent = u.older === 1 ? 'Update it' : 'Update all';
+    btn.title = 'Bring the decks still on the earlier version of this theme up to date';
+    btn.addEventListener('click', (e) => { e.stopPropagation(); S.updateToCurrentTheme(null, activeLook.id); refreshThemeUsage(); });
+    el.appendChild(btn);
+  }
+}
+
+rememberSavedThemes(); // the themes as loaded, before any edit this session
+
 function saveLooks() {
+  keepDeckThemeVersions();
+  refreshThemeUsage();
   // A large embedded layer (e.g. an uncapped video data: URI — see
   // loadVideoFile's own size cap) can push `looks` past the origin's
   // storage quota; setItem throws SYNCHRONOUSLY. Uncaught, that used to
@@ -1128,7 +1173,19 @@ function buildLookRow(look, indented) {
   });
 
   item.appendChild(thumb);
-  item.appendChild(name);
+  if (look.id === activeLook?.id) {
+    const label = document.createElement('div');
+    label.className = 'ts-theme-label';
+    label.appendChild(name);
+    const usage = document.createElement('div');
+    usage.className = 'ts-theme-usage';
+    usage.id = 'ts-theme-usage';
+    label.appendChild(usage);
+    item.appendChild(label);
+    queueMicrotask(refreshThemeUsage);
+  } else {
+    item.appendChild(name);
+  }
   item.appendChild(dup);
 
   // Built-ins have no delete affordance at all — duplicate is the only
@@ -5871,9 +5928,10 @@ document.getElementById('ts-item-theme-picker-btn')?.addEventListener('click', (
 function resolveItemBaseLook(item, slideIndex) {
   // A slide of a Slides deck can carry its own theme (block.themeId).
   const slideTheme = slideIndex != null ? window.KairoService?.slideThemeIdOf?.(item, slideIndex) : null;
-  const own = slideTheme ? looks.find(l => l.id === slideTheme) : null;
+  const versionOf = (id) => window.KairoService?.themeLookFor ? window.KairoService.themeLookFor(item, id) : looks.find(l => l.id === id);
+  const own = slideTheme ? versionOf(slideTheme) : null;
   if (own) return own;
-  const explicit = item.themeId ? looks.find(l => l.id === item.themeId) : null;
+  const explicit = item.themeId ? versionOf(item.themeId) : null;
   if (explicit) return explicit;
   // A fresh timer segment has no themeId yet, and falling through to the
   // output's own assigned theme (built for verse/reference bindings) meant
