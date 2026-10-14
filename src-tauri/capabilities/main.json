@@ -38,6 +38,7 @@
     "allow-ndi-update",
     "allow-ndi-update-media",
     "allow-ndi-update-timer",
+    "allow-output-capture-supported",
     "allow-syphon-available",
     "allow-syphon-start",
     "allow-syphon-stop",

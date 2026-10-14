@@ -3,6 +3,7 @@
 // Dev mode: uses system node (beforeDevCommand starts it externally).
 // Production: uses the node binary bundled via externalBin.
 
+mod capture;
 mod ndi;
 #[cfg(target_os = "macos")]
 mod syphon;
@@ -310,7 +311,14 @@ fn pick_free_port() -> u16 {
 }
 
 /// 32 bytes of OS entropy → URL-safe base64. ~43 chars, ~256 bits of entropy.
+/// KAIRO_SERVER_TOKEN (32+ characters) replaces it, for driving a test run
+/// from scripts; whoever can set this process's environment controls it anyway.
 fn generate_auth_token() -> String {
+    if let Ok(t) = std::env::var("KAIRO_SERVER_TOKEN") {
+        if t.len() >= 32 {
+            return t;
+        }
+    }
     let mut bytes = [0u8; 32];
     if getrandom::getrandom(&mut bytes).is_err() {
         // Fallback: never happens on supported platforms, but if the OS RNG
@@ -624,6 +632,74 @@ fn ndi_update_timer(app: AppHandle, id: String, text: String) -> Result<(), Stri
     Ok(())
 }
 
+// ── Output capture (capture.rs) ───────────────────────────────────────────
+// An NDI / Syphon output's hidden display window (`kairo-cap-<id>`,
+// display.html?capture=1) calls this whenever what it shows has changed; the
+// frame goes to that output's senders. A change while a capture is running
+// is coalesced into one more capture after it.
+#[derive(Default)]
+struct CaptureState {
+    busy: Mutex<std::collections::HashMap<String, Option<u32>>>,
+}
+
+#[tauri::command]
+fn output_capture_supported() -> bool {
+    capture::supported()
+}
+
+#[tauri::command]
+fn output_capture(app: AppHandle, id: String, width: u32, height: u32, fade_ms: Option<u32>) -> Result<(), String> {
+    let fade = fade_ms.unwrap_or(0);
+    {
+        let state = app.state::<CaptureState>();
+        let mut busy = state.busy.lock().map_err(|e| e.to_string())?;
+        if let Some(pending) = busy.get_mut(&id) {
+            *pending = Some(pending.unwrap_or(0).max(fade));
+            return Ok(());
+        }
+        busy.insert(id.clone(), None);
+    }
+    run_capture(app, id, width.clamp(16, 7680), height.clamp(16, 4320), fade);
+    Ok(())
+}
+
+fn run_capture(app: AppHandle, id: String, width: u32, height: u32, fade: u32) {
+    let Some(window) = app.get_webview_window(&format!("kairo-cap-{id}")) else {
+        if let Ok(mut b) = app.state::<CaptureState>().busy.lock() { b.remove(&id); }
+        return;
+    };
+    let (app2, id2) = (app.clone(), id.clone());
+    let _ = capture::snapshot(&window, width, height, move |r| {
+        match r {
+            Ok(frame) => {
+                // Diagnostics: KAIRO_CAPTURE_DUMP=<dir> saves each frame as a PNG.
+                if let Some(dir) = std::env::var_os("KAIRO_CAPTURE_DUMP") {
+                    let path = std::path::Path::new(&dir).join(format!("{id2}-{}.png", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis())));
+                    let rgba: Vec<u8> = frame.unpremultiplied().chunks_exact(4).flat_map(|p| [p[2], p[1], p[0], p[3]]).collect();
+                    if let Some(img) = image::RgbaImage::from_raw(frame.width, frame.height, rgba) { let _ = img.save(&path); }
+                }
+                let frame = Arc::new(frame);
+                if let Ok(h) = app2.state::<NdiState>().handle_for(&id2) {
+                    if let Ok(h) = h.lock() { h.update_frame(frame.clone(), fade); }
+                }
+                #[cfg(target_os = "macos")]
+                if let Ok(h) = app2.state::<SyphonState>().handle_for(&id2) {
+                    if let Err(e) = syphon::update_frame(frame.clone(), fade, h) { eprintln!("[Capture] Syphon: {e}"); }
+                }
+            }
+            Err(e) => eprintln!("[Capture] {id2}: {e}"),
+        }
+        // One more if something changed meanwhile.
+        let next = app2.state::<CaptureState>().busy.lock().ok().and_then(|mut b| match b.get(&id2) {
+            Some(Some(f)) => { let f = *f; b.insert(id2.clone(), None); Some(f) }
+            _ => { b.remove(&id2); None }
+        });
+        if let Some(f) = next {
+            run_capture(app2, id2, width, height, f);
+        }
+    });
+}
+
 // ── Syphon commands (macOS only) ──────────────────────────────────────────
 // Syphon.framework is bundled with the app, so unlike NDI there's no SDK to
 // install. The framework requires a CGL context — the syphon module handles
@@ -794,7 +870,8 @@ pub fn run() {
         )
         .manage(ServerProcess(Arc::new(Mutex::new(None))))
         .manage(server_config)
-        .manage(NdiState(Arc::new(Mutex::new(std::collections::HashMap::new()))));
+        .manage(NdiState(Arc::new(Mutex::new(std::collections::HashMap::new()))))
+        .manage(CaptureState::default());
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
@@ -816,6 +893,8 @@ pub fn run() {
             ndi_update,
             ndi_update_media,
             ndi_update_timer,
+            output_capture,
+            output_capture_supported,
             syphon_available,
             syphon_start,
             syphon_stop,

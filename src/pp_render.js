@@ -68,11 +68,15 @@
   function fontCss(run, base) {
     const ps = run.font || base.name || '';
     const family = base.family && ps.startsWith(base.family.replace(/\s+/g, '')) ? base.family : (ps.split('-')[0] || base.family || '');
-    const alias = fontAlias(ps);
+    const weight = impliedWeight(ps, run.b || base.bold);
+    // The named face only when it already is that weight: "Montserrat-Regular"
+    // marked bold is the family's bold, not Regular bolded by the engine
+    // (WebKit fakes bold by overprinting offset copies — visible ghosts).
+    const alias = weight === impliedWeight(ps, false) ? fontAlias(ps) : null;
     const fam = [alias && `"${alias}"`, family && `"${family}"`, base.family && `"${base.family}"`, 'sans-serif'].filter(Boolean);
     return {
       family: [...new Set(fam)].join(', '),
-      weight: impliedWeight(ps, run.b || base.bold),
+      weight,
       italic: !!(run.i || base.italic || /italic|oblique/i.test(ps)),
     };
   }

@@ -35,6 +35,8 @@ fn main() {
                 "ndi_update",
                 "ndi_update_media",
                 "ndi_update_timer",
+                "output_capture",
+                "output_capture_supported",
                 "syphon_available",
                 "syphon_start",
                 "syphon_stop",

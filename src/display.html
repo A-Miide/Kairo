@@ -298,6 +298,16 @@
         </div>
     </div>
 
+    <script>
+    // Capture mode (?capture=1, see "Capture mode" below): the hidden window
+    // behind an NDI / Syphon output sits off-screen, where WebKit never fires
+    // requestAnimationFrame — text fitting and the end of a change would never
+    // run. Frames come from timers there instead, before any script uses them.
+    if (new URLSearchParams(location.search).get('capture') === '1') {
+        window.requestAnimationFrame = (cb) => setTimeout(() => cb(performance.now()), 16);
+        window.cancelAnimationFrame = (id) => clearTimeout(id);
+    }
+    </script>
     <script src="client_common.js"></script>
     <script src="design_space.js"></script>
     <script src="word_split.js"></script>
@@ -314,6 +324,8 @@
     // renders exactly what the real screen shows, but stays silent — no media
     // status reports, no audio, never touches the app window.
     const MONITOR     = params.get('monitor') === '1';
+    // The hidden window behind an NDI / Syphon output (see "Capture mode" below).
+    const CAPTURE     = params.get('capture') === '1';
     if (MONITOR) document.documentElement.classList.add('is-monitor');
     function sendToServer(msg) { if (MONITOR) return; try { ws?.send(JSON.stringify(msg)); } catch {} }
     const legacyLayout  = params.get('layout') || 'fullscreen';
@@ -1719,6 +1731,12 @@
     }
 
     // ── Show verse (smart update: re-render on first verse, in-place after) ──
+    // Does the theme on air bind slide text into an imported ProPresenter box?
+    function lookHasPpText() {
+        const layers = (activeLook || FALLBACK_LOOK).layers || [];
+        return layers.some(l => l && l.type === 'pp' && l.visible !== false && l.binding && l.binding !== 'none');
+    }
+
     function showVerse(text, ref, isRangeActive = false, translatedText = '', styleByLayerId = {}, timerText = '') {
         const wasEmpty = !currentVerseText && !currentVerseRef && !currentTimerText;
         // Also compare the style override — the exact same slide re-sent
@@ -1746,6 +1764,13 @@
 
         if (wasEmpty || stage.children.length === 0) {
             // First verse or blank stage — do a full render with fade
+            renderStage(text, ref, true, translatedText, currentStyleByLayerId, timerText);
+        } else if (lookHasPpText()) {
+            // An imported ProPresenter text box (pp_render.js) is its own
+            // run-by-run layout, not a [data-binding] element the in-place
+            // swap below could update — that swap left the previous slide's
+            // words on screen. Rebuild instead (renderStage keeps the
+            // transition).
             renderStage(text, ref, true, translatedText, currentStyleByLayerId, timerText);
         } else if (styleChanged) {
             // Text unchanged but the layout override changed — the in-place
@@ -2088,6 +2113,7 @@
         if (msg.type === 'output-transition') {
             if (msg.animation) outputAnimation = msg.animation;
             if (typeof msg.speed === 'number' && msg.speed > 0) outputAnimationSpeed = msg.speed;
+            if (CAPTURE) captureTransition();
             return;
         }
 
@@ -2492,6 +2518,57 @@
     // short timer, not requestAnimationFrame — an invisible surface never
     // gets a compositing pass to synchronize against, so rAF here would
     // simply never fire (confirmed the hard way on the main window).
+    // ── Capture mode (?capture=1) ──────────────────────────────────────
+    // The hidden window behind an NDI / Syphon output (src/output_capture.js,
+    // src-tauri capture.rs): it renders this output's theme like a screen
+    // would, and asks the app to snapshot it whenever what it shows changes.
+    // Changes are drawn at once here; the output itself blends old into new
+    // for a Fade (a snapshot takes ~64 ms, too slow to film a transition).
+    // Timers only: a hidden window never gets requestAnimationFrame.
+    let captureFadeMs = 0;
+    function captureTransition() {
+        captureFadeMs = outputAnimation === 'cut' ? 0 : Math.round(300 * outputAnimationSpeed);
+        outputAnimation = 'cut';
+    }
+    if (CAPTURE) {
+        captureTransition();
+        const outputParam = params.get('output') || '';
+        const capW = Math.max(16, parseInt(params.get('w'), 10) || 1920);
+        const capH = Math.max(16, parseInt(params.get('h'), 10) || 1080);
+        const invoke = window.__TAURI__?.core?.invoke;
+        let wait = null, fade = 0;
+        const request = (fadeMs) => {
+            if (!invoke) return;
+            fade = Math.max(fade, fadeMs);
+            clearTimeout(wait);
+            // Long enough for layout, images and fonts of a change to settle.
+            wait = setTimeout(() => {
+                const f = fade; fade = 0;
+                invoke('output_capture', { id: outputParam, width: capW, height: capH, fadeMs: f }).catch(() => {});
+            }, 60);
+        };
+        const timer = document.getElementById('timer-layer');
+        let settle = [];
+        new MutationObserver((records) => {
+            // The timer ticking or a clock isn't a slide change: no fade.
+            const onlyTimer = records.every(r => timer && timer.contains(r.target));
+            request(onlyTimer ? 0 : captureFadeMs);
+            if (!onlyTimer) {
+                // Background images and fonts of a new slide can land after
+                // it's drawn (a CSS background announces nothing): look again.
+                settle.forEach(clearTimeout);
+                settle = [350, 1100].map(ms => setTimeout(() => request(0), ms));
+            }
+        }).observe(document.body, { subtree: true, childList: true, attributes: true, characterData: true });
+        document.addEventListener('load', () => request(0), true);   // images that finish later
+        document.fonts?.ready?.then(() => request(0));
+        // A playing video: as often as a snapshot allows.
+        setInterval(() => {
+            if ([...document.querySelectorAll('video')].some(v => !v.paused && !v.ended)) request(0);
+        }, 70);
+        setTimeout(() => request(0), 300);
+    }
+
     setTimeout(() => {
         if (MONITOR) return;   // a monitor copy lives inside the operator window
         const w = window.__TAURI__?.window?.getCurrentWindow?.();
