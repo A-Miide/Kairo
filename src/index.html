@@ -1814,13 +1814,32 @@
                         <h2 class="ob-title">Scripture on screen the moment it&rsquo;s spoken.</h2>
                         <p class="ob-lede">Kairo listens to the sermon and puts up the verse &mdash; cited, read aloud or quoted &mdash; in your theme, on every screen.</p>
                     </div>
-                    <div class="ob-demo" aria-hidden="true">
-                        <div class="ob-demo-mic"><span></span><span></span><span></span><span></span><span></span></div>
-                        <div class="ob-demo-line"><span class="ob-demo-typed">&hellip;as it says in <mark>John 3:16</mark>, for God so loved the world&hellip;</span></div>
-                        <div class="ob-demo-screen">
-                            <span class="ob-demo-live">Live</span>
-                            <div class="ob-demo-verse">For God so loved the world, that he gave his only begotten Son&hellip;</div>
-                            <div class="ob-demo-ref">John 3:16</div>
+                    <!-- Motion graphic (CSS only, one 10 s loop — styles.css "ob-film"):
+                         the sermon is heard, "John 3:16" is caught, the verse lands
+                         on the projector in its theme, then on the livestream and
+                         the lobby, each in its own look. Reduced motion: the last frame. -->
+                    <div class="ob-film" aria-hidden="true">
+                        <div class="obf-listen">
+                            <div class="obf-mic"><i></i><i></i><i></i><i></i><i></i></div>
+                            <p class="obf-words"><span style="--i:0">&hellip;turn</span> <span style="--i:1">with</span> <span style="--i:2">me</span> <span style="--i:3">to</span> <span class="obf-cite"><span style="--i:4">John</span> <span style="--i:5">three</span> <span style="--i:6">sixteen.</span></span> <span style="--i:7">For</span> <span style="--i:8">God</span> <span style="--i:9">so</span> <span style="--i:10">loved</span> <span style="--i:11">the</span> <span style="--i:12">world&hellip;</span></p>
+                        </div>
+                        <div class="obf-chip"><i></i>John 3:16</div>
+                        <div class="obf-row">
+                            <div class="obf-screen obf-main">
+                                <span class="obf-tag">Projector</span>
+                                <p class="obf-verse"><span>For God so loved the world,</span> <span>that he gave his only begotten Son</span></p>
+                                <b class="obf-ref">John 3:16</b>
+                            </div>
+                            <div class="obf-side">
+                                <div class="obf-screen obf-stream">
+                                    <span class="obf-tag">Livestream</span>
+                                    <div class="obf-third"><p>For God so loved the world&hellip;</p><b>John 3:16</b></div>
+                                </div>
+                                <div class="obf-screen obf-lobby">
+                                    <span class="obf-tag">Lobby</span>
+                                    <p>For God so loved the world&hellip;</p><b>John 3:16</b>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </section>

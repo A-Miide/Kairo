@@ -7859,29 +7859,101 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .ob-link { display: inline-block; margin-top: 10px; font-size: 12px; font-weight: 600; color: var(--brand); text-decoration: none; }
 .ob-setup { margin-top: 22px; max-width: 520px; }
 
-/* 1 · the welcome and its live demo (a 7 s loop) */
-.ob-welcome { display: grid; grid-template-columns: 1.05fr 1fr; gap: 40px; align-items: center; }
-.ob-demo { display: flex; flex-direction: column; gap: 14px; }
-.ob-demo-mic { display: flex; gap: 4px; align-items: center; height: 22px; }
-.ob-demo-mic span { width: 4px; height: 100%; border-radius: 2px; background: var(--brand); transform-origin: center; animation: ob-bars 1.1s ease-in-out infinite; }
-.ob-demo-mic span:nth-child(2) { animation-delay: 0.15s; } .ob-demo-mic span:nth-child(3) { animation-delay: 0.3s; }
-.ob-demo-mic span:nth-child(4) { animation-delay: 0.45s; } .ob-demo-mic span:nth-child(5) { animation-delay: 0.6s; }
-@keyframes ob-bars { 0%, 100% { transform: scaleY(0.3); } 50% { transform: scaleY(1); } }
-.ob-demo-line { padding: 12px 14px; border: 1px solid var(--border); border-radius: 10px; background: rgba(255, 255, 255, 0.03); font-size: 14px; color: var(--text-2); white-space: nowrap; overflow: hidden; }
-.ob-demo-typed { display: inline-block; animation: ob-type 7s steps(46) infinite; }
-@keyframes ob-type { 0% { clip-path: inset(0 100% 0 0); } 38%, 100% { clip-path: inset(0 0 0 0); } }
-.ob-demo-line mark { background: transparent; color: #fff; font-weight: 700; border-radius: 4px; padding: 0 3px; animation: ob-mark 7s ease infinite; }
-@keyframes ob-mark { 0%, 22% { background: transparent; } 30%, 92% { background: rgba(245, 48, 26, 0.35); } 100% { background: transparent; } }
-.ob-demo-screen {
-  position: relative; aspect-ratio: 16 / 9; border-radius: 12px; overflow: hidden;
-  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 0 26px; text-align: center;
-  background: linear-gradient(135deg, #F5301A, #9E1608);
-  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.06);
+/* 1 · the welcome and its motion graphic: one 10 s loop told in beats —
+   the sermon streams in word by word (0–2 s), "John three sixteen" is caught
+   and drops as a chip into the projector (1.2–3.3 s), the verse lands in its
+   theme (3.1–4.4 s), the projector steps aside as the livestream and lobby
+   slide out from behind it, each in its own look (5–6.8 s), hold, reset.
+   The un-animated styles are the last frame (what reduced motion shows). */
+.ob-welcome { display: grid; grid-template-columns: 1fr 1.1fr; gap: 40px; align-items: center; }
+.ob-film { --obf: 10s; position: relative; container-type: inline-size; }
+.obf-listen {
+  position: relative; z-index: 2; display: flex; gap: 12px; align-items: flex-start; height: 76px; box-sizing: border-box;
+  padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; background: rgba(255, 255, 255, 0.035);
+  animation: obf-card var(--obf) cubic-bezier(0.2, 0.7, 0.2, 1) infinite;
 }
-.ob-demo-verse { font-size: 17px; font-weight: 500; line-height: 1.35; color: #fff; animation: ob-verse 7s ease infinite; }
-.ob-demo-ref { font-size: 9px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #fff; opacity: 0.9; animation: ob-verse 7s ease infinite; animation-delay: 0.15s; }
-@keyframes ob-verse { 0%, 40% { opacity: 0; transform: translateY(10px); } 48%, 92% { opacity: 1; transform: none; } 100% { opacity: 0; } }
-.ob-demo-live { position: absolute; top: 10px; right: 10px; padding: 2px 7px; border-radius: 4px; background: rgba(0, 0, 0, 0.35); font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #fff; animation: ob-verse 7s ease infinite; }
+@keyframes obf-card { 0% { opacity: 0; transform: translateY(8px); } 4%, 92% { opacity: 1; transform: none; } 97%, 100% { opacity: 0; transform: none; } }
+.obf-mic { display: flex; gap: 3px; align-items: center; height: 20px; flex: none; margin-top: 2px; }
+.obf-mic i { width: 3px; height: 100%; border-radius: 2px; background: var(--brand); transform: scaleY(0.35); animation: obf-bars 0.9s ease-in-out infinite; }
+.obf-mic i:nth-child(2) { animation-duration: 1.1s; animation-delay: -0.3s; }
+.obf-mic i:nth-child(3) { animation-duration: 0.8s; animation-delay: -0.5s; }
+.obf-mic i:nth-child(4) { animation-duration: 1.25s; animation-delay: -0.2s; }
+.obf-mic i:nth-child(5) { animation-duration: 0.95s; animation-delay: -0.7s; }
+@keyframes obf-bars { 0%, 100% { transform: scaleY(0.3); } 50% { transform: scaleY(1); } }
+.obf-words { margin: 0; font-size: 14px; line-height: 1.5; color: var(--text-2); }
+/* Each word arrives on its own beat (0.12 s apart) and leaves on the same
+   rhythm at the end, so the transcript wipes out left to right. */
+.obf-words span { display: inline-block; animation: obf-word var(--obf) cubic-bezier(0.2, 0.7, 0.2, 1) infinite both; animation-delay: calc(0.2s + var(--i) * 0.12s); }
+@keyframes obf-word { 0% { opacity: 0; transform: translateY(5px); filter: blur(3px); } 3%, 76% { opacity: 1; transform: none; filter: none; } 79%, 100% { opacity: 0; transform: translateY(-3px); filter: none; } }
+/* the cited words light up together once the last of them is heard (≈1.2 s) */
+.obf-words .obf-cite { padding: 1px 3px; margin: 0 -3px; border-radius: 4px; color: #fff; font-weight: 700; background: rgba(245, 48, 26, 0.35); animation: obf-catch var(--obf) ease-out infinite; }
+@keyframes obf-catch { 0%, 11.5% { background: transparent; color: var(--text-2); font-weight: 400; } 13.5%, 88% { background: rgba(245, 48, 26, 0.35); color: #fff; font-weight: 700; } 92%, 100% { background: transparent; color: var(--text-2); font-weight: 400; } }
+
+/* the chip: dips (anticipation), pops, settles, then drops in an arc into the
+   centre of the projector and melts into it as the theme fills */
+.obf-chip {
+  position: absolute; z-index: 3; top: 62px; left: 50%; display: flex; gap: 6px; align-items: center; height: 26px; padding: 0 11px;
+  border-radius: 13px; background: var(--brand); color: #fff; font-size: 12px; font-weight: 700; white-space: nowrap;
+  box-shadow: 0 8px 22px rgba(245, 48, 26, 0.45); opacity: 0; transform: translate(-50%, 0);
+  animation: obf-chip var(--obf) infinite;
+}
+.obf-chip i { width: 6px; height: 6px; border-radius: 50%; background: #fff; }
+@keyframes obf-chip {
+  0%, 13% { opacity: 0; transform: translate(-50%, 0) scale(0.6); animation-timing-function: ease-in; }
+  14.5% { opacity: 1; transform: translate(-50%, 2px) scale(0.55, 0.5); animation-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1); }
+  17% { opacity: 1; transform: translate(-50%, -3px) scale(1.08, 1.1); animation-timing-function: ease-out; }
+  19%, 23.5% { opacity: 1; transform: translate(-50%, 0) scale(1); animation-timing-function: ease-in; }
+  27.5% { opacity: 1; transform: translate(calc(-50% + 4cqw), calc(14px + 7cqw)) rotate(-5deg) scale(1.02); animation-timing-function: ease-out; }
+  31.5% { opacity: 1; transform: translate(-50%, calc(44px + 18cqw)) rotate(0deg) scale(0.85); }
+  34%, 100% { opacity: 0; transform: translate(-50%, calc(44px + 18cqw)) scale(1.5); }
+}
+
+/* the outputs: projector (64 %) and a column of two smaller screens */
+.obf-row { position: relative; display: grid; grid-template-columns: 64% 1fr; gap: 3cqw; margin-top: 42px; }
+.obf-screen { position: relative; overflow: hidden; border-radius: 10px; background: #141418; box-shadow: 0 18px 44px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(255, 255, 255, 0.07); }
+.obf-tag { position: absolute; z-index: 2; top: 7px; left: 8px; padding: 2px 6px; border-radius: 4px; background: rgba(0, 0, 0, 0.4); font-size: 8px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: rgba(255, 255, 255, 0.85); }
+.obf-main {
+  z-index: 2; aspect-ratio: 16 / 9; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1.6cqw; padding: 0 5cqw; text-align: center;
+  animation: obf-main var(--obf) cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+/* centred while it is the only screen, steps left as the others arrive */
+@keyframes obf-main { 0%, 50% { transform: translateX(28.125%); } 57%, 94% { transform: none; } 100% { transform: translateX(28.125%); } }
+.obf-main::before { content: ''; position: absolute; inset: 0; background: radial-gradient(120% 90% at 30% 20%, #FF5A3D 0%, #F5301A 35%, #8E1407 100%); animation: obf-theme var(--obf) ease-out infinite; }
+@keyframes obf-theme { 0%, 31% { opacity: 0; transform: scale(1.12); } 35%, 91% { opacity: 1; transform: none; } 96%, 100% { opacity: 0; transform: none; } }
+.obf-verse, .obf-ref { position: relative; margin: 0; color: #fff; }
+.obf-verse { font-size: 3cqw; font-weight: 600; line-height: 1.3; }
+.obf-verse span { display: inline-block; animation: obf-rise var(--obf) cubic-bezier(0.2, 0.7, 0.2, 1) infinite both; animation-delay: 3.4s; }
+.obf-verse span + span { animation-delay: 3.7s; }
+.obf-ref { font-size: 1.7cqw; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; opacity: 0.9; animation: obf-rise var(--obf) cubic-bezier(0.2, 0.7, 0.2, 1) infinite both; animation-delay: 4s; }
+/* (own clock: starts at its delay; gone again before the loop restarts) */
+@keyframes obf-rise { 0% { opacity: 0; transform: translateY(1.6cqw); } 4%, 52% { opacity: 1; transform: none; } 56%, 100% { opacity: 0; transform: none; } }
+
+.obf-side { display: flex; flex-direction: column; justify-content: space-between; gap: 2cqw; }
+.obf-side .obf-screen { flex: 1; animation: obf-out var(--obf) infinite both; }
+.obf-lobby { animation-delay: 0.3s !important; }
+/* tucked behind the projector, then out along a slight arc, settling */
+@keyframes obf-out {
+  0%, 51% { opacity: 0; transform: translate(-70%, 0) scale(0.8) rotate(0deg); animation-timing-function: ease-in; }
+  55% { opacity: 1; transform: translate(-20%, -6%) scale(0.95) rotate(-2deg); animation-timing-function: ease-out; }
+  59% { opacity: 1; transform: translate(2%, 0) scale(1.01) rotate(0.5deg); animation-timing-function: ease-in-out; }
+  61.5%, 90% { opacity: 1; transform: none; }
+  95%, 100% { opacity: 0; transform: none; }
+}
+/* livestream: a camera picture with a lower third */
+.obf-stream { background: linear-gradient(160deg, #3b4150 0%, #20242d 55%, #15171d 100%); }
+.obf-stream::before { content: ''; position: absolute; left: 38%; bottom: 0; width: 26%; height: 72%; border-radius: 50% 50% 8px 8px / 30% 30% 8px 8px; background: rgba(255, 255, 255, 0.07); }
+.obf-third { position: absolute; left: 6%; right: 6%; bottom: 9%; display: flex; flex-direction: column; gap: 2px; padding: 0.8cqw 1.4cqw; border-left: 2px solid var(--brand); border-radius: 3px; background: rgba(10, 10, 14, 0.82); animation: obf-third var(--obf) cubic-bezier(0.2, 0.7, 0.2, 1) infinite; }
+@keyframes obf-third { 0%, 59% { opacity: 0; transform: translateY(70%); } 64%, 100% { opacity: 1; transform: none; } }
+.obf-third p { margin: 0; font-size: 1.75cqw; line-height: 1.25; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.obf-third b { font-size: 1.3cqw; letter-spacing: 0.14em; text-transform: uppercase; color: var(--brand); }
+/* lobby: a quiet light theme */
+.obf-lobby { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 0.6cqw; padding: 0 2.4cqw; text-align: center; background: linear-gradient(180deg, #f6f1e7, #e9e1d0); }
+.obf-lobby .obf-tag { background: rgba(0, 0, 0, 0.55); }
+.obf-lobby p, .obf-lobby b { margin: 0; color: #2a2118; }
+.obf-lobby p, .obf-lobby b { animation: obf-ink var(--obf) ease-out infinite both; }
+.obf-lobby p { font-family: Georgia, 'Times New Roman', serif; font-size: 2.2cqw; font-style: italic; line-height: 1.25; }
+.obf-lobby b { font-size: 1.3cqw; letter-spacing: 0.16em; text-transform: uppercase; color: rgba(42, 33, 24, 0.7); animation-delay: 0.15s; }
+@keyframes obf-ink { 0%, 64% { opacity: 0; } 69%, 92% { opacity: 1; } 96%, 100% { opacity: 0; } }
 
 /* 2 · how it listens: two choice cards */
 .ob-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 26px; max-width: 640px; background: none; border: none; padding: 0; }
@@ -7941,8 +8013,6 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 }
 @media (prefers-reduced-motion: reduce) {
   .onboarding *, .onboarding *::before { animation: none !important; transition: none !important; }
-  .ob-demo-typed { clip-path: none; }
-  .ob-demo-verse, .ob-demo-ref, .ob-demo-live { opacity: 1; }
   .ob-art-lang span:first-child { opacity: 1; }
   .ob-art-import i { opacity: 1; transform: translate(70px, var(--y, -12px)); }
 }
