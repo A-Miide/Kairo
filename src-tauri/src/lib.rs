@@ -1,8 +1,12 @@
 // KAIRO — Tauri shell
-// Spawns the bundled Node.js binary running server/server.js.
-// Dev mode: uses system node (beforeDevCommand starts it externally).
-// Production: uses the node binary bundled via externalBin.
+// Runs the Kairo server (crates/kairo-server) in this process on a local port
+// with a per-launch token, opens the app and output windows, and owns the
+// native outputs (NDI, Syphon, Spout, DeckLink) and their capture. The offline
+// speech engine runs as a second copy of this program (see main.rs).
 
+mod capture;
+mod video_bg;
+mod decklink;
 mod ndi;
 #[cfg(target_os = "macos")]
 mod syphon;
@@ -10,7 +14,7 @@ mod syphon;
 mod spout;
 mod fonts;
 
-use std::process::{Child, Command};
+use std::process::Child;
 use std::sync::{Arc, Mutex};
 use base64::Engine;
 use tauri::{AppHandle, Emitter, Manager, RunEvent};
@@ -35,7 +39,7 @@ fn build_app_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry
         .name(Some("KAIRO"))
         .version(Some(env!("CARGO_PKG_VERSION")))
         .copyright(Some("© 2026 KAIRO"))
-        .website(Some("https://github.com/Kairo-live/Kairo"))
+        .website(Some("https://github.com/miide-Adeyemi/Kairo"))
         .website_label(Some("GitHub"))
         .build();
 
@@ -172,7 +176,7 @@ fn build_app_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry
         .text("menu-clear-media", "Clear Media")
         // The timer/clock layer's own clear — added once the output grew
         // a third composited layer alongside slide/media (see the Timer
-        // tab in service.js and server/segments.js).
+        // tab in service.js and the server's Segments (kairo-server library.rs)).
         .text("menu-clear-timer", "Clear Timer")
         .item(&clear_all_item)
         .build()?;
@@ -310,7 +314,14 @@ fn pick_free_port() -> u16 {
 }
 
 /// 32 bytes of OS entropy → URL-safe base64. ~43 chars, ~256 bits of entropy.
+/// KAIRO_SERVER_TOKEN (32+ characters) replaces it, for driving a test run
+/// from scripts; whoever can set this process's environment controls it anyway.
 fn generate_auth_token() -> String {
+    if let Ok(t) = std::env::var("KAIRO_SERVER_TOKEN") {
+        if t.len() >= 32 {
+            return t;
+        }
+    }
     let mut bytes = [0u8; 32];
     if getrandom::getrandom(&mut bytes).is_err() {
         // Fallback: never happens on supported platforms, but if the OS RNG
@@ -370,132 +381,47 @@ impl NdiState {
     }
 }
 
-// ── Node.js binary resolution ─────────────────────────────────────────────
-
-/// In dev, search common system paths for Node.js.
-fn find_system_node() -> Option<std::path::PathBuf> {
-    let candidates = [
-        "node",
-        "/usr/local/bin/node",
-        "/opt/homebrew/bin/node",
-        "/usr/bin/node",
-        "/usr/local/bin/node",
-    ];
-    for c in &candidates {
-        if Command::new(c).arg("--version").output().is_ok() {
-            return Some(std::path::PathBuf::from(c));
-        }
+struct DeckLinkState(Arc<Mutex<std::collections::HashMap<String, Arc<Mutex<decklink::DeckLinkHandle>>>>>);
+impl DeckLinkState {
+    fn handle_for(&self, id: &str) -> Result<Arc<Mutex<decklink::DeckLinkHandle>>, String> {
+        let mut map = self.0.lock().map_err(|e| e.to_string())?;
+        Ok(map.entry(id.to_string()).or_insert_with(|| Arc::new(Mutex::new(decklink::DeckLinkHandle::default()))).clone())
     }
-    None
 }
 
-/// In production, Node is bundled alongside the app binary via externalBin.
-#[allow(dead_code)]
-/// Tauri strips the target-triple suffix at bundle time, so at runtime it's
-/// just "node" (or "node.exe" on Windows) next to the main executable.
-fn find_bundled_node() -> Option<std::path::PathBuf> {
-    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+// ── The server ────────────────────────────────────────────────────────────
 
-    #[cfg(target_os = "windows")]
-    let name = "node.exe";
-    #[cfg(not(target_os = "windows"))]
-    let name = "node";
-
-    let path = exe_dir.join(name);
-    if path.exists() { Some(path) } else { None }
-}
-
-// ── Server launcher ───────────────────────────────────────────────────────
-
+/// Starts Kairo's server inside this process (release builds; dev runs it
+/// separately via `beforeDevCommand`): the UI files, the Bible data and
+/// models from the bundle's resources, settings and downloads in app data.
 #[cfg_attr(debug_assertions, allow(dead_code))]
-fn start_server(app: &AppHandle, port: u16, token: &str) -> Option<Child> {
-    // Resolve Node.js binary
-    #[cfg(debug_assertions)]
-    let node_bin = find_system_node();
-
-    #[cfg(not(debug_assertions))]
-    let node_bin = find_bundled_node().or_else(|| find_system_node());
-
-    let node_bin = match node_bin {
-        Some(p) => p,
-        None => {
-            eprintln!("[KAIRO] ERROR: Node.js not found — cannot start server.");
-            return None;
-        }
-    };
-
-    // Resolve server.js. A packaging/permissions quirk (sandboxed install,
-    // moved bundle) making resource_dir unavailable used to panic and kill
-    // the whole process at launch — fall back to the same cwd-relative dev
-    // path the bundled-vs-dev branches below already use instead.
+fn start_server(app: &AppHandle, port: u16, token: &str) {
     let cwd = || std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-    let resource_dir = match app.path().resource_dir() {
-        Ok(dir) => dir,
-        Err(e) => {
-            eprintln!("[KAIRO] WARNING: Tauri resource dir unavailable ({e}) — falling back to cwd-relative paths.");
-            cwd()
-        }
+    let resource_dir = app.path().resource_dir().unwrap_or_else(|e| {
+        eprintln!("[KAIRO] WARNING: Tauri resource dir unavailable ({e}) — falling back to cwd-relative paths.");
+        cwd()
+    });
+    let pick = |rel: &str| {
+        let bundled = resource_dir.join(rel);
+        if bundled.exists() { bundled } else { cwd().join(rel) }
     };
-
-    let server_js = {
-        // Production: bundled at resource_dir/server/server.js
-        let bundled = resource_dir.join("server").join("server.js");
-        if bundled.exists() {
-            bundled
-        } else {
-            // Dev: relative to project root
-            cwd().join("server").join("server.js")
-        }
-    };
-
-    // Database dir — bundled map.json lives at resource_dir/databases/bibles/
-    let db_dir = {
-        let bundled = resource_dir.join("databases").join("bibles");
-        if bundled.exists() {
-            bundled
-        } else {
-            // Dev: project root databases/bibles
-            cwd().join("databases").join("bibles")
-        }
-    };
-
-    println!("[KAIRO] node:       {}", node_bin.display());
-    println!("[KAIRO] server.js:  {}", server_js.display());
-    println!("[KAIRO] databases:  {}", db_dir.display());
-
-    let working_dir = server_js.parent().unwrap().to_path_buf();
-
-    // App-data dir — writable by the user; settings.json lives here in production.
-    let app_data_dir = app
-        .path()
-        .app_data_dir()
-        .unwrap_or_else(|_| std::env::temp_dir().join("kairo"));
+    let app_data_dir = app.path().app_data_dir().unwrap_or_else(|_| std::env::temp_dir().join("kairo"));
     std::fs::create_dir_all(&app_data_dir).ok();
-
-    match Command::new(&node_bin)
-        .arg(&server_js)
-        .current_dir(&working_dir)
-        // Pass resource dir so server.js can resolve bundled database files
-        .env("KAIRO_RESOURCE_DIR", resource_dir.to_str().unwrap_or(""))
-        .env("KAIRO_DB_DIR", db_dir.to_str().unwrap_or(""))
-        // Writable dir for settings.json (read-only bundle path won't work in production)
-        .env("KAIRO_APP_DATA_DIR", app_data_dir.to_str().unwrap_or(""))
-        // Dynamic port + shared-secret token. The Node server reads these and
-        // binds to 127.0.0.1:<port>, rejecting any HTTP/WS request without
-        // the matching token.
-        .env("KAIRO_SERVER_PORT", port.to_string())
-        .env("KAIRO_AUTH_TOKEN",  token)
-        .spawn()
-    {
-        Ok(child) => {
-            println!("[KAIRO] Server started (pid {})", child.id());
-            Some(child)
+    let cfg = kairo_server::Config {
+        port,
+        token: token.to_string(),
+        db_dir: pick("databases/bibles"),
+        models_dir: app_data_dir.join("models"),
+        app_data_dir,
+        ui_dir: pick("src"),
+    };
+    println!("[KAIRO] databases:  {}", cfg.db_dir.display());
+    println!("[KAIRO] ui:         {}", cfg.ui_dir.display());
+    tauri::async_runtime::spawn(async move {
+        if let Err(e) = kairo_server::serve(cfg).await {
+            eprintln!("[KAIRO] Server failed: {e}");
         }
-        Err(e) => {
-            eprintln!("[KAIRO] Failed to start server: {}", e);
-            None
-        }
-    }
+    });
 }
 
 // ── Tauri commands ────────────────────────────────────────────────────────
@@ -688,7 +614,7 @@ fn ndi_update(app: AppHandle, id: String, verse: String, reference: String) -> R
 // ndi.rs's own render_frame). `image_base64: None` clears the Media layer
 // (mirrors display.html's renderMediaStage(null)); Some(b64) is standard
 // (non-URL-safe) base64-encoded PNG/JPEG bytes, the same encoding this app
-// already uses for media data URIs elsewhere (e.g. server.js's import
+// already uses for media data URIs elsewhere (e.g. the server's import
 // route's dataBase64 field) — decoded here, not on the frontend, so the
 // render thread only ever receives raw bytes to hand to `image::load_from_memory`.
 #[tauri::command]
@@ -714,6 +640,151 @@ fn ndi_update_timer(app: AppHandle, id: String, text: String) -> Result<(), Stri
     let handle = state.handle_for(&id)?;
     let h = handle.lock().map_err(|e| e.to_string())?;
     h.update_timer(text);
+    Ok(())
+}
+
+// ── Output capture (capture.rs) ───────────────────────────────────────────
+// An NDI / Syphon output's hidden display window (`kairo-cap-<id>`,
+// display.html?capture=1) calls this whenever what it shows has changed; the
+// frame goes to that output's senders. A change while a capture is running
+// is coalesced into one more capture after it.
+#[derive(Default)]
+struct CaptureState {
+    busy: Mutex<std::collections::HashMap<String, Option<u32>>>,
+}
+
+#[tauri::command]
+fn output_capture_supported() -> bool {
+    capture::supported()
+}
+
+#[tauri::command]
+fn output_capture(app: AppHandle, id: String, width: u32, height: u32, fade_ms: Option<u32>) -> Result<(), String> {
+    let fade = fade_ms.unwrap_or(0);
+    {
+        let state = app.state::<CaptureState>();
+        let mut busy = state.busy.lock().map_err(|e| e.to_string())?;
+        if let Some(pending) = busy.get_mut(&id) {
+            *pending = Some(pending.unwrap_or(0).max(fade));
+            return Ok(());
+        }
+        busy.insert(id.clone(), None);
+    }
+    run_capture(app, id, width.clamp(16, 7680), height.clamp(16, 4320), fade);
+    Ok(())
+}
+
+fn run_capture(app: AppHandle, id: String, width: u32, height: u32, fade: u32) {
+    let Some(window) = app.get_webview_window(&format!("kairo-cap-{id}")) else {
+        if let Ok(mut b) = app.state::<CaptureState>().busy.lock() { b.remove(&id); }
+        return;
+    };
+    let (app2, id2) = (app.clone(), id.clone());
+    let _ = capture::snapshot_alpha(&window, width, height, move |r| {
+        match r {
+            Ok(frame) => {
+                // Diagnostics: KAIRO_CAPTURE_DUMP=<dir> saves each frame as a PNG.
+                if let Some(dir) = std::env::var_os("KAIRO_CAPTURE_DUMP") {
+                    let path = std::path::Path::new(&dir).join(format!("{id2}-{}.png", std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis())));
+                    let rgba: Vec<u8> = frame.unpremultiplied().chunks_exact(4).flat_map(|p| [p[2], p[1], p[0], p[3]]).collect();
+                    if let Some(img) = image::RgbaImage::from_raw(frame.width, frame.height, rgba) { let _ = img.save(&path); }
+                }
+                let frame = Arc::new(frame);
+                // A moving background playing under this output: the
+                // snapshot is what sits on top of it (video_bg.rs mixes).
+                let playing = app2.state::<VideoBgState>().0.lock().ok().and_then(|m| m.get(&id2).map(|v| v.set_overlay(frame.clone(), fade)));
+                if playing.is_none() {
+                    push_frame(&app2, &id2, frame, fade);
+                }
+            }
+            Err(e) => eprintln!("[Capture] {id2}: {e}"),
+        }
+        // One more if something changed meanwhile.
+        let next = app2.state::<CaptureState>().busy.lock().ok().and_then(|mut b| match b.get(&id2) {
+            Some(Some(f)) => { let f = *f; b.insert(id2.clone(), None); Some(f) }
+            _ => { b.remove(&id2); None }
+        });
+        if let Some(f) = next {
+            run_capture(app2, id2, width, height, f);
+        }
+    });
+}
+
+/// A finished frame to every sender of output `id`.
+fn push_frame(app: &AppHandle, id: &str, frame: Arc<capture::Frame>, fade: u32) {
+    if let Ok(h) = app.state::<NdiState>().handle_for(id) {
+        if let Ok(h) = h.lock() { h.update_frame(frame.clone(), fade); }
+    }
+    if let Ok(h) = app.state::<DeckLinkState>().handle_for(id) {
+        if let Ok(h) = h.lock() { h.update_frame(frame.clone(), fade); }
+    }
+    #[cfg(target_os = "macos")]
+    if let Ok(h) = app.state::<SyphonState>().handle_for(id) {
+        if let Err(e) = syphon::update_frame(frame, fade, h) { eprintln!("[Capture] Syphon: {e}"); }
+    }
+}
+
+// Full-frame video backgrounds under NDI / Syphon / DeckLink (video_bg.rs):
+// the output's capture window reports the video it stopped drawing (its URL
+// on the local server, and how it was fitted), or that there's none now.
+#[derive(Default)]
+struct VideoBgState(Mutex<std::collections::HashMap<String, video_bg::VideoBg>>);
+
+#[tauri::command]
+async fn output_video(app: AppHandle, id: String, url: Option<String>, fit: Option<String>, width: u32, height: u32) -> Result<(), String> {
+    let Some(url) = url.filter(|u| !u.is_empty()) else {
+        if let Some(v) = app.state::<VideoBgState>().0.lock().map_err(|e| e.to_string())?.remove(&id) { v.stop(); }
+        return Ok(());
+    };
+    let fit = fit.unwrap_or_else(|| "contain".into());
+    // The file behind the address, and the bundled ffmpeg, from the server.
+    let (port, token) = { let c = app.state::<ServerConfig>(); (c.port, c.token.clone()) };
+    let resolved: serde_json::Value = reqwest::Client::new()
+        .post(format!("http://127.0.0.1:{port}/api/media/resolve"))
+        .bearer_auth(&token)
+        .json(&serde_json::json!({ "url": url }))
+        .send().await.map_err(|e| e.to_string())?
+        .json().await.map_err(|e| e.to_string())?;
+    let (Some(file), Some(ffmpeg)) = (resolved["path"].as_str(), resolved["ffmpeg"].as_str()) else {
+        return Err(resolved["error"].as_str().unwrap_or("video not found").to_string());
+    };
+    let file = std::path::PathBuf::from(file);
+    let state = app.state::<VideoBgState>();
+    let mut map = state.0.lock().map_err(|e| e.to_string())?;
+    if map.get(&id).is_some_and(|v| v.file == file && v.fit == fit) {
+        return Ok(());
+    }
+    if let Some(old) = map.remove(&id) { old.stop(); }
+    let (app2, id2) = (app.clone(), id.clone());
+    let (w, h) = (width.clamp(16, 7680), height.clamp(16, 4320));
+    let v = video_bg::VideoBg::start(std::path::Path::new(ffmpeg), file, &fit, w, h, 30, move |frame| push_frame(&app2, &id2, frame, 0))?;
+    map.insert(id, v);
+    Ok(())
+}
+
+// ── DeckLink (decklink.rs) ────────────────────────────────────────────────
+// Cards and their modes; start returns the frame size the card plays, which
+// the output's capture window is then made at.
+#[tauri::command]
+fn decklink_list() -> serde_json::Value {
+    decklink::list()
+}
+
+#[tauri::command]
+fn decklink_start(app: AppHandle, id: String, device: i32, mode: u32, keying: bool, fps: f64) -> Result<serde_json::Value, String> {
+    let handle = app.state::<DeckLinkState>().handle_for(&id)?;
+    if let Ok(mut h) = handle.lock() {
+        h.stop();
+    }
+    let (w, h) = decklink::start(device, mode, keying, fps, handle)?;
+    Ok(serde_json::json!({ "width": w, "height": h }))
+}
+
+#[tauri::command]
+fn decklink_stop(app: AppHandle, id: String) -> Result<(), String> {
+    let handle = app.state::<DeckLinkState>().handle_for(&id)?;
+    let mut h = handle.lock().map_err(|e| e.to_string())?;
+    h.stop();
     Ok(())
 }
 
@@ -887,7 +958,20 @@ pub fn run() {
         )
         .manage(ServerProcess(Arc::new(Mutex::new(None))))
         .manage(server_config)
-        .manage(NdiState(Arc::new(Mutex::new(std::collections::HashMap::new()))));
+        .manage(NdiState(Arc::new(Mutex::new(std::collections::HashMap::new()))))
+        .manage(CaptureState::default())
+        .manage(VideoBgState::default())
+        // An output's capture window closing ends its video background.
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                if let Some(id) = window.label().strip_prefix("kairo-cap-") {
+                    if let Some(v) = window.app_handle().state::<VideoBgState>().0.lock().ok().and_then(|mut m| m.remove(id)) {
+                        v.stop();
+                    }
+                }
+            }
+        })
+        .manage(DeckLinkState(Arc::new(Mutex::new(std::collections::HashMap::new()))));
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
@@ -909,6 +993,12 @@ pub fn run() {
             ndi_update,
             ndi_update_media,
             ndi_update_timer,
+            output_capture,
+            output_video,
+            decklink_list,
+            decklink_start,
+            decklink_stop,
+            output_capture_supported,
             syphon_available,
             syphon_start,
             syphon_stop,
@@ -916,7 +1006,7 @@ pub fn run() {
             syphon_update_media,
             syphon_update_timer,
         ])
-        .menu(|handle| build_app_menu(handle))
+        .menu(build_app_menu)
         .on_menu_event(|app, event| {
             let id = event.id().as_ref();
             // Everything here just forwards to the frontend as a plain window
@@ -929,7 +1019,7 @@ pub fn run() {
             // a frontend counterpart.
             match id {
                 "menu-check-updates" => check_for_updates(app.clone(), true),
-                "menu-learn-more" => { let _ = app.shell().open("https://github.com/Kairo-live/Kairo", None); }
+                "menu-learn-more" => { let _ = app.shell().open("https://github.com/miide-Adeyemi/Kairo", None); }
                 // Every other item of ours ("menu-…") is the frontend's to
                 // carry out (see initNativeMenuBridge in app_startup.js).
                 other if other.starts_with("menu-") => {
@@ -951,25 +1041,13 @@ pub fn run() {
             // main window appears. Accepted tradeoff per the owner's explicit
             // ask, not an oversight.
 
-            // Start the bundled Node.js server.
+            // Start the server, inside this process.
             // In dev, the server is started by `beforeDevCommand` in tauri.conf.json
             // so we don't spawn a second one (which would collide on the same port).
             #[cfg(not(debug_assertions))]
             {
                 let cfg = app.state::<ServerConfig>();
-                let child = start_server(&handle, cfg.port, &cfg.token);
-                // Recover rather than panic if the mutex was ever poisoned —
-                // losing the child handle here would leak the Node sidecar
-                // process on shutdown, which matters more than a clean panic.
-                // Bound to its own `let` first — chaining straight off
-                // `app.state::<ServerProcess>()` made the State a temporary
-                // that got dropped at the end of the statement while the
-                // MutexGuard borrowed from it was still in use (E0716); this
-                // block only compiles in release builds (debug_assertions
-                // off), so `cargo build` never caught it during dev.
-                let server_process = app.state::<ServerProcess>();
-                let mut guard = server_process.0.lock().unwrap_or_else(|p| p.into_inner());
-                *guard = child;
+                start_server(&handle, cfg.port, &cfg.token);
             }
             #[cfg(debug_assertions)]
             {
@@ -1000,7 +1078,7 @@ pub fn run() {
                     if let Ok(resp) = client.get(&health_url).send() {
                         let body = resp.text().unwrap_or_default();
                         if body.contains("\"workerBasicReady\":true") {
-                            println!("[KAIRO] Server + worker ready after ~{}ms", attempt * 500);
+                            println!("[KAIRO] Server ready after ~{}ms", attempt * 500);
                             server_ready = true;
                             break;
                         }
@@ -1104,6 +1182,14 @@ pub fn run() {
                     for handle in ndi_map.values() {
                         handle.lock().unwrap_or_else(|p| p.into_inner())
                             .stop_and_join(std::time::Duration::from_millis(500));
+                    }
+                }
+                // DeckLink: disable the card's output and keyer before exit.
+                {
+                    let dl_state = app.state::<DeckLinkState>();
+                    let dl_map = dl_state.0.lock().unwrap_or_else(|p| p.into_inner());
+                    for handle in dl_map.values() {
+                        handle.lock().unwrap_or_else(|p| p.into_inner()).stop();
                     }
                 }
                 #[cfg(target_os = "macos")]

@@ -160,6 +160,12 @@ pub struct SyphonHandle {
     // render_and_publish() call after. DEFAULT_FRAME_W/H until start() runs.
     frame_w: u32,
     frame_h: u32,
+    // Captured frames of this output's display window (capture.rs): once
+    // one has arrived, the text renderer above stands down. `fade_gen`
+    // cancels a fade still running when the next frame lands.
+    captured: bool,
+    last_frame: Option<Arc<crate::capture::Frame>>,
+    fade_gen: u64,
 }
 
 impl Default for SyphonHandle {
@@ -178,6 +184,9 @@ impl Default for SyphonHandle {
             latest_timer: String::new(),
             frame_w: DEFAULT_FRAME_W,
             frame_h: DEFAULT_FRAME_H,
+            captured: false,
+            last_frame: None,
+            fade_gen: 0,
         }
     }
 }
@@ -383,6 +392,7 @@ pub fn stop(shared: Arc<Mutex<SyphonHandle>>) -> Result<(), String> {
 pub fn update(verse: &str, reference: &str, shared: Arc<Mutex<SyphonHandle>>) -> Result<(), String> {
     let mut h = shared.lock().map_err(|e| e.to_string())?;
     if h.server.is_none() { return Ok(()); } // not running — silent no-op
+    if h.captured { return Ok(()); } // the captured theme is on air
     h.latest_verse = verse.to_string();
     h.latest_reference = reference.to_string();
     render_and_publish(&mut h)
@@ -393,6 +403,7 @@ pub fn update(verse: &str, reference: &str, shared: Arc<Mutex<SyphonHandle>>) ->
 pub fn update_media(bytes: Option<Vec<u8>>, shared: Arc<Mutex<SyphonHandle>>) -> Result<(), String> {
     let mut h = shared.lock().map_err(|e| e.to_string())?;
     if h.server.is_none() { return Ok(()); }
+    if h.captured { return Ok(()); } // the captured theme is on air
     h.latest_media = bytes.and_then(|b| match image::load_from_memory(&b) {
         Ok(img) => Some(img.to_rgba8()),
         Err(e) => { eprintln!("[Syphon] Media decode failed: {e}"); None }
@@ -403,8 +414,70 @@ pub fn update_media(bytes: Option<Vec<u8>>, shared: Arc<Mutex<SyphonHandle>>) ->
 pub fn update_timer(text: &str, shared: Arc<Mutex<SyphonHandle>>) -> Result<(), String> {
     let mut h = shared.lock().map_err(|e| e.to_string())?;
     if h.server.is_none() { return Ok(()); }
+    if h.captured { return Ok(()); } // the captured theme is on air
     h.latest_timer = text.to_string();
     render_and_publish(&mut h)
+}
+
+/// A captured frame of the display window (the real theme). `fade_ms` > 0
+/// blends from the frame on air, published at ~30 fps until it lands.
+pub fn update_frame(frame: Arc<crate::capture::Frame>, fade_ms: u32, shared: Arc<Mutex<SyphonHandle>>) -> Result<(), String> {
+    let (from, gen) = {
+        let mut h = shared.lock().map_err(|e| e.to_string())?;
+        if h.server.is_none() { return Ok(()); }
+        if frame.width != h.frame_w || frame.height != h.frame_h {
+            return Err(format!("captured frame is {}x{}, output is {}x{}", frame.width, frame.height, h.frame_w, h.frame_h));
+        }
+        h.captured = true;
+        h.fade_gen += 1;
+        let from = h.last_frame.replace(frame.clone());
+        match from {
+            Some(f) if fade_ms > 0 => (f, h.fade_gen),
+            _ => return publish_bgra(&mut h, &frame.bgra),
+        }
+    };
+    std::thread::spawn(move || {
+        let started = std::time::Instant::now();
+        let dur = std::time::Duration::from_millis(fade_ms as u64);
+        let mut mixed = vec![0u8; frame.bgra.len()];
+        loop {
+            let t = started.elapsed().as_secs_f32() / dur.as_secs_f32();
+            let Ok(mut h) = shared.lock() else { return };
+            if h.fade_gen != gen || h.server.is_none() { return; }
+            if t >= 1.0 {
+                let _ = publish_bgra(&mut h, &frame.bgra);
+                return;
+            }
+            crate::capture::blend(&mut mixed, &from.bgra, &frame.bgra, t);
+            let _ = publish_bgra(&mut h, &mixed);
+            drop(h);
+            std::thread::sleep(std::time::Duration::from_millis(33));
+        }
+    });
+    Ok(())
+}
+
+/// Uploads BGRA pixels into the texture and hands it to Syphon.
+fn publish_bgra(h: &mut SyphonHandle, bgra: &[u8]) -> Result<(), String> {
+    let (ctx, tex_id, frame_w, frame_h) = (h.ctx, h.tex_id, h.frame_w, h.frame_h);
+    let server = h.server.as_ref().ok_or("not running")?;
+    unsafe {
+        CGLSetCurrentContext(ctx);
+        gl::BindTexture(gl::TEXTURE_2D, tex_id);
+        gl::TexSubImage2D(gl::TEXTURE_2D, 0, 0, 0, frame_w as i32, frame_h as i32, gl::BGRA, gl::UNSIGNED_BYTE, bgra.as_ptr() as *const _);
+        gl::Flush();
+        let region = NSRect { origin: NSPoint { x: 0.0, y: 0.0 }, size: NSSize { width: frame_w as f64, height: frame_h as f64 } };
+        let size = NSSize { width: frame_w as f64, height: frame_h as f64 };
+        let _: () = msg_send![
+            &**server,
+            publishFrameTexture: tex_id,
+            textureTarget: 0x0DE1u32, // GL_TEXTURE_2D
+            imageRegion: region,
+            textureDimensions: size,
+            flipped: false,
+        ];
+    }
+    Ok(())
 }
 
 /// Shared by update()/update_media()/update_timer() — always re-renders and
@@ -493,7 +566,7 @@ fn render_frame(
     // Subtle bottom 38% darker band — lower-third look. Only drawn when
     // there's verse/reference text to sit on; skipped for a bare Media-only
     // frame so a plain background image shows completely clean.
-    let band_h = (frame_h as f32 * 0.38) as f32;
+    let band_h = frame_h as f32 * 0.38;
     if !verse.is_empty() || !reference.is_empty() {
         let mut band_paint = tiny_skia::Paint::default();
         band_paint.set_color(SkColor::from_rgba8(10, 14, 20, if media.is_some() { 190 } else { 255 }));
@@ -575,7 +648,7 @@ fn blit_cover_image(pixmap: &mut Pixmap, img: &image::RgbaImage) {
             let (r, g, b, a) = (px[0] as u16, px[1] as u16, px[2] as u16, px[3] as u16);
             let idx = ((y * pw + x) * 4) as usize;
             if idx + 3 >= data.len() { continue; }
-            data[idx + 0] = (r * a / 255) as u8;
+            data[idx] = (r * a / 255) as u8;
             data[idx + 1] = (g * a / 255) as u8;
             data[idx + 2] = (b * a / 255) as u8;
             data[idx + 3] = a as u8;

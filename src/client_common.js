@@ -65,6 +65,20 @@ function authedWsUrl(base) {
   return base + (base.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(AUTH_TOKEN);
 }
 
+// A media file's address with the token on it. <video> and <audio> can't send
+// an Authorization header, and the server only lets image files through
+// without one, so a video from the app's own server needs ?token=… or it
+// gets a 401 and stays black. Anything else (data:, blob:, other hosts) is
+// left alone.
+function authedMediaUrl(u) {
+  if (!AUTH_TOKEN || typeof u !== 'string' || !u) return u;
+  const local = u.startsWith('/') && !u.startsWith('//');
+  const sameOrigin = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(u);
+  if (!local && !sameOrigin) return u;
+  if (/[?&]token=/.test(u)) return u;
+  return u + (u.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(AUTH_TOKEN);
+}
+
 // HTML escape for safe interpolation into innerHTML or attributes. Same map
 // in either context, so we don't keep two lookalike helpers.
 function escapeHtml(s) {

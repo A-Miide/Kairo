@@ -27,7 +27,7 @@ use libloading::{Library, Symbol};
 // two are only the fallback when a caller passes 0/invalid values.
 const DEFAULT_FRAME_W: i32 = 1280;
 const DEFAULT_FRAME_H: i32 = 720;
-const SEND_FPS_N: i32 = 15;     // Frame-rate numerator (15/1 = 15 fps)
+const SEND_FPS_N: i32 = 30;     // Frame-rate numerator (30/1 = 30 fps): smooth fades of captured frames
 const SEND_FPS_D: i32 = 1;
 // FourCC for BGRA = ('B','G','R','A') little-endian = 0x41524742
 const FOURCC_BGRA: u32 = 0x4152_4742;
@@ -86,7 +86,7 @@ impl LibNdi {
     /// Try every known NDI install location, return the first one that loads.
     fn try_load() -> Option<Self> {
         for path in candidate_libndi_paths() {
-            if let Some(lib) = unsafe { Library::new(&path) }.ok() {
+            if let Ok(lib) = unsafe { Library::new(&path) } {
                 if let Some(loaded) = Self::resolve_symbols(lib) {
                     eprintln!("[NDI] Loaded libndi from {}", path.display());
                     return Some(loaded);
@@ -119,6 +119,26 @@ impl LibNdi {
 /// the first dylib that successfully loads + resolves symbols.
 fn candidate_libndi_paths() -> Vec<PathBuf> {
     let mut paths: Vec<PathBuf> = Vec::new();
+
+    // A copy placed beside Kairo by hand (src-tauri/bin → the app's
+    // resources, like ffmpeg), for builds made to work offline. Release
+    // builds don't ship one: Kairo fetches NDI's runtime from NDI on first
+    // use (the app-data path below). An installed NDI runtime is the fallback.
+    let lib = if cfg!(target_os = "macos") { "libndi.dylib" } else if cfg!(windows) { "Processing.NDI.Lib.x64.dll" } else { "libndi.so" };
+    if let Some(dir) = std::env::current_exe().ok().and_then(|e| e.parent().map(|p| p.to_path_buf())) {
+        paths.push(dir.join("../Resources/bin").join(lib)); // macOS .app
+        paths.push(dir.join("bin").join(lib));              // Windows install dir
+        paths.push(dir.join("../lib/kairo/bin").join(lib)); // Linux packages
+        paths.push(dir.join("../lib/Kairo/bin").join(lib));
+    }
+    if let Ok(cwd) = std::env::current_dir() {
+        paths.push(cwd.join("src-tauri/bin").join(lib));    // running from the repo
+    }
+    // The copy Kairo fetched from NDI on first use (kairo-server ndi_runtime.rs).
+    #[cfg(target_os = "macos")]
+    if let Some(home) = std::env::var_os("HOME") {
+        paths.push(PathBuf::from(home).join("Library/Application Support/com.kairo.scripture/ndi").join(lib));
+    }
 
     #[cfg(target_os = "macos")]
     {
@@ -163,6 +183,10 @@ pub enum NdiCmd {
     // Tauri command handler.
     SetMedia { bytes: Option<Vec<u8>> },
     SetTimer { text: String },
+    /// A captured frame of this output's display window (capture.rs) —
+    /// the real theme. Once one has arrived the text renderer is no longer
+    /// used; `fade_ms` > 0 blends from the frame on air.
+    SetFrame { frame: Arc<crate::capture::Frame>, fade_ms: u32 },
     Stop,
 }
 
@@ -195,6 +219,11 @@ impl NdiHandle {
     pub fn update_media(&self, bytes: Option<Vec<u8>>) {
         if let Some(tx) = &self.tx {
             let _ = tx.send(NdiCmd::SetMedia { bytes });
+        }
+    }
+    pub fn update_frame(&self, frame: Arc<crate::capture::Frame>, fade_ms: u32) {
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(NdiCmd::SetFrame { frame, fade_ms });
         }
     }
     pub fn update_timer(&self, text: String) {
@@ -257,7 +286,7 @@ pub fn is_libndi_available() -> bool {
 /// DEFAULT_FRAME_W/H above rather than producing a zero-size/invalid frame.
 pub fn start(source_name: &str, width: i32, height: i32, shared: Arc<Mutex<NdiHandle>>) -> Result<(), String> {
     let lib = LibNdi::try_load()
-        .ok_or_else(|| "NDI runtime not found. Install NDI Tools from ndi.video/tools (free) and try again.".to_string())?;
+        .ok_or_else(|| "NDI runtime not found on this computer.".to_string())?;
 
     let frame_w = if width > 0 { width } else { DEFAULT_FRAME_W };
     let frame_h = if height > 0 { height } else { DEFAULT_FRAME_H };
@@ -309,6 +338,12 @@ pub fn start(source_name: &str, width: i32, height: i32, shared: Arc<Mutex<NdiHa
             // Render initial empty/idle frame
             render_frame(&mut buf, frame_w, frame_h, &latest_verse, &latest_ref, latest_media.as_ref(), &latest_timer, &mut font_system, &mut swash_cache);
 
+            // Captured frames (the real theme): once any has arrived, the
+            // text renderer stands down. A fade blends the frame on air
+            // into the new one over `fade.3`.
+            let mut captured = false;
+            let mut fade: Option<(Vec<u8>, Arc<crate::capture::Frame>, std::time::Instant, Duration)> = None;
+
             let frame_period = Duration::from_millis(1000 / SEND_FPS_N as u64);
             loop {
                 // Drain pending commands (latest update wins; stop terminates).
@@ -338,10 +373,32 @@ pub fn start(source_name: &str, width: i32, height: i32, shared: Arc<Mutex<NdiHa
                             latest_timer = text;
                             got_update   = true;
                         }
+                        NdiCmd::SetFrame { frame, fade_ms } => {
+                            if frame.width as i32 != frame_w || frame.height as i32 != frame_h || frame.bgra.len() != buf.len() {
+                                eprintln!("[NDI] Captured frame is {}x{}, output is {}x{} — skipped", frame.width, frame.height, frame_w, frame_h);
+                                continue;
+                            }
+                            if captured && fade_ms > 0 {
+                                fade = Some((buf.clone(), frame, std::time::Instant::now(), Duration::from_millis(fade_ms as u64)));
+                            } else {
+                                buf.copy_from_slice(&frame.bgra);
+                                fade = None;
+                            }
+                            captured = true;
+                        }
                     }
                 }
                 if should_stop { break; }
-                if got_update {
+                if let Some((from, to, started, dur)) = &fade {
+                    let t = started.elapsed().as_secs_f32() / dur.as_secs_f32().max(0.001);
+                    if t >= 1.0 {
+                        buf.copy_from_slice(&to.bgra);
+                        fade = None;
+                    } else {
+                        crate::capture::blend(&mut buf, from, &to.bgra, t);
+                    }
+                }
+                if got_update && !captured {
                     render_frame(&mut buf, frame_w, frame_h, &latest_verse, &latest_ref, latest_media.as_ref(), &latest_timer, &mut font_system, &mut swash_cache);
                 }
 
@@ -432,7 +489,7 @@ fn render_frame(
     // there's actual verse/reference text to put on it; skip it over a bare
     // Media-only frame (nothing to letterbox) so a plain background image
     // shows completely clean.
-    let band_h = (frame_h as f32 * 0.38) as f32;
+    let band_h = frame_h as f32 * 0.38;
     if !verse.is_empty() || !reference.is_empty() {
         let mut band_paint = tiny_skia::Paint::default();
         band_paint.set_color(SkColor::from_rgba8(10, 14, 20, if media.is_some() { 190 } else { 255 }));
@@ -535,7 +592,7 @@ fn render_frame(
                 // the overwhelming common case for a background image).
                 let idx = ((y * pw + x) * 4) as usize;
                 if idx + 3 >= data.len() { continue; }
-                data[idx + 0] = (r * a / 255) as u8;
+                data[idx] = (r * a / 255) as u8;
                 data[idx + 1] = (g * a / 255) as u8;
                 data[idx + 2] = (b * a / 255) as u8;
                 data[idx + 3] = a as u8;
@@ -616,12 +673,12 @@ fn render_frame(
             let src_r = c.r();
             let src_g = c.g();
             let src_b = c.b();
-            let dst_r = pixmap_data[idx + 0];
+            let dst_r = pixmap_data[idx];
             let dst_g = pixmap_data[idx + 1];
             let dst_b = pixmap_data[idx + 2];
             let dst_a = pixmap_data[idx + 3];
             let inv_a = 255 - alpha as u16;
-            pixmap_data[idx + 0] = ((src_r as u16 * alpha as u16 + dst_r as u16 * inv_a) / 255) as u8;
+            pixmap_data[idx] = ((src_r as u16 * alpha as u16 + dst_r as u16 * inv_a) / 255) as u8;
             pixmap_data[idx + 1] = ((src_g as u16 * alpha as u16 + dst_g as u16 * inv_a) / 255) as u8;
             pixmap_data[idx + 2] = ((src_b as u16 * alpha as u16 + dst_b as u16 * inv_a) / 255) as u8;
             pixmap_data[idx + 3] = (alpha as u16 + (dst_a as u16 * inv_a) / 255).min(255) as u8;

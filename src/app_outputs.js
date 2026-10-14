@@ -82,12 +82,24 @@ function syphonOutputs() {
   return settings.syphonOutputs;
 }
 
+// Blackmagic DeckLink outputs (src-tauri decklink.rs): none until added.
+// { id, name, device, deviceName, mode, modeName, width, height, fps, keying, enabled }
+function decklinkOutputs() {
+  if (!Array.isArray(settings.decklinkOutputs)) settings.decklinkOutputs = [];
+  return settings.decklinkOutputs;
+}
+// The saved list for a native output kind ('ndi' | 'syphon' | 'decklink').
+function nativeOutputsOf(kind) {
+  return kind === 'ndi' ? ndiOutputs() : kind === 'decklink' ? decklinkOutputs() : syphonOutputs();
+}
+
 function allOutputKeys() {
   return [
     ...OUTPUT_DEFS.map(d => d.key),
     ...extraDisplays().map(d => d.id),
     ...ndiOutputs().map(d => d.id),
     ...syphonOutputs().map(d => d.id),
+    ...decklinkOutputs().map(d => d.id),
   ];
 }
 
@@ -157,7 +169,7 @@ function populateScreenOptions(sel, outputId) {
 // failure visible in the debug log the moment it happens, instead of only
 // once an operator reports "the display isn't working."
 function logDisplayLifecycleFallback(where, detail) {
-  // /api/debug-log only reads {event, data} off the body (see server.js) —
+  // /api/debug-log only reads {event, data} off the body (see kairo-server routes.rs) —
   // anything else silently gets dropped, which would have been a fittingly
   // ironic way for this exact hardening to go silent itself.
   fetch(`${SERVER}/api/debug-log`, {
@@ -265,7 +277,7 @@ function outputThemeMap() {
 
 // ── Language ──────────────────────────────────────────────────────────────
 // Spoken language drives transcription; scripture language selects which
-// text a detected/displayed verse shows in (server.js's applyScriptureLanguage,
+// text a detected/displayed verse shows in (the server's applyScriptureLanguage,
 // a real lookup against databases/bibles/packs/*.json — sourced 2026-09-13
 // from public-domain/CC-BY-SA editions, real text, not placeholders).
 //
@@ -277,89 +289,38 @@ function outputThemeMap() {
 // that doesn't exist yet. `hasPack: true` means real bundled verse text;
 // it does not mean "detects speech in this language."
 const LANG_PACKS = [
-  { code: 'en', name: 'English',    translations: 'KJV · NIV · NLT · ESV · NASB · NKJV', bundled: true },
-  { code: 'es', name: 'Spanish',    translations: 'Reina-Valera 1909 (public domain)', hasPack: true },
-  { code: 'pt', name: 'Portuguese', translations: 'Almeida Atualizada 1911 (GPL)', hasPack: true },
-  { code: 'fr', name: 'French',     translations: 'Louis Segond 1910 (public domain)', hasPack: true },
-  { code: 'de', name: 'German',     translations: 'Luther 1545 (public domain)', hasPack: true },
-  { code: 'yo', name: 'Yoruba',     translations: 'Bíbélì Mímọ́ (Biblica, CC BY-SA 4.0)', hasPack: true },
-  { code: 'ig', name: 'Igbo',       translations: 'Baịbụl Nsọ (Biblica, CC BY-SA 4.0)', hasPack: true },
-  { code: 'ha', name: 'Hausa',      translations: 'Littafi Mai Tsarki (Biblica, CC BY-SA 4.0)', hasPack: true },
-  { code: 'sw', name: 'Swahili',    translations: 'New Testament only (public domain)', hasPack: true },
+  { code: 'en', name: 'English',    translations: 'KJV · NIV · NLT · ESV · NASB · NKJV' },
+  { code: 'es', name: 'Spanish',    translations: 'Reina-Valera 1909 (public domain)' },
+  { code: 'pt', name: 'Portuguese', translations: 'Almeida Atualizada 1911 (GPL)' },
+  { code: 'fr', name: 'French',     translations: 'Louis Segond 1910 (public domain)' },
+  { code: 'de', name: 'German',     translations: 'Luther 1545 (public domain)' },
+  { code: 'yo', name: 'Yoruba',     translations: 'Bíbélì Mímọ́ (Biblica, CC BY-SA 4.0)' },
+  { code: 'ig', name: 'Igbo',       translations: 'Baịbụl Nsọ (Biblica, CC BY-SA 4.0)' },
+  { code: 'ha', name: 'Hausa',      translations: 'Littafi Mai Tsarki (Biblica, CC BY-SA 4.0)' },
+  { code: 'sw', name: 'Swahili',    translations: 'New Testament only (public domain)' },
 ];
 
-function installedLangs() {
-  const v = settings.installedLangs;
-  return Array.isArray(v) && v.length ? v : ['en'];
-}
-
+// Every Bible above comes with the app (databases/bibles/packs) — there is
+// nothing to install, so the menu offers them all (2026-10-12: the old
+// per-language "Install" buttons only flipped a setting, and read as nine
+// downloads). Display only: live detection follows the Spoken language.
 function renderLangPacks() {
-  const host = document.getElementById('lang-pack-list');
   const bibleSel = document.getElementById('bible-language');
-  if (!host) return;
-  const installed = installedLangs();
-
-  host.innerHTML = '';
-  LANG_PACKS.forEach(p => {
-    const row = document.createElement('div');
-    row.className = 'lang-pack-row';
-
-    const meta = document.createElement('div');
-    meta.className = 'lang-pack-meta';
-    meta.innerHTML = `<div class="lang-pack-name">${p.name}</div><div class="lang-pack-sub">${p.translations}</div>`;
-
-    const btn = document.createElement('button');
-    btn.className = 'modal-btn secondary';
-    const isIn = installed.includes(p.code);
-    if (p.bundled) {
-      btn.textContent = 'Included';
-      btn.disabled = true;
-    } else if (isIn) {
-      btn.textContent = 'Remove';
-      btn.classList.add('lang-pack-remove');
-      btn.addEventListener('click', () => {
-        settings.installedLangs = installed.filter(c => c !== p.code);
-        if (settings.bibleLanguage === p.code) settings.bibleLanguage = 'en';
-        saveSettingsPatch({ installedLangs: settings.installedLangs, bibleLanguage: settings.bibleLanguage });
-        renderLangPacks();
-      });
-    } else if (p.hasPack) {
-      // Real verse text now, bundled in the app (databases/bibles/packs/,
-      // sourced 2026-09-13 — see LANG_PACKS' own comment for exactly what
-      // this does and doesn't cover) rather than a remote download, so
-      // there's no real fetch to wait on — "installing" just switches it
-      // on locally. Still true, and still worth saying out loud: live
-      // audio DETECTION stays English-only; this only changes what a
-      // resolved verse displays as.
-      btn.textContent = 'Install';
-      btn.title = 'Adds real verse text for this language. Live audio detection still only listens for English.';
-      btn.addEventListener('click', () => {
-        settings.installedLangs = [...new Set([...installed, p.code])];
-        saveSettingsPatch({ installedLangs: settings.installedLangs });
-        renderLangPacks();
-      });
-    } else {
-      // No real source found/verified for this language yet — be honest
-      // rather than showing a button that would just fail or fake it.
-      btn.textContent = 'Coming soon';
-      btn.disabled = true;
-      btn.title = 'No verified scripture-text source found for this language yet.';
-    }
-
-    row.appendChild(meta); row.appendChild(btn);
-    host.appendChild(row);
-  });
-
-  // Scripture-language dropdown lists only what's actually installed.
   if (bibleSel) {
     const want = settings.bibleLanguage || 'en';
     bibleSel.innerHTML = '';
-    LANG_PACKS.filter(p => installed.includes(p.code)).forEach(p => {
+    LANG_PACKS.forEach(p => {
       const o = document.createElement('option');
-      o.value = p.code; o.textContent = p.name;
+      o.value = p.code;
+      o.textContent = p.code === 'en' ? 'English' : `${p.name} — ${p.translations.replace(/\s*\(.*\)$/, '')}`;
       if (p.code === want) o.selected = true;
       bibleSel.appendChild(o);
     });
+  }
+  const credits = document.getElementById('scripture-credits');
+  if (credits) {
+    const licensed = LANG_PACKS.filter(p => /CC BY|GPL/.test(p.translations));
+    credits.textContent = 'Sources: ' + licensed.map(p => `${p.name} ${p.translations}`).join(' · ') + ' · the others public domain.';
   }
 }
 
@@ -396,6 +357,7 @@ function allConfiguredOutputs() {
   }
   for (const o of ndiOutputs())    list.push({ id: o.id, type: 'ndi', name: o.name, raw: o });
   for (const o of syphonOutputs()) list.push({ id: o.id, type: 'syphon', name: o.name, raw: o });
+  for (const o of decklinkOutputs()) list.push({ id: o.id, type: 'decklink', name: o.name, raw: o });
   list.push({ id: 'obs', type: 'obs', name: settings.obsName || 'OBS WebSocket' });
   return list;
 }
@@ -409,11 +371,31 @@ function allConfiguredOutputs() {
 // display name, using the same synchronous pre-paint platform-* class
 // index.html's own inline script sets on <html> for the traffic-light-inset
 // fix, rather than adding a new Tauri command just to ask the OS.
+// Every NDI / Syphon start and stop goes through these, so the output's
+// hidden capture window (output_capture.js — its real theme on air) opens
+// and closes with it.
+async function nativeStart(invokeFn, kind, args) {
+  if (kind === 'decklink') {
+    // The card decides the frame size (its video format); capture to match.
+    const o = decklinkOutputs().find(x => x.id === args.id) || {};
+    if (o.mode == null) throw new Error('Pick a card and a video format first.');
+    const size = await invokeFn('decklink_start', { id: o.id, device: o.device | 0, mode: o.mode, keying: !!o.keying, fps: o.fps || 30 });
+    window.KairoCapture?.open(o.id, size.width, size.height);
+    return;
+  }
+  await invokeFn(`${kind}_start`, args);
+  window.KairoCapture?.open(args.id, args.width, args.height);
+}
+async function nativeStop(invokeFn, kind, id) {
+  window.KairoCapture?.close(id);
+  await invokeFn(`${kind}_stop`, { id });
+}
+
 function nativeSenderLabel() {
   return document.documentElement.classList.contains('platform-win32') ? 'Spout' : 'Syphon';
 }
 function outputTypeLabel(type) {
-  return type === 'display' ? 'Display' : type === 'ndi' ? 'NDI' : type === 'syphon' ? nativeSenderLabel() : 'OBS';
+  return type === 'display' ? 'Display' : type === 'ndi' ? 'NDI' : type === 'syphon' ? nativeSenderLabel() : type === 'decklink' ? 'DeckLink' : 'OBS';
 }
 
 // Entry point — called from loadSettings and from every add/remove/rename
@@ -443,10 +425,10 @@ function autoResumeNativeOutputs() {
   nativeOutputsAutoResumeDone = true;
   const invokeFn = window.__TAURI__?.core?.invoke || window.__TAURI__?.invoke;
   if (!invokeFn) return;
-  for (const kind of ['ndi', 'syphon']) {
-    for (const o of (kind === 'ndi' ? ndiOutputs() : syphonOutputs())) {
+  for (const kind of ['ndi', 'syphon', 'decklink']) {
+    for (const o of nativeOutputsOf(kind)) {
       if (!o.enabled) continue;
-      invokeFn(`${kind}_start`, {
+      nativeStart(invokeFn, kind, {
         id: o.id, sourceName: o.sourceName || 'KAIRO Scripture',
         width: o.width || 1920, height: o.height || 1080,
       })
@@ -460,7 +442,7 @@ function renderOutputsList() {
   const host = document.getElementById('outputs-list');
   if (!host) return;
   const outputs = allConfiguredOutputs();
-  if (!outputs.some(o => o.id === selectedOutputId)) selectedOutputId = outputs[0]?.id || null;
+  if (selectedOutputId !== AUDIO_OUTPUT_ID && !outputs.some(o => o.id === selectedOutputId)) selectedOutputId = outputs[0]?.id || null;
   host.innerHTML = '';
   outputs.forEach(o => {
     // A plain <div> (not <button>) — a real on/off <input> lives inside
@@ -482,7 +464,7 @@ function renderOutputsList() {
     // updated directly by that row's own detail-panel actions instead.
     if (o.id === PRIMARY_DISPLAY) dot.id = 'external-header-dot';
     else if (o.type === 'obs')    dot.id = 'obs-header-dot';
-    else if (o.type === 'ndi' || o.type === 'syphon') dot.classList.toggle('connected', !!o.raw?.enabled);
+    else if (o.type === 'ndi' || o.type === 'syphon' || o.type === 'decklink') dot.classList.toggle('connected', !!o.raw?.enabled);
 
     const info = document.createElement('span');
     info.className = 'outputs-list-item-info';
@@ -493,7 +475,9 @@ function renderOutputsList() {
     typeEl.className = 'outputs-list-item-type';
     typeEl.textContent = o.monitor ? 'Monitor' : outputTypeLabel(o.type);
     info.appendChild(nameEl);
-    info.appendChild(typeEl);
+    // The kind, only when the name doesn't already say it ("Monitor" over
+    // MONITOR read twice; "Stage screen" still gets "Display").
+    if (!String(o.name || '').toLowerCase().includes(typeEl.textContent.toLowerCase())) info.appendChild(typeEl);
     // A per-row Bible/Slide/Media/Timer summary used to render here too —
     // owner (2026-09-21): redundant now that the Monitor grid
     // (renderMonitorGrid, above) is the dedicated place for exactly this
@@ -520,6 +504,7 @@ function renderOutputsList() {
     });
     host.appendChild(row);
   });
+  host.appendChild(buildAudioOutputRow());
   // Folded in here (not called separately at each of this function's many
   // call sites) so the Output Control matrix — which lists the exact same
   // outputs this list does — can never drift out of sync with an output
@@ -610,7 +595,7 @@ function buildOutputRowToggle(o) {
     if (!invokeFn) { input.checked = false; toast(`${outputTypeLabel(kind)} not available (run inside the app)`, 'error'); return; }
     if (input.checked) {
       try {
-        await invokeFn(`${kind}_start`, {
+        await nativeStart(invokeFn, kind, {
           id: o.id, sourceName: o.raw.sourceName || 'KAIRO Scripture',
           width: o.raw.width || 1920, height: o.raw.height || 1080,
         });
@@ -626,10 +611,11 @@ function buildOutputRowToggle(o) {
         // toast() too in case that ever changes, but not relying on it.
         const msg = String(e && e.message || e || 'unknown error').replace(/^Error:\s*/, '');
         updateNativeOutput(kind, o.id, { enabled: false, lastError: msg });
+        if (kind === 'ndi' && /runtime not found/i.test(msg)) selectedOutputId = o.id; // show the download offer
         toast(`${outputTypeLabel(kind)} failed: ` + msg, 'error');
       }
     } else {
-      try { await invokeFn(`${kind}_stop`, { id: o.id }); } catch {}
+      try { await nativeStop(invokeFn, kind, o.id); } catch {}
       updateNativeOutput(kind, o.id, { enabled: false });
     }
     renderOutputsList();
@@ -638,14 +624,176 @@ function buildOutputRowToggle(o) {
   return label;
 }
 
+// ── Audio Output ──────────────────────────────────────────────────────────
+// Sound from video on the Media layer plays through whichever screen shows it,
+// which for an HDMI display means the HDMI cable. This entry sends it to a
+// different device instead — a speaker, a mixer, this computer's own speakers.
+// The choice is applied in display.html via setSinkId (see /api/service/
+// audio-output); an engine that can't route sound says so here.
+const AUDIO_OUTPUT_ID = 'audio-out';
+
+function mediaOutputRoutable() {
+  return typeof HTMLMediaElement !== 'undefined' && typeof HTMLMediaElement.prototype.setSinkId === 'function';
+}
+function savedMediaOutput() {
+  try { return localStorage.getItem(MEDIA_OUTPUT_KEY) || ''; } catch { return ''; }
+}
+function setMediaOutput(deviceId) {
+  try { localStorage.setItem(MEDIA_OUTPUT_KEY, deviceId || ''); } catch {}
+  fetch(`${SERVER}/api/service/audio-output`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ deviceId: deviceId || null }),
+  }).catch(() => {});
+}
+const MEDIA_VOLUME_KEY = 'kairo-media-volume';
+function savedMediaVolume() {
+  try { const v = parseInt(localStorage.getItem(MEDIA_VOLUME_KEY) || '', 10); return v >= 0 && v <= 100 ? v : 100; } catch { return 100; }
+}
+function setMediaVolume(pct) {
+  try { localStorage.setItem(MEDIA_VOLUME_KEY, String(pct)); } catch {}
+  const bar = document.getElementById('media-volume');
+  if (bar) bar.value = String(pct); // the transport bar's slider follows
+  fetch(`${SERVER}/api/service/media-control`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action: 'volume', value: pct / 100 }),
+  }).catch(() => {});
+}
+async function mediaOutputDevices() {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return devices.filter(d => d.kind === 'audiooutput' && d.deviceId);
+  } catch { return []; }
+}
+
+function buildAudioOutputRow() {
+  const row = document.createElement('div');
+  row.className = 'outputs-list-item' + (selectedOutputId === AUDIO_OUTPUT_ID ? ' active' : '');
+  row.dataset.outputId = AUDIO_OUTPUT_ID;
+  row.tabIndex = 0;
+  row.setAttribute('role', 'button');
+  const dot = document.createElement('span');
+  dot.className = 'bs-dot';
+  dot.classList.toggle('connected', !!savedMediaOutput());
+  const info = document.createElement('span');
+  info.className = 'outputs-list-item-info';
+  const name = document.createElement('span');
+  name.className = 'outputs-list-item-name';
+  name.textContent = 'Audio Output';
+  const type = document.createElement('span');
+  type.className = 'outputs-list-item-type';
+  type.textContent = savedMediaOutput() ? 'Chosen device' : 'System default';
+  info.append(name, type);
+  row.append(dot, info);
+  row.addEventListener('click', () => { selectedOutputId = AUDIO_OUTPUT_ID; renderOutputsList(); renderOutputsDetail(); });
+  row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); row.click(); } });
+  return row;
+}
+
+function renderAudioOutputDetail(host) {
+  host.appendChild(detailTitle('Audio Output', null, null));
+  const intro = document.createElement('p');
+  intro.className = 'setting-hint';
+  intro.textContent = 'Sound from video on the Media layer plays from this computer, through its sound output \u2014 or through the device you pick here: a speaker, a mixer, an HDMI display. Screens show the picture only.';
+  host.appendChild(intro);
+
+  const group = detailGroup('Play media sound on');
+  const row = document.createElement('div');
+  row.className = 'audio-out-row';
+  const sel = document.createElement('select');
+  sel.className = 'setting-input';
+  const refresh = document.createElement('button');
+  refresh.type = 'button';
+  refresh.className = 'modal-btn secondary audio-refresh-btn';
+  refresh.title = 'Refresh device list';
+  refresh.textContent = '\u21BB';
+  row.append(sel, refresh);
+  group.appendChild(row);
+  const note = document.createElement('p');
+  note.className = 'setting-hint';
+  group.appendChild(note);
+  host.appendChild(group);
+
+  const volGroup = detailGroup('Volume');
+  const volRow = document.createElement('div');
+  volRow.className = 'audio-out-row';
+  const vol = document.createElement('input');
+  vol.type = 'range'; vol.min = '0'; vol.max = '100'; vol.step = '1';
+  vol.value = String(savedMediaVolume());
+  vol.className = 'audio-out-volume';
+  vol.setAttribute('aria-label', 'Media volume');
+  const volVal = document.createElement('span');
+  volVal.className = 'audio-out-volume-val';
+  volVal.textContent = `${vol.value}%`;
+  vol.addEventListener('input', () => { volVal.textContent = `${vol.value}%`; setMediaVolume(Number(vol.value)); });
+  volRow.append(vol, volVal);
+  volGroup.appendChild(volRow);
+  const volHint = document.createElement('p');
+  volHint.className = 'setting-hint';
+  volHint.textContent = 'How loud video on the Media layer plays. The same level as the slider on the media controls.';
+  volGroup.appendChild(volHint);
+  host.appendChild(volGroup);
+
+  const testBtn = document.createElement('button');
+  testBtn.type = 'button';
+  testBtn.className = 'modal-btn secondary';
+  testBtn.textContent = 'Play test sound';
+  host.appendChild(testBtn);
+
+  const fill = async () => {
+    const saved = savedMediaOutput();
+    const devices = await mediaOutputDevices();
+    sel.innerHTML = '';
+    const dflt = document.createElement('option');
+    dflt.value = ''; dflt.textContent = 'System default';
+    sel.appendChild(dflt);
+    devices.forEach(d => {
+      const o = document.createElement('option');
+      o.value = d.deviceId;
+      o.textContent = d.label || `Output ${d.deviceId.slice(0, 6)}`;
+      if (d.deviceId === saved) o.selected = true;
+      sel.appendChild(o);
+    });
+    const routable = mediaOutputRoutable();
+    sel.disabled = !routable;
+    testBtn.disabled = !routable;
+    note.textContent = routable
+      ? 'Applies to the video that is playing now and to every video you send after it.'
+      : 'This computer\u2019s display engine can\u2019t pick a sound device. Set the output in your system\u2019s Sound settings instead.';
+  };
+  sel.addEventListener('change', () => { setMediaOutput(sel.value); window.applyMediaSink?.(); renderOutputsList(); });
+  refresh.addEventListener('click', fill);
+  testBtn.addEventListener('click', async () => {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const dest = ctx.createMediaStreamDestination();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      gain.gain.value = 0.15;
+      osc.frequency.value = 440;
+      osc.connect(gain).connect(dest);
+      const el = new Audio();
+      el.srcObject = dest.stream;
+      if (sel.value && el.setSinkId) await el.setSinkId(sel.value);
+      osc.start();
+      await el.play();
+      setTimeout(() => { osc.stop(); el.pause(); ctx.close(); }, 900);
+    } catch (err) {
+      note.textContent = `Couldn\u2019t play to that device: ${String(err && err.message || err)}`;
+    }
+  });
+  fill();
+}
+
 function renderOutputsDetail() {
   const host = document.getElementById('outputs-detail');
   if (!host) return;
   host.innerHTML = '';
+  if (selectedOutputId === AUDIO_OUTPUT_ID) { renderAudioOutputDetail(host); return; }
   const o = allConfiguredOutputs().find(x => x.id === selectedOutputId);
   if (!o) { host.textContent = 'Select an output.'; return; }
   if (o.type === 'display') renderDisplayDetail(host, o);
   else if (o.type === 'obs') renderObsDetail(host, o);
+  else if (o.type === 'decklink') renderDeckLinkDetail(host, o);
   else renderNativeOutputDetail(host, o); // ndi/syphon
 }
 
@@ -694,24 +842,131 @@ function detailTitle(text, statusEl, toggleEl) {
   return wrap;
 }
 
-// The theme <select> — same shape the old renderOutputThemePickers built
-// per-card, just returned directly for a detail panel to append.
+// The theme picker for an output: a dropdown whose rows carry a tiny preview
+// of each theme (the same thumbnail the Slides/Bible theme picker and Theme
+// Studio draw), which a native <select> can't show.
 function buildThemeSelect(outputId) {
-  const sel = document.createElement('select');
-  sel.className = 'setting-input';
-  const map = outputThemeMap();
-  looks.forEach(l => {
-    const opt = document.createElement('option');
-    opt.value = l.id; opt.textContent = l.name;
-    if (l.id === map[outputId]) opt.selected = true;
-    sel.appendChild(opt);
+  return buildThemeDropdown({
+    value: () => {
+      const id = outputThemeMap()[outputId];
+      return (looks.find(l => l.id === id) || looks[0])?.id;
+    },
+    onPick: (id) => {
+      settings.outputThemes = { ...outputThemeMap(), [outputId]: id };
+      saveSettingsPatch({ outputThemes: settings.outputThemes });
+      applyOutputThemes();
+    },
   });
-  sel.addEventListener('change', () => {
-    settings.outputThemes = { ...outputThemeMap(), [outputId]: sel.value };
-    saveSettingsPatch({ outputThemes: settings.outputThemes });
-    applyOutputThemes();
-  });
-  return sel;
+}
+
+// Shared thumbnail theme dropdown (grouped like every other theme picker).
+// `value()` returns the current theme id; `onPick(id)` applies a choice;
+// `defaultLabel` adds a first row meaning "no theme of its own" (id '').
+// The returned element's refresh() repaints after the value changes outside.
+function buildThemeDropdown({ value, onPick, defaultLabel }) {
+  const wrap = document.createElement('div');
+  wrap.className = 'theme-pick';
+  const trigger = document.createElement('button');
+  trigger.type = 'button';
+  trigger.className = 'setting-input theme-pick-trigger';
+  trigger.setAttribute('aria-haspopup', 'listbox');
+  trigger.setAttribute('aria-expanded', 'false');
+  const menu = document.createElement('div');
+  menu.className = 'theme-pick-menu';
+  menu.setAttribute('role', 'listbox');
+  menu.hidden = true;
+  wrap.appendChild(trigger);
+  wrap.appendChild(menu);
+
+  const thumbFor = (look) => {
+    const t = document.createElement('div');
+    t.className = 'ts-theme-thumb';
+    if (look) window.KairoService?.renderLookThumbnail(t, look);
+    else t.classList.add('theme-pick-thumb-none');
+    return t;
+  };
+  const currentLook = () => looks.find(l => l.id === value()) || null;
+  const paintTrigger = () => {
+    const look = currentLook();
+    trigger.innerHTML = '';
+    if (look || defaultLabel) {
+      trigger.appendChild(thumbFor(look));
+      const name = document.createElement('span');
+      name.className = 'theme-pick-name';
+      name.textContent = look ? look.name : defaultLabel;
+      trigger.appendChild(name);
+    }
+    const chev = document.createElement('span');
+    chev.className = 'theme-pick-chev';
+    chev.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+    chev.setAttribute('aria-hidden', 'true');
+    trigger.appendChild(chev);
+  };
+  const close = () => {
+    menu.hidden = true;
+    trigger.setAttribute('aria-expanded', 'false');
+    document.removeEventListener('mousedown', onOutside, true);
+    document.removeEventListener('keydown', onKey, true);
+    document.removeEventListener('scroll', onScroll, true);
+  };
+  const onOutside = (e) => { if (!wrap.contains(e.target)) close(); };
+  const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); trigger.focus(); } };
+  const onScroll = (e) => { if (!menu.contains(e.target)) close(); };
+  const pick = (id) => { onPick(id); paintTrigger(); close(); };
+  // Fixed to the viewport so a dialog or scrolling panel can't clip it;
+  // opens upward when there's more room above.
+  const placeMenu = () => {
+    const r = trigger.getBoundingClientRect();
+    const below = window.innerHeight - r.bottom - 12, above = r.top - 12;
+    const up = below < 220 && above > below;
+    menu.style.position = 'fixed';
+    menu.style.left = r.left + 'px';
+    menu.style.width = r.width + 'px';
+    menu.style.right = 'auto';
+    menu.style.maxHeight = Math.max(160, Math.min(360, up ? above : below)) + 'px';
+    menu.style.top = up ? 'auto' : (r.bottom + 4) + 'px';
+    menu.style.bottom = up ? (window.innerHeight - r.top + 4) + 'px' : 'auto';
+  };
+  const open = () => {
+    menu.innerHTML = '';
+    const current = currentLook();
+    const buildRow = (l) => {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.setAttribute('role', 'option');
+      row.className = 'theme-pick-item' + (current && l.id === current.id ? ' active' : '');
+      row.appendChild(thumbFor(l));
+      const name = document.createElement('span');
+      name.textContent = l.name;
+      row.appendChild(name);
+      row.addEventListener('click', () => pick(l.id));
+      return row;
+    };
+    if (defaultLabel) {
+      const row = document.createElement('button');
+      row.type = 'button';
+      row.setAttribute('role', 'option');
+      row.className = 'theme-pick-item' + (current ? '' : ' active');
+      row.appendChild(thumbFor(null));
+      const name = document.createElement('span');
+      name.textContent = defaultLabel;
+      row.appendChild(name);
+      row.addEventListener('click', () => pick(''));
+      menu.appendChild(row);
+    }
+    menu.appendChild(window.KairoService.buildThemeTree(looks, buildRow, current && current.id));
+    menu.hidden = false;
+    placeMenu();
+    trigger.setAttribute('aria-expanded', 'true');
+    menu.querySelector('.active')?.scrollIntoView({ block: 'nearest' });
+    document.addEventListener('mousedown', onOutside, true);
+    document.addEventListener('keydown', onKey, true);
+    document.addEventListener('scroll', onScroll, true);
+  };
+  trigger.addEventListener('click', () => (menu.hidden ? open() : close()));
+  paintTrigger();
+  wrap.refresh = paintTrigger;
+  return wrap;
 }
 
 function renderDisplayDetail(host, o) {
@@ -904,6 +1159,63 @@ function renderObsDetail(host, o) {
 // top, so the user can define what kind of output they want with screen
 // resolution" — width/height live here, editable any time, not just at
 // creation (the "add" flow just seeds sensible 1920x1080 defaults).
+// NDI with no runtime on this computer: Kairo fetches NDI's own free runtime
+// from NDI (kairo-server ndi_runtime.rs — signature-checked, no installer on a
+// Mac), then turns the output on. One click; on Windows, one permission prompt.
+function buildNdiRuntimeOffer(o, invokeFn) {
+  const box = document.createElement('div');
+  box.className = 'ndi-offer';
+  const lead = document.createElement('p');
+  lead.innerHTML = '<strong>NDI needs a one-time download.</strong> Kairo fetches NDI’s free runtime straight from NDI (about 5 MB) — nothing else to install.';
+  const fine = document.createElement('p');
+  fine.className = 'setting-hint';
+  fine.innerHTML = 'NDI® is a registered trademark of Vizrt NDI AB. Downloading accepts NDI’s licence terms (<a href="https://ndi.video" target="_blank" rel="noopener">ndi.video</a>).';
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'modal-btn primary';
+  btn.textContent = 'Download NDI and turn on';
+  const note = document.createElement('span');
+  note.className = 'setting-hint ndi-offer-note';
+  box.append(lead, fine, btn, note);
+
+  fetch(`${SERVER}/api/ndi/runtime`).then(r => r.json()).then(st => {
+    if (!st.available) {
+      btn.hidden = true;
+      lead.innerHTML = '<strong>NDI isn’t installed.</strong> Install the free NDI runtime from <a href="https://ndi.video/tools/" target="_blank" rel="noopener">ndi.video</a>, then turn this output on.';
+    } else if (st.platform === 'windows') {
+      note.textContent = 'Windows will ask for permission once.';
+    }
+  }).catch(() => {});
+
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    btn.textContent = 'Downloading…';
+    note.textContent = '';
+    try {
+      await fetch(`${SERVER}/api/ndi/runtime/install`, { method: 'POST' });
+      let st;
+      for (let i = 0; i < 600; i++) {
+        await new Promise(r => setTimeout(r, 500));
+        st = await (await fetch(`${SERVER}/api/ndi/runtime`)).json();
+        if (st.percent != null && st.running) btn.textContent = `Downloading… ${st.percent}%`;
+        if (!st.running) break;
+      }
+      if (st?.error) throw new Error(st.error);
+      btn.textContent = 'Turning on…';
+      await nativeStart(invokeFn, 'ndi', { id: o.id, sourceName: o.raw.sourceName || 'KAIRO Scripture', width: o.raw.width || 1920, height: o.raw.height || 1080 });
+      updateNativeOutput('ndi', o.id, { enabled: true, lastError: null });
+      window.KairoNativeOutputs?.pushToOne?.('ndi', o.id);
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = 'Try again';
+      note.textContent = String(e?.message || e).replace(/^Error:\s*/, '');
+    }
+    renderOutputsList();
+    if (selectedOutputId === o.id) renderOutputsDetail();
+  });
+  return box;
+}
+
 function renderNativeOutputDetail(host, o) {
   const kind = o.type; // 'ndi' | 'syphon'
   const raw = o.raw;
@@ -930,6 +1242,9 @@ function renderNativeOutputDetail(host, o) {
   // Start/Stop button is gone, buildOutputRowToggle's ndi/syphon case is
   // the one real implementation, shared with the list row's own toggle.
   host.appendChild(detailTitle(o.name, statusEl, buildOutputRowToggle(o)));
+  if (kind === 'ndi' && !raw.enabled && /runtime not found/i.test(raw.lastError || '')) {
+    host.appendChild(buildNdiRuntimeOffer(o, invokeFn));
+  }
 
   const nameGroup = detailGroup('Label (Settings only)');
   const nameInput = document.createElement('input');
@@ -975,9 +1290,9 @@ function renderNativeOutputDetail(host, o) {
     clearTimeout(debounce);
     debounce = setTimeout(async () => {
       if (!invokeFn) return;
-      try { await invokeFn(`${kind}_stop`, { id: o.id }); } catch {}
+      try { await nativeStop(invokeFn, kind, o.id); } catch {}
       try {
-        await invokeFn(`${kind}_start`, {
+        await nativeStart(invokeFn, kind, {
           id: o.id, sourceName: srcInput.value.trim() || 'KAIRO Scripture',
           width: Math.max(160, Number(wInput.value) || 1920), height: Math.max(90, Number(hInput.value) || 1080),
         });
@@ -999,8 +1314,8 @@ function renderNativeOutputDetail(host, o) {
   del.style.marginTop = '4px';
   del.textContent = `Remove this ${outputTypeLabel(kind)} output`;
   del.addEventListener('click', async () => {
-    if (invokeFn && raw.enabled) { try { await invokeFn(`${kind}_stop`, { id: o.id }); } catch {} }
-    const list = (kind === 'ndi' ? ndiOutputs() : syphonOutputs()).filter(x => x.id !== o.id);
+    if (invokeFn && raw.enabled) { try { await nativeStop(invokeFn, kind, o.id); } catch {} }
+    const list = nativeOutputsOf(kind).filter(x => x.id !== o.id);
     settings[`${kind}Outputs`] = list;
     const themes = { ...outputThemeMap() }; delete themes[o.id];
     const layers = { ...outputLayerMap() }; delete layers[o.id];
@@ -1013,9 +1328,148 @@ function renderNativeOutputDetail(host, o) {
   host.appendChild(del);
 }
 
+// A Blackmagic DeckLink output: card, video format, keying, then the same
+// theme/layers as any output. Frames are the output's captured theme
+// (capture.rs), played at the format's own rate by decklink.rs.
+let decklinkCache = null;
+async function decklinkCards(refresh) {
+  if (decklinkCache && !refresh) return decklinkCache;
+  const invokeFn = window.__TAURI__?.core?.invoke || window.__TAURI__?.invoke;
+  try { decklinkCache = invokeFn ? await invokeFn('decklink_list') : { ok: false, error: 'DeckLink works in the Kairo app.' }; }
+  catch (e) { decklinkCache = { ok: false, error: String(e?.message || e) }; }
+  return decklinkCache;
+}
+
+function renderDeckLinkDetail(host, o) {
+  const raw = o.raw;
+  const invokeFn = window.__TAURI__?.core?.invoke || window.__TAURI__?.invoke;
+  const statusEl = document.createElement('span');
+  statusEl.className = 'native-output-status';
+  const dot = document.createElement('span');
+  dot.className = 'bs-dot' + (raw.enabled ? ' connected' : '');
+  const statusText = document.createElement('span');
+  statusText.textContent = raw.enabled ? `On air · ${raw.modeName || ''}` : (raw.lastError || 'Off');
+  if (!raw.enabled && raw.lastError) { statusText.classList.add('output-status-error'); statusEl.classList.add('has-error'); }
+  statusEl.append(dot, statusText);
+  host.appendChild(detailTitle(o.name, statusEl, buildOutputRowToggle(o)));
+
+  const cardsBox = document.createElement('div');
+  host.appendChild(cardsBox);
+  cardsBox.textContent = 'Looking for DeckLink cards…';
+
+  // Changing card/format/keying while on air restarts the output.
+  const restartIfLive = async () => {
+    const cur = decklinkOutputs().find(x => x.id === o.id);
+    if (!cur?.enabled || !invokeFn) return;
+    try { await nativeStop(invokeFn, 'decklink', o.id); } catch {}
+    try { await nativeStart(invokeFn, 'decklink', { id: o.id }); updateNativeOutput('decklink', o.id, { lastError: null }); }
+    catch (e) { updateNativeOutput('decklink', o.id, { enabled: false, lastError: String(e?.message || e) }); }
+    renderOutputsList(); renderOutputsDetail();
+  };
+
+  decklinkCards().then((info) => {
+    cardsBox.innerHTML = '';
+    if (!info?.ok || !(info.devices || []).length) {
+      const p = document.createElement('p');
+      p.className = 'setting-hint';
+      p.innerHTML = info?.ok
+        ? 'No DeckLink card found. Connect one (and install <a href="https://www.blackmagicdesign.com/support/family/capture-and-playback" target="_blank" rel="noopener">Blackmagic Desktop Video</a>), then '
+        : `${escapeHtml(info?.error || 'DeckLink is unavailable.')} Install <a href="https://www.blackmagicdesign.com/support/family/capture-and-playback" target="_blank" rel="noopener">Blackmagic Desktop Video</a>, then `;
+      const again = document.createElement('button');
+      again.type = 'button'; again.className = 'modal-btn secondary dl-btn'; again.textContent = 'look again';
+      again.addEventListener('click', () => { decklinkCache = null; renderOutputsDetail(); });
+      p.appendChild(again);
+      cardsBox.appendChild(p);
+      return;
+    }
+    const devices = info.devices;
+    const dev = devices.find(d => d.index === raw.device) || devices[0];
+
+    const cardGroup = detailGroup('Card');
+    const cardSel = document.createElement('select');
+    cardSel.className = 'setting-input';
+    devices.forEach(d => { const op = document.createElement('option'); op.value = d.index; op.textContent = d.name; cardSel.appendChild(op); });
+    cardSel.value = String(dev.index);
+    cardGroup.appendChild(cardSel);
+    cardsBox.appendChild(cardGroup);
+
+    const modeGroup = detailGroup('Video format');
+    const modeSel = document.createElement('select');
+    modeSel.className = 'setting-input';
+    const fillModes = (d) => {
+      modeSel.innerHTML = '';
+      const none = document.createElement('option'); none.value = ''; none.textContent = 'Choose a format…'; modeSel.appendChild(none);
+      (d.modes || []).forEach(m => { const op = document.createElement('option'); op.value = m.id; op.textContent = `${m.name} (${m.width}×${m.height})`; modeSel.appendChild(op); });
+      const cur = decklinkOutputs().find(x => x.id === o.id);
+      modeSel.value = cur && cur.device === d.index && cur.mode != null ? String(cur.mode) : '';
+    };
+    fillModes(dev);
+    modeGroup.appendChild(modeSel);
+    const modeHint = document.createElement('p');
+    modeHint.className = 'setting-hint';
+    modeHint.textContent = 'Match your switcher or router (e.g. 1080p59.94, 1080i50).';
+    modeGroup.appendChild(modeHint);
+    cardsBox.appendChild(modeGroup);
+
+    const keyGroup = document.createElement('div');
+    keyGroup.className = 'setting-group setting-checks';
+    const keyLabel = document.createElement('label');
+    keyLabel.className = 'bs-check-label';
+    const keyBox = document.createElement('input');
+    keyBox.type = 'checkbox';
+    keyBox.checked = !!raw.keying;
+    const keyText = document.createElement('span');
+    keyText.innerHTML = '<strong>Fill and key</strong><span class="setting-hint">The card puts out the graphics and a separate key signal, so a vision mixer can lay lower thirds over camera. Set the mixer’s key to pre-multiplied. Give this output a theme with a transparent background.</span>';
+    keyLabel.append(keyBox, keyText);
+    keyGroup.appendChild(keyLabel);
+    const setKeyAvailable = (d) => {
+      keyGroup.hidden = !d.keying;
+      if (!d.keying && keyBox.checked) { keyBox.checked = false; updateNativeOutput('decklink', o.id, { keying: false }); }
+    };
+    setKeyAvailable(dev);
+    cardsBox.appendChild(keyGroup);
+
+    const saveMode = (d) => {
+      const m = (d.modes || []).find(x => String(x.id) === modeSel.value);
+      updateNativeOutput('decklink', o.id, m
+        ? { device: d.index, deviceName: d.name, mode: m.id, modeName: m.name, width: m.width, height: m.height, fps: m.scale / m.duration }
+        : { device: d.index, deviceName: d.name, mode: null, modeName: null });
+    };
+    cardSel.addEventListener('change', () => {
+      const d = devices.find(x => String(x.index) === cardSel.value) || devices[0];
+      fillModes(d); setKeyAvailable(d); saveMode(d); restartIfLive();
+    });
+    modeSel.addEventListener('change', () => {
+      const d = devices.find(x => String(x.index) === cardSel.value) || devices[0];
+      saveMode(d); restartIfLive();
+    });
+    keyBox.addEventListener('change', () => { updateNativeOutput('decklink', o.id, { keying: keyBox.checked }); restartIfLive(); });
+  });
+
+  host.appendChild(detailInlineGroup('Theme', buildThemeSelect(o.id)));
+  appendOutputLayersSection(host, o.id);
+
+  const del = document.createElement('button');
+  del.type = 'button';
+  del.className = 'modal-btn secondary display-output-del';
+  del.style.marginTop = '4px';
+  del.textContent = 'Remove this DeckLink output';
+  del.addEventListener('click', async () => {
+    if (invokeFn && raw.enabled) { try { await nativeStop(invokeFn, 'decklink', o.id); } catch {} }
+    const list = decklinkOutputs().filter(x => x.id !== o.id);
+    const themes = { ...outputThemeMap() }; delete themes[o.id];
+    const layers = { ...outputLayerMap() }; delete layers[o.id];
+    settings.decklinkOutputs = list; settings.outputThemes = themes; settings.outputLayers = layers;
+    saveSettingsPatch({ decklinkOutputs: list, outputThemes: themes, outputLayers: layers });
+    selectedOutputId = PRIMARY_DISPLAY;
+    applyOutputThemes(); applyOutputLayers();
+    renderOutputsList(); renderOutputsDetail();
+  });
+  host.appendChild(del);
+}
+
 function updateNativeOutput(kind, id, patch) {
-  const outputsFn = kind === 'ndi' ? ndiOutputs : syphonOutputs;
-  const list = outputsFn().map(x => x.id === id ? { ...x, ...patch } : x);
+  const list = nativeOutputsOf(kind).map(x => x.id === id ? { ...x, ...patch } : x);
   settings[`${kind}Outputs`] = list;
   saveSettingsPatch({ [`${kind}Outputs`]: list });
   if ('enabled' in patch && typeof refreshMonitor === 'function') refreshMonitor();
@@ -1077,6 +1531,12 @@ function wireOutputsAddMenu() {
         saveSettingsPatch({ extraDisplays: next });
         selectedOutputId = next[next.length - 1].id;
         applyOutputModes();
+      } else if (type === 'decklink') {
+        const list = decklinkOutputs();
+        const next = [...list, { id: genOutputId('decklink'), name: list.length ? `DeckLink ${list.length + 1}` : 'DeckLink', device: 0, mode: null, keying: false, enabled: false }];
+        settings.decklinkOutputs = next;
+        saveSettingsPatch({ decklinkOutputs: next });
+        selectedOutputId = next[next.length - 1].id;
       } else {
         const outputsFn = type === 'ndi' ? ndiOutputs : syphonOutputs;
         const list = outputsFn();

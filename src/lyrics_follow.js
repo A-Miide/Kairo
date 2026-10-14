@@ -69,7 +69,7 @@
   // Same key() folding as tokenizeKeys, but keeps each surviving key's real
   // audio-relative start/end (seconds) alongside it. Fed from Deepgram's own
   // `words` array (always present on a transcript event, no config needed),
-  // threaded through server.js -> WS -> onTranscript's meta.words. Built
+  // threaded through the server -> WS -> onTranscript's meta.words. Built
   // directly from the source `words` array
   // (not a separate map-then-filter pass against tokenizeKeys' own output),
   // so a dropped empty-key word can never desync a key from the wrong

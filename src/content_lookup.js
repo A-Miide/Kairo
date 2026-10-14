@@ -2,14 +2,14 @@
 // that's staged and ready — bring it up automatically")
 //
 // Scripture detection already does the "listen cold, no live item needed,
-// send what matches" job for Bible verses (server/detection_worker.js
+// send what matches" job for Bible verses (the detection engine (crates/kairo-detect)
 // against the ~31,000-verse corpus). This is the SAME idea scoped to the
 // operator's OWN playlist: if what's being sung/preached clearly matches
 // the OPENING of a song or slide deck that's staged in the current
 // service but not yet live, bring it up — the same way a verse just gets
 // sent the moment it's recognised.
 //
-// Deliberately separate from src/lyrics_follow.js and src/sermon_follow.js,
+// Deliberately separate from src/lyrics_follow.js and src/slide_follow.js,
 // which is a different job: THIS decides WHICH item should be live; THOSE
 // two track position WITHIN an item that already is. Once this brings a
 // song or sermon deck up, the existing per-item auto-follow machinery

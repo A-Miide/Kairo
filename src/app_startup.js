@@ -69,44 +69,13 @@
     document.getElementById(btnId)?.click();
   };
 
-  // File > Import's chooser — see the comment on the 'menu-import' listener
-  // below and #import-options-modal in index.html. Each row just hands off
-  // to a flow that already exists and is already tested (the Slides add-
-  // menu's quick file/clipboard import, and Theme Studio's own importer),
-  // this is only ever the front door that picks which one "Import" meant.
-  const importOptionsModal = document.getElementById('import-options-modal');
-  function openImportOptionsModal() { importOptionsModal?.classList.remove('hidden'); }
-  function closeImportOptionsModal() { importOptionsModal?.classList.add('hidden'); }
-  document.getElementById('close-import-options')?.addEventListener('click', closeImportOptionsModal);
-  importOptionsModal?.querySelector('.modal-overlay')?.addEventListener('click', closeImportOptionsModal);
-
-  const triggerQuickFile = (destination) => {
-    const input = document.getElementById('quick-import-file');
-    if (input) { input.dataset.destination = destination; input.click(); }
-  };
-  document.getElementById('import-opt-file')?.addEventListener('click', () => {
-    closeImportOptionsModal();
-    triggerQuickFile('playlist');
-  });
-  document.getElementById('import-opt-clipboard')?.addEventListener('click', () => {
-    closeImportOptionsModal();
-    window.KairoService?.quickImportClipboard?.('playlist');
-  });
-  document.getElementById('import-opt-song')?.addEventListener('click', () => {
-    closeImportOptionsModal();
-    triggerQuickFile('library');
-  });
-  document.getElementById('import-opt-theme')?.addEventListener('click', () => {
-    closeImportOptionsModal();
-    clickWhenReady('import-look-btn');
-  });
   window.__TAURI__.event.listen('menu-new-theme',     () => clickWhenReady('new-look-btn'));
   // File > Import used to go straight to clickWhenReady('import-look-btn')
   // — silently jumping into Theme Studio's own theme importer, with nothing
   // telling the operator that's what "Import" even meant. Import is almost
   // always about CONTENT (slides/a song), not a theme file, so this now
   // opens a small chooser instead of guessing — see #import-options-modal.
-  window.__TAURI__.event.listen('menu-import',        () => openImportOptionsModal());
+  window.__TAURI__.event.listen('menu-import',        () => window.KairoImport?.open());
   window.__TAURI__.event.listen('menu-export-theme',  () => clickWhenReady('export-look-btn'));
   // KAIRO > Settings… (Cmd+,) — same panel the toolbar gear icon opens.
   window.__TAURI__.event.listen('menu-settings',      () => { settingsModal?.classList.remove('hidden'); showFirstSettingsPane(); });
@@ -168,6 +137,66 @@ const HOTKEY_ACTIONS = [
   { id: 'clear-all',        label: 'Clear All',            btnId: 'clear-all-layers-btn',  default: 'cmd+shift+k' },
 ];
 
+// OSC remote (kairo-server osc.rs sends {type:'remote', action}): the hotkey
+// actions plus a few only a remote needs — slide stepping and explicit
+// start/stop, so a button can't toggle listening the wrong way.
+const REMOTE_ACTIONS = [
+  ...HOTKEY_ACTIONS.filter(a => a.id !== 'find-verse'),
+  { id: 'listen-start', label: 'Start Listening', run: () => { if (!isListening) document.getElementById('listen-btn')?.click(); } },
+  { id: 'listen-stop',  label: 'Stop Listening',  run: () => { if (isListening) document.getElementById('listen-btn')?.click(); } },
+  { id: 'slide-next',   label: 'Next slide',      run: () => window.KairoService?.advanceLiveSlide?.(1) },
+  { id: 'slide-prev',   label: 'Previous slide',  run: () => window.KairoService?.advanceLiveSlide?.(-1) },
+];
+
+function runRemoteAction(id) {
+  const action = REMOTE_ACTIONS.find(a => a.id === id);
+  if (!action) return;
+  if (action.run) action.run();
+  else document.getElementById(action.btnId)?.click();
+}
+window.runRemoteAction = runRemoteAction;
+
+async function renderOscSettings() {
+  const enabled = document.getElementById('osc-enabled');
+  const port = document.getElementById('osc-port');
+  const status = document.getElementById('osc-status');
+  const list = document.getElementById('osc-addresses');
+  if (!enabled || !port) return;
+  enabled.checked = !!settings.oscEnabled;
+  port.value = settings.oscPort || 8765;
+  port.disabled = !enabled.checked;
+  if (list && !list.childElementCount) {
+    REMOTE_ACTIONS.forEach(a => {
+      const row = document.createElement('div');
+      row.className = 'dl-row';
+      row.innerHTML = `<code class="osc-address">/kairo/${escapeHtml(a.id)}</code><span class="dl-name">${escapeHtml(a.label)}</span>`;
+      list.appendChild(row);
+    });
+  }
+  if (!status) return;
+  if (!enabled.checked) { status.textContent = 'Off'; status.classList.remove('osc-error'); return; }
+  try {
+    const s = await (await fetch(`${SERVER}/api/osc/status`)).json();
+    status.textContent = s.error || (s.listening ? `Listening on UDP ${s.port}${s.last ? ` · last: ${s.last}` : ''}` : 'Starting…');
+    status.classList.toggle('osc-error', !!s.error);
+  } catch { status.textContent = ''; }
+}
+
+document.getElementById('osc-enabled')?.addEventListener('change', async (e) => {
+  settings.oscEnabled = e.target.checked;
+  await saveSettingsPatch({ oscEnabled: e.target.checked });
+  renderOscSettings();
+  setTimeout(renderOscSettings, 2500); // the server picks it up within 2 s
+});
+document.getElementById('osc-port')?.addEventListener('change', async (e) => {
+  const p = Math.round(Number(e.target.value));
+  if (!(p >= 1024 && p <= 65535)) { e.target.value = settings.oscPort || 8765; return; }
+  settings.oscPort = p;
+  await saveSettingsPatch({ oscPort: p });
+  setTimeout(renderOscSettings, 2500);
+});
+document.querySelector('.settings-nav-item[data-pane="shortcuts"]')?.addEventListener('click', () => renderOscSettings());
+
 function hotkeyFor(actionId) {
   const action = HOTKEY_ACTIONS.find(a => a.id === actionId);
   const stored = settings.hotkeys?.[actionId];
@@ -196,31 +225,33 @@ function comboDisplay(combo) {
 
 let capturingHotkeyId = null;
 
+// One list, a row per action: its name, its keys as keycaps, and Change /
+// Clear — the keys where the eye looks for them (2026-10-12; they were small
+// grey text under each name, one tall card per action).
 function renderHotkeysList() {
   const host = document.getElementById('hotkeys-list');
   if (!host) return;
+  host.className = 'dl-list hotkeys-list';
   host.innerHTML = '';
   HOTKEY_ACTIONS.forEach(action => {
     const combo = hotkeyFor(action.id);
     const row = document.createElement('div');
-    row.className = 'lang-pack-row';
-    row.innerHTML = `<div class="lang-pack-meta"><div class="lang-pack-name">${escapeHtml(action.label)}</div>` +
-      `<div class="lang-pack-sub">${escapeHtml(comboDisplay(combo))}</div></div>`;
-    const actions = document.createElement('div');
-    actions.style.cssText = 'display:flex;gap:6px;';
+    row.className = 'dl-row';
+    const keys = combo
+      ? combo.split('+').map(p => `<kbd>${escapeHtml(COMBO_SYMBOLS[p] || p.toUpperCase())}</kbd>`).join('')
+      : '<span class="hotkey-unset">Not set</span>';
+    row.innerHTML = `<span class="dl-name">${escapeHtml(action.label)}</span><span class="hotkey-keys">${keys}</span>`;
     const changeBtn = document.createElement('button');
-    changeBtn.className = 'modal-btn secondary';
-    changeBtn.textContent = 'Change';
+    changeBtn.className = 'modal-btn secondary dl-btn';
+    changeBtn.textContent = combo ? 'Change' : 'Set';
     changeBtn.addEventListener('click', () => startHotkeyCapture(action.id, changeBtn));
-    actions.appendChild(changeBtn);
-    if (combo) {
-      const clearBtn = document.createElement('button');
-      clearBtn.className = 'modal-btn secondary';
-      clearBtn.textContent = 'Clear';
-      clearBtn.addEventListener('click', () => saveHotkey(action.id, ''));
-      actions.appendChild(clearBtn);
-    }
-    row.appendChild(actions);
+    row.appendChild(changeBtn);
+    const clearBtn = document.createElement('button');
+    clearBtn.className = 'modal-btn secondary dl-btn';
+    clearBtn.textContent = 'Clear';
+    clearBtn.style.visibility = combo ? '' : 'hidden'; // keeps the columns lined up
+    clearBtn.addEventListener('click', () => saveHotkey(action.id, ''));
+    row.appendChild(clearBtn);
     host.appendChild(row);
   });
 }
@@ -273,9 +304,10 @@ document.addEventListener('keydown', (e) => {
 });
 
 renderHotkeysList();
+renderOscSettings();
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TRIGGERS — dispatch into the Timer tab (server/triggers.js, service.js)
+// TRIGGERS — dispatch into the Timer tab (the server's Triggers (kairo-server library.rs), service.js)
 //   The actual UI lives in service.js as a top-bar tab (segment cards,
 //   see showTimerLibrary/onTimerAction) — this just forwards the two
 //   built-in trigger types' broadcasts there, same bridge pattern as
@@ -345,6 +377,7 @@ registerActionHandler('clock-message', (msg) => window.KairoService?.onClockActi
     }
   };
   window.KairoNativeOutputs.pushToOne = function pushToOne(kind, id) {
+    if (kind === 'decklink') return; // DeckLink only ever plays captured frames
     const want = outputLayerMap()[id] || { slide: true, media: true, timer: true };
     if (want.slide !== false) tauriInvoke(`${kind}_update`, { id, verse: lastVerse, reference: lastRef }).catch(() => {});
     if (want.media !== false) {

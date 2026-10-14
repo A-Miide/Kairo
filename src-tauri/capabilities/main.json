@@ -2,9 +2,13 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "main-capability",
   "description": "KAIRO main window capabilities",
-  "windows": ["main", "kairo-*"],
+  "windows": [
+    "main"
+  ],
   "remote": {
-    "urls": ["http://127.0.0.1:*"]
+    "urls": [
+      "http://127.0.0.1:*"
+    ]
   },
   "permissions": [
     "core:default",
@@ -21,6 +25,9 @@
     "core:window:allow-set-size",
     "core:window:allow-set-position",
     "core:window:allow-start-dragging",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-is-maximized",
     "core:webview:allow-create-webview-window",
     "allow-get-server-port",
     "allow-get-server-token",
@@ -35,11 +42,16 @@
     "allow-ndi-update",
     "allow-ndi-update-media",
     "allow-ndi-update-timer",
+    "allow-output-capture-supported",
+    "allow-decklink-list",
+    "allow-decklink-start",
+    "allow-decklink-stop",
     "allow-syphon-available",
     "allow-syphon-start",
     "allow-syphon-stop",
     "allow-syphon-update",
     "allow-syphon-update-media",
-    "allow-syphon-update-timer"
+    "allow-syphon-update-timer",
+    "allow-output-video"
   ]
 }
