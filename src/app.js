@@ -1795,6 +1795,12 @@ setInterval(() => {
 }, 500);
 
 let lastNonZeroAudioAt = 0;   // any non-zero sample at all (a real mic always has some noise)
+// A virtual input's silent spell (checkAudioSilence): the last real sample
+// this session (never reset by a rebuild), the spell already reopened once,
+// and the reopen still waiting to hear whether sound came back.
+let lastHeardSignalAt = 0;
+let _silentReopenFor = 0;
+let _silentReopenPending = null;
 let _lastLevelLogAt = 0;
 // One capture graph: getUserMedia stream -> 16 kHz AudioContext -> frames to
 // the server. Shared by Start and every rebuild (they used to be two copies).
@@ -1880,7 +1886,13 @@ function noteCaptureLevel(peak, bufferLength, gain = 1, clipped = false) {
   noteInputLevel(peak / 32768, clipped, gain);
   noteInputSummary(peak / 32768, clipped, gain);
   if (peak > 0) rememberInputGain(mediaStream?.getAudioTracks?.()[0]?.label || '', gain);
-  if (peak > 0) lastNonZeroAudioAt = now;
+  if (peak > 0) {
+    lastNonZeroAudioAt = lastHeardSignalAt = now;
+    if (_silentReopenPending) {
+      _healLog('sound came back after reopening the silent input', { input: _silentReopenPending.input, afterMs: now - _silentReopenPending.at });
+      _silentReopenPending = null;
+    }
+  }
   if (peak > AUDIO_PEAK_NOISE_FLOOR) lastRealAudioAt = now;
   if (now - _lastLevelLogAt > 3000) {
     _lastLevelLogAt = now;
@@ -2072,6 +2084,7 @@ async function startListening() {
     watchAudioTrackHealth();   // OS-level "track died" → immediate rebuild
 
     lastRealAudioAt = lastNonZeroAudioAt = Date.now(); // don't warn before real audio has had a chance to arrive at all
+    lastHeardSignalAt = _silentReopenFor = 0; _silentReopenPending = null; // a new session: nothing heard yet
     audioSilenceWarning = false;
     clearInterval(audioSilenceWatchdog);
     resetSleepCheck();
@@ -2210,6 +2223,29 @@ function checkAudioSilence() {
   // playing — is never a reason: silence used to trigger a rebuild, which the
   // operator saw as the mic "reconnecting". The Deepgram connection is never
   // touched here either way.
+  // A virtual input (BlackHole…) that carried sound and then gives exact
+  // zeros for 20 s: reopen it ONCE for that silent spell, seamlessly, and
+  // log whether sound came back. Live, such a spell (4½ minutes) couldn't
+  // be placed: nothing playing into the input, or WebKit's link to it gone
+  // quiet (its audio runs on the Mac's output device, which can be the same
+  // BlackHole). If the reopen brings sound back, it was the link — and this
+  // fixed it; if not, nothing is reaching the input (the warning says what
+  // to check). Never the room mic, and never a loop.
+  if (captureIsVirtualInput() && lastHeardSignalAt && audioContext && !_audioHealing
+      && now - lastHeardSignalAt > 20000 && _silentReopenFor !== lastHeardSignalAt) {
+    _silentReopenFor = lastHeardSignalAt;
+    const input = mediaStream?.getAudioTracks?.()[0]?.label || '';
+    const pending = { at: now, input };
+    _silentReopenPending = pending;
+    _audioHealAt = now;
+    restartAudioCapture('virtual-input-silent', false);
+    setTimeout(() => {
+      if (_silentReopenPending !== pending) return;
+      _healLog('still silent after reopening the input — nothing is reaching it', { input });
+      _silentReopenPending = null;
+    }, 30000);
+    return;
+  }
   const stuckAtZero = !captureIsVirtualInput() && now - lastNonZeroAudioAt > 45000;
   if ((wokeFromSleep || stuckAtZero) && audioContext && !_audioHealing && now - _audioHealAt > 20000) {
     _audioHealAt = now;
