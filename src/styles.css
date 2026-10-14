@@ -8154,3 +8154,11 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
   width: 18px; height: 18px; border-radius: 50%;
 }
 .learned-term-remove:hover { color: var(--text); background: var(--bg-hover); }
+
+/* Settings → Shortcuts → Remote control (OSC). */
+.setting-group.osc-port-row { display: flex; flex-direction: row; align-items: center; justify-content: flex-start; gap: 12px; flex-wrap: wrap; text-align: left; }
+.osc-port-row .setting-label { margin: 0; width: auto; }
+.osc-port-row .setting-hint { margin: 0; text-align: left; }
+.osc-error { color: var(--red); }
+.osc-addresses .dl-row { gap: 12px; }
+.osc-address { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: var(--text); min-width: 190px; }

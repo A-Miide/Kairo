@@ -6933,6 +6933,7 @@
     // this same "Paste from clipboard" flow the Slides/Songs add-menus
     // already use, rather than a second implementation of clipboard import.
     quickImportClipboard,
+    advanceLiveSlide,
     quickImportFile,
     // The global search overlay (global_search.js).
     prefetchForSearch, searchContent, openFound,

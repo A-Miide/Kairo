@@ -26,6 +26,7 @@ mod routes_misc;
 mod translate;
 pub mod settings;
 mod video;
+mod osc;
 mod vocabulary;
 mod ws;
 
@@ -164,6 +165,7 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         keep_awake: std::sync::Mutex::new(None),
     });
     app.refresh_presentation().await;
+    tokio::spawn(osc::run(app.clone()));
     let obs_app = app.clone();
     tokio::spawn(async move {
         tokio::time::sleep(std::time::Duration::from_secs(2)).await;

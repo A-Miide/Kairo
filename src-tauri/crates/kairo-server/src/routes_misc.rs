@@ -29,6 +29,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/theme/import-protheme", post(theme_import))
         .route("/api/vocabulary/learned", get(learned_terms))
         .route("/api/vocabulary/forget", post(forget_term))
+        .route("/api/osc/status", get(|| async { Json(crate::osc::status()) }))
 }
 
 /// Names learned from past services (Settings → Church vocabulary).
