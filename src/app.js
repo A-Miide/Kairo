@@ -1346,10 +1346,10 @@ function buildCandidateCard(v, method, isSent = false) {
   card.dataset.at = String(Date.now());
   card.innerHTML = `
     <div class="cand-row">
-      <span class="cand-ref">${v.reference}</span>
+      <span class="cand-ref">${escapeHtml(String(v.reference || ''))}</span>
       ${conf ? `<span class="cand-badge ${tier}">${conf}</span>` : ''}
     </div>
-    <div class="cand-text">${cleanVerseText(v.text)}</div>
+    <div class="cand-text">${escapeHtml(cleanVerseText(v.text || ''))}</div>
     <div class="cand-actions">
       <button class="cand-send">Send to Air</button>
     </div>
@@ -1401,13 +1401,13 @@ function buildQueueRow(v, method, correctedFrom = null) {
   card.className = 'locked-verse-card' + (correctedFrom ? ' corrected' : '');
   const abbr = refToBadgeAbbr(v.reference);
   const correctedChip = correctedFrom
-    ? `<span class="corrected-chip" title="Auto-corrected from ${correctedFrom}">corrected from ${correctedFrom}</span>`
+    ? `<span class="corrected-chip" title="Auto-corrected from ${escapeHtml(String(correctedFrom))}">corrected from ${escapeHtml(String(correctedFrom))}</span>`
     : '';
   card.innerHTML = `
-    <div class="history-book-badge">${abbr}</div>
+    <div class="history-book-badge">${escapeHtml(String(abbr || ''))}</div>
     <div class="history-card-content">
-      <div class="lvc-ref">${v.reference}${correctedChip}</div>
-      <div class="lvc-text">${cleanVerseText(v.text)}</div>
+      <div class="lvc-ref">${escapeHtml(String(v.reference || ''))}${correctedChip}</div>
+      <div class="lvc-text">${escapeHtml(cleanVerseText(v.text || ''))}</div>
     </div>
     <div class="lvc-actions">
       <button class="lvc-send-btn" title="Send to screen">Send</button>
@@ -1575,10 +1575,10 @@ function buildRangeCard(v, isActive) {
   const abbr = refToBadgeAbbr(v.reference);
 
   card.innerHTML = `
-    <div class="history-book-badge range-book-badge">${abbr}</div>
+    <div class="history-book-badge range-book-badge">${escapeHtml(String(abbr || ''))}</div>
     <div class="history-card-content">
-      <div class="lvc-ref">${v.reference}</div>
-      <div class="lvc-text">${cleanVerseText(v.text || v.kjv_text || '')}</div>
+      <div class="lvc-ref">${escapeHtml(String(v.reference || ''))}</div>
+      <div class="lvc-text">${escapeHtml(cleanVerseText(v.text || v.kjv_text || ''))}</div>
     </div>
     <div class="lvc-actions">
       <button class="lvc-send-btn" title="Send to ProPresenter">Send</button>
