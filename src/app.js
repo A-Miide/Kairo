@@ -2095,11 +2095,26 @@ function setAudioSilenceWarning(on) {
     dot?.classList.remove('broadcasting');
     dot?.classList.add('warning');
     if (lbl) { lbl.classList.remove('broadcasting'); lbl.classList.add('warning'); lbl.textContent = 'No audio!'; }
+    // Say where to look: a loopback (BlackHole…) is fed by the Mac's Sound
+    // output, and a Multi-Output Device can quietly stop feeding it when a
+    // device comes or goes (live: AirPlay screens on the network; the
+    // speakers kept playing, BlackHole got nothing, until the output was set
+    // again). Clicking opens Settings → Audio Input and its level meter.
+    const input = mediaStream?.getAudioTracks?.()[0]?.label || 'the selected input';
+    const pill = lbl?.closest('.ls-bcast-pill');
+    if (pill) {
+      pill.classList.add('is-actionable');
+      pill.title = LOOPBACK_INPUT_RE.test(input)
+        ? `Nothing is reaching ${input}. Check the Mac's Sound output: it must be ${input} or a Multi-Output Device that includes it. A Multi-Output Device can stop feeding it when a speaker, screen or headphones come or go — select it again in System Settings → Sound. Click for Audio settings.`
+        : `Nothing is coming from ${input}. Check it's connected, switched on and not muted. Click for Audio settings.`;
+    }
   } else {
     // Back to the listening state — or Idle when this clears because
     // listening just stopped (it used to leave "Broadcasting" up after Stop).
     dot?.classList.remove('warning');
     dot?.classList.toggle('broadcasting', isListening);
+    const pill = lbl?.closest('.ls-bcast-pill');
+    if (pill) { pill.classList.remove('is-actionable'); pill.removeAttribute('title'); }
     if (lbl) {
       lbl.classList.remove('warning');
       lbl.classList.toggle('broadcasting', isListening);
@@ -2741,6 +2756,11 @@ async function saveCurrentSettings() {
 }
 
 settingsBtn?.addEventListener('click',    () => { settingsModal?.classList.remove('hidden'); showFirstSettingsPane(); });
+// "No audio!" in Live Status opens Audio Input (the first pane) to check the feed.
+document.querySelector('.ls-bcast-pill')?.addEventListener('click', (e) => {
+  if (!e.currentTarget.classList.contains('is-actionable')) return;
+  settingsModal?.classList.remove('hidden'); showFirstSettingsPane();
+});
 closeSettingsBtn?.addEventListener('click', closeModal);
 cancelSettingsBtn?.addEventListener('click', closeModal);
 saveSettingsBtn?.addEventListener('click',  saveCurrentSettings);

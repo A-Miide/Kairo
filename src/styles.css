@@ -3706,6 +3706,7 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
   color: var(--text-3);
 }
 
+.ls-bcast-pill.is-actionable { cursor: pointer; }
 .ls-bcast-pill {
   display: flex;
   align-items: center;
