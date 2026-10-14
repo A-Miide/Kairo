@@ -76,11 +76,19 @@ pub struct Decoding {
     pub beam: bool,
     /// How strongly the book names are favoured (0: not at all).
     pub hotwords_score: f32,
+    /// Taken off the "nothing said" score at every step. The model otherwise
+    /// hears a phrase right after a pause as silence ("Romans five five" |
+    /// "…shed abroad in our heart" lost); at 1.0 drops of 4+ words fell from
+    /// 39 to 23 on two sermons, wrong sends 4 -> 1, at no extra CPU.
+    pub blank_penalty: f32,
 }
+
+/// Measured on the eval sermons (`offline-transcribe --blank-penalty`).
+pub const BLANK_PENALTY: f32 = 1.0;
 
 impl Default for Decoding {
     fn default() -> Decoding {
-        Decoding { beam: false, hotwords_score: 0.0 }
+        Decoding { beam: false, hotwords_score: 0.0, blank_penalty: BLANK_PENALTY }
     }
 }
 
@@ -156,6 +164,7 @@ pub fn recognizer(dir: &std::path::Path, decoding: &Decoding) -> Result<Arc<Onli
         rule1_min_trailing_silence: 2.4,
         rule2_min_trailing_silence: UTTERANCE_END_SECS,
         rule3_min_utterance_length: 1e6,
+        blank_penalty: decoding.blank_penalty,
         ..Default::default()
     };
     if decoding.beam && decoding.hotwords_score > 0.0 {
@@ -198,12 +207,14 @@ pub struct Transcriber {
     language: Option<String>,
     locked: usize,
     last_partial: String,
+    /// Restart the recogniser's context at a pause once this many words are in it.
+    pub reset_after: usize,
 }
 
 impl Transcriber {
     pub fn new(rec: Arc<OnlineRecognizer>, language: Option<String>) -> Transcriber {
         let stream = rec.create_stream();
-        let t = Transcriber { rec, stream, language, locked: 0, last_partial: String::new() };
+        let t = Transcriber { rec, stream, language, locked: 0, last_partial: String::new(), reset_after: RESET_AFTER_WORDS };
         t.pin();
         t
     }
@@ -243,7 +254,7 @@ impl Transcriber {
             }
             self.last_partial.clear();
             self.locked = words.len();
-            if words.len() >= RESET_AFTER_WORDS {
+            if words.len() >= self.reset_after {
                 self.rec.reset(&self.stream);
                 self.pin();
                 self.locked = 0;
