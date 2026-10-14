@@ -3,8 +3,7 @@
   "identifier": "main-capability",
   "description": "KAIRO main window capabilities",
   "windows": [
-    "main",
-    "kairo-*"
+    "main"
   ],
   "remote": {
     "urls": [

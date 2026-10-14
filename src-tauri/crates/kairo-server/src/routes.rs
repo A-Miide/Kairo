@@ -60,7 +60,10 @@ fn percent_decode_path(p: &str) -> String {
 
 async fn serve_file(app: &Shared, rel: &str) -> Response {
     let rel = rel.trim_start_matches('/');
-    if rel.split('/').any(|p| p == ".." || p.starts_with('.')) {
+    // Only plain names below the UI folder: no "..", hidden files, drive or
+    // root prefixes, and no backslashes (a separator on Windows).
+    let plain = std::path::Path::new(rel).components().all(|c| matches!(c, std::path::Component::Normal(_)));
+    if rel.contains('\\') || !plain || rel.split('/').any(|p| p.starts_with('.')) {
         return StatusCode::NOT_FOUND.into_response();
     }
     let path = app.cfg.ui_dir.join(rel);
