@@ -27,7 +27,7 @@ use libloading::{Library, Symbol};
 // two are only the fallback when a caller passes 0/invalid values.
 const DEFAULT_FRAME_W: i32 = 1280;
 const DEFAULT_FRAME_H: i32 = 720;
-const SEND_FPS_N: i32 = 15;     // Frame-rate numerator (15/1 = 15 fps)
+const SEND_FPS_N: i32 = 30;     // Frame-rate numerator (30/1 = 30 fps): smooth fades of captured frames
 const SEND_FPS_D: i32 = 1;
 // FourCC for BGRA = ('B','G','R','A') little-endian = 0x41524742
 const FOURCC_BGRA: u32 = 0x4152_4742;
@@ -163,6 +163,10 @@ pub enum NdiCmd {
     // Tauri command handler.
     SetMedia { bytes: Option<Vec<u8>> },
     SetTimer { text: String },
+    /// A captured frame of this output's display window (capture.rs) —
+    /// the real theme. Once one has arrived the text renderer is no longer
+    /// used; `fade_ms` > 0 blends from the frame on air.
+    SetFrame { frame: Arc<crate::capture::Frame>, fade_ms: u32 },
     Stop,
 }
 
@@ -195,6 +199,11 @@ impl NdiHandle {
     pub fn update_media(&self, bytes: Option<Vec<u8>>) {
         if let Some(tx) = &self.tx {
             let _ = tx.send(NdiCmd::SetMedia { bytes });
+        }
+    }
+    pub fn update_frame(&self, frame: Arc<crate::capture::Frame>, fade_ms: u32) {
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(NdiCmd::SetFrame { frame, fade_ms });
         }
     }
     pub fn update_timer(&self, text: String) {
@@ -309,6 +318,12 @@ pub fn start(source_name: &str, width: i32, height: i32, shared: Arc<Mutex<NdiHa
             // Render initial empty/idle frame
             render_frame(&mut buf, frame_w, frame_h, &latest_verse, &latest_ref, latest_media.as_ref(), &latest_timer, &mut font_system, &mut swash_cache);
 
+            // Captured frames (the real theme): once any has arrived, the
+            // text renderer stands down. A fade blends the frame on air
+            // into the new one over `fade.3`.
+            let mut captured = false;
+            let mut fade: Option<(Vec<u8>, Arc<crate::capture::Frame>, std::time::Instant, Duration)> = None;
+
             let frame_period = Duration::from_millis(1000 / SEND_FPS_N as u64);
             loop {
                 // Drain pending commands (latest update wins; stop terminates).
@@ -338,10 +353,32 @@ pub fn start(source_name: &str, width: i32, height: i32, shared: Arc<Mutex<NdiHa
                             latest_timer = text;
                             got_update   = true;
                         }
+                        NdiCmd::SetFrame { frame, fade_ms } => {
+                            if frame.width as i32 != frame_w || frame.height as i32 != frame_h || frame.bgra.len() != buf.len() {
+                                eprintln!("[NDI] Captured frame is {}x{}, output is {}x{} — skipped", frame.width, frame.height, frame_w, frame_h);
+                                continue;
+                            }
+                            if captured && fade_ms > 0 {
+                                fade = Some((buf.clone(), frame, std::time::Instant::now(), Duration::from_millis(fade_ms as u64)));
+                            } else {
+                                buf.copy_from_slice(&frame.bgra);
+                                fade = None;
+                            }
+                            captured = true;
+                        }
                     }
                 }
                 if should_stop { break; }
-                if got_update {
+                if let Some((from, to, started, dur)) = &fade {
+                    let t = started.elapsed().as_secs_f32() / dur.as_secs_f32().max(0.001);
+                    if t >= 1.0 {
+                        buf.copy_from_slice(&to.bgra);
+                        fade = None;
+                    } else {
+                        crate::capture::blend(&mut buf, from, &to.bgra, t);
+                    }
+                }
+                if got_update && !captured {
                     render_frame(&mut buf, frame_w, frame_h, &latest_verse, &latest_ref, latest_media.as_ref(), &latest_timer, &mut font_system, &mut swash_cache);
                 }
 

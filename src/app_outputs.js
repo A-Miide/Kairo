@@ -358,6 +358,18 @@ function allConfiguredOutputs() {
 // display name, using the same synchronous pre-paint platform-* class
 // index.html's own inline script sets on <html> for the traffic-light-inset
 // fix, rather than adding a new Tauri command just to ask the OS.
+// Every NDI / Syphon start and stop goes through these, so the output's
+// hidden capture window (output_capture.js — its real theme on air) opens
+// and closes with it.
+async function nativeStart(invokeFn, kind, args) {
+  await invokeFn(`${kind}_start`, args);
+  window.KairoCapture?.open(args.id, args.width, args.height);
+}
+async function nativeStop(invokeFn, kind, id) {
+  window.KairoCapture?.close(id);
+  await invokeFn(`${kind}_stop`, { id });
+}
+
 function nativeSenderLabel() {
   return document.documentElement.classList.contains('platform-win32') ? 'Spout' : 'Syphon';
 }
@@ -395,7 +407,7 @@ function autoResumeNativeOutputs() {
   for (const kind of ['ndi', 'syphon']) {
     for (const o of (kind === 'ndi' ? ndiOutputs() : syphonOutputs())) {
       if (!o.enabled) continue;
-      invokeFn(`${kind}_start`, {
+      nativeStart(invokeFn, kind, {
         id: o.id, sourceName: o.sourceName || 'KAIRO Scripture',
         width: o.width || 1920, height: o.height || 1080,
       })
@@ -562,7 +574,7 @@ function buildOutputRowToggle(o) {
     if (!invokeFn) { input.checked = false; toast(`${outputTypeLabel(kind)} not available (run inside the app)`, 'error'); return; }
     if (input.checked) {
       try {
-        await invokeFn(`${kind}_start`, {
+        await nativeStart(invokeFn, kind, {
           id: o.id, sourceName: o.raw.sourceName || 'KAIRO Scripture',
           width: o.raw.width || 1920, height: o.raw.height || 1080,
         });
@@ -581,7 +593,7 @@ function buildOutputRowToggle(o) {
         toast(`${outputTypeLabel(kind)} failed: ` + msg, 'error');
       }
     } else {
-      try { await invokeFn(`${kind}_stop`, { id: o.id }); } catch {}
+      try { await nativeStop(invokeFn, kind, o.id); } catch {}
       updateNativeOutput(kind, o.id, { enabled: false });
     }
     renderOutputsList();
@@ -1195,9 +1207,9 @@ function renderNativeOutputDetail(host, o) {
     clearTimeout(debounce);
     debounce = setTimeout(async () => {
       if (!invokeFn) return;
-      try { await invokeFn(`${kind}_stop`, { id: o.id }); } catch {}
+      try { await nativeStop(invokeFn, kind, o.id); } catch {}
       try {
-        await invokeFn(`${kind}_start`, {
+        await nativeStart(invokeFn, kind, {
           id: o.id, sourceName: srcInput.value.trim() || 'KAIRO Scripture',
           width: Math.max(160, Number(wInput.value) || 1920), height: Math.max(90, Number(hInput.value) || 1080),
         });
@@ -1219,7 +1231,7 @@ function renderNativeOutputDetail(host, o) {
   del.style.marginTop = '4px';
   del.textContent = `Remove this ${outputTypeLabel(kind)} output`;
   del.addEventListener('click', async () => {
-    if (invokeFn && raw.enabled) { try { await invokeFn(`${kind}_stop`, { id: o.id }); } catch {} }
+    if (invokeFn && raw.enabled) { try { await nativeStop(invokeFn, kind, o.id); } catch {} }
     const list = (kind === 'ndi' ? ndiOutputs() : syphonOutputs()).filter(x => x.id !== o.id);
     settings[`${kind}Outputs`] = list;
     const themes = { ...outputThemeMap() }; delete themes[o.id];
