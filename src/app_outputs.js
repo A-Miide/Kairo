@@ -169,7 +169,7 @@ function populateScreenOptions(sel, outputId) {
 // failure visible in the debug log the moment it happens, instead of only
 // once an operator reports "the display isn't working."
 function logDisplayLifecycleFallback(where, detail) {
-  // /api/debug-log only reads {event, data} off the body (see server.js) —
+  // /api/debug-log only reads {event, data} off the body (see kairo-server routes.rs) —
   // anything else silently gets dropped, which would have been a fittingly
   // ironic way for this exact hardening to go silent itself.
   fetch(`${SERVER}/api/debug-log`, {
@@ -277,7 +277,7 @@ function outputThemeMap() {
 
 // ── Language ──────────────────────────────────────────────────────────────
 // Spoken language drives transcription; scripture language selects which
-// text a detected/displayed verse shows in (server.js's applyScriptureLanguage,
+// text a detected/displayed verse shows in (the server's applyScriptureLanguage,
 // a real lookup against databases/bibles/packs/*.json — sourced 2026-09-13
 // from public-domain/CC-BY-SA editions, real text, not placeholders).
 //

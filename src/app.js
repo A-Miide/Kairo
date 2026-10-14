@@ -465,9 +465,7 @@ const SCRIPTURE_REF_RE = new RegExp(
   `\\s+\\d{1,3}(?::\\d{1,3}(?:[-–]\\d{1,3})?)?\\b`,
   'g'
 );
-function escapeHtml(s) {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
+// escapeHtml: client_common.js (quotes too, any value).
 // Escape FIRST, then match/wrap on the escaped string — book names and digits
 // are untouched by HTML-escaping, so matches are identical either way, and this
 // ordering means the highlight spans are never built from unescaped raw text.
@@ -1635,7 +1633,7 @@ function buildRangeCard(v, isActive) {
 // verse everywhere' call for every manual send" per its own comment (Send
 // button, double-click, Candidates promote, range cards, direct search
 // hits), so this reaches all of those. It does NOT reach the fully-
-// automatic live-listening path, which broadcasts through server.js's own
+// automatic live-listening path, which broadcasts through the server's own
 // detection pipeline and relies on the display window's own stored theme
 // rather than a look sent per-request — a real limitation of this
 // interpretation, not yet covered.
@@ -2061,7 +2059,7 @@ async function startListening() {
       // fix (go set it up in Settings), unlike a genuine runtime error (a
       // rejected/invalid key, a real network failure) which a redirect
       // wouldn't actually resolve — so only these two specific, well-known
-      // error strings (from startDeepgram/startOffline in server.js) trigger
+      // error strings (from startDeepgram/startOffline in the server (kairo-server)) trigger
       // the jump; anything else just logs, matching the previous behavior's
       // (silent) fallback rather than guessing at what an unknown error needs.
       const missingKey   = serverEngine === 'deepgram' && /no deepgram api key/i.test(d.error);
@@ -2538,7 +2536,7 @@ async function loadSettings() {
     // currentOutputThemes stayed {} for an entire session on a fresh
     // launch. Anything server-side that depends on knowing the primary
     // output's theme (e.g. attachBibleTranslations gating on the Multi-
-    // Language layout — see primaryOutputTranslateLang in server.js)
+    // Language layout — see primaryOutputTranslateLang in the server (kairo-server))
     // silently did nothing until the operator happened to open Settings
     // and touch a picker, which is exactly why the Multi-Language theme
     // looked like it "worked sometimes and not others."
@@ -3300,7 +3298,7 @@ document.getElementById('clear-slide-layer-btn')?.addEventListener('click', () =
 document.getElementById('clear-media-layer-btn')?.addEventListener('click', () => clearOutputLayer('media'));
 // 'timer' has no client-side preview to clear (unlike slide/media, the
 // countdown only ever exists on the actual output) — the server-side stop
-// is the whole effect; see clear-layer's handling in server.js.
+// is the whole effect; see clear-layer's handling in the server (kairo-server).
 document.getElementById('clear-timer-layer-btn')?.addEventListener('click', () => clearOutputLayer('timer'));
 document.getElementById('clear-all-layers-btn')?.addEventListener('click', () => clearOutputLayer('all'));
 
@@ -3925,7 +3923,7 @@ async function renderInlineTranslateUpsell(container, code) {
   // retroactively download the french bible... so the translation can be
   // correct." Investigated — there was never actually a missing download:
   // every MT_LANGUAGES entry has a real, already-bundled Bible translation
-  // (databases/i18n/{code}.json — server.js's translate() tries this FIRST,
+  // (databases/i18n/{code}.json — the server's translate() tries this FIRST,
   // before ever touching the MT model), so scripture on the Multi-Language
   // split theme already works the instant a language is picked, zero
   // setup. This model download is only for translating NON-scripture slide/

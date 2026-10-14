@@ -335,7 +335,7 @@
                 <!-- All 6 are now real, distinct text — databases/bibles/
                      translations/*.json (NKJV/NIV/ESV/NASB) plus map.json's
                      own kjv_text/nlt_text (KJV/NLT), applied by
-                     applyTranslation() in server.js. Briefly cut down to
+                     applyTranslation() in the server (kairo-server). Briefly cut down to
                      just KJV/NLT when the other four turned out to be
                      unwired labels; restored once the real source files
                      were found and connected. -->
@@ -478,7 +478,7 @@
                  bottom-left label, see .ts-item-slide-thumb) so a segment
                  reads as "a layer" the same way a slide does. Exactly one
                  segment is ever live — starting one stops+finishes
-                 whichever was live before it (see server/segments.js). -->
+                 whichever was live before it (see the server's Segments (kairo-server library.rs)). -->
             <div class="cs-live-queue-section cs-live-queue-main hidden" id="timer-view">
                 <div class="cs-section-header svc-header">
                     <span class="cs-section-label">Timer</span>

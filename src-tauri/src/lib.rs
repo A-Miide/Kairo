@@ -176,7 +176,7 @@ fn build_app_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry
         .text("menu-clear-media", "Clear Media")
         // The timer/clock layer's own clear — added once the output grew
         // a third composited layer alongside slide/media (see the Timer
-        // tab in service.js and server/segments.js).
+        // tab in service.js and the server's Segments (kairo-server library.rs)).
         .text("menu-clear-timer", "Clear Timer")
         .item(&clear_all_item)
         .build()?;
@@ -614,7 +614,7 @@ fn ndi_update(app: AppHandle, id: String, verse: String, reference: String) -> R
 // ndi.rs's own render_frame). `image_base64: None` clears the Media layer
 // (mirrors display.html's renderMediaStage(null)); Some(b64) is standard
 // (non-URL-safe) base64-encoded PNG/JPEG bytes, the same encoding this app
-// already uses for media data URIs elsewhere (e.g. server.js's import
+// already uses for media data URIs elsewhere (e.g. the server's import
 // route's dataBase64 field) — decoded here, not on the frontend, so the
 // render thread only ever receives raw bytes to hand to `image::load_from_memory`.
 #[tauri::command]

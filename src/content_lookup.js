@@ -2,7 +2,7 @@
 // that's staged and ready — bring it up automatically")
 //
 // Scripture detection already does the "listen cold, no live item needed,
-// send what matches" job for Bible verses (server/detection_worker.js
+// send what matches" job for Bible verses (the detection engine (crates/kairo-detect)
 // against the ~31,000-verse corpus). This is the SAME idea scoped to the
 // operator's OWN playlist: if what's being sung/preached clearly matches
 // the OPENING of a song or slide deck that's staged in the current
