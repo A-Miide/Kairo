@@ -26,6 +26,7 @@ mod routes_misc;
 mod translate;
 pub mod settings;
 mod video;
+mod ndi_runtime;
 mod osc;
 mod vocabulary;
 mod ws;

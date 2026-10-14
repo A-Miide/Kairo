@@ -1593,7 +1593,7 @@
                                     <li><strong>The transcript skips words or stops while the preacher is talking</strong> — open Settings → Audio and read the line beside the level bar. <em>Clipping</em>: the source is too loud before it reaches Kairo; turn it down at the desk or player. <em>Silent</em>: nothing is reaching that input (wrong input selected, or the source is muted). A quiet feed is raised automatically. When testing with a video on this computer through BlackHole, the player's own volume sets Kairo's input level.</li>
                                     <li><strong>A verse is correct but never appears live</strong> — check Possible Matches; a lower-confidence detection waits there for a manual click rather than auto-sending.</li>
                                     <li><strong>The output window is blank or on the wrong screen</strong> — reselect it under Settings → Outputs → External Display.</li>
-                                    <li><strong>An NDI output won't turn on</strong> — install the free NDI Tools runtime (ndi.video/tools) and try the toggle again; Kairo doesn't bundle it. The output's own status line shows the exact reason when it fails.</li>
+                                    <li><strong>An NDI output won't turn on</strong> — the output's own status line shows the exact reason. The first time, Kairo offers to download NDI's free runtime from NDI (one click; on Windows, one permission prompt). Installing NDI Tools from ndi.video works too.</li>
                                     <li><strong>An imported file lost its look</strong> — only ProPresenter files preserve their own design automatically; a plain text/Word import always uses a Kairo theme instead, by design.</li>
                                     <li><strong>A slide disappeared when the preacher cited a verse</strong> — the verse covers the slide; the slide is still live underneath. Press <strong>Clear Bible</strong> (lit while this is the case) to bring it back, or it comes back by itself when the slides follow the preacher on to the next one.</li>
                                     <li><strong>Something odd happened in a live service</strong> — Kairo keeps a log of what it heard and did in <em>server.log</em>, in its app-data folder (on a Mac: ~/Library/Application Support/com.kairo.scripture). Send it along with what you saw.</li>
@@ -1601,6 +1601,17 @@
                                     <li><strong>A name keeps being misheard</strong> (the pastor, the church) — add it under Settings → Language → Church vocabulary.</li>
                                     <li><strong>A citation's book or verse number comes through wrong</strong> ("Philippians" for Ephesians, "John" for First John, 53 for 63) — Kairo switches once the words around it show which verse is meant. If the preacher only names the verse and moves on, nothing tells them apart: send the right one from Possible Matches or the search box.</li>
                                 </ul>
+                            </div>
+                        </details>
+
+                        <!-- Notices the bundled third-party software requires
+                             (docs/THIRD_PARTY.md has the full texts). -->
+                        <details class="help-group">
+                            <summary>About &amp; credits</summary>
+                            <div class="help-body">
+                                <p><strong>NDI®</strong> — NDI® is a registered trademark of Vizrt NDI AB. Kairo uses NDI's free runtime, downloaded from NDI on first use; see <a href="https://ndi.video" target="_blank" rel="noopener">ndi.video</a>. Its licence notices ship with Kairo (libndi_licenses.txt).</p>
+                                <p><strong>FFmpeg</strong> — Kairo carries a build of <a href="https://ffmpeg.org" target="_blank" rel="noopener">FFmpeg</a> (LGPL 2.1 or later), run as a separate program to convert video the app can't play directly.</p>
+                                <p><strong>Blackmagic Design</strong> — Kairo is compatible with Blackmagic Design DeckLink. DeckLink is a trademark of Blackmagic Design Pty. Ltd.</p>
                             </div>
                         </details>
                     </div>

@@ -14,10 +14,22 @@
     return supported;
   }
   const labelFor = (id) => `kairo-cap-${id}`;
+  // One open/close at a time per output (a start can arrive twice at launch —
+  // auto-resume plus a toggle — and two overlapping replacements left none),
+  // and the size each open window was made for.
+  const queue = new Map();
+  const sizes = new Map();
+  const serial = (id, job) => {
+    const next = (queue.get(id) || Promise.resolve()).then(job, job);
+    queue.set(id, next.catch(() => {}));
+    return next;
+  };
 
-  async function close(id) {
+  function close(id) { return serial(id, () => closeNow(id)); }
+  async function closeNow(id) {
     const W = T?.webviewWindow?.WebviewWindow;
     if (!W) return;
+    sizes.delete(id);
     try {
       const existing = await W.getByLabel(labelFor(id));
       if (existing) await existing.close();
@@ -25,12 +37,16 @@
     } catch {}
   }
 
-  async function open(id, width, height) {
+  function open(id, width, height) { return serial(id, () => openNow(id, width, height)); }
+  async function openNow(id, width, height) {
     const W = T?.webviewWindow?.WebviewWindow;
     if (!W || !(await isSupported())) return;
-    await close(id);
     width = Math.max(16, Math.round(width || 1920));
     height = Math.max(16, Math.round(height || 1080));
+    // Already open at this size: leave it be.
+    if (sizes.get(id) === `${width}x${height}` && await W.getByLabel(labelFor(id))) return;
+    await closeNow(id);
+    sizes.set(id, `${width}x${height}`);
     // Points: the snapshot comes back at the screen's pixel density, so a
     // 1920-pixel output on a Retina Mac is a 960-point window.
     const dpr = window.devicePixelRatio || 1;

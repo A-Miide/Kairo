@@ -115,6 +115,12 @@ async fn download(client: &reqwest::Client, url: &str, dest: &Path, total: u64, 
     Ok(())
 }
 
+/// A plain download of a file whose size isn't known in advance (no checksum:
+/// the caller verifies it another way, e.g. ndi_runtime's signature checks).
+pub(crate) async fn download_plain(client: &reqwest::Client, url: &str, dest: &Path, on: OnBytes<'_>) -> Result<(), String> {
+    download(client, url, dest, 0, on).await
+}
+
 /// Downloads `url` to `dest` (resuming, retrying) and checks its SHA-256;
 /// a file that doesn't match is deleted.
 pub(crate) async fn fetch_verified(client: &reqwest::Client, url: &str, dest: &Path, total: u64, sha256: &str, on: OnBytes<'_>, progress: &Progress) -> Result<(), String> {

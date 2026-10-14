@@ -30,6 +30,8 @@ pub fn router() -> Router<Shared> {
         .route("/api/vocabulary/learned", get(learned_terms))
         .route("/api/vocabulary/forget", post(forget_term))
         .route("/api/osc/status", get(|| async { Json(crate::osc::status()) }))
+        .route("/api/ndi/runtime", get(crate::ndi_runtime::status_route))
+        .route("/api/ndi/runtime/install", post(crate::ndi_runtime::install_route))
 }
 
 /// Names learned from past services (Settings → Church vocabulary).
