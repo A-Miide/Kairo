@@ -53,6 +53,12 @@ fn screen_key(m: Option<&Value>) -> String {
     m.map(|m| format!("{}|{}", m["verses"][0]["reference"].as_str().unwrap_or(""), m["verses"][0]["text"].as_str().unwrap_or(""))).unwrap_or_default()
 }
 
+impl Default for Hub {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Hub {
     pub fn new() -> Hub {
         let (tx, _) = broadcast::channel(1024);

@@ -1006,7 +1006,7 @@ pub fn run() {
             syphon_update_media,
             syphon_update_timer,
         ])
-        .menu(|handle| build_app_menu(handle))
+        .menu(build_app_menu)
         .on_menu_event(|app, event| {
             let id = event.id().as_ref();
             // Everything here just forwards to the frontend as a plain window

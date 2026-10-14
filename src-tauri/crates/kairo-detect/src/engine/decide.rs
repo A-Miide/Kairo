@@ -368,7 +368,7 @@ impl Engine {
         if v == up || (!self.screen.shown_this_book.contains(&v) && !self.screen.recent_detections.contains_key(&v)) {
             return false;
         }
-        let last_since = self.t.finals.iter().filter(|f| f.at > at).last().map_or("", |f| f.text.as_str());
+        let last_since = self.t.finals.iter().rfind(|f| f.at > at).map_or("", |f| f.text.as_str());
         let heard = super::evidence::evidence_words(&format!("{last_since} {}", self.t.interim));
         let (cand, cur) = (super::evidence::evidence_words(self.verse_text(v)), super::evidence::evidence_words(self.verse_text(up)));
         let (cand_only, cur_only) = super::evidence::own_words_heard(&cand, &cur, &heard);

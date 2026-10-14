@@ -420,7 +420,7 @@ impl Engine {
             }
             None => {
                 let (n_cos, n_lex) = t.offer_no_rerank;
-                (top.hit.cos >= n_cos && top.lex >= n_lex).then(|| (top.hit.verse, Target::Suggestions, OFFER_SCORE, None))
+                (top.hit.cos >= n_cos && top.lex >= n_lex).then_some((top.hit.verse, Target::Suggestions, OFFER_SCORE, None))
             }
         }
     }

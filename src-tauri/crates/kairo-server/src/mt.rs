@@ -357,7 +357,7 @@ impl Loaded {
             // The state, carried forward ("present.0.decoder.key" for
             // "past_key_values.0.decoder.key"; the encoder's stays as it was).
             for (name, held) in self.state.iter().zip(state.iter_mut()) {
-                if let Some(v) = outputs.get(&format!("present{}", &name["past_key_values".len()..])) {
+                if let Some(v) = outputs.get(format!("present{}", &name["past_key_values".len()..])) {
                     let (shape, data) = v.try_extract_tensor::<f32>().map_err(err)?;
                     if shape.iter().product::<i64>() > 0 || fed == 0 {
                         *held = Held { shape: shape.iter().map(|&d| d as usize).collect(), data: data.to_vec() };

@@ -620,7 +620,7 @@ fn themes(k: &Knowledge, units: &[Unit], shown: &[Shown]) -> Vec<String> {
             ];
             // Shown as it was said most.
             let said = forms.into_iter().max_by(|a, b| a.1.cmp(&b.1).then(b.0.cmp(&a.0))).map(|f| f.0).unwrap_or(stem.clone());
-            (idf >= 3.0 && !common.contains(&said.as_str())).then(|| (said, c as f32 * idf))
+            (idf >= 3.0 && !common.contains(&said.as_str())).then_some((said, c as f32 * idf))
         })
         .collect();
     scored.sort_by(|a, b| b.1.total_cmp(&a.1).then(a.0.cmp(&b.0)));
@@ -1060,7 +1060,7 @@ pub fn build(k: &Knowledge, session: &Session, meaning: Option<&dyn Meaning>) ->
         repeated.truncate(cap);
         let mut all = repeated;
         for q in std::mem::take(&mut s.quotes) {
-            if all.len() >= cap + 1 {
+            if all.len() > cap {
                 break;
             }
             if !all.iter().any(|a| norm(&a.text) == norm(&q.text)) {

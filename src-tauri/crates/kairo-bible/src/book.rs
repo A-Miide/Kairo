@@ -28,7 +28,7 @@ impl Book {
     pub const COUNT: usize = 66;
 
     pub fn from_index(i: usize) -> Option<Book> {
-        (i < Self::COUNT).then(|| Book(i as u8))
+        (i < Self::COUNT).then_some(Book(i as u8))
     }
 
     /// Exact canonical name only. Spoken and abbreviated forms belong to the
@@ -70,8 +70,8 @@ mod tests {
             assert_eq!(Book::from_name(b.name()), Some(b));
         }
         assert_eq!(Book::from_name("Psalms").unwrap().index(), 18);
-        assert_eq!(Book::from_name("Matthew").unwrap().is_new_testament(), true);
-        assert_eq!(Book::from_name("Malachi").unwrap().is_new_testament(), false);
+        assert!(Book::from_name("Matthew").unwrap().is_new_testament());
+        assert!(!Book::from_name("Malachi").unwrap().is_new_testament());
         assert_eq!(Book::from_name("Psalm"), None);
     }
 }

@@ -90,7 +90,7 @@ impl Engine {
         if num.consumed == 1 && is_ambiguous_number_word(tail[tail.len() - 1]) {
             return false; // "…waiting for" is not verse 4
         }
-        let clause = text.split(['.', '!', '?', ';', ',']).map(str::trim).filter(|c| !c.is_empty()).last().unwrap_or("");
+        let clause = text.split(['.', '!', '?', ';', ',']).map(str::trim).rfind(|c| !c.is_empty()).unwrap_or("");
         if tokens(clause).iter().filter(|w| !filler(w)).count() != num.consumed {
             return false;
         }
