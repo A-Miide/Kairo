@@ -137,6 +137,66 @@ const HOTKEY_ACTIONS = [
   { id: 'clear-all',        label: 'Clear All',            btnId: 'clear-all-layers-btn',  default: 'cmd+shift+k' },
 ];
 
+// OSC remote (kairo-server osc.rs sends {type:'remote', action}): the hotkey
+// actions plus a few only a remote needs — slide stepping and explicit
+// start/stop, so a button can't toggle listening the wrong way.
+const REMOTE_ACTIONS = [
+  ...HOTKEY_ACTIONS.filter(a => a.id !== 'find-verse'),
+  { id: 'listen-start', label: 'Start Listening', run: () => { if (!isListening) document.getElementById('listen-btn')?.click(); } },
+  { id: 'listen-stop',  label: 'Stop Listening',  run: () => { if (isListening) document.getElementById('listen-btn')?.click(); } },
+  { id: 'slide-next',   label: 'Next slide',      run: () => window.KairoService?.advanceLiveSlide?.(1) },
+  { id: 'slide-prev',   label: 'Previous slide',  run: () => window.KairoService?.advanceLiveSlide?.(-1) },
+];
+
+function runRemoteAction(id) {
+  const action = REMOTE_ACTIONS.find(a => a.id === id);
+  if (!action) return;
+  if (action.run) action.run();
+  else document.getElementById(action.btnId)?.click();
+}
+window.runRemoteAction = runRemoteAction;
+
+async function renderOscSettings() {
+  const enabled = document.getElementById('osc-enabled');
+  const port = document.getElementById('osc-port');
+  const status = document.getElementById('osc-status');
+  const list = document.getElementById('osc-addresses');
+  if (!enabled || !port) return;
+  enabled.checked = !!settings.oscEnabled;
+  port.value = settings.oscPort || 8765;
+  port.disabled = !enabled.checked;
+  if (list && !list.childElementCount) {
+    REMOTE_ACTIONS.forEach(a => {
+      const row = document.createElement('div');
+      row.className = 'dl-row';
+      row.innerHTML = `<code class="osc-address">/kairo/${escapeHtml(a.id)}</code><span class="dl-name">${escapeHtml(a.label)}</span>`;
+      list.appendChild(row);
+    });
+  }
+  if (!status) return;
+  if (!enabled.checked) { status.textContent = 'Off'; status.classList.remove('osc-error'); return; }
+  try {
+    const s = await (await fetch(`${SERVER}/api/osc/status`)).json();
+    status.textContent = s.error || (s.listening ? `Listening on UDP ${s.port}${s.last ? ` · last: ${s.last}` : ''}` : 'Starting…');
+    status.classList.toggle('osc-error', !!s.error);
+  } catch { status.textContent = ''; }
+}
+
+document.getElementById('osc-enabled')?.addEventListener('change', async (e) => {
+  settings.oscEnabled = e.target.checked;
+  await saveSettingsPatch({ oscEnabled: e.target.checked });
+  renderOscSettings();
+  setTimeout(renderOscSettings, 2500); // the server picks it up within 2 s
+});
+document.getElementById('osc-port')?.addEventListener('change', async (e) => {
+  const p = Math.round(Number(e.target.value));
+  if (!(p >= 1024 && p <= 65535)) { e.target.value = settings.oscPort || 8765; return; }
+  settings.oscPort = p;
+  await saveSettingsPatch({ oscPort: p });
+  setTimeout(renderOscSettings, 2500);
+});
+document.querySelector('.settings-nav-item[data-pane="shortcuts"]')?.addEventListener('click', () => renderOscSettings());
+
 function hotkeyFor(actionId) {
   const action = HOTKEY_ACTIONS.find(a => a.id === actionId);
   const stored = settings.hotkeys?.[actionId];
@@ -244,6 +304,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 renderHotkeysList();
+renderOscSettings();
 
 // ═══════════════════════════════════════════════════════════════════════════
 // TRIGGERS — dispatch into the Timer tab (server/triggers.js, service.js)

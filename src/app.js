@@ -229,6 +229,10 @@ function handleServerMessage(msg) {
       _actionHandlers.get(msg.actionId)?.(msg);
       break;
 
+    case 'remote': // OSC remote control (server osc.rs)
+      window.runRemoteAction?.(msg.action);
+      break;
+
     case 'worker-ready':
       workerReady = true;
       if (workerStatusEl) { workerStatusEl.textContent = 'Engine ready'; workerStatusEl.style.color = 'var(--green)'; }

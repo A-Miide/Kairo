@@ -1402,6 +1402,30 @@
                     <p class="setting-hint" style="margin-bottom:12px;">Click Change, then press the keys. These work alongside the shortcuts in the app’s menus.</p>
                     <div id="hotkeys-list"></div>
                 </div>
+                <!-- OSC remote (kairo-server osc.rs): Companion / Stream Deck,
+                     a lighting desk or a show controller sends /kairo/<action>
+                     over UDP; the UI runs it like the matching button
+                     (app_startup.js runRemoteAction). Off by default — any
+                     device on the network could send to it. -->
+                <div class="settings-section">
+                    <div class="settings-section-label">Remote control (OSC)</div>
+                    <div class="setting-group setting-checks">
+                        <label class="bs-check-label">
+                            <input type="checkbox" id="osc-enabled">
+                            <span><strong>Allow remote control over OSC</strong>
+                            <span class="setting-hint">For Companion / Stream Deck, a lighting desk or another show controller on this network. Anything on the network can send to it, so leave it off unless you use it.</span></span>
+                        </label>
+                    </div>
+                    <div class="setting-group osc-port-row">
+                        <label class="setting-label" for="osc-port">UDP port</label>
+                        <input type="number" id="osc-port" class="setting-input" min="1024" max="65535" value="8765" style="max-width:120px;">
+                        <span class="setting-hint" id="osc-status"></span>
+                    </div>
+                    <div class="setting-group">
+                        <label class="setting-label">Addresses</label>
+                        <div id="osc-addresses" class="dl-list osc-addresses"></div>
+                    </div>
+                </div>
             </section>
 
             <section class="settings-pane" data-pane="help">
