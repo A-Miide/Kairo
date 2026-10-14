@@ -20,7 +20,7 @@ fn main() {
         eprintln!("usage: offline-transcribe <audio file> <name>");
         std::process::exit(2);
     };
-    let model = std::env::var_os("KAIRO_OFFLINE_MODEL").map(std::path::PathBuf::from).unwrap_or_else(|| root().join("server/models/sherpa-streaming-en"));
+    let model = std::env::var_os("KAIRO_OFFLINE_MODEL").map(std::path::PathBuf::from).unwrap_or_else(|| root().join("models/sherpa-streaming-en"));
     let opt = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned();
     let hotwords_score: f32 = opt("--hotwords").and_then(|s| s.parse().ok()).unwrap_or(0.0);
     let blank_penalty: f32 = opt("--blank-penalty").and_then(|s| s.parse().ok()).unwrap_or(kairo_server::offline::BLANK_PENALTY);

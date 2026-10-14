@@ -6,8 +6,7 @@
     "server": "cargo run --release --manifest-path src-tauri/Cargo.toml -p kairo-server",
     "dev": "npx @tauri-apps/cli@latest dev",
     "build": "npx @tauri-apps/cli@latest build",
-    "tauri": "npx @tauri-apps/cli@latest",
-    "server:node": "node server/server.js"
+    "tauri": "npx @tauri-apps/cli@latest"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2"

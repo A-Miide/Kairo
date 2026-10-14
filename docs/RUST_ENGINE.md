@@ -65,4 +65,4 @@ everything a path needs to respect is in the decider.
   timing; its decisions are compared with Node's stable ones.
 - Ground-truth recall and wrong sends per sermon (development sermons while
   building; the held-out pair only at the end).
-- The written paraphrase cases and negatives (`server/eval/paraphrase_cases.json`).
+- The written paraphrase cases and negatives (`eval/paraphrase_cases.json`).

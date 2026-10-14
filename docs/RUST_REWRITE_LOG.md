@@ -75,7 +75,7 @@ Meaning-based paths (paraphrase, scoped meaning search) are next.
 ### How it's measured
 - **`replay`** (`cargo run --release -p kairo-detect --bin replay`) feeds the
   recorded sermons through the engine and scores them the way
-  `server/eval/run_eval.js` does (found within 30 s, wrong sends, misses
+  `eval/run_eval.js` does (found within 30 s, wrong sends, misses
   offered in Possible Matches, suggestions per hour), side by side with what
   Node decided on the same input. Dev sermons only, unless `--held-out`.
 - **Real timing.** The engine is clock-free, so sermons replay at their real
@@ -195,7 +195,7 @@ Compressing the Bible text and tokenizer would bring it to about 330 MB.
 
 The owner's test service played the "identity in Christ" clip; three
 recordings of it are in `parity/golden` and now have an answer key
-(`server/eval/fixtures/2026-09-26-identity-in-christ-*.json`).
+(`eval/fixtures/2026-09-26-identity-in-christ-*.json`).
 
 ### Fixed
 - **"John four verse four" with 1 John's words read** stayed John 4:4: the
