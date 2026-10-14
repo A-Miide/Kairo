@@ -9,6 +9,8 @@ use super::scoring::{self, ScoreContext, SAME_BOOK_WINDOW_MS};
 use super::twins::TwinOutcome;
 use super::types::{Method, OnScreen, Target};
 
+/// How long a finished range (its last verse reached) still holds off other books.
+const FINISHED_RANGE_HOLD_MS: u64 = 30_000;
 const SUGGESTION_DEDUP_MS: u64 = 180_000;
 /// A verse shown this recently is still in the operator's hands.
 const SHOWN_RECENTLY_MS: u64 = 60_000;
@@ -71,18 +73,31 @@ impl Engine {
         // 3. One score.
         let r = self.r(top);
         let on_screen = self.screen.up.map(|(v, _)| OnScreen { verse: self.r(v), at_ms: self.screen.last_sent_book.map_or(0, |(_, t)| t) });
+        // A range read to its last verse holds only a little while after:
+        // with nothing left to read, a quote from elsewhere is the sermon
+        // moving on (Joel 2 finished, then Acts 2:16 "spoken by the prophet Joel").
+        let range_holds = self.range.current.is_some() && (!self.range.queue.is_empty() || now.saturating_sub(self.range.moved_at) < FINISHED_RANGE_HOLD_MS);
         let range_collision = match self.range.current {
-            Some(_) if !self.range.all.contains(&top) => Some(!self.speech_favours_over_range(top)),
+            Some(_) if range_holds && !self.range.all.contains(&top) => Some(!self.speech_favours_over_range(top)),
             _ => None,
         };
         let ctx = ScoreContext {
             now_ms: now,
             on_screen,
             already_shown: self.screen.shown_this_book.contains(&top),
-            range_book: self.range.current.map(|v| self.r(v).book),
+            range_book: self.range.current.filter(|_| range_holds).map(|v| self.r(v).book),
             range_collision,
             named_person_in_chapter: self.person_in_chapter(r, now),
-            confusable_with_screen: on_screen.is_some_and(|s| self.k.confusable((r.book, r.chapter), (s.verse.book, s.verse.chapter))),
+            // Only a verse that is itself a near-duplicate of one in the
+            // chapter on screen: Acts 2:17 (Joel 2:28) waits, Peter's own
+            // "this is that which was spoken by the prophet Joel" doesn't.
+            confusable_with_screen: on_screen.is_some_and(|s| {
+                self.k.confusable((r.book, r.chapter), (s.verse.book, s.verse.chapter))
+                    && self.k.lexicon.twins(top).iter().any(|t| {
+                        let tr = self.r(t.verse);
+                        tr.book == s.verse.book && tr.chapter == s.verse.chapter
+                    })
+            }),
         };
         let s = scoring::score(r, c.method, &c.evidence, &ctx, &self.ledger);
         let corroborated = self.ledger.has_corroboration(r);
