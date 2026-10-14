@@ -489,6 +489,12 @@
           "markdownDescription": "Enables the output_capture_supported command without any pre-configured scope."
         },
         {
+          "description": "Enables the output_video command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-output-video",
+          "markdownDescription": "Enables the output_video command without any pre-configured scope."
+        },
+        {
           "description": "Enables the signal_main_ready command without any pre-configured scope.",
           "type": "string",
           "const": "allow-signal-main-ready",
@@ -631,6 +637,12 @@
           "type": "string",
           "const": "deny-output-capture-supported",
           "markdownDescription": "Denies the output_capture_supported command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the output_video command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-output-video",
+          "markdownDescription": "Denies the output_video command without any pre-configured scope."
         },
         {
           "description": "Denies the signal_main_ready command without any pre-configured scope.",

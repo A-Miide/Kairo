@@ -269,7 +269,14 @@
             color: rgba(255, 255, 255, 0.45);
             text-align: right;
         }
-    </style>
+        /* Capture mode: the page is see-through where nothing is drawn, and the
+       app snapshots it over black and over white to recover that
+       transparency (src-tauri capture.rs) — for keying, NDI alpha and a video
+       background the app plays itself (video_bg.rs), hidden here. */
+    html.is-capture body { background: transparent; }
+    html.is-capture[data-cap-bg="white"] { background: #fff; }
+    .cap-under { visibility: hidden !important; }
+</style>
 </head>
 <body>
     <div id="stage">
@@ -327,6 +334,7 @@
     // The hidden window behind an NDI / Syphon output (see "Capture mode" below).
     const CAPTURE     = params.get('capture') === '1';
     if (MONITOR) document.documentElement.classList.add('is-monitor');
+    if (CAPTURE) document.documentElement.classList.add('is-capture');
     function sendToServer(msg) { if (MONITOR) return; try { ws?.send(JSON.stringify(msg)); } catch {} }
     const legacyLayout  = params.get('layout') || 'fullscreen';
     const legacyOpacity = parseInt(params.get('opacity') || '80', 10) / 100;
@@ -2537,12 +2545,64 @@
         const capH = Math.max(16, parseInt(params.get('h'), 10) || 1080);
         const invoke = window.__TAURI__?.core?.invoke;
         let wait = null, fade = 0;
+        // A full-frame video background is played by the app itself at the
+        // output's own rate (src-tauri video_bg.rs): here it isn't drawn —
+        // nor anything it covers — so the snapshots carry only what sits on
+        // top of it, with transparency. Anything smaller or see-through stays
+        // in the snapshots as before.
+        let baseVideo = null, baseKey = '';
+        const refused = new WeakSet(); // the app couldn't play these: they stay in the snapshots
+        const fullFrame = (v) => {
+            const r = v.getBoundingClientRect(), cs = getComputedStyle(v);
+            return r.left <= 1 && r.top <= 1 && r.right >= innerWidth - 1 && r.bottom >= innerHeight - 1
+                && parseFloat(cs.opacity) >= 0.99 && cs.visibility !== 'hidden' && cs.display !== 'none'
+                && (!cs.borderRadius || cs.borderRadius === '0px') && (!cs.transform || cs.transform === 'none')
+                && !cs.animationName.includes('kenburns') && /^\/api\//.test(new URL(v.currentSrc || v.src, location.href).pathname);
+        };
+        // The topmost (latest in the page) full-frame video; the one already
+        // handed over stays while it's still there (it's hidden now).
+        const pickBaseVideo = () => {
+            let best = null;
+            document.querySelectorAll('#media-layer video, #slide-layer video').forEach(v => {
+                if (refused.has(v)) return;
+                if (v === baseVideo ? v.isConnected : fullFrame(v)) best = v;
+            });
+            return best;
+        };
+        const syncBaseVideo = () => {
+            const v = pickBaseVideo();
+            const src = v ? new URL(v.currentSrc || v.src, location.href) : null;
+            if (src) src.searchParams.delete('token');
+            const key = src ? `${src.pathname}${src.search}|${getComputedStyle(v).objectFit}` : '';
+            if (v === baseVideo && key === baseKey) return;
+            document.querySelectorAll('.cap-under').forEach(e => e.classList.remove('cap-under'));
+            baseVideo = v; baseKey = key;
+            if (v) {
+                // the video, everything drawn before it in its layer, and the media layer under a theme's own
+                v.classList.add('cap-under');
+                for (let e = v.previousElementSibling; e; e = e.previousElementSibling) e.classList.add('cap-under');
+                if (v.closest('#slide-layer')) document.getElementById('media-layer')?.classList.add('cap-under');
+                try { v.pause(); } catch {}
+            }
+            invoke('output_video', { id: outputParam, url: src ? src.pathname + src.search : null, fit: v ? getComputedStyle(v).objectFit : null, width: capW, height: capH })
+                .catch((err) => {
+                    // The app can't play it: draw it here again, as before.
+                    console.warn('[capture] video background stays in the snapshots:', err);
+                    if (!v || baseVideo !== v) return;
+                    refused.add(v);
+                    document.querySelectorAll('.cap-under').forEach(e => e.classList.remove('cap-under'));
+                    baseVideo = null; baseKey = '';
+                    v.play().catch(() => {});
+                    request(0);
+                });
+        };
         const request = (fadeMs) => {
             if (!invoke) return;
             fade = Math.max(fade, fadeMs);
             clearTimeout(wait);
             // Long enough for layout, images and fonts of a change to settle.
             wait = setTimeout(() => {
+                syncBaseVideo();
                 const f = fade; fade = 0;
                 invoke('output_capture', { id: outputParam, width: capW, height: capH, fadeMs: f }).catch(() => {});
             }, 60);
@@ -2550,6 +2610,9 @@
         const timer = document.getElementById('timer-layer');
         let settle = [];
         new MutationObserver((records) => {
+            // The app switching the backdrop between its two snapshots isn't a change.
+            records = records.filter(r => !(r.target === document.documentElement && r.attributeName === 'data-cap-bg'));
+            if (!records.length) return;
             // The timer ticking or a clock isn't a slide change: no fade.
             const onlyTimer = records.every(r => timer && timer.contains(r.target));
             request(onlyTimer ? 0 : captureFadeMs);
@@ -2564,7 +2627,7 @@
         document.fonts?.ready?.then(() => request(0));
         // A playing video: as often as a snapshot allows.
         setInterval(() => {
-            if ([...document.querySelectorAll('video')].some(v => !v.paused && !v.ended)) request(0);
+            if ([...document.querySelectorAll('video')].some(v => v !== baseVideo && !v.paused && !v.ended)) request(0);
         }, 70);
         setTimeout(() => request(0), 300);
     }

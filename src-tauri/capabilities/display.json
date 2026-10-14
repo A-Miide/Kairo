@@ -1,12 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "display-capability",
-  "description": "KAIRO output/display windows (kairo-*) — display.html only ever calls get_server_token (to authenticate its own WS connection to the local server); scoped narrowly instead of inheriting the main window's full permission set (NDI/Syphon control, app updates, window creation), none of which the output window uses; and output_capture, so an NDI/Syphon output's hidden capture window (display.html?capture=1) can report a change to be captured.",
+  "description": "KAIRO output/display windows (kairo-*) \u2014 display.html only ever calls get_server_token (to authenticate its own WS connection to the local server); scoped narrowly instead of inheriting the main window's full permission set (NDI/Syphon control, app updates, window creation), none of which the output window uses; and output_capture, so an NDI/Syphon output's hidden capture window (display.html?capture=1) can report a change to be captured; and output_video, so that window can hand a full-frame video background to the app to play at full rate under its snapshots.",
   "windows": [
     "kairo-*"
   ],
   "permissions": [
     "allow-get-server-token",
-    "allow-output-capture"
+    "allow-output-capture",
+    "allow-output-video"
   ]
 }

@@ -51,6 +51,53 @@ pub fn blend(out: &mut [u8], from: &[u8], to: &[u8], t: f32) {
 
 type Done = Box<dyn FnOnce(Result<Frame, String>) + Send>;
 
+/// Snapshots `window` twice — over black, then over white (display.html,
+/// capture mode, switches its backdrop) — and recovers the page's
+/// transparency from the difference: a pixel that doesn't change is solid;
+/// one that changes fully is see-through. The window itself has no
+/// transparency to give, and keying, NDI alpha and a video background
+/// under the page (video_bg.rs) all need it.
+pub fn snapshot_alpha(window: &tauri::WebviewWindow, width: u32, height: u32, done: impl FnOnce(Result<Frame, String>) + Send + 'static) -> Result<(), String> {
+    let done: Arc<Mutex<Option<Done>>> = Arc::new(Mutex::new(Some(Box::new(done))));
+    let set = |w: &tauri::WebviewWindow, white: bool| {
+        let js = if white { "document.documentElement.setAttribute('data-cap-bg','white')" } else { "document.documentElement.removeAttribute('data-cap-bg')" };
+        let _ = w.eval(js);
+    };
+    set(window, false);
+    let (win, d) = (window.clone(), done.clone());
+    snapshot(window, width, height, move |black| {
+        let black = match black {
+            Ok(f) => f,
+            Err(e) => return finish(&d, Err(e)),
+        };
+        set(&win, true);
+        let (win2, d2) = (win.clone(), d.clone());
+        let r = snapshot(&win, width, height, move |white| {
+            set(&win2, false);
+            finish(&d2, white.map(|white| with_alpha(black, &white)));
+        });
+        if let Err(e) = r {
+            set(&win, false);
+            finish(&d, Err(e));
+        }
+    })
+}
+
+/// The over-black picture (which is already colour × alpha) with the alpha
+/// the over-white one reveals.
+fn with_alpha(mut black: Frame, white: &Frame) -> Frame {
+    if black.bgra.len() != white.bgra.len() {
+        return black;
+    }
+    for (b, w) in black.bgra.chunks_exact_mut(4).zip(white.bgra.chunks_exact(4)) {
+        let seen = (0..3).map(|c| w[c].saturating_sub(b[c])).max().unwrap_or(0);
+        b[3] = 255 - seen;
+        // keep premultiplied colour within alpha after rounding noise
+        for c in 0..3 { b[c] = b[c].min(b[3]); }
+    }
+    black
+}
+
 /// Can this platform capture an output window yet?
 pub fn supported() -> bool {
     cfg!(target_os = "macos")
@@ -123,4 +170,20 @@ unsafe fn to_frame(img: &objc2_app_kit::NSImage, width: u32, height: u32) -> Res
     CGContext::draw_image(Some(&ctx), rect, Some(&cg));
     drop(ctx);
     Ok(Frame { width, height, bgra })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{with_alpha, Frame};
+
+    #[test]
+    fn transparency_comes_from_the_two_backdrops() {
+        // solid red, see-through, half-see-through white
+        let black = Frame { width: 3, height: 1, bgra: vec![0, 0, 255, 255, 0, 0, 0, 255, 128, 128, 128, 255] };
+        let white = Frame { width: 3, height: 1, bgra: vec![0, 0, 255, 255, 255, 255, 255, 255, 255, 255, 255, 255] };
+        let f = with_alpha(black, &white);
+        assert_eq!(&f.bgra[0..4], &[0, 0, 255, 255]);
+        assert_eq!(f.bgra[7], 0);
+        assert_eq!(&f.bgra[8..12], &[128, 128, 128, 128]);
+    }
 }

@@ -36,6 +36,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/media/folders/{id}/upload", post(folder_upload))
         .route("/api/media/folders/{id}/file/{name}", get(folder_file))
         .route("/api/media/prepare", post(prepare_video))
+        .route("/api/media/resolve", post(resolve_media))
         .route("/api/media/prepared/{file}", get(prepared_file))
         .route("/api/pp-assets/{file}", get(pp_asset))
 }
@@ -57,6 +58,31 @@ fn media_path(app: &Shared, url: &str) -> Option<std::path::PathBuf> {
     let rest = path.strip_prefix("/api/media/folders/")?;
     let (id, name) = rest.split_once("/file/")?;
     app.media.folder_file(id, &dec(name))
+}
+
+/// `{ url }` in → `{ path, ffmpeg }`: the file behind a media address the
+/// display plays, and this copy's ffmpeg — for the app to play a moving
+/// background itself under an NDI / Syphon / DeckLink output (src-tauri
+/// video_bg.rs). Media, converted copies and ProPresenter assets only.
+async fn resolve_media(State(app): State<Shared>, b: Option<Json<Value>>) -> Response {
+    let b = body_or_empty(b);
+    let url = b["url"].as_str().unwrap_or("");
+    let path = url.split(['?', '#']).next().unwrap_or("");
+    let file = if let Some(f) = path.strip_prefix("/api/media/prepared/") {
+        let key = f.strip_suffix(".mp4").or_else(|| f.strip_suffix(".webm")).unwrap_or("");
+        if key.is_empty() || !key.bytes().all(|c| c.is_ascii_hexdigit()) { None } else { app.video.prepared(key).map(|(p, _)| p) }
+    } else if let Some(f) = path.strip_prefix("/api/pp-assets/") {
+        let ok = f.split_once('.').is_some_and(|(h, e)| h.len() == 32 && h.bytes().all(|c| c.is_ascii_hexdigit()) && !e.is_empty() && e.bytes().all(|c| c.is_ascii_alphanumeric()));
+        let p = crate::propresenter::Assets::new(&app.cfg.app_data_dir).dir().join(f);
+        (ok && p.is_file()).then_some(p)
+    } else {
+        media_path(&app, path)
+    };
+    match (file, app.video.ffmpeg_path()) {
+        (Some(p), Some(ff)) => Json(json!({ "path": p, "ffmpeg": ff })).into_response(),
+        (None, _) => not_found("No such file"),
+        (_, None) => not_found("This copy of Kairo has no ffmpeg"),
+    }
 }
 
 /// Makes a video playable: `{ url }` in, where it stands out. A file the web
