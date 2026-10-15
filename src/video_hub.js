@@ -57,6 +57,8 @@
         }
         if (!entry.stream || entry.profile !== need) {
           const next = await navigator.mediaDevices.getUserMedia(constraints(id, need));
+          // releaseAll() (Director mode ended) while this was opening: close it at once, the light must go out.
+          if (entry.dead || entries.get(id) !== entry) { stop(next); return; }
           const prev = entry.stream;
           entry.stream = next;
           entry.profile = need;
@@ -120,6 +122,6 @@
     resolve,
     // Devices still held open, for diagnostics.
     openCount: () => entries.size,
-    releaseAll() { for (const [, e] of entries) { clearTimeout(e.timer); stop(e.stream); } entries.clear(); },
+    releaseAll() { for (const [, e] of entries) { e.dead = true; clearTimeout(e.timer); stop(e.stream); } entries.clear(); },
   };
 })();
