@@ -12,11 +12,13 @@ test('normalizeSources drops junk, duplicate ids and unnamed devices', () => {
     { id: 'a', name: ' Front  cam ', deviceId: 'd1', label: 'FaceTime', width: 1920, height: 1080, fps: 30 },
     { id: 'a', name: 'dup', deviceId: 'd2' },
     { id: '', deviceId: 'd3' },
-    { id: 'b' },
+    { id: 'b', name: 'Pulpit camera' },
     null,
     { id: 'c', deviceId: 'd4', width: 'x', fps: 9999 },
   ]);
-  assert.deepEqual(list.map(s => s.id), ['a', 'c']);
+  assert.deepEqual(list.map(s => s.id), ['a', 'b', 'c']);
+  assert.equal(list[1].name, 'Pulpit camera');   // a placeholder keeps its name
+  assert.equal(list[1].enabled, true);
   assert.equal(list[0].name, 'Front cam');
   assert.equal(list[1].width, 0);
   assert.equal(list[1].fps, 0);
@@ -29,10 +31,13 @@ test('addSource names from the device label and keeps names unique', () => {
   r = V.addSource(r.list, { deviceId: 'x', label: 'Camera 1' });
   assert.equal(r.added.name, 'Camera 1 2');
   r = V.addSource(r.list, { deviceId: 'y', label: '' });
-  assert.equal(r.added.name, 'Camera');
+  assert.equal(r.added.name, 'Input');
   assert.equal(r.list.length, 3);
   assert.equal(new Set(r.list.map(s => s.id)).size, 3);
-  assert.equal(V.addSource([], {}).added, null);
+  const ph = V.addSource([], null, { name: 'Pulpit camera' });
+  assert.equal(ph.added.name, 'Pulpit camera');
+  assert.equal(ph.added.deviceId, '');
+  assert.equal(V.addSource(ph.list, null).added.name, 'Input');
 });
 
 test('renameSource trims, ignores empty and avoids collisions', () => {
@@ -89,7 +94,7 @@ test('describeCaptureError gives operator words', () => {
 });
 
 test('live map: normalize, set, and the Video layer gate', () => {
-  const sources = [{ id: 's1' }, { id: 's2' }];
+  const sources = [{ id: 's1', deviceId: 'd1' }, { id: 's2', deviceId: 'd2' }];
   const live = V.normalizeLive({ main: 's1', gone: 's2', mon: 'removed' }, sources, ['main', 'mon', 'new']);
   assert.deepEqual(live, { main: 's1', mon: null, new: null });
   assert.deepEqual(V.setLive(live, ['main', 'mon'], 's2'), { main: 's2', mon: 's2', new: null });
@@ -105,4 +110,39 @@ test('switchPlan cuts for Cut or a first source, fades with the output speed', (
   assert.deepEqual(V.switchPlan('fade', 1, false), { mode: 'cut', ms: 0 });
   assert.deepEqual(V.switchPlan('fade', 2, true), { mode: 'fade', ms: 600 });
   assert.deepEqual(V.switchPlan('slide-up', undefined, true), { mode: 'fade', ms: 300 });
+});
+
+test('placeholders: state, assigning a device keeps name and settings', () => {
+  const devices = [cam(1), cam(2)];
+  let r = V.addSource([], null, { name: 'Pulpit camera', width: 1280, height: 720, fps: 30 });
+  assert.equal(V.stateOf(r.added, devices), 'placeholder');
+  let list = V.assignDevice(r.list, r.added.id, devices[1]);
+  assert.equal(list[0].name, 'Pulpit camera');
+  assert.deepEqual([list[0].width, list[0].fps, list[0].deviceId], [1280, 30, 'dev2']);
+  assert.equal(V.stateOf(list[0], devices), 'ready');
+  // The device goes away: the input stays, as 'missing', with its name.
+  assert.equal(V.stateOf(list[0], [cam(1)]), 'missing');
+  assert.equal(V.stateOf(list[0], devices), 'ready');   // and is back when it returns
+});
+
+test('freeDevices and addAll skip devices already used', () => {
+  const devices = [cam(1), cam(2), cam(3)];
+  let list = V.addSource([], devices[0]).list;
+  assert.deepEqual(V.freeDevices(list, devices).map(d => d.deviceId), ['dev2', 'dev3']);
+  list = V.addAll(list, devices);
+  assert.equal(list.length, 3);
+  assert.equal(V.freeDevices(list, devices).length, 0);
+  assert.equal(V.addAll(list, devices).length, 3);
+});
+
+test('enabled flag, and a placeholder or disabled input is never taken to air', () => {
+  const devices = [cam(1)];
+  let list = V.addSource([], devices[0]).list;
+  const id = list[0].id;
+  const live = { main: id };
+  assert.ok(V.liveSourceFor('main', { video: true }, live, list));
+  list = V.setEnabled(list, id, false);
+  assert.equal(V.liveSourceFor('main', { video: true }, live, list), null);
+  const ph = V.addSource([], null, { name: 'Lobby' });
+  assert.equal(V.liveSourceFor('main', { video: true }, { main: ph.added.id }, ph.list), null);
 });
