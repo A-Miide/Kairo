@@ -5,6 +5,7 @@
 // speech engine runs as a second copy of this program (see main.rs).
 
 mod capture;
+mod stream;
 mod video_bg;
 mod decklink;
 mod ndi;
@@ -715,6 +716,10 @@ fn run_capture(app: AppHandle, id: String, width: u32, height: u32, fade: u32) {
 
 /// A finished frame to every sender of output `id`.
 fn push_frame(app: &AppHandle, id: &str, frame: Arc<capture::Frame>, fade: u32) {
+    if id.starts_with("stream-") {
+        app.state::<stream::StreamState>().push_frame(id, frame, fade);
+        return;
+    }
     if let Ok(h) = app.state::<NdiState>().handle_for(id) {
         if let Ok(h) = h.lock() { h.update_frame(frame.clone(), fade); }
     }
@@ -763,6 +768,41 @@ async fn output_video(app: AppHandle, id: String, url: Option<String>, fit: Opti
     let v = video_bg::VideoBg::start(std::path::Path::new(ffmpeg), file, &fit, w, h, 30, move |frame| push_frame(&app2, &id2, frame, 0))?;
     map.insert(id, v);
     Ok(())
+}
+
+// ── Live streaming (stream.rs) ────────────────────────────────────────────
+// Settings → Streaming's Go live: one FFmpeg pipeline per streamed output, fed by that
+// output's capture window (`kairo-cap-stream-<output>`), the Director's cameras and the
+// audio input. Status goes to every window as a 'stream-status' event.
+#[tauri::command]
+async fn stream_start(app: AppHandle, pipelines: Vec<stream::PipelineConfig>) -> Result<(), String> {
+    let (port, token) = { let c = app.state::<ServerConfig>(); (c.port, c.token.clone()) };
+    let found: serde_json::Value = reqwest::Client::new()
+        .get(format!("http://127.0.0.1:{port}/api/stream/ffmpeg"))
+        .bearer_auth(&token)
+        .send().await.map_err(|e| e.to_string())?
+        .json().await.map_err(|e| e.to_string())?;
+    let Some(ffmpeg) = found["path"].as_str().map(std::path::PathBuf::from) else {
+        return Err("FFmpeg wasn't found, so Kairo can't stream from this computer.".into());
+    };
+    let app2 = app.clone();
+    let on_status: stream::OnStatus = Arc::new(move |s| { let _ = app2.emit("stream-status", s); });
+    app.state::<stream::StreamState>().start(ffmpeg, pipelines, on_status)
+}
+
+#[tauri::command]
+fn stream_stop(app: AppHandle) {
+    app.state::<stream::StreamState>().stop();
+}
+
+#[tauri::command]
+fn stream_status(app: AppHandle) -> Vec<stream::PipelineStatus> {
+    app.state::<stream::StreamState>().status()
+}
+
+#[tauri::command]
+fn stream_program(app: AppHandle, output: Option<String>, program: Option<String>, zone: Option<stream::Zone>) {
+    app.state::<stream::StreamState>().set_program(output.as_deref(), program, zone);
 }
 
 // ── DeckLink (decklink.rs) ────────────────────────────────────────────────
@@ -963,6 +1003,7 @@ pub fn run() {
         .manage(server_config)
         .manage(NdiState(Arc::new(Mutex::new(std::collections::HashMap::new()))))
         .manage(CaptureState::default())
+        .manage(stream::StreamState::default())
         .manage(VideoBgState::default())
         // An output's capture window closing ends its video background.
         .on_window_event(|window, event| {
@@ -997,6 +1038,10 @@ pub fn run() {
             ndi_update_media,
             ndi_update_timer,
             output_capture,
+            stream_start,
+            stream_stop,
+            stream_status,
+            stream_program,
             output_video,
             decklink_list,
             decklink_start,
@@ -1161,6 +1206,7 @@ pub fn run() {
         .expect("Error building KAIRO")
         .run(|app, event| {
             if matches!(event, RunEvent::Exit | RunEvent::ExitRequested { .. }) {
+                app.state::<stream::StreamState>().kill_now();
                 // Recover from a poisoned mutex instead of panicking — this is
                 // shutdown-time child-process cleanup; a panic here would
                 // skip it entirely and leak the Node sidecar.
