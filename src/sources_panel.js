@@ -36,7 +36,9 @@ function videoSourceList() {
 }
 // Outputs that can take video in Phase 1: display windows and Monitors.
 function videoOutputs() {
-  return displayOutputs().map(d => ({ id: d.id, name: d.name, monitor: d.kind === 'monitor' }));
+  // The display chosen for the multiview carries no output of its own.
+  const mv = settings.videoDirector ? settings.videoMultiview : '';
+  return displayOutputs().filter(d => d.id !== mv).map(d => ({ id: d.id, name: d.name, monitor: d.kind === 'monitor' }));
 }
 function videoLiveMap() {
   return VSRC.normalizeLive(settings.videoLive, videoSourceList(), videoOutputs().map(o => o.id));
