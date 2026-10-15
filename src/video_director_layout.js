@@ -96,43 +96,137 @@
     L.prevView = null;
   }
 
-  // ── Scripture sends: the search bar and the Live Queue, moved into the
-  // section (and put back exactly where they were when the mode ends). ──────
+  // ── Scripture sends: one group for everything about verses. Header row (title,
+  // Bible select, Theme icon, Monitor message, a Clear menu and Back), the search
+  // bar, then the Live Queue filling the rest. The controls moved in here are
+  // the app's own elements, put back when the mode ends. ───────────────────
+  const ICONS = {
+    monitor: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+    back: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>',
+    caret: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
+  };
+  function hb(cls, title, html, onClick) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = cls; b.title = title; b.setAttribute('aria-label', title);
+    b.innerHTML = html;
+    b.addEventListener('click', onClick);
+    return b;
+  }
+  // Press one of the app's own buttons (they hold the real logic).
+  const press = (id) => document.getElementById(id)?.click();
+
+  function closePop() {
+    const S = L.sends;
+    if (!S) return;
+    if (S.pop) {
+      const bar = document.getElementById('monitor-message-bar');
+      if (bar && S.popHome && S.popHome.parentNode) { S.popHome.after(bar); S.popHome.remove(); }
+      S.popHome = null;
+      S.pop.remove(); S.pop = null;
+    }
+    S.menu && S.menu.remove(); S.menu = null;
+    if (S.off) { document.removeEventListener('mousedown', S.off, true); S.off = null; }
+  }
+  function placeUnder(el, anchor, right) {
+    const r = anchor.getBoundingClientRect();
+    el.style.top = (r.bottom + 4) + 'px';
+    const w = el.offsetWidth;
+    el.style.left = Math.max(8, Math.min(window.innerWidth - w - 8, right ? r.right - w : r.left)) + 'px';
+  }
+  function openOverlay(anchor, el) {
+    const S = L.sends;
+    closePop();
+    document.body.appendChild(el);
+    placeUnder(el, anchor, true);
+    S.off = (e) => { if (!el.contains(e.target) && !anchor.contains(e.target)) closePop(); };
+    document.addEventListener('mousedown', S.off, true);
+  }
+
   function fillSends(host) {
     if (!host || L.sends) return;
     const parts = [document.querySelector('.cs-lookup'), document.getElementById('live-queue-section')].filter(Boolean);
     L.sends = { host, parts: parts.map(node => { const home = document.createComment('vd-home'); node.before(home); return { node, home }; }) };
-    const label = document.createElement('div');
-    label.className = 'vd-label';
-    label.textContent = 'Scripture sends';
-    host.appendChild(label);
-    L.sends.label = label;
-    parts.forEach(n => host.appendChild(n));
-    // The queue's own heading says what it is in this mode.
-    // Header row: the Bible select and an icon-only Theme button, then the search bar.
+    const S = L.sends;
+
+    // Header row: one line, every control the same height.
+    const head = document.createElement('div');
+    head.className = 'vd-sends-head';
+    const title = document.createElement('span');
+    title.className = 'vd-label vd-sends-title';
+    title.textContent = 'Scripture sends';
+    head.appendChild(title);
+    moveTo(document.getElementById('translation-select'), head);
     const theme = document.getElementById('bible-theme-btn');
-    if (theme) { L.sends.themeTitle = theme.title; theme.title = 'Theme'; theme.setAttribute('aria-label', 'Theme'); }
-    // The rest of what the right sidebar held, under the queue.
+    if (theme) { S.themeTitle = theme.title; theme.title = 'Theme'; theme.setAttribute('aria-label', 'Theme'); moveTo(theme, head); }
+    const spacer = document.createElement('span'); spacer.className = 'vd-sends-spacer'; head.appendChild(spacer);
+
+    // Monitor message: an icon that opens the app's own message bar in a small popover.
+    const bar = document.getElementById('monitor-message-bar');
+    S.monBtn = hb('vd-hbtn', 'Monitor message', ICONS.monitor, (e) => {
+      if (S.pop) { closePop(); return; }
+      const b = document.getElementById('monitor-message-bar');
+      if (!b) return;
+      const pop = document.createElement('div');
+      pop.className = 'vd-pop';
+      S.popHome = document.createComment('vd-home');
+      b.before(S.popHome);
+      b.classList.remove('hidden');
+      pop.appendChild(b);
+      openOverlay(e.currentTarget, pop);
+      S.pop = pop;
+      b.querySelector('input')?.focus();
+    });
+    if (bar) {
+      const sync = () => { S.monBtn.hidden = bar.classList.contains('hidden') && !S.pop; };
+      S.monObs = new MutationObserver(sync);
+      S.monObs.observe(bar, { attributes: true, attributeFilter: ['class'] });
+      sync();
+    }
+    head.appendChild(S.monBtn);
+
+    // Clear: one menu instead of six buttons.
+    const clearBtn = hb('vd-hbtn vd-hbtn-text', 'Clear what is on the screens', 'Clear ' + ICONS.caret, (e) => {
+      if (S.menu) { closePop(); return; }
+      const menu = document.createElement('div');
+      menu.className = 'vd-menu';
+      [['clear-all-layers-btn', 'Clear all'], ['clear-bible-layer-btn', 'Clear Bible'], ['clear-slide-layer-btn', 'Clear Slide'], ['clear-timer-layer-btn', 'Clear Timer'], ['clear-media-layer-btn', 'Clear Media']].forEach(([id, label]) => {
+        const it = document.createElement('button');
+        it.type = 'button'; it.className = 'vd-menu-item'; it.textContent = label;
+        it.addEventListener('click', () => { press(id); closePop(); });
+        menu.appendChild(it);
+      });
+      openOverlay(e.currentTarget, menu);
+      S.menu = menu;
+    });
+    head.appendChild(clearBtn);
+    head.appendChild(hb('vd-hbtn', 'Back to the previous screen', ICONS.back, () => press('output-back-btn')));
+
+    host.appendChild(head);
+    S.head = head;
+    parts.forEach(n => host.appendChild(n));
+
+    // A slim footer, only visible while a verse range or a playing video needs its controls.
     const foot = document.createElement('div');
     foot.className = 'vd-sends-foot';
     host.appendChild(foot);
-    L.sends.foot = foot;
-    // The per-layer Clear buttons first, then the range bar, media transport, Monitor message and verse transition.
-    moveTo(document.querySelector('.rs-layer-clear-bar'), foot);
-    ['range-nav-bar', 'media-transport', 'monitor-message-bar', 'rs-transition-bar'].forEach(id => moveTo(document.getElementById(id), foot));
+    S.foot = foot;
+    ['range-nav-bar', 'media-transport'].forEach(id => moveTo(document.getElementById(id), foot));
+    // The queue's own heading says what it is in this mode.
     const q = document.querySelector('#live-queue-section .cs-section-label');
-    if (q) { L.sends.queueLabel = q.textContent; q.textContent = 'Verses'; L.sends.queueEl = q; }
+    if (q) { S.queueLabel = q.textContent; q.textContent = 'Verses'; S.queueEl = q; }
   }
   function emptySends() {
     if (!L.sends) return;
-    const { parts, queueEl, queueLabel, label, foot, themeTitle } = L.sends;
+    closePop();
+    const { parts, queueEl, queueLabel, head, foot, themeTitle, monObs } = L.sends;
+    monObs && monObs.disconnect();
     if (queueEl) queueEl.textContent = queueLabel;
     const theme = document.getElementById('bible-theme-btn');
     if (theme) { theme.title = themeTitle || ''; theme.removeAttribute('aria-label'); }
+    restoreMovedInto(head);
     restoreMovedInto(foot);
-    foot.remove();
+    head.remove(); foot.remove();
     parts.forEach(({ node, home }) => { if (home.parentNode) { home.after(node); home.remove(); } });
-    label.remove();
     L.sends = null;
   }
 
@@ -162,5 +256,5 @@
     document.body.classList.remove('video-director');
   }
 
-  window.KairoVideoLayout = { start, stop, fillSends, emptySends };
+  window.KairoVideoLayout = { start, stop, fillSends, emptySends, moveTo };
 })();
