@@ -36,6 +36,7 @@
     frames: {},             // 'pvw' | 'pgm' → { box, frame, ro }
     ui: {},
     liveObserver: null,
+    last: null,             // one-step undo: { live, preview, verse }
     programState: { on: [], id: null, mixed: false },
   };
 
@@ -65,9 +66,31 @@
     frame.style.width = '1920px';
     frame.style.height = '1080px';
     box.appendChild(frame);
+    const name = vEl('span', 'vd-frame-name');
+    box.appendChild(name);
+    if (kind === 'pgm') box.appendChild(vEl('span', 'vd-live-badge', 'Live'));
     const ro = new ResizeObserver(() => { frame.style.transform = `scale(${box.clientWidth / 1920})`; });
     ro.observe(box);
-    D.frames[kind] = { box, frame, ro };
+    D.frames[kind] = { box, frame, name, ro };
+    // Drop an input on either screen to send it there; drop a slide on Preview to stage it.
+    box.addEventListener('dragover', (e) => {
+      const t = e.dataTransfer && e.dataTransfer.types ? [...e.dataTransfer.types] : [];
+      if (t.includes('application/x-kairo-input') || (kind === 'pvw' && t.includes('application/x-kairo-slide'))) { e.preventDefault(); box.classList.add('is-drop'); }
+    });
+    box.addEventListener('dragleave', () => box.classList.remove('is-drop'));
+    box.addEventListener('drop', (e) => {
+      box.classList.remove('is-drop');
+      const dt = e.dataTransfer; if (!dt) return;
+      const inp = dt.getData('application/x-kairo-input');
+      const sl = dt.getData('application/x-kairo-slide');
+      if (inp !== '' && dt.types.includes('application/x-kairo-input')) {
+        e.preventDefault();
+        if (kind === 'pgm') sendToProgram(inp || null); else setPreview(inp || null);
+      } else if (sl && kind === 'pvw') {
+        e.preventDefault();
+        try { const v = JSON.parse(sl); stageSlide(v.itemId, v.index); } catch {}
+      }
+    });
     return box;
   }
   function setFrameSrc(kind, src) {
@@ -101,11 +124,24 @@
   }
   function takeVerse() {
     if (!D.staged) return;
-    const { verse, look } = D.staged;
+    const { verse, look, slide } = D.staged;
     D.staged = null;
+    D.last = { ...(D.last || {}), verse: true };
     syncPreviewFrame();
     refresh();
+    // A staged slide goes out through the playlist's own send, a verse through the normal one.
+    if (slide && window.KairoService) return window.KairoService.sendSlide(slide.item, slide.index);
     return D.origSend(verse, look);
+  }
+  // Drag a slide onto Preview to stage it.
+  function stageSlide(itemId, index) {
+    const svc = window.KairoService;
+    const item = svc && svc.service && svc.service.items.find(i => i.id === itemId);
+    const sl = item && svc.slidesFor(item)[index];
+    if (!sl) return;
+    D.staged = { verse: { text: sl.text || '', reference: sl.reference || sl.label || item.title || '', image: sl.image || undefined }, look: null, slide: { item, index } };
+    syncPreviewFrame();
+    refresh();
   }
   function wrapSend() {
     if (D.origSend || typeof sendVerseToServer !== 'function') return;
@@ -139,10 +175,41 @@
   function publishFade() {
     try { localStorage.setItem('kairo-video-fade', JSON.stringify(fadeMs())); } catch {}
   }
+  // The state a one-step Undo goes back to.
+  function snapshot() { D.last = { live: { ...videoLiveMap() }, preview: D.previewId }; }
+  function undo() {
+    const last = D.last;
+    if (!last) return;
+    D.last = null;
+    if (last.live) {
+      const byValue = new Map();
+      for (const [out, id] of Object.entries(last.live)) { const k = id || ''; byValue.set(k, [...(byValue.get(k) || []), out]); }
+      for (const [id, outs] of byValue) setVideoLiveFor(outs, id || null);
+      D.previewId = last.preview || null;
+      syncPreviewFrame();
+    }
+    // The verse goes back through the app's own "Back to the previous screen".
+    if (last.verse) document.getElementById('output-back-btn')?.click();
+    refresh();
+  }
+  // Space: send what is staged (the verse, and the Preview source when it differs).
+  function takeStaged() {
+    const ps = programState();
+    const mode = transitionPref();
+    if (D.staged) takeVerse();
+    if (ps.on.length && (D.previewId || null) !== (ps.mixed ? undefined : (ps.id || null))) take(mode);
+  }
+  function clearStaging() {
+    D.staged = null;
+    D.previewId = null;
+    syncPreviewFrame();
+    refresh();
+  }
   // Preview → Program with `mode`; the old Program source is staged next.
   function take(mode) {
     const ps = programState();
     if (!ps.on.length) return;
+    snapshot();
     setTransition(mode);                       // written first: the display reads it when the source changes
     const outgoing = ps.mixed ? D.previewId : ps.id;
     setVideoLiveFor(ps.on.map(o => o.id), D.previewId);
@@ -159,6 +226,7 @@
       setOutputLayer(PRIMARY_DISPLAY, 'video', true);
       ps = programState();
     }
+    snapshot();
     if (mode) {
       try { localStorage.setItem('kairo-video-transition', JSON.stringify(mode)); } catch {}
       setTimeout(publishTransition, fadeMs() + 400);
@@ -183,6 +251,7 @@
     tbarBusy = false;
     const ps = programState();
     if (t >= 0.5 && ps.on.length) {
+      snapshot();
       writeTbar(D.previewId, 1);
       const outgoing = ps.mixed ? D.previewId : ps.id;
       try { localStorage.setItem('kairo-video-transition', JSON.stringify('cut')); } catch {}
@@ -247,18 +316,18 @@
     return el;
   }
 
-  // Preview and Output as large as their area allows, always 16:9: width is
-  // what is left beside the strip, split two ways, or what the height allows.
+  // Preview and Output as large as their area allows, always 16:9: half the
+  // width, or what the height leaves above the transition bar.
   function fitScreens() {
     const band = D.root;
     if (!band || !D.ui.strip) return;
     const w = band.clientWidth, h = band.clientHeight;
     if (!w || !h) return;
-    const strip = D.ui.strip.offsetWidth || 90;
+    const barH = D.ui.strip.offsetHeight + 8;
     const head = 28;                    // each screen's label line
     const gap = 8;
-    const byWidth = (w - strip - gap * 2) / 2;
-    const byHeight = (h - head) * 16 / 9;
+    const byWidth = (w - gap) / 2;
+    const byHeight = (h - head - barH) * 16 / 9;
     const fw = Math.max(80, Math.floor(Math.min(byWidth, byHeight)));
     band.style.setProperty('--vd-fw', fw + 'px');
   }
@@ -280,6 +349,7 @@
       onProgram: (id) => sendToProgram(id),
       onPreview: setPreview,
       onPlaceholder: (source, el) => openDevicePicker(source.id, el),
+      onAdd: (el) => openAddInputPanel(el),
       mode: settings.videoGridMode === 2 ? 2 : 4,
       onMode: (n) => { settings.videoGridMode = n; saveSettingsPatch({ videoGridMode: n }); },
       layout: 'column',
@@ -306,18 +376,19 @@
     pvwHead.appendChild(D.ui.pvwRef);
     pvw.append(pvwHead, buildFrame('pvw'));
 
-    // The transition strip
-    const strip = vEl('div', 'vd-strip');
-    strip.setAttribute('role', 'group');
-    strip.setAttribute('aria-label', 'Transition');
-    D.ui.takeVerse = vBtn('Take verse', 'Send the staged verse to Output', takeVerse, 'vd-take vd-take-verse');
-    D.ui.clearStage = vBtn('Clear', 'Remove the staged verse from Preview', clearStage, 'vd-mini');
-    D.ui.cut = vBtn('Cut', 'Put the Preview video source on Output at once', () => take('cut'), 'vd-take');
-    D.ui.fade = vBtn('Fade', 'Fade the Preview video source onto Output', () => take('fade'), 'vd-take');
+    // The transition bar, centred under the two screens.
+    const bar = vEl('div', 'vd-transbar');
+    bar.setAttribute('role', 'group');
+    bar.setAttribute('aria-label', 'Transition');
+    D.ui.takeVerse = vBtn('Take verse', 'Send the staged verse to Output (Space)', takeVerse, 'vd-take vd-take-verse');
+    D.ui.clearStage = vBtn('Clear', 'Clear what is staged (Esc)', clearStaging, 'vd-take');
+    D.ui.cut = vBtn('Cut', 'Preview to Output at once', () => take('cut'), 'vd-take');
+    D.ui.fade = vBtn('Fade', 'Fade Preview onto Output', () => take('fade'), 'vd-take');
     D.ui.black = vBtn('Fade to black', 'Fade Output to no video', () => sendToProgram(null, 'fade'), 'vd-take');
     const dur = vEl('label', 'vd-dur');
     const durIn = vEl('input'); durIn.type = 'number'; durIn.min = '0'; durIn.max = '5000'; durIn.step = '50'; durIn.value = String(fadeMs());
     durIn.setAttribute('aria-label', 'Fade length in milliseconds');
+    durIn.title = 'Fade length';
     durIn.addEventListener('change', () => {
       const n = Math.min(5000, Math.max(0, Math.round(Number(durIn.value) || 0)));
       durIn.value = String(n);
@@ -328,12 +399,14 @@
     D.ui.tbar = vEl('input', 'vd-tbar');
     D.ui.tbar.type = 'range'; D.ui.tbar.min = '0'; D.ui.tbar.max = '1000'; D.ui.tbar.value = '0';
     D.ui.tbar.setAttribute('aria-label', 'T-bar: fade Preview onto Output by hand');
-    D.ui.tbar.title = 'Drag to fade by hand. Let go past halfway to finish.';
+    D.ui.tbar.title = 'T-bar: drag to fade by hand. Let go past halfway to finish.';
     D.ui.tbar.addEventListener('input', () => tbarMove(Number(D.ui.tbar.value) / 1000));
     for (const ev of ['change', 'pointerup', 'keyup']) D.ui.tbar.addEventListener(ev, () => tbarRelease(Number(D.ui.tbar.value) / 1000));
-    tb.append(D.ui.tbar, vEl('span', 'vd-tbar-label', 'T-bar'));
-    strip.append(D.ui.takeVerse, D.ui.clearStage, D.ui.cut, D.ui.fade, D.ui.black, dur, tb);
-    D.ui.strip = strip;
+    tb.append(vEl('span', 'vd-tbar-label', 'T-bar'), D.ui.tbar);
+    D.ui.undo = vBtn('Undo', 'Undo the last take (Cmd/Ctrl+Z)', undo, 'vd-take');
+    const sep = () => vEl('span', 'vd-bar-sep');
+    bar.append(D.ui.takeVerse, D.ui.clearStage, sep(), D.ui.cut, D.ui.fade, D.ui.black, dur, tb, sep(), D.ui.undo);
+    D.ui.strip = bar;
 
     const pgm = vEl('div', 'vd-screen vd-screen-pgm');
     const pgmHead = vEl('div', 'vd-screen-head');
@@ -342,8 +415,8 @@
     pgmHead.appendChild(D.ui.pgmName);
     pgm.append(pgmHead, buildFrame('pgm'));
     D.ui.pgm = pgm;
-    screens.append(pvw, strip, pgm);
-    band.appendChild(screens);
+    screens.append(pvw, pgm);
+    band.append(screens, bar);
     const displays = vEl('div', 'vd-col-displays');
     displays.appendChild(band);
 
@@ -418,13 +491,16 @@
     D.ui.noVideo.classList.toggle('is-on', !ps.mixed && ps.on.length > 0 && !ps.id);
     fitScreens();
     D.ui.pgm.classList.toggle('is-live', isOnAir());
+    if (D.frames.pgm) D.frames.pgm.name.textContent = !ps.on.length ? '' : ps.mixed ? 'Mixed' : pgmSource ? pgmSource.name : 'No video';
 
     // Preview header
     const pvwSource = sources.find(s => s.id === D.previewId);
     const staged = D.staged ? (D.staged.verse.reference || D.staged.verse.ref || 'Verse') : '';
     D.ui.pvwRef.textContent = staged ? `${pvwSource ? pvwSource.name : 'No video'} · ${staged}` : (pvwSource ? pvwSource.name : 'No video');
     D.ui.takeVerse.disabled = !D.staged;
-    D.ui.clearStage.hidden = !D.staged;
+    D.ui.clearStage.disabled = !D.staged && !D.previewId;
+    D.ui.undo.disabled = !D.last;
+    if (D.frames.pvw) D.frames.pvw.name.textContent = pvwSource ? pvwSource.name : '';
     const canTake = ps.on.length > 0;
     const cur = transitionPref();
     for (const [btn, mode] of [[D.ui.cut, 'cut'], [D.ui.fade, 'fade']]) {
@@ -471,10 +547,41 @@
     document.querySelector('.settings-pane[data-pane="director"] [data-vd-rows]')?.remove();
   }
 
+  // ── Keyboard: 1-9 send an input, Shift+1-9 stage it, Space takes what is
+  // staged, Esc clears staging, Cmd/Ctrl+Z undoes the last take. They do not
+  // fire while typing in a field or while a dialog is open. ────────────────
+  function onKey(e) {
+    if (!D.active) return;
+    const t = e.target;
+    if (t && (t.isContentEditable || (t.matches && t.matches('input,textarea,select')))) return;
+    if (document.querySelector('.modal:not(.hidden), .vd-add-panel')) return;
+    if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'z') {
+      if (D.last) { e.preventDefault(); undo(); }
+      return;
+    }
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    const m = /^(?:Digit|Numpad)([1-9])$/.exec(e.code || '');
+    if (m) {
+      const src = videoSourceList().filter(x => x.enabled !== false)[Number(m[1]) - 1];
+      if (!src || VSRC.stateOf(src, videoState.devices) !== 'ready') return;
+      e.preventDefault();
+      if (e.shiftKey) setPreview(src.id); else sendToProgram(src.id);
+      return;
+    }
+    if (e.code === 'Space') {
+      if (t && t.closest && t.closest('button')) return;       // a focused button keeps its own Space
+      e.preventDefault();
+      takeStaged();
+      return;
+    }
+    if (e.key === 'Escape') clearStaging();
+  }
+
   async function start() {
     if (D.active) return;
     if (!build()) return;
     D.active = true;
+    document.addEventListener('keydown', onKey);
     wrapSend();
     publishTransition();
     publishFade();
@@ -499,6 +606,7 @@
   function stop() {
     if (!D.active) return;
     D.active = false;
+    document.removeEventListener('keydown', onKey);
     unwrapSend();
     D.staged = null;   // a staged verse is dropped, never sent: the screen keeps what it shows
     D.liveObserver?.disconnect();

@@ -266,3 +266,43 @@ body.video-director .vd-section-sends .cs-theme-btn:hover { color: var(--text); 
 .vd-add-title { font-size: 12px; font-weight: 700; color: var(--text); }
 .vg-tile.is-empty { flex-direction: column; gap: 2px; padding: 4px; }
 .vg-tile.is-empty .vg-name { position: static; padding: 0; text-align: center; max-width: 100%; }
+
+/* ── Displays: Preview and Output side by side, the transition bar centred under them. ── */
+.vd-band { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+.vd-screens { height: auto; gap: 8px; }
+.vd-transbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 8px; max-width: 100%; }
+.vd-bar-sep { width: 1px; align-self: stretch; min-height: 22px; background: var(--border-md); }
+.vd-transbar .vd-take { height: 32px; min-width: 56px; padding: 0 12px; }
+.vd-transbar .vd-dur { width: 78px; }
+.vd-tbar-wrap { flex-direction: row; align-items: center; gap: 6px; padding: 0; }
+.vd-tbar { width: 120px; height: 20px; margin: 0; transform: none; accent-color: var(--brand); }
+.vd-tbar-wrap .vd-tbar { margin: 0; }
+.vd-tbar-label { margin: 0; }
+.vd-frame-name { position: absolute; left: 6px; bottom: 6px; max-width: calc(100% - 12px); padding: 2px 7px; border-radius: 4px; background: rgba(0,0,0,0.65); color: #fff; font-size: 10.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; z-index: 2; }
+.vd-frame-name:empty { display: none; }
+.vd-live-badge { display: none; position: absolute; top: 6px; right: 6px; padding: 2px 8px; border-radius: 4px; background: var(--red); color: #fff; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; pointer-events: none; z-index: 2; }
+.vd-screen-pgm.is-live .vd-live-badge { display: block; }
+.vd-frame.is-drop { outline: 3px dashed var(--accent); outline-offset: -3px; }
+
+/* Input tiles: key number, add tile. */
+.vg-key { position: absolute; right: 4px; bottom: 3px; font-size: 9.5px; font-weight: 800; color: rgba(255,255,255,0.8); text-shadow: 0 0 3px #000; pointer-events: none; }
+.vg-add { grid-column: 1 / -1; min-height: 64px; border: 2px dashed var(--border-md); border-radius: 6px; background: transparent; color: var(--text-2); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.vg-add:hover { color: var(--text); border-color: var(--selected-border); }
+.vg-add:focus-visible { outline: 2px solid var(--selected-border); outline-offset: 1px; }
+
+/* Media bin header: title, then the toggles on one row with the tile size at the far right. */
+.vd-md-head { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; }
+.vd-md-row { display: flex; align-items: center; gap: 6px; }
+.vd-md-row .vd-chips { flex: 0 1 auto; }
+.vd-md-row .vd-size { margin-left: auto; width: 90px; accent-color: var(--brand); }
+.vd-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 22px; padding: 0; border: 1px solid var(--border-md); border-radius: 11px; background: transparent; color: var(--text-2); cursor: pointer; flex: 0 0 auto; }
+.vd-icon-btn[hidden] { display: none; }
+.vd-icon-btn:hover { color: var(--text); border-color: var(--selected-border); }
+.vd-media-body #media-bin .media-bin-header { display: none; }
+.vd-media-body { padding-top: 0; }
+.vd-kind-tiles .vd-slide, .vd-kind-tiles .media-card { width: var(--vd-tile, 120px); flex: 0 0 var(--vd-tile, 120px); }
+.vd-kind-tiles .vd-slide { height: calc(var(--vd-tile, 120px) * 0.5625); }
+.vd-kind-tiles { --mb-thumb: var(--vd-tile, 120px); }
+.vd-menu { position: fixed; z-index: 220; min-width: 160px; max-height: 50vh; overflow-y: auto; padding: 4px; background: var(--bg); border: 1px solid var(--border-md); border-radius: var(--radius); box-shadow: 0 8px 26px rgba(0,0,0,0.55); display: flex; flex-direction: column; }
+.vd-menu-item { text-align: left; padding: 6px 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; }
+.vd-menu-item:hover, .vd-menu-item.is-on { background: var(--selected-dim); color: var(--text); }
