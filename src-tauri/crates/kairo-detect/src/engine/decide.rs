@@ -23,9 +23,9 @@ const LATE_CORROBORATION_WINDOW_MS: u64 = 20_000;
 pub const CORROBORATING_QUOTE_COVERAGE: f32 = 0.5;
 /// A near-complete quote is the verse being said; the on-screen comparison doesn't apply.
 const ON_SCREEN_GUARD_MAX_COVERAGE: f32 = 0.8;
-/// A chapter just named holds text matches elsewhere this long.
 /// How long a book just named, numbers still to come, holds back readings of other books.
 const CITATION_PENDING_MS: u64 = 8_000;
+/// A chapter just named holds text matches elsewhere this long.
 const CHAPTER_NAMED_HOLD_MS: u64 = 30_000;
 const VERBATIM_AUTOSEND_MIN: f32 = 0.95;
 /// "The newest speech" is at least this many words (one Deepgram sentence;
@@ -334,7 +334,14 @@ impl Engine {
     /// his inheritance. Luke — 16:16"): a reading of a verse in another book waits for the
     /// citation instead of going up first (Matthew 11:12 is Luke 16:16's twin).
     fn citation_pending_elsewhere(&self, v: VerseId, now: u64) -> bool {
-        let Some(last) = self.t.finals.back() else { return false };
+        // What is being said now (the interim, else the newest final), and the final before it.
+        let n = self.t.finals.len();
+        let (current, before) = if self.t.interim.trim().is_empty() {
+            (self.t.finals.back().map(|f| f.text.as_str()), n.checked_sub(2).and_then(|i| self.t.finals.get(i)))
+        } else {
+            (Some(self.t.interim.as_str()), self.t.finals.back())
+        };
+        let (Some(current), Some(last)) = (current, before) else { return false };
         if now.saturating_sub(last.at) > CITATION_PENDING_MS {
             return false;
         }
@@ -342,12 +349,16 @@ impl Engine {
         let Some(word) = last.text.split_whitespace().last() else { return false };
         let word: String = word.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
         let Some(book) = self.k.books.alias(&word) else { return false };
-        // …and what is being said now starts with its numbers.
-        let first = self.t.interim.split_whitespace().next().unwrap_or("");
-        if !(first.starts_with(|c: char| c.is_ascii_digit()) || first.eq_ignore_ascii_case("chapter")) {
-            return false;
-        }
-        self.r(v).book != book
+        // …and what is being said now starts with its chapter and verse ("16:16", "16 16",
+        // "chapter …"), not just any number ("…the acts. 2 people were healed").
+        let mut toks = current.split_whitespace();
+        let first = toks.next().unwrap_or("");
+        let second = toks.next().unwrap_or("");
+        let digits = |w: &str| !w.is_empty() && w.trim_end_matches([',', '.']).chars().all(|c| c.is_ascii_digit() || c == ':');
+        let reference = first.eq_ignore_ascii_case("chapter")
+            || (first.contains(':') && first.chars().next().is_some_and(|c| c.is_ascii_digit()))
+            || (digits(first) && digits(second));
+        reference && self.r(v).book != book
     }
 
     fn chapter_just_named_elsewhere(&self, v: VerseId, c: &Candidate, now: u64) -> bool {

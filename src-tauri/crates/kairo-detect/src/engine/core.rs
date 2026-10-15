@@ -240,19 +240,31 @@ impl Engine {
     /// A citation misheard and corrected in the same moment never reaches the screen: a
     /// number misheard within the chapter ("Genesis 24 verse 53" for the 24:63 being read) or a
     /// book misheard for one with the same chapter and verse (Ephesians 2:10 for Philippians
-    /// 2:10). Only the corrected verse goes up, instead of the wrong one flashing first.
-    fn drop_misheard_in_same_breath(&self, effects: &mut Vec<Effect>) {
+    /// 2:10). Only the corrected verse goes up; the citation as heard stays one click away in
+    /// Possible Matches, and is not counted as shown.
+    fn drop_misheard_in_same_breath(&mut self, effects: &mut [Effect]) {
         let fixes: Vec<(VerseId, VerseId)> = effects.iter().filter_map(|e| match e {
             Effect::Show { target: Target::Screen, corrected_from: Some(from), verses, .. } if verses.len() == 1 => Some((*from, verses[0])),
             _ => None,
         }).collect();
         if fixes.is_empty() { return; }
-        let misheard = |from: VerseId, to: VerseId| {
-            let (a, b) = (self.r(from), self.r(to));
+        let misheard = |e: &Engine, from: VerseId, to: VerseId| {
+            let (a, b) = (e.r(from), e.r(to));
             (a.book == b.book && a.chapter == b.chapter) || (a.chapter == b.chapter && a.verse == b.verse)
         };
-        effects.retain(|e| !matches!(e, Effect::Show { target: Target::Screen, verses, corrected_from: None, .. }
-            if verses.len() == 1 && fixes.iter().any(|(from, to)| *from == verses[0] && misheard(*from, *to))));
+        let mut demoted = Vec::new();
+        for e in effects.iter_mut() {
+            if let Effect::Show { target, verses, corrected_from: None, .. } = e {
+                if *target == Target::Screen && verses.len() == 1 && fixes.iter().any(|(from, to)| *from == verses[0] && misheard(self, *from, *to)) {
+                    *target = Target::Suggestions;
+                    demoted.push(verses[0]);
+                }
+            }
+        }
+        for v in demoted {
+            self.screen.shown_this_book.remove(&v);
+            self.screen.recent_detections.remove(&v);
+        }
     }
 
     /// What belongs to the utterance being heard, not the sermon.
