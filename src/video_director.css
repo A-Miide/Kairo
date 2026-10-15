@@ -368,7 +368,7 @@ body.video-director #live-queue-section .cs-section-label { flex-shrink: 1; min-
   #cs-auto-badge-label::after { content: 'Auto'; font-size: 10px; }
 }
 @container (max-width: 335px) { .vd-clr-text { display: none; } }
-@container (max-width: 300px) { .vd-sends-title { display: none; } }
+@container (max-width: 340px) { .vd-sends-title, .vd-gh > .vd-sends-title { display: none; } }
 @container (max-width: 720px) {
   .vd-transbar { gap: 5px 6px; }
   .vd-tbar-label, .vd-bar-sep, .vd-verse-seg .vd-bar-label { display: none; }
@@ -506,7 +506,6 @@ body.video-director #live-queue-section .cs-section-header { display: none !impo
 .vd-split::after { background: transparent; }
 .vd-split:hover::after, .vd-split.is-drag::after, .vd-split:focus-visible::after { background: var(--brand); }
 /* Scripture sends keeps its title, shortened when narrow. */
-@container (max-width: 300px) { .vd-sends-title { display: block !important; font-size: 0; } .vd-sends-title::after { content: 'Scripture'; font-size: 10px; } }
 .vd-sends-head > .cs-translation-select { max-width: 54px; }
 /* The message button reads as an action: brand-accent, with a clear hover and press. */
 .vd-sends-head .vd-hbtn[aria-label="Monitor message"] { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
@@ -554,7 +553,6 @@ body.video-director #live-queue-section .cs-section-header { display: none !impo
 .vd-layer.is-on { border-color: var(--selected-border); color: var(--text); text-decoration: none; }
 .vd-card-acts { display: flex; flex-wrap: wrap; gap: 5px; }
 .vd-danger { color: var(--red); }
-@container (max-width: 300px) { .vd-gh > .vd-sends-title { font-size: 0; } .vd-gh > .vd-sends-title::after { content: 'Scripture'; font-size: 10px; letter-spacing: 0.05em; } }
 .vd-sends-head { min-width: 0; }
 .vd-sends-head > * { min-width: 0; }
 .vd-sends-head > select, .vd-sends-head > .cs-theme-btn, .vd-sends-head > .vd-hbtn, .vd-sends-head > #cs-auto-badge { flex: 0 0 auto; }
@@ -564,3 +562,20 @@ body.video-director #live-queue-section .cs-section-header { display: none !impo
 /* Live Queue cards say it once: the red outline and the single LIVE pill. No second ON AIR badge, no SEND on the card that is live. */
 body.video-director #current-display-card .is-live .lvc-ref::before { content: none !important; }
 body.video-director #current-display-card .is-live .lvc-send-btn { display: none; }
+
+/* ── Auto-send switch (the Scripture sends header). Brand colour when on; never red. ── */
+body.video-director #cs-auto-badge.vd-auto-switch { cursor: pointer; height: 28px; padding: 0 10px 0 8px; gap: 7px; margin-left: 0; font-size: 10px; color: var(--text-1); border-color: var(--border-md); background: transparent; }
+body.video-director #cs-auto-badge.vd-auto-switch:hover { background: var(--bg-hover); }
+body.video-director #cs-auto-badge.vd-auto-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+body.video-director #cs-auto-badge.vd-auto-switch .cs-auto-dot { position: relative; width: 22px; height: 12px; border-radius: 6px; background: var(--accent); animation: none; flex: 0 0 auto; }
+body.video-director #cs-auto-badge.vd-auto-switch .cs-auto-dot::after { content: ''; position: absolute; top: 2px; left: 12px; width: 8px; height: 8px; border-radius: 50%; background: #fff; transition: left 0.12s; }
+body.video-director #cs-auto-badge.vd-auto-switch.off .cs-auto-dot { background: var(--border-md); }
+body.video-director #cs-auto-badge.vd-auto-switch.off .cs-auto-dot::after { left: 2px; }
+body.video-director #cs-auto-badge.vd-auto-switch #cs-auto-badge-label { font-size: 0; }
+body.video-director #cs-auto-badge.vd-auto-switch #cs-auto-badge-label::after { content: 'Auto-send on'; font-size: 10px; letter-spacing: 0.06em; }
+body.video-director #cs-auto-badge.vd-auto-switch.off #cs-auto-badge-label::after { content: 'Auto-send off'; color: var(--text-3); }
+@container (max-width: 360px) {
+  body.video-director #cs-auto-badge.vd-auto-switch #cs-auto-badge-label::after { content: 'Auto'; }
+  body.video-director #cs-auto-badge.vd-auto-switch.off #cs-auto-badge-label::after { content: 'Auto off'; }
+}
+@container (max-width: 340px) { .vd-sends-head.vd-gh > .vd-sends-title { display: none !important; } }
