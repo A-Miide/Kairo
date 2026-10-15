@@ -2,14 +2,15 @@
 //
 // A Look is a recipe for what the output shows, made from things the app
 // already has: the video input (or none), which layers are on (bible, slide,
-// media, timer, video) and which overlays are up. Loading a Look only changes
-// what Preview shows; nothing goes out until Take. Looks persist in
-// settings.directorLooks. They live in a dialog opened from the Displays header
-// (so they never take room in the layout): each Look is a card with a small
-// summary; click loads it into Preview and closes the dialog (Shift-click keeps
-// it open), and a card can be renamed, updated from what the output shows now,
-// duplicated, deleted and dragged to reorder. Alt+1-9 load the nth Look without
-// opening the dialog. Two starters are made the first time.
+// media, timer, video), which overlays are up and, optionally, a screen theme.
+// Loading a Look only changes what Preview shows; nothing goes out until it is
+// sent to the screen. Looks persist in settings.directorLooks. They live in a
+// dialog opened from the Displays header: a grid of tiles, each a 16:9 picture of
+// the screen with the name and Alt+number under it and one row of layer icons.
+// Click loads it into Preview and closes the dialog (Shift-click keeps it open);
+// the "..." menu (or right-click) renames, updates from the current output,
+// duplicates, picks the screen theme and deletes (with an undo). Tiles drag to
+// reorder. Alt+1-9 load the nth Look without opening the dialog.
 'use strict';
 (function () {
   const LAYER_KEYS = ['bible', 'slide', 'media', 'timer', 'video'];
@@ -48,6 +49,17 @@
   }
 
   const LAYER_LABELS = { bible: 'Bible', slide: 'Slide', media: 'Media', timer: 'Timer', video: 'Video' };
+  const svg = (d) => `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const LAYER_ICONS = {
+    bible: svg('<path d="M4 4.5A2.5 2.5 0 0 1 6.5 2H20v18H6.5A2.5 2.5 0 0 0 4 22.5z"/><path d="M12 6v8M9 9h6"/>'),
+    slide: svg('<rect x="3" y="4" width="18" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>'),
+    media: svg('<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>'),
+    timer: svg('<circle cx="12" cy="13" r="8"/><path d="M12 9v4l2 2M9 2h6"/>'),
+    video: svg('<rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3z"/>'),
+  };
+  const CAM = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3z"/></svg>';
+  const DOTS = '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>';
+  const THUMB_PX = 56;   // renderLookThumbnail draws at this width; tiles scale it up
 
   // ctx: { loadToPreview(look), capture() → Promise<{videoId, layers, overlays, themeId}>,
   //        previewLookId(), liveLookId(), videoName(look), onChange(),
@@ -62,7 +74,8 @@
       if (typeof saveSettingsPatch === 'function') saveSettingsPatch({ directorLooksSplit: true });
       persist();
     }
-    let modal = null, prevFocus = null, renaming = null, dragId = null, keyHandler = null;
+    let modal = null, prevFocus = null, renaming = null, dragId = null, keyHandler = null, menu = null, undoDel = null, undoTimer = null;
+    let overlayNames = {};
 
     function persist() {
       settings.directorLooks = looks;
@@ -76,6 +89,7 @@
     }
     const byId = (id) => looks.find(l => l.id === id);
     const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+    const themeOf = (look) => (look.themeId && ctx.screenThemes ? ctx.screenThemes().find(t => t.id === look.themeId) : null) || null;
 
     async function saveCurrent() {
       const cap = await ctx.capture();
@@ -96,7 +110,32 @@
       looks.splice(looks.indexOf(l) + 1, 0, copy);
       persist(); render();
     }
-    function remove(id) { looks = looks.filter(l => l.id !== id); persist(); render(); ctx.onChange(); }
+    // Delete with an undo: the Look comes back to where it was.
+    function remove(id) {
+      const index = looks.findIndex(l => l.id === id);
+      if (index < 0) return;
+      const [gone] = looks.splice(index, 1);
+      undoDel = { look: gone, index };
+      clearTimeout(undoTimer); undoTimer = setTimeout(() => { undoDel = null; paintToast(); }, 7000);
+      persist(); render(); paintToast(); ctx.onChange();
+    }
+    function restoreDeleted() {
+      if (!undoDel) return;
+      looks.splice(Math.min(undoDel.index, looks.length), 0, undoDel.look);
+      undoDel = null; clearTimeout(undoTimer);
+      persist(); render(); paintToast(); ctx.onChange();
+    }
+    function paintToast() {
+      const t = modal && modal.querySelector('.vd-lk-toast');
+      if (!t) return;
+      t.replaceChildren();
+      t.hidden = !undoDel;
+      if (!undoDel) return;
+      t.append(el('span', null, `Deleted ${undoDel.look.name}`));
+      const b = el('button', 'vd-mini', 'Undo'); b.type = 'button';
+      b.addEventListener('click', restoreDeleted);
+      t.appendChild(b);
+    }
     function commitRename(id, value) {
       const l = byId(id);
       renaming = null;
@@ -104,75 +143,84 @@
       render(); ctx.onChange();
     }
 
-    // The Look's screen theme: a thumbnail, a choice (None keeps the normal theme) and a way to edit it.
-    function screenRow(look, isPvw) {
-      const row = el('div', 'vd-card-screen');
-      const themes = ctx.screenThemes ? ctx.screenThemes() : [];
-      const theme = look.themeId && themes.find(t => t.id === look.themeId);
-      const thumb = el('div', 'ts-theme-thumb vd-screen-thumb' + (theme ? '' : ' is-none'));
-      if (theme && ctx.renderThumb) { try { ctx.renderThumb(thumb, theme); } catch {} }
-      row.appendChild(thumb);
-      const sel = el('select', 'vd-screen-select');
-      sel.setAttribute('aria-label', `Screen for ${look.name}`);
-      sel.appendChild(new Option('Screen: normal theme', ''));
-      themes.forEach(t => sel.appendChild(new Option(t.name.replace(/^Screen\s*[—-]\s*/, 'Screen: '), t.id)));
-      sel.value = theme ? theme.id : '';
-      ['click', 'mousedown', 'keydown'].forEach(ev => sel.addEventListener(ev, (e) => e.stopPropagation()));
-      sel.addEventListener('change', () => {
-        look.themeId = sel.value || null;
-        persist(); render(); ctx.onChange();
-        if (isPvw) ctx.loadToPreview(look);   // Preview follows the change
-      });
-      row.appendChild(sel);
-      if (theme && ctx.editTheme) {
-        const edit = el('button', 'vd-mini', 'Edit'); edit.type = 'button';
-        edit.setAttribute('aria-label', `Edit ${theme.name} in Theme Studio`);
-        edit.addEventListener('click', (e) => { e.stopPropagation(); close(); ctx.editTheme(theme.id); });
-        row.appendChild(edit);
+    // ── The picture of a Look: its screen theme, or a plain sketch of its layers. ──
+    function thumb(look) {
+      const box = el('div', 'vd-lk-thumb');
+      const theme = themeOf(look);
+      if (theme && ctx.renderThumb) {
+        const inner = el('div', 'vd-lk-th-in');
+        try { ctx.renderThumb(inner, theme); } catch {}
+        box.appendChild(inner);
+        const zone = (theme.layers || []).find(l => l && l.type === 'videozone' && l.pos);
+        if (zone && look.layers.video) {
+          const W = window.KAIRO_DESIGN_W || 1920, H = window.KAIRO_DESIGN_H || 1080;
+          const z = el('div', 'vd-lk-zone'); z.innerHTML = CAM;
+          z.style.cssText = `left:${zone.pos.x / W * 100}%;top:${zone.pos.y / H * 100}%;width:${zone.pos.w / W * 100}%;height:${zone.pos.h / H * 100}%`;
+          box.appendChild(z);
+        }
+      } else {
+        box.classList.add('is-plain');
+        if (look.layers.video) { const c = el('div', 'vd-lk-cam'); c.innerHTML = CAM; box.appendChild(c); }
+        if (look.layers.bible || look.layers.slide) box.appendChild(el('div', 'vd-lk-bar'));
       }
-      return row;
+      return box;
+    }
+    function fitThumbs() {
+      if (!modal) return;
+      modal.querySelectorAll('.vd-lk-thumb').forEach(b => {
+        const inner = b.querySelector('.vd-lk-th-in');
+        if (inner) inner.style.transform = `scale(${(b.clientWidth || THUMB_PX) / THUMB_PX})`;
+      });
     }
 
-    function card(look, index) {
+    function infoLine(look) {
+      const parts = [];
+      if (look.videoId) { const n = ctx.videoName(look); if (n && n !== 'No video') parts.push(n); }
+      if (Array.isArray(look.overlays) && look.overlays.length) parts.push(look.overlays.map(id => overlayNames[id] || null).filter(Boolean).join(', ') || `${look.overlays.length} overlay${look.overlays.length > 1 ? 's' : ''}`);
+      return parts.join(' · ');
+    }
+
+    function tile(look, index) {
       const isPvw = ctx.previewLookId() === look.id, isLive = ctx.liveLookId() === look.id;
-      const c = el('div', 'vd-card' + (isPvw ? ' is-pvw' : '') + (isLive ? ' is-live' : ''));
+      const c = el('div', 'vd-lk' + (isPvw ? ' is-pvw' : '') + (isLive ? ' is-live' : ''));
       c.dataset.id = look.id;
       c.tabIndex = 0;
       c.setAttribute('role', 'button');
-      c.setAttribute('aria-label', `${look.name}. Load into Preview`);
-      const top = el('div', 'vd-card-top');
+      c.setAttribute('aria-label', `${look.name}${isLive ? ', live' : ''}. Load into Preview`);
+      const pic = thumb(look);
+      if (isLive) pic.appendChild(el('span', 'vd-lk-live', 'Live'));
+      const more = el('button', 'vd-lk-more'); more.type = 'button'; more.innerHTML = DOTS;
+      more.title = 'More'; more.setAttribute('aria-label', `More for ${look.name}`);
+      more.addEventListener('click', (e) => { e.stopPropagation(); openMenu(look, more); });
+      pic.appendChild(more);
+      c.appendChild(pic);
+      const row = el('div', 'vd-lk-row');
       if (renaming === look.id) {
         const inp = el('input', 'vd-card-input'); inp.type = 'text'; inp.maxLength = 40; inp.value = look.name; inp.setAttribute('aria-label', 'Look name');
         inp.addEventListener('click', (e) => e.stopPropagation());
         inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); commitRename(look.id, inp.value); } else if (e.key === 'Escape') { e.preventDefault(); renaming = null; render(); } });
         inp.addEventListener('blur', () => { if (renaming === look.id) commitRename(look.id, inp.value); });
-        top.appendChild(inp);
+        row.appendChild(inp);
       } else {
-        if (isLive) top.appendChild(el('span', 'vd-look-dot'));
-        top.appendChild(el('span', 'vd-card-name', look.name));
-        if (index < 9) top.appendChild(el('span', 'vd-card-key', `Alt+${index + 1}`));
+        row.appendChild(el('span', 'vd-lk-name', look.name));
+        if (index < 9) row.appendChild(el('span', 'vd-card-key', `Alt+${index + 1}`));
       }
-      c.appendChild(top);
-      const sum = el('div', 'vd-card-sum');
-      sum.appendChild(el('div', 'vd-card-line', `Input: ${ctx.videoName(look)}`));
-      const lay = el('div', 'vd-card-layers');
-      for (const k of LAYER_KEYS) lay.appendChild(el('span', 'vd-layer' + (look.layers[k] ? ' is-on' : ''), LAYER_LABELS[k]));
-      sum.appendChild(lay);
-      sum.appendChild(screenRow(look, isPvw));
-      sum.appendChild(el('div', 'vd-card-line', look.overlays == null ? 'Overlays: unchanged' : look.overlays.length ? `Overlays: ${look.overlays.length} on` : 'Overlays: none'));
-      c.appendChild(sum);
-      const acts = el('div', 'vd-card-acts');
-      [['Rename', () => { renaming = look.id; render(); const i = modal.querySelector('.vd-card-input'); if (i) { i.focus(); i.select(); } }], ['Update', () => updateFromCurrent(look.id)], ['Duplicate', () => duplicate(look.id)], ['Delete', () => remove(look.id)]].forEach(([label, fn]) => {
-        const b = el('button', 'vd-mini' + (label === 'Delete' ? ' vd-danger' : ''), label);
-        b.type = 'button';
-        b.setAttribute('aria-label', `${label} ${look.name}`);
-        b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
-        acts.appendChild(b);
-      });
-      c.appendChild(acts);
+      c.appendChild(row);
+      const icons = el('div', 'vd-lk-icons');
+      for (const k of LAYER_KEYS) {
+        const i = el('span', 'vd-lk-ic' + (look.layers[k] ? ' is-on' : '')); i.innerHTML = LAYER_ICONS[k];
+        i.title = `${LAYER_LABELS[k]} ${look.layers[k] ? 'on' : 'off'}`;
+        i.setAttribute('role', 'img'); i.setAttribute('aria-label', i.title);
+        icons.appendChild(i);
+      }
+      c.appendChild(icons);
+      const info = infoLine(look);
+      if (info) c.appendChild(el('div', 'vd-lk-info', info));
+
       const load = (e) => { ctx.loadToPreview(look); if (!e.shiftKey) close(); };
       c.addEventListener('click', load);
       c.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === c) { e.preventDefault(); load(e); } });
+      c.addEventListener('contextmenu', (e) => { e.preventDefault(); openMenu(look, more); });
       // Drag to reorder. Draggable only while pressed.
       c.draggable = false;
       c.addEventListener('mousedown', (e) => { if (!e.target.closest('button,input')) c.draggable = true; });
@@ -190,12 +238,80 @@
       return c;
     }
 
+    // ── The "..." menu and the screen theme picker ──
+    function closeMenu() { if (menu) { menu.remove(); menu = null; } }
+    function placeMenu(anchor) {
+      const content = modal.querySelector('.modal-content');
+      const cr = content.getBoundingClientRect(), ar = anchor.getBoundingClientRect();
+      menu.style.top = Math.min(cr.height - menu.offsetHeight - 8, ar.bottom - cr.top + 4) + 'px';
+      menu.style.left = Math.max(8, Math.min(cr.width - menu.offsetWidth - 8, ar.right - cr.left - menu.offsetWidth)) + 'px';
+    }
+    function openMenu(look, anchor) {
+      closeMenu();
+      menu = el('div', 'vd-lk-menu'); menu.setAttribute('role', 'menu');
+      const item = (label, fn, cls) => {
+        const b = el('button', 'vd-lk-mi' + (cls ? ' ' + cls : ''), label); b.type = 'button'; b.setAttribute('role', 'menuitem');
+        b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
+        menu.appendChild(b);
+      };
+      item('Rename', () => { closeMenu(); renaming = look.id; render(); const i = modal.querySelector('.vd-card-input'); if (i) { i.focus(); i.select(); } });
+      item('Update from current', () => { closeMenu(); updateFromCurrent(look.id); });
+      item('Duplicate', () => { closeMenu(); duplicate(look.id); });
+      if (ctx.screenThemes && ctx.screenThemes().length) item('Screen theme', () => openThemes(look, anchor));
+      menu.appendChild(el('div', 'vd-lk-sep'));
+      item('Delete', () => { closeMenu(); remove(look.id); }, 'is-danger');
+      modal.querySelector('.modal-content').appendChild(menu);
+      placeMenu(anchor);
+      menu.querySelector('button').focus();
+    }
+    function openThemes(look, anchor) {
+      closeMenu();
+      menu = el('div', 'vd-lk-menu vd-lk-themes'); menu.setAttribute('role', 'listbox'); menu.setAttribute('aria-label', 'Screen theme');
+      const choose = (id) => {
+        look.themeId = id; closeMenu(); persist(); render(); ctx.onChange();
+        if (ctx.previewLookId() === look.id) ctx.loadToPreview(look);   // Preview follows the change
+      };
+      const opt = (id, label, theme) => {
+        const b = el('button', 'vd-lk-opt' + ((look.themeId || null) === id ? ' is-on' : '')); b.type = 'button'; b.setAttribute('role', 'option');
+        b.setAttribute('aria-selected', String((look.themeId || null) === id));
+        const pic = el('div', 'vd-lk-thumb vd-lk-opt-pic');
+        if (theme && ctx.renderThumb) { const inner = el('div', 'vd-lk-th-in'); try { ctx.renderThumb(inner, theme); } catch {} pic.appendChild(inner); } else pic.classList.add('is-plain');
+        b.append(pic, el('span', null, label));
+        b.addEventListener('click', (e) => { e.stopPropagation(); choose(id); });
+        menu.appendChild(b);
+      };
+      opt(null, 'None', null);
+      ctx.screenThemes().forEach(t => opt(t.id, t.name.replace(/^Screen\s*[—-]\s*/, ''), t));
+      const cur = themeOf(look);
+      if (cur && ctx.editTheme) {
+        const e = el('button', 'vd-lk-mi', 'Edit in Theme Studio'); e.type = 'button';
+        e.addEventListener('click', (ev) => { ev.stopPropagation(); close(); ctx.editTheme(cur.id); });
+        menu.appendChild(e);
+      }
+      modal.querySelector('.modal-content').appendChild(menu);
+      placeMenu(anchor);
+      fitMenuThumbs();
+      (menu.querySelector('.is-on') || menu.querySelector('button')).focus();
+    }
+    function fitMenuThumbs() {
+      if (!menu) return;
+      menu.querySelectorAll('.vd-lk-thumb').forEach(b => {
+        const inner = b.querySelector('.vd-lk-th-in');
+        if (inner) inner.style.transform = `scale(${(b.clientWidth || THUMB_PX) / THUMB_PX})`;
+      });
+    }
+
     function render() {
       if (!modal) return;
+      closeMenu();
       const grid = modal.querySelector('.vd-cards');
       grid.replaceChildren();
-      looks.forEach((l, i) => grid.appendChild(card(l, i)));
-      if (!looks.length) grid.appendChild(el('p', 'setting-hint', 'No Looks yet. Save what the output shows now.'));
+      looks.forEach((l, i) => grid.appendChild(tile(l, i)));
+      const add = el('button', 'vd-lk vd-lk-new'); add.type = 'button';
+      add.innerHTML = '<span class="vd-lk-new-pic"><span aria-hidden="true">+</span></span><span class="vd-lk-name">New Look from current</span>';
+      add.addEventListener('click', saveCurrent);
+      grid.appendChild(add);
+      fitThumbs();
     }
 
     function focusables() { return [...modal.querySelectorAll('button, input, [tabindex="0"]')].filter(e => !e.disabled && e.offsetParent !== null); }
@@ -206,29 +322,21 @@
       modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-label', 'Looks');
       const overlay = el('div', 'modal-overlay');
       overlay.addEventListener('mousedown', close);
-      const content = el('div', 'modal-content');
-      content.style.width = '620px';
+      const content = el('div', 'modal-content vd-lk-content');
       const head = el('div', 'modal-header');
-      head.appendChild(el('h2', null, 'Looks'));
+      const title = el('div', 'vd-lk-title'); title.append(el('h2', null, 'Looks'), el('span', 'vd-lk-sub', 'Loads into Preview. Nothing goes out until you send it.'));
       const x = el('button', 'modal-close-btn'); x.type = 'button'; x.textContent = 'Close';
       x.addEventListener('click', close);
-      head.appendChild(x);
-      const body = el('div', 'modal-body');
-      body.style.cssText = 'display:block;padding:16px 20px;max-height:60vh;overflow-y:auto;';
-      body.appendChild(el('p', 'setting-hint', 'A Look sets up Preview. Nothing goes out until you take it.'));
+      head.append(title, x);
+      const body = el('div', 'modal-body vd-lk-body');
       body.appendChild(el('div', 'vd-cards'));
-      const foot = el('div', 'modal-footer');
-      const save = el('button', 'modal-btn primary', 'Save current as Look'); save.type = 'button';
-      save.addEventListener('click', saveCurrent);
-      const done = el('button', 'modal-btn secondary', 'Done'); done.type = 'button';
-      done.addEventListener('click', close);
-      foot.append(save, done);
-      content.append(head, body, foot);
+      const toast = el('div', 'vd-lk-toast'); toast.hidden = true; toast.setAttribute('role', 'status');
+      content.append(head, body, toast);
       modal.append(overlay, content);
       document.body.appendChild(modal);
       keyHandler = (e) => {
         if (!modal) return;
-        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); return; }
+        if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); if (menu) closeMenu(); else close(); return; }
         if (e.key !== 'Tab') return;
         const f = focusables(); if (!f.length) return;
         const first = f[0], last = f[f.length - 1];
@@ -236,12 +344,21 @@
         else if (!e.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) { e.preventDefault(); first.focus(); }
       };
       document.addEventListener('keydown', keyHandler, true);
+      body.addEventListener('mousedown', (e) => { if (menu && !menu.contains(e.target) && !e.target.closest('.vd-lk-more')) closeMenu(); });
+      window.addEventListener('resize', fitThumbs);
       render();
+      paintToast();
       const f = focusables(); (f[0] || x).focus();
+      // Overlay names for the info line arrive a moment later.
+      if (window.KairoOverlays && window.KairoOverlays.load) {
+        window.KairoOverlays.load().then(items => { overlayNames = Object.fromEntries((items || []).map(i => [i.id, i.name || i.label || ''])); if (modal) render(); }).catch(() => {});
+      }
     }
     function close() {
       if (!modal) return;
       document.removeEventListener('keydown', keyHandler, true); keyHandler = null;
+      window.removeEventListener('resize', fitThumbs);
+      closeMenu();
       modal.remove(); modal = null; renaming = null;
       if (prevFocus && prevFocus.focus && prevFocus.isConnected) prevFocus.focus();
     }
@@ -252,7 +369,7 @@
       byId,
       loadIndex(n) { const l = looks[n]; if (l) ctx.loadToPreview(l); return !!l; },
       isOpen: () => !!modal,
-      destroy() { close(); },
+      destroy() { close(); clearTimeout(undoTimer); },
     };
   }
 
