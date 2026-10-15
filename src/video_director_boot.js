@@ -48,6 +48,7 @@
   const style = document.createElement('style');
   style.textContent = `
     .dm-card { border: 1px solid var(--border); border-radius: var(--radius-lg); background: rgba(255,255,255,0.015); }
+    .dm-row[hidden] { display: none; }
     .dm-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; }
     .dm-name { font-size: 13px; font-weight: 600; color: var(--text); }
     .dm-text .setting-hint { margin: 3px 0 0; }
@@ -79,11 +80,53 @@
             <label class="output-toggle"><input type="checkbox" id="dm-toggle" aria-labelledby="dm-name"><span class="output-toggle-track"></span></label>
           </div>
           <p class="dm-armed" id="dm-armed" role="status" hidden>Video is live. Switch off again to go to no video and turn off.</p>
+          <div class="dm-row" id="dm-sim-row" hidden>
+            <div class="dm-text">
+              <div class="dm-name" id="dm-sim-name">Simulate 4 cameras at 30 fps</div>
+              <p class="setting-hint">Developer. Adds four test inputs that need no camera, for measuring. Reloads the window.</p>
+            </div>
+            <label class="output-toggle"><input type="checkbox" id="dm-sim" aria-labelledby="dm-sim-name"><span class="output-toggle-track"></span></label>
+          </div>
         </div>
       </div>`;
     panes.appendChild(pane);
     dmToggle = pane.querySelector('#dm-toggle');
     dmArmed = pane.querySelector('#dm-armed');
+    // The developer row shows only in a dev setup: localStorage 'kairo-dev' = '1', or while simulating.
+    const sim = window.KairoSimCameras;
+    let dev = false;
+    try { dev = localStorage.getItem('kairo-dev') === '1'; } catch {}
+    const row = pane.querySelector('#dm-sim-row');
+    if (sim && row && (dev || sim.isOn())) {
+      row.hidden = false;
+      const box = pane.querySelector('#dm-sim');
+      box.checked = sim.isOn();
+      box.addEventListener('change', () => { syncSimSources(box.checked); sim.set(box.checked); setTimeout(() => location.reload(), 400); });
+    }
+  }
+
+  // Four simulated inputs (1080p30) are added when simulating and removed when it ends.
+  // Nothing is touched while the flag was never used.
+  function syncSimSources(on) {
+    const sim = window.KairoSimCameras;
+    if (!sim) return;
+    const isSim = (x) => /^sim-cam-/.test(x.deviceId || '');
+    let list = Array.isArray(settings.videoSources) ? settings.videoSources.filter(x => x && typeof x === 'object') : [];
+    if (on) {
+      sim.ids().forEach((id, i) => {
+        if (list.some(x => x.deviceId === id)) return;
+        list.push({ id: 'vid-sim' + (i + 1), name: 'Sim ' + (i + 1), deviceId: id, label: 'Simulated camera ' + (i + 1), width: 1920, height: 1080, fps: 30, enabled: true });
+      });
+    } else {
+      if (!list.some(isSim)) return;
+      list = list.filter(x => !isSim(x));
+    }
+    settings.videoSources = list;
+    const live = settings.videoLive && typeof settings.videoLive === 'object' ? { ...settings.videoLive } : {};
+    for (const k of Object.keys(live)) if (!list.some(x => x.id === live[k])) live[k] = null;
+    settings.videoLive = live;
+    if (typeof saveSettingsPatch === 'function') saveSettingsPatch({ videoSources: list, videoLive: live });
+    try { localStorage.setItem('kairo-video-sources', JSON.stringify(list)); } catch {}
   }
 
   function paint(on, armed) {
@@ -150,6 +193,8 @@
 
   // Called by loadSettings (app.js) once the saved settings are in.
   window.initVideoSources = async function () {
+    // Simulated cameras: keep the four test inputs in step with the flag.
+    try { if (window.KairoSimCameras && (window.KairoSimCameras.isOn() || (settings.videoSources || []).some(x => x && /^sim-cam-/.test(x.deviceId || '')))) syncSimSources(window.KairoSimCameras.isOn()); } catch {}
     if (settings.videoDirector) { await enable(false); return; }
     // Mode off: no display window may be left holding a camera for a source
     // chosen in an earlier session.
