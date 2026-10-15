@@ -19,6 +19,7 @@
     md: { chips: null, body: null, kinds: new Set(['slides']), laneOff: null },
     selId: null,                // the playlist item whose slides the Slides chip shows
     binHome: null, binToggled: false,
+    liveKey: null,              // the last slide sent from the media bin
   };
 
   const MD_CHIPS = [
@@ -37,6 +38,28 @@
     } catch {}
     return new Set(['slides']);
   }
+  const TILE_KEY = 'kairo-vd-tile';
+  function loadTile() { try { const n = Number(localStorage.getItem(TILE_KEY)); return n >= 90 && n <= 240 ? n : 120; } catch { return 120; } }
+  function applyTile(n) { if (K.md.body) K.md.body.style.setProperty('--vd-tile', n + 'px'); }
+
+  // The folder list: the bin's own folder menu, behind a small icon instead of a second labelled control.
+  function openFolderMenu(anchor) {
+    const sel = document.getElementById('media-bin-folder');
+    if (!sel) return;
+    document.querySelectorAll('.vd-menu').forEach(m => m.remove());
+    const menu = vEl('div', 'vd-menu');
+    [...sel.options].forEach(o => {
+      const b = vBtn(o.textContent, `Show ${o.textContent}`, () => { sel.value = o.value; sel.dispatchEvent(new Event('change')); menu.remove(); }, 'vd-menu-item' + (o.value === sel.value ? ' is-on' : ''));
+      menu.appendChild(b);
+    });
+    document.body.appendChild(menu);
+    const r = anchor.getBoundingClientRect();
+    menu.style.left = Math.max(8, Math.min(window.innerWidth - 200, r.left)) + 'px';
+    menu.style.top = Math.min(window.innerHeight - menu.offsetHeight - 8, r.bottom + 4) + 'px';
+    const off = (e) => { if (!menu.contains(e.target)) { menu.remove(); document.removeEventListener('mousedown', off, true); } };
+    document.addEventListener('mousedown', off, true);
+  }
+
   function saveKinds() { try { localStorage.setItem(KINDS_KEY, JSON.stringify([...K.md.kinds])); } catch {} }
 
   function toggleRow() {
@@ -73,7 +96,33 @@
     renderMedia();
   }
 
-  // ── Slides chip: the selected item's slides ──────────────────────────────
+  // ── Slides: the selected item's slides as real thumbnails ────────────────
+  // Each tile is painted by the playlist's own thumbnail painter (theme
+  // background, fonts, layers), but only once it scrolls into view.
+  let thumbIO = null;
+  function thumbObserver() {
+    if (thumbIO) return thumbIO;
+    thumbIO = new IntersectionObserver((entries) => {
+      for (const e of entries) {
+        if (!e.isIntersecting) continue;
+        const host = e.target;
+        if (host.__vdPainted && host.__vdPainted === host.clientWidth) continue;
+        const d = host.__vdSlide;
+        if (!d || !host.clientWidth || !window.KairoService || !window.KairoService.paintSlideThumb) continue;
+        try { window.KairoService.paintSlideThumb(host, d.item, d.s, d.i); host.__vdPainted = host.clientWidth; } catch {}
+      }
+    }, { root: null, rootMargin: '120px' });
+    return thumbIO;
+  }
+  // The tile size changed: paint again at the new width.
+  function repaintThumbs() {
+    K.md.body && K.md.body.querySelectorAll('.vd-slide-thumb').forEach(h => { h.__vdPainted = 0; thumbObserver().unobserve(h); thumbObserver().observe(h); });
+  }
+  // The last slide sent from here shows the on-air frame until a Clear.
+  function markLive() {
+    K.md.body && K.md.body.querySelectorAll('.vd-slide').forEach(t => t.classList.toggle('is-live', t.dataset.key === K.liveKey));
+  }
+
   function renderSlides(body) {
     const svc = window.KairoService;
     const item = items().find(i => i.id === K.selId);
@@ -84,13 +133,23 @@
     slides.forEach((s, i) => {
       const tile = vEl('button', 'vd-slide');
       tile.type = 'button';
+      tile.dataset.key = `${item.id}:${i}`;
       tile.title = `Send ${item.title || 'slide'} ${i + 1} to the screens`;
-      if (s.image) { const img = vEl('img'); img.src = s.image; img.alt = ''; img.loading = 'lazy'; tile.appendChild(img); }
-      else tile.appendChild(vEl('span', 'vd-slide-text', (s.text || s.label || '').slice(0, 90)));
-      tile.appendChild(vEl('span', 'vd-slide-num', String(i + 1)));
-      tile.addEventListener('click', () => svc.sendSlide(item, i));
+      const thumb = vEl('div', 'vd-slide-thumb');
+      thumb.__vdSlide = { item, s, i };
+      tile.appendChild(thumb);
+      tile.appendChild(vEl('span', 'vd-slide-num', `${i + 1}.`));
+      tile.addEventListener('click', () => { K.liveKey = tile.dataset.key; markLive(); svc.sendSlide(item, i); });
+      // Drag a slide onto Preview to stage it. Draggable only while pressed.
+      tile.draggable = false;
+      tile.addEventListener('mousedown', () => { tile.draggable = true; });
+      tile.addEventListener('mouseup', () => { tile.draggable = false; });
+      tile.addEventListener('dragstart', (e) => { e.dataTransfer.setData('application/x-kairo-slide', JSON.stringify({ itemId: item.id, index: i })); e.dataTransfer.effectAllowed = 'copy'; });
+      tile.addEventListener('dragend', () => { tile.draggable = false; });
       body.appendChild(tile);
+      thumbObserver().observe(thumb);
     });
+    markLive();
   }
 
   // ── Media bin group ──────────────────────────────────────────────────────
@@ -121,6 +180,7 @@
     if (on('video') || on('images')) renderBin(section('bin', on('video') && on('images') ? 'Video and images' : on('video') ? 'Video' : 'Images'), on('video'), on('images'));
     if (on('music')) renderMusic(section('music', 'Music'));
     if (on('overlays')) renderOverlays(section('overlays', 'Overlays'));
+    if (K.md.folderBtn) K.md.folderBtn.hidden = !(on('video') || on('images'));
     if (!body.children.length) body.appendChild(vEl('p', 'vd-empty', 'Switch on what you want to see.'));
   }
 
@@ -215,16 +275,30 @@
     list && list.addEventListener('click', K.pl.click, true);
 
     const md = group('Media bin');
-    const mdHead = vEl('div', 'vd-section-head');
+    const mdHead = vEl('div', 'vd-md-head');
     mdHead.appendChild(vEl('span', 'vd-label', 'Media bin'));
+    const mdRow = vEl('div', 'vd-md-row');
     K.md.chips = vEl('div', 'vd-chips');
     K.md.chips.setAttribute('role', 'group'); K.md.chips.setAttribute('aria-label', 'Media filter');
-    mdHead.appendChild(K.md.chips);
+    // A folder icon at the end of the toggles (shown while the bin's own kinds are on), then the tile size at the far right.
+    K.md.folderBtn = vBtn('', 'Choose a media folder', (e) => openFolderMenu(e.currentTarget), 'vd-icon-btn');
+    K.md.folderBtn.setAttribute('aria-label', 'Choose a media folder');
+    K.md.folderBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z"/></svg>';
+    const size = vEl('input', 'vd-size'); size.type = 'range'; size.min = '90'; size.max = '240'; size.step = '10';
+    size.value = String(loadTile()); size.title = 'Tile size'; size.setAttribute('aria-label', 'Tile size');
+    size.addEventListener('input', () => applyTile(Number(size.value)));
+    size.addEventListener('change', () => { try { localStorage.setItem(TILE_KEY, size.value); } catch {} repaintThumbs(); });
+    mdRow.append(K.md.chips, K.md.folderBtn, size);
+    mdHead.appendChild(mdRow);
     K.md.body = vEl('div', 'vd-media-body');
     K.md.kinds = loadKinds();
+    applyTile(loadTile());
     md.append(mdHead, K.md.body);
 
     host.append(pl, md);
+    // A Clear button takes the on-air frame off the slide tiles.
+    K.clearOff = (e) => { if (e.target.closest && e.target.closest('.rs-layer-clear-bar button') && e.target.closest('.rs-layer-clear-bar button').id !== 'output-back-btn') { K.liveKey = null; markLive(); } };
+    document.addEventListener('click', K.clearOff, true);
     if (!K.selId && items().length) K.selId = items()[0].id;
     markSelected();
     renderMedia();
@@ -236,6 +310,9 @@
     if (!K.mounted) return;
     K.mounted = false;
     K.pl.obs?.disconnect(); K.pl.obs = null;
+    thumbIO && thumbIO.disconnect(); thumbIO = null;
+    document.removeEventListener('click', K.clearOff, true);
+    document.querySelectorAll('.vd-menu').forEach(m => m.remove());
     K.md.laneOff && K.md.laneOff(); K.md.laneOff = null;
     releaseBin();
     if (K.binToggled) { document.getElementById('media-bin-toggle-btn')?.click(); K.binToggled = false; }
