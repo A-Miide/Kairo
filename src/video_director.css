@@ -732,3 +732,9 @@ body.video-director .vd-tab-off { opacity: 1; cursor: pointer; }
 .vd-keys { display: grid; grid-template-columns: auto auto; gap: 6px 14px; margin: 0; font-size: 12px; }
 .vd-keys dt { color: var(--text); font-weight: 600; white-space: nowrap; }
 .vd-keys dd { margin: 0; color: var(--text-2); white-space: nowrap; }
+
+/* ── On air, the same everywhere: red means live. A live slide or media tile gets a red edge and a small dot. ── */
+body.video-director .svc-slide.live, body.video-director .media-card.is-live { position: relative; border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
+body.video-director .svc-slide.live::after, body.video-director .media-card.is-live::after { content: ''; position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--red); box-shadow: 0 0 6px rgba(237,28,36,0.7); pointer-events: none; z-index: 2; }
+/* A tile that is both staged and live keeps the live edge. */
+body.video-director .svc-slide.live.is-staged, body.video-director .media-card.is-live.is-staged { outline-color: var(--accent); }
