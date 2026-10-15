@@ -22,5 +22,9 @@
     <!-- Microphone access for live audio capture. -->
     <key>com.apple.security.device.audio-input</key>
     <true/>
+
+    <!-- Camera and capture-card access for live video input. -->
+    <key>com.apple.security.device.camera</key>
+    <true/>
 </dict>
 </plist>

@@ -35,8 +35,16 @@
             width: 100vw;
             height: 100vh;
             position: relative;
+            z-index: 1;
             overflow: hidden;
         }
+        /* Live video input (display_video.js): the bottom layer, under media,
+           slide and timer, so scripture and slides draw over the picture. */
+        #video-layer { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+        #video-layer video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+        /* On a Monitor the video is a dimmed backdrop for the confidence text. */
+        body[data-mode="confidence"] #video-layer video { filter: brightness(0.4); }
+        body[data-mode="confidence"].has-video #confidence-view { background: transparent; }
 
         /* News-ticker / large-scroll text layers (layer.scroll.enabled) — see
            buildLayerDOM below. Matches Theme Studio's own preview keyframe. */
@@ -198,6 +206,7 @@
         #confidence-view {
             position: fixed;
             inset: 0;
+            z-index: 1;
             flex-direction: column;
             gap: 2.2vh;
             padding: 3.2vh 4vw 3.6vh;
@@ -282,6 +291,7 @@
 </style>
 </head>
 <body>
+    <div id="video-layer" aria-hidden="true"></div>
     <div id="stage">
         <div id="media-layer"></div>
         <div id="slide-layer"></div>
@@ -335,7 +345,13 @@
     // A live copy of this output inside the operator's monitor (app.js): it
     // renders exactly what the real screen shows, but stays silent — no media
     // status reports, no audio, never touches the app window.
-    const MONITOR     = params.get('monitor') === '1';
+    // PREVIEW (video director mode): the staging screen. It draws through this
+    // same page, but is fed by its parent window instead of the server socket.
+    // SHARED: a copy inside the operator window that takes camera streams from
+    // the parent's hub rather than opening the camera again.
+    const PREVIEW     = params.get('preview') === '1';
+    const SHARED      = PREVIEW || params.get('shared') === '1';
+    const MONITOR     = params.get('monitor') === '1' || PREVIEW;
     // The hidden window behind an NDI / Syphon output (see "Capture mode" below).
     const CAPTURE     = params.get('capture') === '1';
     if (MONITOR) document.documentElement.classList.add('is-monitor');
@@ -450,6 +466,9 @@
     // build-in animation (layer.build — see motion_graphics.js) plays; a
     // refresh of what's already on screen passes nothing and stays still.
     function buildLayerDOM(look, verseText, verseRef, translatedText, styleByLayerId = {}, timerText = '', skipBackground = false, opts = {}) {
+        // Live video is showing under this output's words: the theme's own
+        // background must not paint over it.
+        if (videoOn && outputMode === 'theme') skipBackground = true;
         const frag    = document.createDocumentFragment();
         const layout  = look.layout || 'fullscreen';
         let   isTransparent = false;
@@ -1193,7 +1212,7 @@
     // ever been pushed yet), matching outputLayerMap's own zero-config-safe
     // default — a fresh install/window behaves exactly like before this
     // feature existed.
-    const DEFAULT_LAYERS = { bible: true, slide: true, media: true, timer: true, overlay: true };
+    const DEFAULT_LAYERS = { bible: true, slide: true, media: true, timer: true, overlay: true, video: false };
     let outputLayers = DEFAULT_LAYERS;
     // Which of Bible/Slide the CURRENTLY shown slide-layer content actually
     // is — set by handleMessage whenever it renders through showVerse/
@@ -1201,6 +1220,65 @@
     // "Slide" doesn't blank a Bible verse that's currently on screen (and
     // vice versa).
     let currentSlideIsBible = false;
+
+    // Live video input under this output's layers (display_video.js). The
+    // sources and which one is live come from the main window the same way
+    // the layer map does: localStorage + the 'storage' event.
+    let videoLayer = null;
+    let videoOn = false;     // a source's picture is showing on this output
+    function readJson(key, fallback) {
+        try { const v = JSON.parse(localStorage.getItem(key) || 'null'); return v == null ? fallback : v; } catch { return fallback; }
+    }
+    // Video code is loaded only when a source is actually live here, so an
+    // output that never uses video never starts any of it.
+    let previewSourceId = null;      // PREVIEW: the staged source, from the parent
+    let videoModulesPromise = null;
+    function loadScript(src) {
+        return new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = src; s.onload = resolve; s.onerror = reject;
+            document.head.appendChild(s);
+        });
+    }
+    function ensureVideoModules() {
+        if (!videoModulesPromise) {
+            videoModulesPromise = loadScript('video_sources.js').then(() => loadScript('display_video.js'));
+        }
+        return videoModulesPromise;
+    }
+    function videoProvider() {
+        // A copy inside the operator window uses the parent's one capture per device.
+        try { return SHARED && window.parent !== window ? window.parent.KairoVideoHub : null; } catch { return null; }
+    }
+    async function syncVideo() {
+        if (CAPTURE || (MONITOR && !SHARED)) return;
+        const layers = PREVIEW ? { ...outputLayers, video: true } : outputLayers;
+        const live = PREVIEW ? { [OUTPUT_KEY]: previewSourceId } : readJson('kairo-video-live', {});
+        // Nothing live and nothing showing: nothing to load or start.
+        if (!videoLayer && !(layers.video && live[OUTPUT_KEY])) return;
+        const args = { outputKey: OUTPUT_KEY, layers, sources: readJson('kairo-video-sources', []), live };
+        try { await ensureVideoModules(); } catch { return; }
+        if (!videoLayer) videoLayer = createVideoLayer();
+        videoLayer.sync(args);
+    }
+    function createVideoLayer() {
+        return window.KairoDisplayVideo.create({
+            host: document.getElementById('video-layer'),
+            enabled: true,
+            provider: videoProvider(),
+            // The director's cut or fade, else this output's own transition.
+            getTransition: () => ({
+                animation: PREVIEW ? 'cut' : (readJson('kairo-video-transition', null) || outputAnimation),
+                speed: outputAnimationSpeed,
+            }),
+            onActive: (on) => {
+                videoOn = on;
+                document.body.classList.toggle('has-video', on);
+                // The words repaint with or without their theme background.
+                if (outputMode === 'theme') { try { applyLook(activeLook, false); } catch {} }
+            },
+        });
+    }
 
     function loadOutputLayers() {
         try {
@@ -1248,6 +1326,7 @@
     function applyOutputLayers(next) {
         const prev = outputLayers;
         outputLayers = next;
+        if (!!prev.video !== !!next.video) syncVideo();
         // Only actually blank the slide layer if the layer that just turned
         // off is the one the CURRENTLY showing content belongs to — turning
         // off Slide shouldn't blank a Bible verse that's on screen, and
@@ -1898,6 +1977,7 @@
                 if (map && map[OUTPUT_KEY]) applyOutputLayers({ ...DEFAULT_LAYERS, ...map[OUTPUT_KEY] });
             } catch {}
         }
+        if (e.key === 'kairo-video-sources' || e.key === 'kairo-video-live') syncVideo();
         if (e.key === 'kairo-output-keying' && e.newValue) {
             try { applyOutputKeying((JSON.parse(e.newValue) || {})[OUTPUT_KEY]); } catch {}
         }
@@ -1905,6 +1985,20 @@
             try { applyOutputMode((JSON.parse(e.newValue) || {})[OUTPUT_KEY]); } catch {}
         }
     });
+
+    // The Video Input layer: a capture window (NDI, Syphon, DeckLink) never
+    // opens a camera, and a monitor copy only does in the director's frames.
+    syncVideo();
+    window.addEventListener('pagehide', () => { try { videoLayer && videoLayer.dispose(); } catch {} });
+    // Video director mode's Preview: the parent stages a verse and a source here.
+    if (PREVIEW) {
+        window.addEventListener('message', (e) => {
+            if (e.origin !== location.origin || !e.data || !e.data.kairoPreview) return;
+            const m = e.data.msg || {};
+            if (m.type === 'vd-source') { previewSourceId = m.sourceId || null; syncVideo(); return; }
+            handleMessage(m);
+        });
+    }
 
     // Re-fit when the output window resizes (projector attach, fullscreen toggle).
     window.addEventListener('resize', () => { try { fitVerse(); fitConfidenceText(); } catch {} });
@@ -2534,7 +2628,7 @@
 
     // 3. Connect WebSocket (after the auth token is loaded so the upgrade
     //    URL carries it; falls back to unauthed when not running under Tauri).
-    loadAuthToken().finally(connect);
+    if (!PREVIEW) loadAuthToken().finally(connect);   // the Preview is fed by its parent, not the socket
 
     // 4. Reveal the window now that its own dark CSS has actually settled.
     // openDisplayWindow (index.html) creates this window hidden — same
