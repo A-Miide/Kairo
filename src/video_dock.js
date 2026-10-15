@@ -1,25 +1,26 @@
 // KAIRO — Video director mode: the bottom area, two groups side by side.
 //
-// Playlist: the normal service playlist's header (its switcher and New button,
-// moved here while the mode is on) and every slide in it as a tile, with chips
-// for All, Slides, Songs and Scripture. A tile sends that slide through the
-// playlist's own sendSlide.
-// Media bin: chips for Video, Images, Music and Overlays. Video and Images reuse
-// the Media Bin's own cards (moved here, so a click does what it does there);
-// Music plays through the audio lane; Overlays switch on and off.
-// Slide, media, music and overlay sends go straight out; only the verses you
-// send by hand are staged on Preview.
+// Playlist (left): only the playlist: its switcher and New button and the list
+// of items, the same list as the sidebar on the normal screen (moved here while
+// the mode is on). Choosing an item selects it instead of opening it.
+// Media bin (right): chips for Slides, Video, Images, Music and Overlays.
+// Slides shows the selected playlist item's slides (songs and scripture too),
+// and a click sends one through the playlist's own sendSlide. Video and Images
+// reuse the Media Bin's own cards, Music plays through the audio lane, and
+// Overlays switch on and off. Slide, media, music and overlay sends go straight
+// out; only the verses you send by hand are staged on Preview.
 'use strict';
 (function () {
   const K = {
     mounted: false, root: null,
-    pl: { chips: null, body: null, kind: 'all', obs: null, headHome: null },
-    md: { chips: null, body: null, kind: 'video', laneOff: null },
+    pl: { body: null, obs: null, headHome: null, listHome: null, click: null },
+    md: { chips: null, body: null, kind: 'slides', laneOff: null },
+    selId: null,                // the playlist item whose slides the Slides chip shows
     binHome: null, binToggled: false,
   };
 
-  const PL_CHIPS = [['all', 'All'], ['slides', 'Slides'], ['songs', 'Songs'], ['scripture', 'Scripture']];
   const MD_CHIPS = [
+    ['slides', 'Slides', () => !!(window.KairoService && window.KairoService.slidesFor)],
     ['video', 'Video', () => !!document.getElementById('media-bin')],
     ['images', 'Images', () => !!document.getElementById('media-bin')],
     ['music', 'Music', () => !!(window.KairoAudioLane && window.KairoAudioLane.tracks)],
@@ -38,37 +39,42 @@
   // For the Slides and Media tabs in the top bar.
   function show(id) {
     if (!K.mounted) return;
-    if (id === 'slides') { K.pl.kind = 'slides'; renderPlaylist(); }
-    else if (MD_CHIPS.some(c => c[0] === id && c[2]())) { K.md.kind = id; renderMedia(); }
+    if (MD_CHIPS.some(c => c[0] === id && c[2]())) { K.md.kind = id; renderMedia(); }
   }
 
-  // ── Playlist group ───────────────────────────────────────────────────────
-  const kindOf = (item) => ({ song: 'songs', scripture: 'scripture', slides: 'slides', image: 'slides' })[item.type] || null;
+  // ── Playlist: selection ──────────────────────────────────────────────────
+  const items = () => ((window.KairoService && window.KairoService.service && window.KairoService.service.items) || []);
+  function markSelected() {
+    const list = document.getElementById('svc-items-list');
+    if (!list) return;
+    if (!items().some(i => i.id === K.selId)) K.selId = null;
+    list.querySelectorAll('.svc-item').forEach(r => r.classList.toggle('vd-selected', r.dataset.id === K.selId));
+  }
+  function select(id) {
+    K.selId = id;
+    markSelected();
+    if (K.md.kind !== 'slides') K.md.kind = 'slides';
+    renderMedia();
+  }
 
-  function renderPlaylist() {
-    chipRow(K.pl.chips, PL_CHIPS, K.pl.kind, (id) => { K.pl.kind = id; renderPlaylist(); });
-    const body = K.pl.body;
-    body.replaceChildren();
+  // ── Slides chip: the selected item's slides ──────────────────────────────
+  function renderSlides(body) {
     const svc = window.KairoService;
-    const items = ((svc && svc.service && svc.service.items) || []).filter(i => kindOf(i) && (K.pl.kind === 'all' || kindOf(i) === K.pl.kind));
-    let n = 0;
-    items.forEach(item => {
-      const slides = svc.slidesFor(item);
-      if (!slides.length) return;
-      body.appendChild(vEl('span', 'vd-group', item.title || 'Untitled'));
-      slides.forEach((s, i) => {
-        const tile = vEl('button', 'vd-slide');
-        tile.type = 'button';
-        tile.title = `Send ${item.title || 'slide'} ${i + 1} to the screens`;
-        if (s.image) { const img = vEl('img'); img.src = s.image; img.alt = ''; img.loading = 'lazy'; tile.appendChild(img); }
-        else tile.appendChild(vEl('span', 'vd-slide-text', (s.text || s.label || '').slice(0, 90)));
-        tile.appendChild(vEl('span', 'vd-slide-num', String(i + 1)));
-        tile.addEventListener('click', () => svc.sendSlide(item, i));
-        body.appendChild(tile);
-        n++;
-      });
+    const item = items().find(i => i.id === K.selId);
+    if (!item) { body.appendChild(vEl('p', 'vd-empty', items().length ? 'Choose an item in the playlist to see its slides.' : 'Nothing in this playlist yet.')); return; }
+    const slides = svc.slidesFor(item);
+    if (!slides.length) { body.appendChild(vEl('p', 'vd-empty', 'This item has no slides.')); return; }
+    body.appendChild(vEl('span', 'vd-group', item.title || 'Untitled'));
+    slides.forEach((s, i) => {
+      const tile = vEl('button', 'vd-slide');
+      tile.type = 'button';
+      tile.title = `Send ${item.title || 'slide'} ${i + 1} to the screens`;
+      if (s.image) { const img = vEl('img'); img.src = s.image; img.alt = ''; img.loading = 'lazy'; tile.appendChild(img); }
+      else tile.appendChild(vEl('span', 'vd-slide-text', (s.text || s.label || '').slice(0, 90)));
+      tile.appendChild(vEl('span', 'vd-slide-num', String(i + 1)));
+      tile.addEventListener('click', () => svc.sendSlide(item, i));
+      body.appendChild(tile);
     });
-    if (!n) body.appendChild(vEl('p', 'vd-empty', 'Nothing in this playlist yet.'));
   }
 
   // ── Media bin group ──────────────────────────────────────────────────────
@@ -86,7 +92,8 @@
     const body = K.md.body;
     body.replaceChildren();
     body.dataset.kind = K.md.kind;
-    if (K.md.kind === 'music') renderMusic(body);
+    if (K.md.kind === 'slides') renderSlides(body);
+    else if (K.md.kind === 'music') renderMusic(body);
     else if (K.md.kind === 'overlays') renderOverlays(body);
     else if (K.md.kind) renderBin(body);
   }
@@ -160,15 +167,24 @@
     K.root = host;
 
     const pl = group('Playlist');
-    const plHead = vEl('div', 'vd-section-head');
+    const plHead = vEl('div', 'vd-section-head vd-pl-top');
     // The playlist's own switcher and New button, so playlists are managed here.
     const home = document.querySelector('.ls-playlist-section .ls-transcript-header');
     if (home) { K.pl.headHome = document.createComment('playlist-head'); home.before(K.pl.headHome); home.classList.add('vd-pl-head'); plHead.appendChild(home); }
     else plHead.appendChild(vEl('span', 'vd-label', 'Playlist'));
-    K.pl.chips = vEl('div', 'vd-chips');
-    K.pl.chips.setAttribute('role', 'group'); K.pl.chips.setAttribute('aria-label', 'Playlist filter');
-    K.pl.body = vEl('div', 'vd-media-body');
-    pl.append(plHead, K.pl.chips, K.pl.body);
+    // ...and its list of items, the same one the sidebar shows.
+    const list = document.getElementById('svc-items-list');
+    K.pl.body = vEl('div', 'vd-pl-list');
+    if (list) { K.pl.listHome = document.createComment('playlist-list'); list.before(K.pl.listHome); K.pl.body.appendChild(list); }
+    pl.append(plHead, K.pl.body);
+    // A click on an item selects it here (it would open the sidebar's slide stack, which this mode does not show).
+    K.pl.click = (e) => {
+      const row = e.target.closest('.svc-item');
+      if (!row || e.target.closest('button,input,textarea')) return;
+      e.stopPropagation(); e.preventDefault();
+      select(row.dataset.id);
+    };
+    list && list.addEventListener('click', K.pl.click, true);
 
     const md = group('Media bin');
     const mdHead = vEl('div', 'vd-section-head');
@@ -180,11 +196,11 @@
     md.append(mdHead, K.md.body);
 
     host.append(pl, md);
-    renderPlaylist();
+    if (!K.selId && items().length) K.selId = items()[0].id;
+    markSelected();
     renderMedia();
-    // The playlist changes while the mode is on: slides added, items removed.
-    const list = document.getElementById('svc-items-list');
-    if (list) { K.pl.obs = new MutationObserver(() => renderPlaylist()); K.pl.obs.observe(list, { childList: true }); }
+    // The playlist changes while the mode is on: items added or removed, slides edited.
+    if (list) { K.pl.obs = new MutationObserver(() => { markSelected(); if (K.md.kind === 'slides') renderMedia(); }); K.pl.obs.observe(list, { childList: true }); }
   }
 
   function unmount() {
@@ -195,6 +211,13 @@
     releaseBin();
     if (K.binToggled) { document.getElementById('media-bin-toggle-btn')?.click(); K.binToggled = false; }
     K.binHome?.remove(); K.binHome = null;
+    const list = document.getElementById('svc-items-list');
+    if (list) {
+      list.removeEventListener('click', K.pl.click, true);
+      list.querySelectorAll('.vd-selected').forEach(r => r.classList.remove('vd-selected'));
+      if (K.pl.listHome && K.pl.listHome.parentNode) K.pl.listHome.after(list);
+    }
+    K.pl.listHome?.remove(); K.pl.listHome = null; K.pl.click = null;
     const head = document.querySelector('.vd-pl-head');
     if (head && K.pl.headHome && K.pl.headHome.parentNode) { K.pl.headHome.after(head); head.classList.remove('vd-pl-head'); }
     K.pl.headHome?.remove(); K.pl.headHome = null;
