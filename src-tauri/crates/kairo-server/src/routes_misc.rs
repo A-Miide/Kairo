@@ -15,6 +15,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/obs/connect", post(obs_connect))
         .route("/api/obs/sources", get(obs_sources))
         .route("/api/stream/check", post(crate::stream_check::check))
+        .route("/api/stream/ffmpeg", get(stream_ffmpeg))
         .route("/api/offline/status", get(offline_status))
         .route("/api/offline/install", post(crate::installer::route))
         .route("/api/bible-packs/status", get(crate::bible_packs::status))
@@ -162,6 +163,11 @@ async fn semantic_status(State(app): State<Shared>) -> Json<Value> {
 }
 async fn reranker_status() -> Json<Value> {
     Json(json!({ "installed": true, "installing": false }))
+}
+
+/// The FFmpeg this copy of Kairo uses, for the app's streaming engine.
+async fn stream_ffmpeg(State(app): State<Shared>) -> Json<Value> {
+    Json(json!({ "path": app.video.ffmpeg_path().map(|p| p.to_string_lossy().to_string()) }))
 }
 
 async fn translate_languages() -> Json<Value> {
