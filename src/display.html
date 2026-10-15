@@ -204,6 +204,8 @@
            rest). 'confidence': a Monitor output — the whole screen is the
            confidence monitor below, for whoever is up front. */
         body[data-mode="text"] #media-layer { display: none; }
+        /* Words only means words only: no overlays (logos, badges) either. */
+        body[data-mode="text"] #overlay-layer { display: none; }
         body[data-mode="confidence"] { background: #000 !important; }
         body[data-mode="confidence"] #stage,
         body[data-mode="confidence"] #overlay-layer,
@@ -590,8 +592,10 @@
     let requestedFrame = null, lastFrameKey = '';
     function setFrame(look, force = false) {
         requestedFrame = look && Array.isArray(look.layers) ? look : null;
-        // A Words-only output never shows a frame.
-        const want = outputMode === 'text' ? null : requestedFrame;
+        // A Words-only or keyed output (a stage display, a feed keyed over video in a mixer)
+        // never shows a frame: it carries the words only.
+        const keyed = typeof outputKeying !== 'undefined' && outputKeying !== 'none';
+        const want = outputMode === 'text' || keyed ? null : requestedFrame;
         const key = want ? JSON.stringify(want) : '';
         if (!force && key === lastFrameKey) return;   // the same frame again: nothing to do
         lastFrameKey = key;
@@ -1510,6 +1514,7 @@
         document.body.dataset.keying = k;
         if (k === outputKeying) return;
         outputKeying = k;
+        try { setFrame(requestedFrame); } catch {}
         applyLook(activeLook, false);
     }
 
