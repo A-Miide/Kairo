@@ -195,8 +195,11 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
                     continue;
                 }
                 let mut list: Vec<Value> = verses.iter().map(|v| bible.verse_json(*v, score, method.wire())).collect();
-                let viewer = target == Target::Screen;
-                let held = viewer && p.hold;
+                // A verse for the screen goes there only with Auto-send on. With it off it waits in
+                // Possible Matches for the operator (or, in Director mode, staged in Preview).
+                let screen = target == Target::Screen;
+                let held = screen && p.hold;
+                let viewer = screen && (p.auto_send || held);
                 if viewer {
                     bible.apply_translation(&mut list, &p.translation);
                     bible.apply_language(&mut list, &p.language);
