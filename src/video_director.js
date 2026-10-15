@@ -150,7 +150,7 @@
     syncPreviewFrame();
     refresh();
   }
-  // ── Slides and media: a click stages them in Preview, Send to screen puts them on the Output. ──
+  // ── Slides and media: a click stages them in Preview, Send puts them on the Output. ──
   // A second click on the same thing within 450 ms (a double-click) sends it straight to the Output.
   const DOUBLE_MS = 450;
   function stageContent(key, build, make) {
@@ -311,6 +311,13 @@
   }
   // Space: send what is staged (the verse, and the Preview source when it differs).
   function takeStaged() {
+    // A brief progress fill on the button for as long as the change takes.
+    if (D.ui.take) {
+      const ms = transitionPref() === 'fade' ? Math.max(200, fadeMs()) : 300;
+      D.ui.take.style.setProperty('--vd-send-ms', ms + 'ms');
+      D.ui.take.classList.remove('is-sending'); void D.ui.take.offsetWidth; D.ui.take.classList.add('is-sending');
+      clearTimeout(D.sendTimer); D.sendTimer = setTimeout(() => D.ui.take && D.ui.take.classList.remove('is-sending'), ms + 60);
+    }
     const mode = transitionPref();
     const hadVerse = !!D.staged;
     const hadLook = D.pendingLook;
@@ -509,10 +516,10 @@
     // gives the biggest 16:9 panes. (It answers to the group's size, not the window's.)
     const head = 28, gap = 8, colW = 132;
     const wide = w >= 520;
-    // The cluster is one row (left 170 + Send to screen + right 165 + gaps) or, when that does not
-    // fit, Send to screen on a row of its own with the rest centred under it.
+    // The cluster is one row (left 170 + Send + right 165 + gaps) or, when that does not
+    // fit, Send on a row of its own with the rest centred under it.
     const SIDES = 360, ROW = 46, WRAP = 88;
-    // Send to screen is as wide as the gap between the displays' centres, but gives way (down to 170px)
+    // Send is as wide as the gap between the displays' centres, but gives way (down to 170px)
     // so the whole cluster stays on one row for as long as it can.
     const MINSEND = 170;
     const sendFor = (stack, fw) => Math.max(MINSEND, Math.min(stack ? Math.min(Math.max(fw, 200), 300) : fw + gap, w - SIDES - 16));
@@ -628,11 +635,11 @@
     bar.setAttribute('role', 'group');
     bar.setAttribute('aria-label', 'Transition');
     // One centred row under the displays: how it goes (Cut | Fade, with the fade length attached to
-    // Fade) on the left, "Send to screen" in the middle, and the quiet Fade to black and Undo on the
+    // Fade) on the left, "Send" in the middle, and the quiet Fade to black and Undo on the
     // right. No hover tooltips here: they would cover the neighbouring buttons.
     const bare = (b, label) => { b.removeAttribute('title'); b.setAttribute('aria-label', label); return b; };
-    D.ui.take = bare(vBtn('', '', takeStaged, 'vd-take vd-send'), 'Send to screen: send Preview to the Output (Space)');
-    D.ui.take.append(vEl('span', 'vd-send-text', 'Send to screen'), vEl('span', 'vd-send-key', 'Space'));
+    D.ui.take = bare(vBtn('', '', takeStaged, 'vd-take vd-send'), 'Send: put Preview on the Output (Space)');
+    D.ui.take.append(vEl('span', 'vd-send-text', 'Send'), vEl('span', 'vd-send-key', 'Space'));
     D.ui.cut = bare(vBtn('Cut', '', () => { setTransition('cut'); refresh(); }, 'vd-take'), 'Send with a cut');
     D.ui.fade = bare(vBtn('Fade', '', () => { setTransition('fade'); refresh(); }, 'vd-take'), 'Send with a fade');
     const seg2 = vEl('div', 'vd-seg2');
@@ -825,9 +832,12 @@
       btn.classList.toggle('is-current', mode === cur);
       btn.setAttribute('aria-pressed', String(mode === cur));
     }
-    // Send to screen is live when there is a verse or slide staged, or a Preview source that differs from Output.
+    // Send is live when there is a verse or slide staged, or a Preview source that differs from Output.
     const videoDiff = canTake && (D.previewId || null) !== (ps.mixed ? undefined : (ps.id || null));
-    D.ui.take.disabled = !(D.staged || videoDiff || D.pendingLook);
+    const ready = !!(D.staged || videoDiff || D.pendingLook);
+    D.ui.take.disabled = !ready;
+    D.ui.take.classList.toggle('is-ready', ready);
+    if (ready) D.ui.take.removeAttribute('title'); else D.ui.take.title = 'Nothing staged';
     D.looks && D.looks.render();
     if (D.ui.looksChip) { D.ui.looksChip.textContent = D.pendingLook ? D.pendingLook.name : ''; D.ui.looksChip.title = D.pendingLook ? `Staged in Preview: ${D.pendingLook.name}` : ''; D.ui.looksChip.hidden = !D.pendingLook; }
   }
