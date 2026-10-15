@@ -7186,7 +7186,7 @@
     get service() { return service; },
     slidesFor, sendSlide, slideSendBody, sendMedia: sendMediaItem, liveSlideKey: () => liveSlideKey, cycleSectionLabel, focusInStack, openFullEdit, closeStack, closeFullEdit,
     effectiveTranslateTo, awaitTranslatedText,
-    paintLookLayers, renderLookThumbnail, buildThemeTree, slideThemeIdOf, hasSlideThemes, mediaMuted: () => mediaMutedState, saveService, openContextMenu, openThemePopover, themeForItem,
+    paintLookLayers, renderLookThumbnail, buildThemeTree, openTranslationEditor, getTranslatedText, slideThemeIdOf, hasSlideThemes, mediaMuted: () => mediaMutedState, saveService, openContextMenu, openThemePopover, themeForItem,
     showMediaLibrary, onMediaStatus, onMediaFolderChanged, setMediaTransportVisible, onMediaLive,
     showTimerLibrary, onTimerAction, onClockAction, getTimerItem, updateSegmentParams, saveTimerScenes, saveScenePace,
     onTranscript, setAutoFollow, get autoFollow() { return autoFollow; },
