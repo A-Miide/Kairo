@@ -2148,15 +2148,12 @@ function buildLayerChecksRow(outputId, map) {
 // renderDisplayDetail and renderNativeOutputDetail — one helper instead,
 // called from both.
 function appendOutputLayersSection(host, outputId, map) {
-  const layerGroup = detailGroup('Show on this output');
-  // Owner: "maybe create a separate section for users to customize their
-  // output, don't cluster it with the main output control" — visually set
-  // apart from Name/Physical Screen/Theme above, not just another row in
-  // the same stack.
-  layerGroup.classList.add('output-layers-section');
-  layerGroup.appendChild(buildLayerChecksRow(outputId, map));
-  layerGroup.appendChild(buildOutputLayersHint(outputId, map));
-  host.appendChild(layerGroup);
+  // What an output shows is set once, in Output Control below; a second copy of the
+  // same switches here is what made the two read as different settings.
+  const hint = document.createElement('p');
+  hint.className = 'setting-hint';
+  hint.textContent = 'What this output shows is set under Output Control, below.';
+  host.appendChild(hint);
 }
 
 // "create a new subsection called output control, this will have a
@@ -2167,11 +2164,10 @@ function appendOutputLayersSection(host, outputId, map) {
 // out together instead of one at a time. OBS excluded (see
 // buildLayerChecksRow's own comment — no per-layer config, single fixed
 // text-only integration).
-// Output Control: "where does it go?" One row per kind of content, one chip per
-// output (by its display name). A lit chip means that content goes there.
-// Chips that can't apply (media on a Monitor, messages on a screen) are
-// struck out. Groups are the church's own named sets of outputs ("Sanctuary
-// screens"), so a row can be switched for all of them in one click.
+// Output Control: one card per place the content goes. Each card lists what that
+// output shows, as plain switches with the user's own output name on top, and one
+// sentence saying what is on and what is hidden. Things that can't apply (media on
+// a Monitor, text-only on NDI) stay dimmed with the reason on hover.
 const OC_ROWS = [
   { key: 'bible', label: 'Scripture' },
   { key: 'slide', label: 'Slides and songs' },
@@ -2179,34 +2175,22 @@ const OC_ROWS = [
   { key: 'media', label: 'Media' },
   { key: 'overlay', label: 'Overlays' },
   { key: 'video', label: 'Video input' },
-  { key: 'message', label: 'Messages' },
   { key: 'textOnly', label: 'Words only' },
 ];
 
-function outputGroupList() {
-  const g = Array.isArray(settings.outputGroups) ? settings.outputGroups : [];
-  return g.filter(x => x && typeof x.name === 'string' && Array.isArray(x.ids));
-}
-function saveOutputGroups(list) {
-  settings.outputGroups = list;
-  saveSettingsPatch({ outputGroups: list });
-  renderOutputControlMatrix();
-}
-
-// What a chip does for this row and output: { on, disabled, why }.
+// What a switch does for this output: { on, disabled, why }.
 function ocChipState(row, o, map, textOnly) {
-  if (row.key === 'message') return { on: !!o.monitor, disabled: true, why: o.monitor ? 'Messages show on Monitors' : 'Messages show on Monitors only' };
   if (row.key === 'textOnly') {
     if (o.monitor) return { on: true, disabled: true, why: 'A Monitor shows words only' };
     if (o.type !== 'display') return { on: false, disabled: true, why: `Not available for ${outputTypeLabel(o.type)}` };
-    return { on: !!textOnly[o.id], disabled: false, why: '' };
+    return { on: !!textOnly[o.id], disabled: false, why: 'Just the words: no background, shapes or pictures' };
   }
   if (row.key === 'media' && o.monitor) return { on: false, disabled: true, why: 'A Monitor shows words only' };
   if (row.key === 'video') return outputSupportsVideo(o.id) ? { on: map[o.id]?.video === true, disabled: false, why: '' } : { on: false, disabled: true, why: VIDEO_NATIVE_NOTE };
   return { on: map[o.id]?.[row.key] !== false, disabled: false, why: '' };
 }
 
-// Sets one content type on or off for several outputs with a single save.
+// Sets one kind of content on or off for some outputs, saving once.
 function setRowForOutputs(row, ids, value) {
   if (row.key === 'textOnly') { ids.forEach(id => setOutputTextOnly(id, value)); return; }
   const current = outputLayerMap();
@@ -2225,81 +2209,61 @@ function renderOutputControlMatrix() {
   if (!outputs.length) { host.innerHTML = '<p class="setting-hint">No outputs yet.</p>'; return; }
   const map = outputLayerMap();
   const textOnly = outputTextOnlyMap();
-  const groups = outputGroupList().map(g => ({ ...g, ids: g.ids.filter(id => outputs.some(o => o.id === id)) })).filter(g => g.ids.length);
+  const rows = OC_ROWS.filter(r => r.key !== 'video' || settings.videoDirector);
   const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
 
-  OC_ROWS.filter(r => r.key !== 'video' || settings.videoDirector).forEach((row) => {
-    const line = mk('div', 'oc-row');
-    line.appendChild(mk('div', 'oc-label', row.label));
-    const chips = mk('div', 'oc-chips');
-    const states = outputs.map(o => ({ o, st: ocChipState(row, o, map, textOnly) }));
-    states.forEach(({ o, st }) => {
-      const chip = mk('button', 'oc-chip' + (st.on ? ' on' : '') + (st.disabled ? ' na' : ''), (st.disabled && !st.on ? '\u2298 ' : '') + o.name);
-      chip.type = 'button';
-      chip.setAttribute('aria-pressed', String(st.on));
-      chip.title = st.why || `${row.label} on ${o.name}`;
-      if (st.disabled) chip.disabled = true;
-      else chip.addEventListener('click', () => setRowForOutputs(row, [o.id], !st.on));
-      chips.appendChild(chip);
-    });
-    const usable = states.filter(x => !x.st.disabled).map(x => x.o.id);
-    if (usable.length > 1) {
-      const tools = mk('span', 'oc-tools');
-      const all = mk('button', 'oc-link', 'All'); all.type = 'button';
-      all.addEventListener('click', () => setRowForOutputs(row, usable, true));
-      const none = mk('button', 'oc-link', 'None'); none.type = 'button';
-      none.addEventListener('click', () => setRowForOutputs(row, usable, false));
-      tools.append(all, none);
-      groups.forEach((g) => {
-        const ids = g.ids.filter(id => usable.includes(id));
-        if (!ids.length) return;
-        const lit = ids.every(id => states.find(x => x.o.id === id).st.on);
-        const gb = mk('button', 'oc-link oc-group' + (lit ? ' on' : ''), g.name); gb.type = 'button';
-        gb.title = `${lit ? 'Turn off' : 'Turn on'} ${row.label} for ${g.name}`;
-        gb.addEventListener('click', () => setRowForOutputs(row, ids, !lit));
-        tools.appendChild(gb);
+  outputs.forEach((o) => {
+    const card = mk('div', 'oc-card');
+    const head = mk('div', 'oc-card-head');
+    head.appendChild(mk('span', 'oc-card-name', o.name));
+    head.appendChild(mk('span', 'oc-card-type', o.monitor ? 'Monitor' : outputTypeLabel(o.type)));
+    // Copy another output's choices onto this one.
+    if (outputs.length > 1) {
+      const copy = document.createElement('select');
+      copy.className = 'setting-input oc-copy';
+      copy.title = 'Copy what another output shows';
+      copy.appendChild(Object.assign(document.createElement('option'), { value: '', textContent: 'Copy from\u2026' }));
+      outputs.filter(x => x.id !== o.id).forEach(x => copy.appendChild(Object.assign(document.createElement('option'), { value: x.id, textContent: x.name })));
+      copy.addEventListener('change', () => {
+        const from = outputs.find(x => x.id === copy.value);
+        if (!from) return;
+        rows.forEach((row) => {
+          const src = ocChipState(row, from, map, textOnly);
+          const dst = ocChipState(row, o, map, textOnly);
+          if (!dst.disabled && !src.disabled && src.on !== dst.on) setRowForOutputs(row, [o.id], src.on);
+        });
+        renderOutputControlMatrix();
       });
-      chips.appendChild(tools);
+      head.appendChild(copy);
     }
-    line.appendChild(chips);
-    host.appendChild(line);
-  });
+    card.appendChild(head);
 
-  // Groups: the church's own named sets of outputs.
-  const gl = mk('div', 'oc-row oc-groups');
-  gl.appendChild(mk('div', 'oc-label', 'Groups'));
-  const gchips = mk('div', 'oc-chips');
-  outputGroupList().forEach((g, i) => {
-    const c = mk('span', 'oc-chip oc-gchip', g.name);
-    const x = mk('button', 'oc-x', '\u2715'); x.type = 'button'; x.title = `Delete ${g.name}`;
-    x.addEventListener('click', () => saveOutputGroups(outputGroupList().filter((_, j) => j !== i)));
-    c.appendChild(x);
-    gchips.appendChild(c);
-  });
-  const add = mk('button', 'oc-link', '+ New group'); add.type = 'button';
-  add.addEventListener('click', () => {
-    const form = mk('div', 'oc-groupform');
-    const name = document.createElement('input'); name.className = 'setting-input'; name.placeholder = 'Group name'; name.maxLength = 30;
-    const picked = new Set();
-    form.appendChild(name);
-    outputs.forEach((o) => {
-      const c = mk('button', 'oc-chip', o.name); c.type = 'button';
-      c.addEventListener('click', () => { picked.has(o.id) ? picked.delete(o.id) : picked.add(o.id); c.classList.toggle('on', picked.has(o.id)); });
-      form.appendChild(c);
+    const grid = mk('div', 'oc-switches');
+    const shown = [], hidden = [];
+    rows.forEach((row) => {
+      const st = ocChipState(row, o, map, textOnly);
+      if (row.key !== 'textOnly') (st.on ? shown : hidden).push(row.label);
+      const item = mk('label', 'oc-switch' + (st.disabled ? ' na' : ''));
+      if (st.why) item.title = st.why;
+      const text = mk('span', 'oc-switch-label', row.label);
+      const pill = mk('span', 'output-toggle');
+      const input = document.createElement('input');
+      input.type = 'checkbox'; input.checked = st.on; input.disabled = st.disabled;
+      input.addEventListener('change', () => { setRowForOutputs(row, [o.id], input.checked); renderOutputControlMatrix(); });
+      pill.append(input, mk('span', 'output-toggle-track'));
+      item.append(text, pill);
+      grid.appendChild(item);
     });
-    const save = mk('button', 'modal-btn', 'Save'); save.type = 'button';
-    save.addEventListener('click', () => {
-      const n = name.value.trim();
-      if (!n || !picked.size) return;
-      saveOutputGroups([...outputGroupList(), { name: n, ids: [...picked] }]);
-    });
-    form.appendChild(save);
-    add.replaceWith(form);
-    name.focus();
+    card.appendChild(grid);
+
+    if (o.monitor) shown.push('Messages');
+    const words = ocChipState(rows.find(r => r.key === 'textOnly'), o, map, textOnly).on;
+    const line = shown.length
+      ? `${words ? 'Words only: ' : 'Shows '}${shown.join(', ')}${hidden.length ? `. Hidden: ${hidden.join(', ')}` : ''}.`
+      : 'Shows nothing right now.';
+    card.appendChild(mk('p', 'oc-summary', line));
+    host.appendChild(card);
   });
-  gchips.appendChild(add);
-  gl.appendChild(gchips);
-  host.appendChild(gl);
 }
 
 // Persist a partial settings change without clobbering unrelated fields.
