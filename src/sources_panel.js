@@ -149,8 +149,8 @@ function buildVideoPane() {
   const navBtn = vEl('button', 'settings-nav-item');
   navBtn.dataset.pane = 'sources';
   navBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3z"/></svg><span>Sources</span>';
-  const outputsBtn = nav.querySelector('[data-pane="outputs"]');
-  outputsBtn ? outputsBtn.after(navBtn) : nav.appendChild(navBtn);
+  const anchor = nav.querySelector('[data-pane="director"]') || nav.querySelector('[data-pane="outputs"]');
+  anchor ? anchor.after(navBtn) : nav.appendChild(navBtn);
 
   const pane = vEl('section', 'settings-pane');
   pane.dataset.pane = 'sources';
