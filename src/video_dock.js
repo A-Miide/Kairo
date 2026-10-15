@@ -250,5 +250,5 @@
     K.root?.replaceChildren(); K.root = null;
   }
 
-  window.KairoVideoDock = { mount, unmount, show };
+  window.KairoVideoDock = { mount, unmount, show, refresh: () => { if (K.mounted) { K.md.fetched = 0; loadFolders(); markSelected(); } } };
 })();
