@@ -1099,6 +1099,20 @@
     state: () => ({ previewId: D.previewId, program: D.programState, transition: transitionPref(), active: D.active }),
     setPreview, sendToProgram, mountSettings,
     stageSlide: stageSlideSend, stageMedia: stageMediaSend, stagedSlideKey, onServerMessage,
+    // Remote and OSC actions (app_startup.js). Each is a no-op when Director mode is off, and never throws.
+    send() { try { if (!D.active) return false; if (D.ui.take && D.ui.take.disabled) return false; takeStaged(); return true; } catch { return false; } },
+    fadeToBlack() { try { if (!D.active) return false; fadeToBlack(); return true; } catch { return false; } },
+    undo() { try { if (!D.active || !D.last) return false; undo(); return true; } catch { return false; } },
+    loadLayout(n) { try { return !!(D.active && D.looks && D.looks.loadIndex(Number(n) - 1)); } catch { return false; } },
+    sendInput(n) {
+      try {
+        if (!D.active) return false;
+        const src = videoSourceList().filter(x => x.enabled !== false)[Number(n) - 1];
+        if (!src || VSRC.stateOf(src, videoState.devices) !== 'ready') return false;
+        sendToProgram(src.id);
+        return true;
+      } catch { return false; }
+    },
     // A detected verse held back by Auto-send off: staged in Preview, never sent.
     stageDetected: (verse, look) => { if (D.active && verse) stage(verse, look); },
   };
