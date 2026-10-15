@@ -33,6 +33,8 @@
     Array.from(container.children).forEach(el => { if (!keep.has(el.dataset.overlayId)) el.remove(); });
     live.forEach((o) => {
       let el = container.querySelector(`[data-overlay-id="${CSS.escape(o.id)}"]`);
+      // A new file or kind for the same overlay: draw it again.
+      if (el && (el.dataset.src !== o.url || (el.tagName === 'VIDEO') !== (o.kind === 'video'))) { el.remove(); el = null; }
       if (!el) { el = make(o); container.appendChild(el); }
       place(el, o);
       container.appendChild(el); // later in the list = on top

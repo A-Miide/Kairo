@@ -1177,6 +1177,8 @@ function saveLooks() {
   try {
     if (settingsModal && !settingsModal.classList.contains('hidden')) renderOutputsPane();
     applyOutputThemes();
+    // A layout frame follows edits to its screen theme too (and goes when the theme is deleted).
+    if (typeof applyOutputFrames === 'function') applyOutputFrames();
   } catch (err) { console.warn('[KAIRO] outputs refresh after saveLooks failed:', err); }
 }
 function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
