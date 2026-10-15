@@ -231,15 +231,10 @@
         <!-- ─── LEFT SIDEBAR: Status + Transcript ─── -->
         <aside class="left-sidebar">
 
-            <!-- Live status + compact metrics -->
-            <div class="ls-status-bar">
+            <div class="ls-status-bar" hidden style="display:none">
                 <div class="ls-status-row">
                     <span class="ls-section-label">Live Status</span>
-                    <div class="ls-bcast-pill">
-                        <span class="ls-bcast-dot" id="ls-bcast-dot"></span>
-                        <span class="ls-bcast-label" id="ls-bcast-label">Idle</span>
-                    </div>
-                </div>
+                                    </div>
                 <div class="ls-metrics-bar">
                     <div class="ls-metric">
                         <span class="ls-metric-val" id="verse-count">0</span>
@@ -263,6 +258,28 @@
                 </div>
             </div>
 
+
+            <div class="ls-transcript-section">
+                <div class="ls-transcript-header">
+                    <span class="ls-section-label">Transcript</span>
+                    <div class="ls-bcast-pill">
+                        <span class="ls-bcast-dot" id="ls-bcast-dot"></span>
+                        <span class="ls-bcast-label" id="ls-bcast-label">Idle</span>
+                    </div>
+                    <span style="flex:1"></span>
+                    <button id="clear-transcript" class="ls-icon-btn ls-icon-btn-labeled" title="Clear transcript">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                        <span>Clear</span>
+                    </button>
+                </div>
+                <div id="transcript-content" class="ls-transcript-body">
+                    <div class="empty-state-sm"><p>Click <strong>Start</strong> to begin live transcription</p></div>
+                </div>
+            </div>
+
+
+            <div class="ts-splitter" id="ls-splitter" title="Drag to resize"></div>
+
             <!-- Transcript body -->
             <!-- Playlist / service order. Lives beside the transcript so the
                  operator drives the whole service from one column. -->
@@ -281,23 +298,14 @@
                         <span>New</span>
                     </button>
                 </div>
+                <div class="ls-chips" id="ls-playlist-chips">
+                    <button type="button" class="lang-pill active" data-kind="all">All</button>
+                    <button type="button" class="lang-pill" data-kind="slides">Slides</button>
+                    <button type="button" class="lang-pill" data-kind="songs">Songs</button>
+                    <button type="button" class="lang-pill" data-kind="scripture">Scripture</button>
+                </div>
                 <div id="svc-items-list" class="ls-playlist-body"></div>
                 <input type="file" id="svc-image-file" accept="image/*" multiple style="display:none">
-            </div>
-
-            <div class="ts-splitter" id="ls-splitter" title="Drag to resize"></div>
-
-            <div class="ls-transcript-section">
-                <div class="ls-transcript-header">
-                    <span class="ls-section-label">Live Transcript Log</span>
-                    <button id="clear-transcript" class="ls-icon-btn ls-icon-btn-labeled" title="Clear transcript">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
-                        <span>Clear</span>
-                    </button>
-                </div>
-                <div id="transcript-content" class="ls-transcript-body">
-                    <div class="empty-state-sm"><p>Click <strong>Start</strong> to begin live transcription</p></div>
-                </div>
             </div>
 
             <!-- Funnel tracker (JS compat) -->
@@ -528,7 +536,13 @@
                 <div class="media-bin-header">
                     <span class="cs-section-label">Media Bin</span>
                     <select id="media-bin-folder" class="media-bin-folder" title="Show one folder" aria-label="Folder"></select>
-                    <span class="media-bin-hint">Click an item to send it to the display</span>
+                    <div class="ls-chips" id="media-bin-chips">
+                        <button type="button" class="lang-pill active" data-kind="all">All</button>
+                        <button type="button" class="lang-pill" data-kind="video">Video</button>
+                        <button type="button" class="lang-pill" data-kind="image">Images</button>
+                        <button type="button" class="lang-pill" data-kind="music">Music</button>
+                        <button type="button" class="lang-pill" data-kind="overlays">Overlays</button>
+                    </div>
                     <label class="media-bin-size" title="Thumbnail size">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
                         <input type="range" id="media-bin-size" min="90" max="240" step="10" value="130" aria-label="Thumbnail size" />
@@ -744,7 +758,7 @@
             <!-- Candidates — context (fingerprint/IDF) suggestions only.
                  Auto-deploy (Live Queue) is handled separately via direct
                  citations + verbatim quotes, never fingerprint. -->
-            <div class="rs-section rs-candidates">
+            <div class="rs-section rs-candidates" hidden style="display:none">
                 <div class="rs-section-hdr">
                     <span class="rs-section-title">Possible Matches</span>
                     <span class="rs-count-badge" id="suggestion-count-badge">0</span>
@@ -2325,6 +2339,7 @@
     <script src="overlay_layer.js"></script>
     <script src="overlay_panel.js"></script>
     <script src="settings_layout.js"></script>
+    <script src="main_layout.js"></script>
     <script src="design_space.js"></script>
     <script src="word_split.js"></script>
     <script src="color_utils.js"></script>

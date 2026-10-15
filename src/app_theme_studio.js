@@ -7136,7 +7136,7 @@ function showFirstSettingsPane() {
 // Shared by the Playlist/Transcript split (left sidebar) and the Theme
 // Studio Themes/Layers split — same drag-resize behavior, only the target
 // element, size bounds, and storage key differ.
-function initVerticalSplitter({ splitterId, paneSelector, minTop, minBottom, storageKey }) {
+function initVerticalSplitter({ splitterId, paneSelector, minTop, minBottom, storageKey, fromBottom }) {
   const splitter = document.getElementById(splitterId);
   const pane      = typeof paneSelector === 'string' && paneSelector.startsWith('#')
     ? document.getElementById(paneSelector.slice(1))
@@ -7150,7 +7150,8 @@ function initVerticalSplitter({ splitterId, paneSelector, minTop, minBottom, sto
 
   const onMove = (e) => {
     const maxH = col.clientHeight - splitter.offsetHeight - minBottom;
-    const h = Math.max(minTop, Math.min(maxH, startH + (e.clientY - startY)));
+    const dy = e.clientY - startY;
+    const h = Math.max(minTop, Math.min(maxH, startH + (fromBottom ? -dy : dy)));
     pane.style.height = h + 'px';
   };
   const onUp = () => {
@@ -7178,7 +7179,7 @@ function initVerticalSplitter({ splitterId, paneSelector, minTop, minBottom, sto
 // transcript want opposite amounts of room, so let the operator decide.
 initVerticalSplitter({
   splitterId: 'ls-splitter', paneSelector: '.ls-playlist-section',
-  minTop: 110, minBottom: 140, storageKey: 'kairo-ls-playlist-h',
+  minTop: 110, minBottom: 140, storageKey: 'kairo-ls-playlist-h', fromBottom: true,
 });
 
 // Drag the divider to trade height between the two left-column panes. The
