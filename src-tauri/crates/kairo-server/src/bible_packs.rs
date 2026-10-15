@@ -90,16 +90,32 @@ pub async fn install(State(app): State<Shared>, Query(q): Query<std::collections
     crate::installer::ndjson_stream(rx)
 }
 
+/// Plain HTTP only from this computer itself (tests with a local list).
+fn is_local_test_url(u: &str) -> bool {
+    u.strip_prefix("http://127.0.0.1").is_some_and(|rest| rest.is_empty() || rest.starts_with(':') || rest.starts_with('/'))
+}
+
 async fn run_install(app: &Shared, lang: &str, progress: &crate::installer::Progress) -> Result<(), String> {
     let bible = app.bible.get().ok_or("Kairo is still starting. Try again in a moment.")?;
-    if bible.bundled_pack(lang) || bible.user_packs_dir().join(format!("{lang}.json")).is_file() {
-        let _ = progress.send(json!({ "phase": "done", "already": true }));
+    let already = || { let _ = progress.send(json!({ "phase": "done", "already": true })); };
+    if bible.user_packs_dir().join(format!("{lang}.json")).is_file() {
+        already();
         return Ok(());
     }
     let _ = progress.send(json!({ "phase": "download", "pct": 0 }));
-    let catalog = fetch_catalog().await?;
-    let entry = catalog["packs"].as_array().and_then(|p| p.iter().find(|e| e["lang"].as_str() == Some(lang))).ok_or_else(|| "That Bible isn't in the list.".to_string())?;
-    let url = entry["url"].as_str().filter(|u| u.starts_with("https://") || u.starts_with("http://127.0.0.1")).ok_or("The list has no download address for that Bible.")?;
+    // A Bible that comes with the app is replaced by a download only when the list offers one
+    // (a fuller one, e.g. a whole Bible where the app has the New Testament only).
+    let bundled = bible.bundled_pack(lang);
+    let catalog = match fetch_catalog().await {
+        Ok(c) => c,
+        Err(_) if bundled => { already(); return Ok(()); }
+        Err(e) => return Err(e),
+    };
+    let Some(entry) = catalog["packs"].as_array().and_then(|p| p.iter().find(|e| e["lang"].as_str() == Some(lang))) else {
+        if bundled { already(); return Ok(()); }
+        return Err("That Bible isn't in the list.".into());
+    };
+    let url = entry["url"].as_str().filter(|u| u.starts_with("https://") || is_local_test_url(u)).ok_or("The list has no download address for that Bible.")?;
     let sha = entry["sha256"].as_str().filter(|s| s.len() == 64).ok_or("The list has no checksum for that Bible.")?.to_ascii_lowercase();
     let total = entry["bytes"].as_u64().unwrap_or(0);
     let dir = bible.user_packs_dir().to_path_buf();

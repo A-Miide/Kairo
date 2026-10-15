@@ -69,21 +69,33 @@ impl Bible {
             return p.clone();
         }
         let loaded = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).map(|raw| {
-            let hebrew = hebrew_psalms(&raw);
-            let map: HashMap<String, String> = raw["verses"]
+            let numbering = psalm_numbering(&raw);
+            let mut map: HashMap<String, String> = raw["verses"]
                 .as_array()
                 .into_iter()
                 .flatten()
                 .filter_map(|v| {
                     let reference = v["reference"].as_str()?;
                     let text = v["text"].as_str()?.to_string();
-                    if !hebrew {
-                        return Some((reference.to_string(), text));
+                    let title_psalm = is_psalm(&v["book"]) && v["chapter"].as_u64().is_some_and(|c| PSALM_TITLE_VERSES.iter().any(|p| p.0 == c));
+                    match numbering {
+                        PsalmNumbering::English => Some((reference.to_string(), text)),
+                        // Hebrew numbering: the title is verse 1 (or 1 and 2), so the KJV verse is lower.
+                        PsalmNumbering::Hebrew => Some((kjv_reference(reference, &v["book"], v["chapter"].as_u64()?, v["verse"].as_u64()?)?, text)),
+                        // Titles numbered but verses missing: those Psalms can't be lined up, so they
+                        // stay in English rather than show the wrong verse.
+                        PsalmNumbering::Unreliable => (!title_psalm).then(|| (reference.to_string(), text)),
                     }
-                    // Hebrew numbering: the title is verse 1 (or 1 and 2), so the KJV verse is lower.
-                    Some((kjv_reference(reference, &v["book"], v["chapter"].as_u64()?, v["verse"].as_u64()?)?, text))
                 })
                 .collect();
+            if numbering == PsalmNumbering::Hebrew {
+                // Psalm 13: KJV 13:5 and 13:6 are one Hebrew verse; both show it.
+                let book = raw["verses"].as_array().into_iter().flatten()
+                    .find(|v| is_psalm(&v["book"])).and_then(|v| v["reference"].as_str()).and_then(|r| r.rsplit_once(' ')).map(|(b, _)| b.to_string());
+                if let Some(b) = book {
+                    if let Some(t) = map.get(&format!("{b} 13:5")).cloned() { map.entry(format!("{b} 13:6")).or_insert(t); }
+                }
+            }
             eprintln!("[Translation] Loaded {key}: {} verses", map.len());
             Arc::new(map)
         });
@@ -161,31 +173,51 @@ impl Bible {
 
 /// Psalms whose title counts as verse 1 (or verses 1 and 2) in the Hebrew numbering many
 /// European Bibles follow; the KJV leaves the title unnumbered. (chapter, extra verses)
-const PSALM_TITLE_VERSES: [(u64, u64); 62] = [
-    (3, 1), (4, 1), (5, 1), (6, 1), (7, 1), (8, 1), (9, 1), (12, 1), (18, 1), (19, 1), (20, 1), (21, 1), (22, 1), (30, 1), (31, 1),
+const PSALM_TITLE_VERSES: [(u64, u64); 63] = [
+    (3, 1), (4, 1), (5, 1), (6, 1), (7, 1), (8, 1), (9, 1), (12, 1), (13, 1), (18, 1), (19, 1), (20, 1), (21, 1), (22, 1), (30, 1), (31, 1),
     (34, 1), (36, 1), (38, 1), (39, 1), (40, 1), (41, 1), (42, 1), (44, 1), (45, 1), (46, 1), (47, 1), (48, 1), (49, 1), (51, 2),
     (52, 2), (53, 1), (54, 2), (55, 1), (56, 1), (57, 1), (58, 1), (59, 1), (60, 2), (61, 1), (62, 1), (63, 1), (64, 1), (65, 1),
     (67, 1), (68, 1), (69, 1), (70, 1), (75, 1), (76, 1), (77, 1), (80, 1), (81, 1), (83, 1), (84, 1), (85, 1), (88, 1), (89, 1),
     (92, 1), (102, 1), (108, 1), (140, 1), (142, 1),
 ];
 
-/// Does this Bible number the Psalms the Hebrew way? A pack can say so ("versification":
-/// "hebrew" or "english"); otherwise Psalm 3's verse 1 gives it away: in the Hebrew numbering
-/// it is the title, which names Absalom in every language.
-fn hebrew_psalms(raw: &Value) -> bool {
+#[derive(Clone, Copy, PartialEq, Debug)]
+enum PsalmNumbering {
+    /// The KJV's numbering (titles unnumbered).
+    English,
+    /// Titles numbered as verse 1 (or 1 and 2), every verse present.
+    Hebrew,
+    /// Titles numbered, but the Psalms cut to the KJV's verse counts, so verses are missing.
+    Unreliable,
+}
+
+fn is_psalm(book: &Value) -> bool {
+    book.as_str().is_some_and(|b| b.starts_with("Psalm"))
+}
+
+/// How this Bible numbers the Psalms. A pack can say so ("versification": "hebrew" or
+/// "english"). Otherwise from its shape: in the Hebrew numbering Psalm 3 has 9 verses (the
+/// KJV's 8 and the title); a Psalm 3 of 8 verses whose verse 1 is the title (it names Absalom
+/// in every language) lost a verse somewhere.
+fn psalm_numbering(raw: &Value) -> PsalmNumbering {
     match raw["versification"].as_str() {
-        Some("hebrew") => return true,
-        Some("english") => return false,
+        Some("hebrew") => return PsalmNumbering::Hebrew,
+        Some("english") => return PsalmNumbering::English,
         _ => {}
     }
-    raw["verses"].as_array().into_iter().flatten().find(|v| {
-        v["book"].as_str().is_some_and(|b| b.starts_with("Psalm")) && v["chapter"].as_u64() == Some(3) && v["verse"].as_u64() == Some(1)
-    }).and_then(|v| v["text"].as_str()).is_some_and(|t| t.to_lowercase().contains("bsal"))
+    let ps3: Vec<&Value> = raw["verses"].as_array().into_iter().flatten()
+        .filter(|v| is_psalm(&v["book"]) && v["chapter"].as_u64() == Some(3)).collect();
+    if ps3.iter().any(|v| v["verse"].as_u64() == Some(9)) {
+        return PsalmNumbering::Hebrew;
+    }
+    let titled = ps3.iter().find(|v| v["verse"].as_u64() == Some(1))
+        .and_then(|v| v["text"].as_str()).is_some_and(|t| t.to_lowercase().contains("bsal"));
+    if titled { PsalmNumbering::Unreliable } else { PsalmNumbering::English }
 }
 
 /// The KJV reference for a verse numbered the Hebrew way, or None for a title verse.
 fn kjv_reference(reference: &str, book: &Value, chapter: u64, verse: u64) -> Option<String> {
-    if !book.as_str().is_some_and(|b| b.starts_with("Psalm")) {
+    if !is_psalm(book) {
         return Some(reference.to_string());
     }
     let extra = PSALM_TITLE_VERSES.iter().find(|p| p.0 == chapter).map_or(0, |p| p.1);
@@ -221,10 +253,14 @@ mod psalm_numbering {
 
     #[test]
     fn detects_hebrew_numbering() {
-        let he = json!({ "verses": [{ "book": "Psalms", "chapter": 3, "verse": 1, "text": "Ein Psalm Davids, da er floh vor seinem Sohn Absalom." }] });
-        let en = json!({ "verses": [{ "book": "Psalms", "chapter": 3, "verse": 1, "text": "LORD, how are they increased that trouble me!" }] });
-        assert!(hebrew_psalms(&he));
-        assert!(!hebrew_psalms(&en));
-        assert!(!hebrew_psalms(&json!({ "versification": "english", "verses": he["verses"].clone() })));
+        let v = |c: u64, n: u64, t: &str| json!({ "book": "Psalms", "chapter": c, "verse": n, "reference": format!("Psalms {c}:{n}"), "text": t });
+        let full = json!({ "verses": [v(3, 1, "Ein Psalm Davids, da er floh vor Absalom."), v(3, 9, "x")] });
+        let cut = json!({ "verses": [v(3, 1, "Ein Psalm Davids, da er floh vor Absalom."), v(3, 8, "x")] });
+        let en = json!({ "verses": [v(3, 1, "LORD, how are they increased that trouble me!"), v(3, 8, "x")] });
+        assert_eq!(psalm_numbering(&full), PsalmNumbering::Hebrew);
+        assert_eq!(psalm_numbering(&cut), PsalmNumbering::Unreliable);
+        assert_eq!(psalm_numbering(&en), PsalmNumbering::English);
+        assert_eq!(psalm_numbering(&json!({ "versification": "english", "verses": full["verses"].clone() })), PsalmNumbering::English);
+        assert_eq!(PSALM_TITLE_VERSES.iter().filter(|p| p.0 == 13).count(), 1);
     }
 }

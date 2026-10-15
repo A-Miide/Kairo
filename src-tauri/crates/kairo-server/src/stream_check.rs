@@ -23,6 +23,17 @@ pub fn parse(url: &str) -> Result<(String, u16), &'static str> {
     if authority.is_empty() || authority.contains(char::is_whitespace) || authority.contains('@') {
         return Err("That address has no server name.");
     }
+    // An IPv6 address: [2001:db8::1] or [2001:db8::1]:1935.
+    if let Some(inner) = authority.strip_prefix('[') {
+        let (host, after) = inner.split_once(']').ok_or("That address has no server name.")?;
+        if host.is_empty() { return Err("That address has no server name."); }
+        let port = match after.strip_prefix(':') {
+            Some(p) => p.parse().map_err(|_| "The port is not a number.")?,
+            None if after.is_empty() => default_port,
+            None => return Err("That address has no server name."),
+        };
+        return Ok((host.to_string(), port));
+    }
     match authority.rsplit_once(':') {
         Some((host, port)) if !host.is_empty() => {
             let port: u16 = port.parse().map_err(|_| "The port is not a number.")?;
@@ -56,6 +67,8 @@ mod tests {
         assert_eq!(parse("rtmps://live-api-s.facebook.com:443/rtmp/"), Ok(("live-api-s.facebook.com".into(), 443)));
         assert_eq!(parse("rtmps://example.com/app"), Ok(("example.com".into(), 443)));
         assert_eq!(parse("rtmp://example.com:1936/x"), Ok(("example.com".into(), 1936)));
+        assert_eq!(parse("rtmp://[2001:db8::1]/live"), Ok(("2001:db8::1".into(), 1935)));
+        assert_eq!(parse("rtmps://[::1]:8443/x"), Ok(("::1".into(), 8443)));
     }
 
     #[test]
@@ -65,5 +78,6 @@ mod tests {
         assert!(parse("rtmp://user@host/app").is_err());
         assert!(parse("rtmp://host:abc/app").is_err());
         assert!(parse("rtmp://:1935/app").is_err());
+        assert!(parse("rtmp://[::1/app").is_err());
     }
 }
