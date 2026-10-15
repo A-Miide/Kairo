@@ -68,7 +68,10 @@ async fn serve_file(app: &Shared, rel: &str) -> Response {
     }
     let path = app.cfg.ui_dir.join(rel);
     match tokio::fs::read(&path).await {
-        Ok(bytes) => ([(axum::http::header::CONTENT_TYPE, mime(rel))], bytes).into_response(),
+        // The page and its scripts are read from disk on every request and must never be
+        // kept by the web view: an old copy of a script or style left in its cache shows
+        // up as "the app didn't change" after the files were updated.
+        Ok(bytes) => ([(axum::http::header::CONTENT_TYPE, mime(rel)), (axum::http::header::CACHE_CONTROL, "no-store")], bytes).into_response(),
         Err(_) => StatusCode::NOT_FOUND.into_response(),
     }
 }

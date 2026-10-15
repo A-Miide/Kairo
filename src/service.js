@@ -1614,6 +1614,7 @@
       const row = document.createElement('div');
       row.className = 'svc-item' + (item.id === activeItemId ? ' active' : '') + (selectedItemIds.has(item.id) ? ' selected' : '');
       row.dataset.id = item.id;
+      row.dataset.kind = ({ Song: 'songs', Scripture: 'scripture' })[typeLabel(item)] || 'slides';
       // Confirmed by isolation test: native HTML5 drag-and-drop was the
       // top-bar-disappearing bug's trigger — entering/exiting a native OS
       // drag session (WebKit/macOS) left the unrelated .top-bar layer stale,
@@ -2103,7 +2104,10 @@
       folderSel.value = options.some(([v]) => v === want) ? want : 'all';
     }
     const source = folderSel?.value || 'all';
-    const shown = source === 'all' ? mediaBinItems : mediaBinItems.filter(it => it.binSource === source);
+    const kind = window.KairoMainLayout?.binKind || 'all';
+    if (kind === 'music' || kind === 'overlays') { window.KairoMainLayout.paintBinExtra(strip, kind); return; }
+    const byKind = kind === 'all' ? mediaBinItems : mediaBinItems.filter(it => it.kind === kind);
+    const shown = source === 'all' ? byKind : byKind.filter(it => it.binSource === source);
     strip.innerHTML = '';
     if (!shown.length) {
       strip.innerHTML = mediaBinItems.length
