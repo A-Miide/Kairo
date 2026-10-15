@@ -42,6 +42,9 @@
     let lastArgs = null;
     let retryTimer = null;
     let active = false;
+    let spareM = null;             // a source held on the spare slot for a hand fade (T-bar)
+    let manualGen = 0;
+    let manualT = 0;
 
     const setActive = (on) => {
       if (on === active) return;
@@ -73,6 +76,71 @@
       });
     }
 
+    // The device went away (unplugged): drop it and keep trying.
+    function watch(opened) {
+      const track = opened.stream.getVideoTracks()[0];
+      if (track) track.addEventListener('ended', () => {
+        if (!current || current.stream !== opened.stream) return;
+        const slot = front;
+        front = -1; current = null;
+        fadeStyle(slots[slot], 200);
+        slots[slot].style.opacity = '0';
+        setActive(false);
+        release(slot, { release: opened.release }, 200);
+        retryTimer = setTimeout(() => sync(lastArgs), 2000);
+      }, { once: true });
+    }
+
+    function cancelManual() {
+      manualGen++;
+      if (spareM) {
+        spareM.opened && spareM.opened.release();
+        slots[spareM.slot].srcObject = null;
+        fadeStyle(slots[spareM.slot], 0);
+        slots[spareM.slot].style.opacity = '0';
+        spareM = null;
+      }
+    }
+
+    // Fade by hand (the T-bar): `sourceId` comes in over what is showing as t
+    // goes 0 → 1 (null = going to no video). Nothing is switched until the
+    // director commits; the live map change that follows adopts the stream
+    // already open here, so the camera is not opened twice.
+    async function manual({ layers, sources, sourceId, t }) {
+      if (!opts.enabled) return;
+      manualT = t;
+      if (!sourceId) {
+        cancelManual();
+        if (front >= 0) { fadeStyle(slots[front], 0); slots[front].style.opacity = String(1 - t); }
+        return;
+      }
+      const want = (sources || []).find(x => x.id === sourceId);
+      if (!want || !layers || !layers.video) return;
+      if (t <= 0.001) {
+        cancelManual();
+        if (front >= 0) { fadeStyle(slots[front], 0); slots[front].style.opacity = '1'; }
+        return;
+      }
+      if (current && current.sourceId === sourceId && !spareM) return;   // already showing
+      if (front >= 0 && !spareM) { fadeStyle(slots[front], 0); slots[front].style.opacity = '1'; }
+      if (!spareM || spareM.sourceId !== sourceId) {
+        cancelManual();
+        const token = manualGen;
+        const slot = front === 0 ? 1 : 0;
+        spareM = { slot, sourceId, opened: null, want };
+        let opened;
+        try { opened = await open(want); } catch { if (token === manualGen) spareM = null; return; }
+        if (token !== manualGen || !spareM) { opened.release(); return; }
+        const el = slots[slot];
+        el.srcObject = opened.stream;
+        try { await el.play(); } catch {}
+        await waitForFrame(el);
+        if (token !== manualGen || !spareM) { opened.release(); el.srcObject = null; return; }
+        spareM.opened = opened;
+      }
+      if (spareM && spareM.opened) { const el = slots[spareM.slot]; fadeStyle(el, 0); el.style.opacity = String(manualT); }
+    }
+
     // layers: this output's layer map; sources/live: settings.videoSources / videoLive.
     async function sync(args) {
       lastArgs = args;
@@ -82,6 +150,7 @@
       const want = V.liveSourceFor(args.outputKey, args.layers, args.live, args.sources);
 
       if (!want) {   // nothing to show: fade out, then let go of the camera
+        cancelManual();
         if (front >= 0) {
           const plan = V.switchPlan(opts.getTransition().animation, opts.getTransition().speed, true);
           const old = { slot: front, stream: current };
@@ -93,6 +162,22 @@
         }
         return;
       }
+
+      // The T-bar already has this source open on the spare slot: it takes over as it is.
+      if (spareM && spareM.sourceId === want.id && spareM.opened) {
+        const el = slots[spareM.slot];
+        const old = front >= 0 ? { slot: front, stream: current } : null;
+        const adopted = spareM; spareM = null; manualGen++;
+        fadeStyle(el, 0); el.style.opacity = '1';
+        if (old) { fadeStyle(slots[old.slot], 0); slots[old.slot].style.opacity = '0'; }
+        front = adopted.slot;
+        current = { stream: adopted.opened.stream, release: adopted.opened.release, sourceId: want.id, settings: [want.width, want.height, want.fps].join('x'), key: sourceKey(want, adopted.opened.deviceId) };
+        setActive(true);
+        if (old) release(old.slot, old.stream, 0);
+        watch(adopted.opened);
+        return;
+      }
+      if (spareM && spareM.sourceId !== want.id) cancelManual();
 
       if (current && front >= 0) {
         // Same source, same settings, stream still live: nothing to do.
@@ -127,18 +212,7 @@
       setActive(true);
       if (old) release(old.slot, old.stream, plan.ms);
 
-      // The device went away (unplugged): drop it and keep trying.
-      const track = opened.stream.getVideoTracks()[0];
-      if (track) track.addEventListener('ended', () => {
-        if (!current || current.stream !== opened.stream) return;
-        const slot = front;
-        front = -1; current = null;
-        fadeStyle(slots[slot], 200);
-        slots[slot].style.opacity = '0';
-        setActive(false);
-        release(slot, { release: opened.release }, 200);
-        retryTimer = setTimeout(() => sync(lastArgs), 2000);
-      }, { once: true });
+      watch(opened);
     }
 
     if (opts.enabled && !opts.provider && navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
@@ -148,12 +222,13 @@
     // The page is going away: let go of the device now.
     function dispose() {
       gen++;
+      cancelManual();
       clearTimeout(retryTimer);
       if (current && current.release) current.release();
       current = null; front = -1;
     }
 
-    return { sync, dispose, isActive: () => active };
+    return { sync, manual, dispose, isActive: () => active };
   }
 
   window.KairoDisplayVideo = { create };
