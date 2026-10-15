@@ -32,7 +32,15 @@
     { code: 'fr', name: 'French' },
     { code: 'es', name: 'Spanish' },
     { code: 'pt', name: 'Portuguese' },
+    // No translation model for these: scripture comes from the language's own Bible, and
+    // song and slide text is the translation you write yourself (Write translations…).
+    { code: 'yo', name: 'Yoruba', manual: true },
+    { code: 'ig', name: 'Igbo', manual: true },
+    { code: 'ha', name: 'Hausa', manual: true },
+    { code: 'sw', name: 'Swahili', manual: true },
+    { code: 'de', name: 'German', manual: true },
   ];
+  const isManualLang = (code) => !!TRANSLATE_LANGUAGES.find(l => l.code === code && l.manual);
 
   // Auto-default for the bilingual/Multi-Language themes: if an item needs
   // translation and no language has been explicitly picked yet, but exactly
@@ -50,7 +58,7 @@
   // the next.
   let installedMtLangs = null; // Set<code> once resolved, else null
   async function loadInstalledMtLangs() {
-    const results = await Promise.all(TRANSLATE_LANGUAGES.map(({ code }) =>
+    const results = await Promise.all(TRANSLATE_LANGUAGES.filter(l => !l.manual).map(({ code }) =>
       fetchWithTimeout(`${SERVER}/api/translate-model/status?lang=${code}`)
         .then(r => r.json()).then(s => ({ code, installed: !!s.installed }))
         .catch(() => ({ code, installed: false }))));
@@ -785,9 +793,71 @@
   // it resolves. Callers render immediately with whatever comes back and
   // re-render on `onReady`, rather than blocking the current paint on a
   // network round-trip.
+  // Write the second-language text for each slide of a song or deck by hand, for languages
+  // that have no translation model (Yoruba, Igbo, Hausa, Swahili, German). Saved on the item,
+  // keyed by the slide's own text, so it survives regrouping the lines.
+  function openTranslationEditor(item, code) {
+    const lang = TRANSLATE_LANGUAGES.find(l => l.code === code);
+    const slides = slidesFor(item).filter(sl => (sl.text || '').trim() && !sl.isScene && !sl.image);
+    const overlay = document.createElement('div');
+    overlay.className = 'tr-editor-overlay';
+    const box = document.createElement('div');
+    box.className = 'tr-editor';
+    box.setAttribute('role', 'dialog'); box.setAttribute('aria-modal', 'true');
+    const head = document.createElement('div'); head.className = 'tr-editor-head';
+    const title = document.createElement('div'); title.className = 'tr-editor-title';
+    title.textContent = `${item.title || 'Item'} in ${lang ? lang.name : code}`;
+    const hint = document.createElement('p'); hint.className = 'setting-hint';
+    hint.textContent = 'Type what each slide shows in this language. A blank box shows nothing for that slide.';
+    head.append(title, hint);
+    const body = document.createElement('div'); body.className = 'tr-editor-body';
+    const boxes = [];
+    slides.forEach((sl, i) => {
+      const row = document.createElement('div'); row.className = 'tr-row';
+      const orig = document.createElement('div'); orig.className = 'tr-orig'; orig.textContent = sl.text;
+      const ta = document.createElement('textarea'); ta.className = 'setting-input tr-input';
+      ta.rows = Math.max(2, (sl.lines || []).length || 2);
+      ta.value = (item.manualTr && item.manualTr[code] && item.manualTr[code][sl.text]) || '';
+      ta.placeholder = lang ? lang.name : '';
+      ta.setAttribute('aria-label', `Slide ${i + 1} in ${lang ? lang.name : code}`);
+      boxes.push([sl.text, ta]);
+      row.append(orig, ta); body.appendChild(row);
+    });
+    if (!slides.length) body.appendChild(Object.assign(document.createElement('p'), { className: 'setting-hint', textContent: 'This item has no text slides to translate.' }));
+    const foot = document.createElement('div'); foot.className = 'tr-editor-foot';
+    const cancel = document.createElement('button'); cancel.className = 'modal-btn secondary'; cancel.textContent = 'Cancel'; cancel.type = 'button';
+    const save = document.createElement('button'); save.className = 'modal-btn primary'; save.textContent = 'Save'; save.type = 'button';
+    const close = () => { document.removeEventListener('keydown', onKey, true); overlay.remove(); };
+    const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };
+    cancel.addEventListener('click', close);
+    save.addEventListener('click', () => {
+      const map = { ...(item.manualTr || {}) };
+      const mine = { ...(map[code] || {}) };
+      boxes.forEach(([text, ta]) => { const v = ta.value.trim(); if (v) mine[text] = v; else delete mine[text]; });
+      if (Object.keys(mine).length) map[code] = mine; else delete map[code];
+      item.manualTr = map;
+      item.translateTo = code;
+      saveService(); renderStack();
+      if (activeItemId === item.id) renderFullEdit();
+      close();
+    });
+    document.addEventListener('keydown', onKey, true);
+    overlay.addEventListener('mousedown', (e) => { if (e.target === overlay) close(); });
+    foot.append(cancel, save);
+    box.append(head, body, foot);
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+    (boxes[0] ? boxes[0][1] : save).focus();
+  }
+
   function getTranslatedText(item, slide, onReady) {
     const lang = effectiveTranslateTo(item);
     if (!lang || !themeNeedsTranslation(themeForItem(item))) return '';
+    // A translation written by hand for this slide's text wins over any model.
+    const written = item.manualTr && item.manualTr[lang] && item.manualTr[lang][slide.text || ''];
+    if (written) return written;
+    const isScripture = !!(slide.book && slide.chapter && slide.verse);
+    if (isManualLang(lang) && !isScripture) return '';   // nothing to ask a model for
     const key = translationCacheKey(lang, slide);
     if (translationCache.has(key)) return translationCache.get(key);
     if (!slide.text && !(slide.book && slide.chapter && slide.verse)) return '';
@@ -3072,6 +3142,18 @@
         const upsellSlot = document.createElement('div');
         upsellSlot.style.marginTop = '8px';
         const showUpsell = (code) => {
+          if (isManualLang(code)) {
+            upsellSlot.innerHTML = '';
+            if (item.type === 'song' || item.type === 'slides') {
+              const w = document.createElement('button');
+              w.className = 'modal-btn secondary';
+              w.textContent = 'Write translations…';
+              w.title = 'Type the text each slide shows in this language';
+              w.addEventListener('click', () => { closePopover(); openTranslationEditor(item, code); });
+              upsellSlot.appendChild(w);
+            }
+            return;
+          }
           if (installedMtLangs && installedMtLangs.has(code)) { upsellSlot.innerHTML = ''; return; }
           if (typeof renderInlineTranslateUpsell === 'function') renderInlineTranslateUpsell(upsellSlot, code);
         };
@@ -3084,7 +3166,7 @@
             if (activeItemId === item.id) renderFullEdit();
             langList.querySelectorAll('.svc-popover-item').forEach(x => x.classList.remove('active'));
             b.classList.add('active');
-            if (installedMtLangs && installedMtLangs.has(code)) closePopover();
+            if (!isManualLang(code) && installedMtLangs && installedMtLangs.has(code)) closePopover();
             else showUpsell(code);
           });
           langList.appendChild(b);
@@ -3157,7 +3239,7 @@
         const upsellSlot = document.createElement('div');
         upsellSlot.style.marginTop = '8px';
         const showUpsell = (code) => {
-          if (installedMtLangs && installedMtLangs.has(code)) { upsellSlot.innerHTML = ''; return; }
+          if (isManualLang(code) || (installedMtLangs && installedMtLangs.has(code))) { upsellSlot.innerHTML = ''; return; }
           if (typeof renderInlineTranslateUpsell === 'function') renderInlineTranslateUpsell(upsellSlot, code);
         };
         TRANSLATE_LANGUAGES.forEach(({ code, name }) => {
@@ -3171,7 +3253,7 @@
             }
             langList.querySelectorAll('.svc-popover-item').forEach(x => x.classList.remove('active'));
             b.classList.add('active');
-            if (installedMtLangs && installedMtLangs.has(code)) closePopover();
+            if (isManualLang(code) || (installedMtLangs && installedMtLangs.has(code))) closePopover();
             else showUpsell(code);
           });
           langList.appendChild(b);

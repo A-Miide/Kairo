@@ -2301,6 +2301,30 @@ function renderOutputControlMatrix() {
     card.appendChild(mk('p', 'oc-summary', line));
     host.appendChild(card);
   });
+  host.appendChild(layerOrderDiagram(mk));
+}
+
+// How the layers stack on every screen, top to bottom: a small fixed diagram, so the order is
+// something you can see instead of guess. Overlays always sit on top.
+function layerOrderDiagram(mk) {
+  const box = mk('div', 'oc-order');
+  box.appendChild(mk('div', 'oc-order-title', 'Order on the screen'));
+  const steps = [
+    ['Overlays', 'logos and badges, always on top'],
+    ['Timer', null],
+    ['Slides and scripture', 'with their own theme'],
+    ['Media', null],
+    ...(settings.videoDirector ? [['Video', 'in its own zone when the layout has one']] : []),
+    ['Background', 'the theme or layout backdrop'],
+  ];
+  steps.forEach(([name, note], i) => {
+    const row = mk('div', 'oc-order-row');
+    row.style.setProperty('--n', String(i));
+    row.appendChild(mk('span', 'oc-order-name', name));
+    if (note) row.appendChild(mk('span', 'oc-order-note', note));
+    box.appendChild(row);
+  });
+  return box;
 }
 
 // Persist a partial settings change without clobbering unrelated fields.
