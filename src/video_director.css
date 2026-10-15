@@ -412,3 +412,58 @@ body.video-director #clear-locked-btn { display: none !important; }
 .vd-tuck .vd-verse-seg { flex: 0 0 auto; }
 .vd-transbar .vd-take-quiet { height: 24px; min-width: 0; padding: 0 10px; font-size: 11px; background: transparent; color: var(--text-3); }
 .vd-transbar .vd-take-quiet:hover:not(:disabled) { color: var(--text); }
+
+/* Looks: chips under Preview, on one row. */
+.vd-looks { display: flex; flex-wrap: nowrap; gap: 5px; overflow-x: auto; overflow-y: hidden; padding: 1px 0 3px; scrollbar-width: none; flex: 0 0 auto; }
+.vd-looks::-webkit-scrollbar { display: none; }
+.vd-look { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border: 1px solid var(--border-md); border-radius: 13px; background: transparent; color: var(--text-2); font: inherit; font-size: 11px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.vd-look:hover { color: var(--text); border-color: var(--selected-border); }
+.vd-look:focus-visible { outline: 2px solid var(--selected-border); outline-offset: 1px; }
+.vd-look.is-pvw { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); color: var(--text); }
+.vd-look.is-live { color: var(--text); }
+.vd-look-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--red); box-shadow: 0 0 6px rgba(237,28,36,0.7); }
+.vd-look.is-drop { border-color: var(--brand); }
+.vd-look-add { border-style: dashed; color: var(--text-3); }
+.vd-look-input { flex: 0 0 auto; width: 130px; height: 26px; padding: 0 10px; border: 1px solid var(--accent); border-radius: 13px; background: var(--bg-input); color: var(--text); font: inherit; font-size: 11px; }
+.vd-menu-item.is-danger { color: var(--red); }
+
+/* ── One header for every group: a title on the left, its controls on the same row. ── */
+.vd-gh { display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; height: 28px; min-height: 28px; min-width: 0; flex: 0 0 auto; margin: 0; padding: 0; border: 0; background: none; }
+.vd-gh > .vd-label, .vd-gh-title { flex: 0 0 auto; margin: 0; line-height: 28px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-3); }
+.vd-gh-ctl { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 6px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.vd-gh-ctl::-webkit-scrollbar { display: none; }
+.vd-gh-ctl.vd-gh-start { justify-content: flex-start; }
+.vd-gh .vd-mini, .vd-gh .vd-chip { height: 24px; flex: 0 0 auto; }
+.vd-gh .vd-size { flex: 0 0 auto; margin-left: 0; }
+.vd-gh .vg-controls { flex: 0 0 auto; }
+.vd-pl-top .vd-pl-head { flex: 1 1 auto; min-width: 0; padding: 0; }
+.vd-section-sends .vd-sends-head { height: 28px; }
+.vd-section-sends .vd-sends-spacer { flex: 1 1 0; }
+/* The queue has no header of its own: Auto-deploy sits in the Scripture sends header. */
+body.video-director #live-queue-section .cs-section-header { display: none !important; }
+
+/* Inputs: the grid toggle, no pages, and the column scrolls. */
+.vg-toggle { height: 24px; padding: 0 10px; border: 1px solid var(--border-md); border-radius: 12px; background: transparent; color: var(--text-3); font: inherit; font-size: 10.5px; font-weight: 700; cursor: pointer; }
+.vg-toggle.is-on { background: var(--selected-dim); color: var(--text); border-color: var(--selected-border); }
+.vg.vg-col { flex: 1 1 0; min-height: 0; overflow-y: auto; align-content: start; height: auto; }
+.vg-col.vg-grid { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); grid-template-rows: none; }
+.vg-col.vg-list { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; gap: 4px; }
+.vg-col.vg-list .vg-tile { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; align-items: center; gap: 8px; height: auto; aspect-ratio: auto; padding: 4px; border-radius: 6px; }
+.vg-col.vg-list .vg-tile video { position: static; grid-column: 1; width: 72px; height: 41px; border-radius: 3px; background: #000; }
+.vg-col.vg-list .vg-name { position: static; grid-column: 2; padding: 0; background: none; font-size: 12px; color: var(--text); }
+.vg-col.vg-list .vg-flag { position: static; grid-column: 3; }
+.vg-col.vg-list .vg-key { position: static; grid-column: 3; color: var(--text-3); text-shadow: none; }
+.vg-col.vg-list .vg-pvw { position: static; grid-column: 3; opacity: 1; }
+.vg-col.vg-list .vg-tile.is-empty { display: grid; border-width: 1px; }
+.vg-col.vg-list .vg-tile.is-empty .vg-empty-mid { display: contents; }
+.vg-col.vg-list .vg-tile.is-empty .vg-empty-mid svg { grid-column: 1; justify-self: center; }
+.vg-col.vg-list .vg-tile.is-empty .vg-empty-why { grid-column: 3; display: block; }
+.vg-col.vg-list .vg-tile.is-empty .vg-name { grid-column: 2; }
+.vg-col.vg-grid .vg-tile.is-empty .vg-empty-why { display: none; }
+.vg-col.vg-grid .vg-tile.is-empty .vg-empty-mid { display: none; }
+
+/* Looks wrap to at most two rows under Preview. */
+.vd-looks { flex-wrap: wrap; max-height: 60px; overflow-y: auto; overflow-x: hidden; }
+.vg-col.vg-list .vg-tile > * { grid-row: 1; }
+.vg-col.vg-list .vg-tile.is-empty .vg-empty-mid svg, .vg-col.vg-list .vg-tile.is-empty .vg-empty-why { grid-row: 1; }
+@container (max-width: 560px) { .vd-looks { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; max-height: none; } }

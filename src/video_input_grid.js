@@ -4,8 +4,8 @@
 // it the sources, the device list, the on-air / staged state and what a click
 // does, and puts `el` and `controls` where it wants them, so the same grid can
 // later be shown full screen on a chosen display without being rebuilt.
-//   2-up: two large tiles side by side. 4-up: a 2 by 2 grid. More inputs than
-//   fit are paged. Only the tiles on the visible page hold a capture, at the
+//   Grid on: tiles (two columns, or as many as fit); grid off: one input per row
+//   as a list. No pages: the column scrolls. Only the tiles in view hold a capture, at the
 //   hub's thumbnail size and rate, and none while the grid is off screen.
 //   Click a tile: send it to Program. Shift-click or its Preview button: stage
 //   it on Preview.
@@ -19,7 +19,7 @@
   }
 
   // opts: { getSources(), getDevices(), getState() → {programId, mixed, hasOutputs, previewId},
-  //         onProgram(id), onPreview(id), onPlaceholder(source, el), onAdd(el), mode: 2|4, onMode(mode),
+  //         onProgram(id), onPreview(id), onPlaceholder(source, el), onAdd(el), grid: true|false, onGrid(on),
   //         layout: 'row' (default, sized by height) | 'column' (fills a narrow column's width)
   //                 | 'fill' (every input at once, filling the space; for a full-screen multiview),
   //         readOnly: true (a mirror: no clicks, keys or drag), profile: 'thumb' | 'mid' }
@@ -28,34 +28,17 @@
     const hub = window.KairoVideoHub;
     const el = h('div', 'vg');
     const controls = h('div', 'vg-controls');
-    let mode = opts.mode === 2 ? 2 : 4;
-    let page = 0;
+    let gridOn = opts.grid !== false;
     let leases = [];
     let thumbsOn = true;
     let shown = true;
 
-    // 2-up / 4-up switch
-    const sw = h('div', 'vg-switch');
-    sw.setAttribute('role', 'group');
-    sw.setAttribute('aria-label', 'Tiles shown');
-    const modeBtns = [2, 4].map(n => {
-      const b = h('button', 'vg-mode', String(n));
-      b.type = 'button';
-      b.setAttribute('aria-label', `${n}-up`);
-      b.title = n === 2 ? 'Two large tiles' : 'Four tiles, two by two';
-      b.addEventListener('click', () => { mode = n; page = 0; try { opts.onMode && opts.onMode(n); } catch {} render(); });
-      sw.appendChild(b);
-      return [n, b];
-    });
-    // Pager
-    const pager = h('div', 'vg-pager');
-    const prev = h('button', 'vg-page', '‹'); prev.type = 'button'; prev.title = 'Previous inputs'; prev.setAttribute('aria-label', 'Previous inputs');
-    const next = h('button', 'vg-page', '›'); next.type = 'button'; next.title = 'Next inputs'; next.setAttribute('aria-label', 'Next inputs');
-    const count = h('span', 'vg-count');
-    prev.addEventListener('click', () => { page = Math.max(0, page - 1); render(); });
-    next.addEventListener('click', () => { page += 1; render(); });
-    pager.append(prev, count, next);
-    controls.append(pager, sw);
+    // Grid on / off
+    const tog = h('button', 'vg-toggle', 'Grid');
+    tog.type = 'button';
+    tog.title = 'Grid on: tiles. Grid off: a list.';
+    tog.addEventListener('click', () => { gridOn = !gridOn; try { opts.onGrid && opts.onGrid(gridOn); } catch {} render(); });
+    controls.append(tog);
 
     const plug = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2v5M15 2v5M7 7h10v4a5 5 0 0 1-10 0V7zM12 16v6"/></svg>';
 
@@ -66,7 +49,7 @@
       t.tabIndex = 0;
       t.setAttribute('role', 'button');
       t.setAttribute('aria-label', `${source.name}. ${why}. Choose a device for this input`);
-      t.title = 'Choose a device for this input';
+      t.title = 'Choose a device';
       const mid = h('div', 'vg-empty-mid');
       mid.innerHTML = plug;
       mid.appendChild(h('span', 'vg-empty-why', why));
@@ -143,17 +126,14 @@
       const sources = opts.getSources();
       const st = opts.getState();
       const fill = opts.layout === 'fill';
-      const per = fill ? Math.max(1, sources.length) : mode;
-      const pages = Math.max(1, Math.ceil(sources.length / per));
-      page = Math.min(page, pages - 1);
+
       // New leases are taken before the old ones go, so the hub keeps each camera open across a redraw.
       const old = leases;
       leases = [];
-      el.className = fill ? 'vg vg-fill' : 'vg vg-' + mode + (opts.layout === 'column' ? ' vg-col' : '');
+      el.className = fill ? 'vg vg-fill' : 'vg ' + (gridOn ? 'vg-grid' : 'vg-list') + (opts.layout === 'column' ? ' vg-col' : '');
       if (fill) el.style.gridTemplateColumns = `repeat(${sources.length <= 1 ? 1 : sources.length === 2 ? 2 : Math.ceil(Math.sqrt(sources.length))}, minmax(0, 1fr))`;
       el.replaceChildren();
-      const visible = sources.slice(page * per, page * per + per);
-      visible.forEach((s, i) => el.appendChild(tile(s, st, page * per + i)));
+      sources.forEach((s, i) => el.appendChild(tile(s, st, i)));
       if (!sources.length) {
         // One clear way in, instead of a blank area.
         const add = h('button', 'vg-add', '+ Add input');
@@ -163,11 +143,8 @@
         el.appendChild(add);
       }
       old.forEach(release => release());
-      modeBtns.forEach(([n, b]) => { b.classList.toggle('is-on', n === mode); b.setAttribute('aria-pressed', String(n === mode)); });
-      pager.hidden = pages <= 1 || fill;
-      count.textContent = `${page + 1}/${pages}`;
-      prev.disabled = page === 0;
-      next.disabled = page >= pages - 1;
+      tog.classList.toggle('is-on', gridOn);
+      tog.setAttribute('aria-pressed', String(gridOn));
     }
 
     // Tiles run only while the grid is on screen and the window is visible.
@@ -195,7 +172,7 @@
       el.remove(); controls.remove();
     }
 
-    return { el, controls, render, destroy, get mode() { return mode; } };
+    return { el, controls, render, destroy, get gridOn() { return gridOn; } };
   }
 
   window.KairoVideoGrid = { create };

@@ -36,7 +36,8 @@
     frames: {},             // 'pvw' | 'pgm' → { box, frame, ro }
     ui: {},
     liveObserver: null,
-    last: null,             // one-step undo: { live, preview, verse }
+    last: null,             // one-step undo: { live, preview, layers, verse }
+    pendingLook: null, previewLookId: null, liveLookId: null,   // Looks (video_looks.js)
     programState: { on: [], id: null, mixed: false },
   };
 
@@ -176,7 +177,12 @@
     try { localStorage.setItem('kairo-video-fade', JSON.stringify(fadeMs())); } catch {}
   }
   // The state a one-step Undo goes back to.
-  function snapshot() { D.last = { live: { ...videoLiveMap() }, preview: D.previewId }; }
+  function snapshot() {
+    const ly = outputLayerMap();
+    const layers = {};
+    for (const o of videoOutputs()) layers[o.id] = { ...(ly[o.id] || {}) };
+    D.last = { live: { ...videoLiveMap() }, preview: D.previewId, layers };
+  }
   function undo() {
     const last = D.last;
     if (!last) return;
@@ -188,18 +194,72 @@
       D.previewId = last.preview || null;
       syncPreviewFrame();
     }
+    // Layers a Look changed go back as they were.
+    if (last.layers) {
+      const now = outputLayerMap();
+      for (const [id, ly] of Object.entries(last.layers)) for (const k of Object.keys(ly)) if (now[id] && now[id][k] !== ly[k]) setOutputLayer(id, k, ly[k]);
+    }
+    D.liveLookId = null;
     // The verse goes back through the app's own "Back to the previous screen".
     if (last.verse) document.getElementById('output-back-btn')?.click();
     refresh();
   }
   // Space: send what is staged (the verse, and the Preview source when it differs).
   function takeStaged() {
-    const ps = programState();
     const mode = transitionPref();
     const hadVerse = !!D.staged;
+    const hadLook = D.pendingLook;
+    if (hadLook) { snapshot(); applyLook(hadLook); }
+    const ps = programState();
     if (hadVerse) takeVerse();
     if (ps.on.length && (D.previewId || null) !== (ps.mixed ? undefined : (ps.id || null))) take(mode);
     if (hadVerse) D.last = { ...(D.last || {}), verse: true };   // Undo takes the verse back too
+    if (hadLook) { D.last = { ...(D.last || {}), layers: D.lookSnap && D.lookSnap.layers }; D.liveLookId = hadLook.id; D.lookSnap = null; }
+    refresh();
+  }
+
+  // ── Looks: what Preview shows, until it is taken ─────────────────────────
+  const firstReady = () => (videoSourceList().filter(x => x.enabled !== false && VSRC.stateOf(x, videoState.devices) === 'ready')[0] || {}).id || null;
+  const lookVideo = (look) => (look.videoId === '@first' ? firstReady() : look.videoId);
+  function loadLookToPreview(look) {
+    D.pendingLook = look;
+    D.previewLookId = look.id;
+    D.previewId = lookVideo(look) || null;
+    syncPreviewFrame();
+    post('pvw', { type: 'vd-layers', layers: look.layers });
+    refresh();
+  }
+  // What the output shows now, as a Look's recipe.
+  async function captureLook() {
+    const ps = programState();
+    const ly = outputLayerMap()[PRIMARY_DISPLAY] || {};
+    const layers = {};
+    for (const k of ['bible', 'slide', 'media', 'timer']) layers[k] = ly[k] !== false;
+    layers.video = ly.video === true;
+    let overlays = null;
+    if (window.KairoOverlays && window.KairoOverlays.load) { try { overlays = (await window.KairoOverlays.load()).filter(o => o.live).map(o => o.id); } catch {} }
+    return { videoId: ps.mixed ? null : ps.id, layers, overlays };
+  }
+  // Take: the Look's layers and overlays go onto the real outputs. Its video goes with the ordinary take.
+  function applyLook(look) {
+    D.lookSnap = D.last;
+    const targets = videoOutputs();
+    for (const o of targets) {
+      for (const k of ['bible', 'slide', 'media', 'timer']) { if (!o.monitor) setOutputLayerIf(o.id, k, look.layers[k]); }
+      setOutputLayerIf(o.id, 'video', look.layers.video);
+    }
+    if (Array.isArray(look.overlays) && window.KairoOverlays && window.KairoOverlays.load) {
+      window.KairoOverlays.load().then(items => items.forEach(it => {
+        const want = look.overlays.includes(it.id);
+        if (!!it.live !== want) fetch(`${SERVER}/api/overlays/${it.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ live: want }) }).catch(() => {});
+      })).catch(() => {});
+    }
+    D.pendingLook = null; D.previewLookId = null;
+    post('pvw', { type: 'vd-layers', layers: null });
+  }
+  function setOutputLayerIf(id, key, val) {
+    const cur = outputLayerMap()[id];
+    if (cur && cur[key] !== !!val) setOutputLayer(id, key, !!val);
   }
   function clearStaging() {
     D.staged = null;
@@ -212,6 +272,7 @@
     const ps = programState();
     if (!ps.on.length) return;
     snapshot();
+    D.liveLookId = null;
     setTransition(mode);                       // written first: the display reads it when the source changes
     const outgoing = ps.mixed ? D.previewId : ps.id;
     setVideoLiveFor(ps.on.map(o => o.id), D.previewId);
@@ -237,6 +298,7 @@
       ps = programState();
     }
     snapshot();
+    D.liveLookId = null;
     if (mode) {
       try { localStorage.setItem('kairo-video-transition', JSON.stringify(mode)); } catch {}
       setTimeout(publishTransition, fadeMs() + 400);
@@ -274,6 +336,7 @@
     refresh();
   }
   function setPreview(id) {
+    if (D.pendingLook) { D.pendingLook = null; D.previewLookId = null; post('pvw', { type: 'vd-layers', layers: null }); }
     D.previewId = id || null;
     syncPreviewFrame();
     refresh();
@@ -359,7 +422,7 @@
     if (!band || !D.ui.strip) return;
     const w = band.clientWidth, h = band.clientHeight;
     if (!w || !h) return;
-    const barH = D.ui.strip.offsetHeight + 8;
+    const barH = D.ui.strip.offsetHeight + 8 + (D.looks ? D.looks.el.offsetHeight + 6 : 0);
     const head = 28;                    // each screen's label line
     const gap = 8;
     const byWidth = (w - gap) / 2;
@@ -376,8 +439,8 @@
     // ── Column 1: Inputs ──
     const inputs = vEl('section', 'vd-section vd-section-inputs');
     inputs.setAttribute('aria-label', 'Inputs');
-    const ihead = vEl('div', 'vd-section-head');
-    ihead.appendChild(vEl('span', 'vd-label', 'Inputs'));
+    const ihead = vEl('div', 'vd-gh');
+    ihead.appendChild(vEl('span', 'vd-label vd-gh-title', 'Inputs'));
     D.grid = window.KairoVideoGrid.create({
       getSources: () => videoSourceList().filter(s => s.enabled !== false),
       getDevices: () => videoState.devices,
@@ -386,18 +449,19 @@
       onPreview: setPreview,
       onPlaceholder: (source, el) => openDevicePicker(source.id, el),
       onAdd: (el) => openAddInputPanel(el),
-      mode: settings.videoGridMode === 2 ? 2 : 4,
-      onMode: (n) => { settings.videoGridMode = n; saveSettingsPatch({ videoGridMode: n }); },
+      grid: settings.videoGridOn !== false,
+      onGrid: (on) => { settings.videoGridOn = on; saveSettingsPatch({ videoGridOn: on }); },
       layout: 'column',
     });
-    ihead.appendChild(D.grid.controls);
+    const ictl = vEl('div', 'vd-gh-ctl');
+    ictl.append(vBtn('+ Add', 'Add an input without leaving Director mode', (e) => openAddInputPanel(e.currentTarget), 'vd-mini vd-mini-primary'), D.grid.controls);
+    ihead.appendChild(ictl);
     const ifoot = vEl('div', 'vd-section-foot');
     D.ui.noVideo = vBtn('No video', 'Send no video to Output', () => sendToProgram(null), 'vd-mini');
     D.ui.ready = vBtn('Ready check', 'List anything not ready before going live', (e) => openReadyCheck(e.currentTarget), 'vd-mini vd-ready');
     ifoot.append(
       D.ui.ready,
       D.ui.noVideo,
-      vBtn('+ Add', 'Add an input without leaving Director mode', (e) => openAddInputPanel(e.currentTarget), 'vd-mini'),
       vBtn('Manage', 'Rename, reorder, switch off or remove inputs', () => openSources(), 'vd-mini'),
     );
     inputs.append(ihead, D.grid.el, ifoot);
@@ -413,6 +477,17 @@
     D.ui.pvwRef = vEl('span', 'vd-ref');
     pvwHead.appendChild(D.ui.pvwRef);
     pvw.append(pvwHead, buildFrame('pvw'));
+    if (window.KairoVideoLooks) {
+      D.looks = window.KairoVideoLooks.create({
+        loadToPreview: loadLookToPreview,
+        takeNow: takeStaged,
+        capture: captureLook,
+        previewLookId: () => D.previewLookId,
+        liveLookId: () => D.liveLookId,
+        onChange: () => refresh(),
+      });
+      pvw.appendChild(D.looks.el);
+    }
 
     // The transition bar, centred under the two screens.
     const bar = vEl('div', 'vd-transbar');
@@ -467,7 +542,9 @@
     // One group card: a single title, Preview and Output, and every transition beneath them.
     const displays = vEl('section', 'vd-section vd-section-displays');
     displays.setAttribute('aria-label', 'Displays');
-    displays.append(vEl('span', 'vd-label', 'Displays'), band);
+    const dhead = vEl('div', 'vd-gh');
+    dhead.appendChild(vEl('span', 'vd-label vd-gh-title', 'Displays'));
+    displays.append(dhead, band);
     // The verse transition (how a verse arrives: Fade, Slide or Cut, and its speed), next to the video ones.
     const seg = vEl('div', 'vd-verse-seg');
     seg.appendChild(vEl('span', 'vd-bar-label', 'Verse'));
@@ -614,9 +691,10 @@
     }
     // Take is live when there is a verse or slide staged, or a Preview source that differs from Output.
     const videoDiff = canTake && (D.previewId || null) !== (ps.mixed ? undefined : (ps.id || null));
-    D.ui.take.disabled = !(D.staged || videoDiff);
+    D.ui.take.disabled = !(D.staged || videoDiff || D.pendingLook);
     D.ui.tbar.disabled = !canTake;
     D.ui.black.title = 'Fade Output to black: no video, and the verse, slide and timer come down';
+    D.looks && D.looks.render();
   }
 
   // ── Settings → Director mode: rows for what the screen no longer carries ─
@@ -699,6 +777,12 @@
       if (D.last) { e.preventDefault(); undo(); }
       return;
     }
+    // Alt/Option+1-9 load a Look into Preview (1-9 alone send inputs).
+    if (e.altKey && !e.metaKey && !e.ctrlKey) {
+      const a = /^(?:Digit|Numpad)([1-9])$/.exec(e.code || '');
+      if (a && D.looks && D.looks.loadIndex(Number(a[1]) - 1)) e.preventDefault();
+      return;
+    }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
     const m = /^(?:Digit|Numpad)([1-9])$/.exec(e.code || '');
     if (m) {
@@ -773,6 +857,7 @@
     D.frames = {};
     stopVideoSources();
     window.KairoVideoHub?.releaseAll();
+    D.looks && D.looks.destroy(); D.looks = null; D.pendingLook = null; D.previewLookId = null; D.liveLookId = null;
     D.fitObs?.disconnect(); D.fitObs = null;
     D.topObs?.disconnect(); D.topObs = null;
     if (D.onResize) { window.removeEventListener('resize', D.onResize); D.onResize = null; }
