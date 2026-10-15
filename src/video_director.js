@@ -536,20 +536,41 @@
     const pvwHead = vEl('div', 'vd-screen-head');
     pvwHead.appendChild(vEl('span', 'vd-tag vd-tag-pvw', 'Preview'));
     D.ui.pvwRef = vEl('span', 'vd-ref');
-    D.ui.pvwLook = vEl('span', 'vd-look-tag'); D.ui.pvwLook.hidden = true;
-    pvwHead.append(D.ui.pvwLook, D.ui.pvwRef);
+    pvwHead.append(D.ui.pvwRef);
     pvw.append(pvwHead, buildFrame('pvw'));
     if (window.KairoVideoLooks) {
       D.looks = window.KairoVideoLooks.create({
         loadToPreview: loadLookToPreview,
         takeNow: takeStaged,
         capture: captureLook,
+        onToggle: (open) => { if (D.ui.looksBtn) { D.ui.looksBtn.classList.toggle('is-open', open); D.ui.looksBtn.setAttribute('aria-expanded', String(open)); } },
         previewLookId: () => D.previewLookId,
         liveLookId: () => D.liveLookId,
         videoName: (look) => { const id = lookVideo(look); const x = videoSourceList().find(v => v.id === id); return x ? x.name : 'No video'; },
         onChange: () => refresh(),
         screenThemes,
         renderThumb: (el, theme) => window.KairoService && window.KairoService.renderLookThumbnail(el, theme),
+        // Customize a Look's screen theme in Theme Studio. A built-in theme (or none yet) is copied first,
+        // so the original stays as it is; the copy is a new theme in the Screens group.
+        customizeTheme: (look) => {
+          if (typeof openThemeStudio !== 'function' || typeof saveLooks !== 'function') return null;
+          const cur = look.themeId ? themeById(look.themeId) : null;
+          let target = cur;
+          const builtIn = (t) => typeof DEFAULT_LOOKS !== 'undefined' && DEFAULT_LOOKS.some(d => d.id === t.id);
+          if (!cur || builtIn(cur)) {
+            const src = cur || themeById('screen-split-left') || (typeof DEFAULT_LOOKS !== 'undefined' && DEFAULT_LOOKS.find(d => d.id === 'screen-split-left'));
+            if (!src) return null;
+            target = JSON.parse(JSON.stringify(src));
+            target.id = 'look-' + Date.now();
+            target.name = cur ? `${cur.name} copy` : `${look.name} screen`;
+            target.groupId = 'grp-screen'; target.groupName = 'Screens (Director mode)';
+            looks.push(target);
+            saveLooks();
+          }
+          openThemeStudio();
+          if (typeof selectLook === 'function') selectLook(target);
+          return target.id;
+        },
         editTheme: (id) => { const t = themeById(id); if (!t || typeof openThemeStudio !== 'function') return; openThemeStudio(); if (typeof selectLook === 'function') selectLook(t); },
       });
     }
@@ -605,8 +626,14 @@
     dhead.appendChild(vEl('span', 'vd-label vd-gh-title', 'Displays'));
     // Looks (a dialog) sits beside the title.
     const dctl = vEl('div', 'vd-gh-ctl');
-    const looksBtn = vBtn('Looks', 'Saved Preview setups', () => D.looks && D.looks.open(), 'vd-mini');
-    dctl.append(looksBtn);
+    const LK = (window.KairoVideoLooks && window.KairoVideoLooks.LABEL) || { many: 'Layouts', one: 'Layout' };
+    const looksBtn = vBtn('', `Saved Preview setups`, () => D.looks && D.looks.open(), 'vd-mini vd-looks-btn');
+    looksBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>';
+    looksBtn.append(vEl('span', null, LK.many));
+    looksBtn.setAttribute('aria-haspopup', 'dialog'); looksBtn.setAttribute('aria-expanded', 'false');
+    D.ui.looksBtn = looksBtn;
+    D.ui.looksChip = vEl('span', 'vd-looks-chip'); D.ui.looksChip.hidden = true;
+    dctl.append(D.ui.looksChip, looksBtn);
     dhead.appendChild(dctl);
     displays.append(dhead, band);
 
@@ -753,7 +780,7 @@
     const videoDiff = canTake && (D.previewId || null) !== (ps.mixed ? undefined : (ps.id || null));
     D.ui.take.disabled = !(D.staged || videoDiff || D.pendingLook);
     D.looks && D.looks.render();
-    if (D.ui.pvwLook) { D.ui.pvwLook.textContent = D.pendingLook ? 'Look: ' + D.pendingLook.name : ''; D.ui.pvwLook.hidden = !D.pendingLook; }
+    if (D.ui.looksChip) { D.ui.looksChip.textContent = D.pendingLook ? D.pendingLook.name : ''; D.ui.looksChip.title = D.pendingLook ? `Staged in Preview: ${D.pendingLook.name}` : ''; D.ui.looksChip.hidden = !D.pendingLook; }
   }
 
   // ── Settings → Director mode: rows for what the screen no longer carries ─

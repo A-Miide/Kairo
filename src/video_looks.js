@@ -13,6 +13,8 @@
 // reorder. Alt+1-9 load the nth Look without opening the dialog.
 'use strict';
 (function () {
+  // What this feature is called, in one place: a rename is a one-line change.
+  const LABEL = { many: 'Layouts', one: 'Layout' };
   const LAYER_KEYS = ['bible', 'slide', 'media', 'timer', 'video'];
   const STARTERS = [
     { name: 'Scripture over video', videoId: '@first', layers: { bible: true, slide: true, media: true, timer: true, video: true }, overlays: null },
@@ -38,7 +40,7 @@
       for (const k of LAYER_KEYS) layers[k] = !(r.layers && r.layers[k] === false);
       out.push({
         id,
-        name: String(r.name || 'Look').replace(/\s+/g, ' ').trim().slice(0, 40) || 'Look',
+        name: String(r.name || LABEL.one).replace(/\s+/g, ' ').trim().slice(0, 40) || LABEL.one,
         videoId: r.videoId === undefined ? null : (typeof r.videoId === 'string' ? r.videoId : null),
         layers,
         overlays: Array.isArray(r.overlays) ? r.overlays.filter(x => typeof x === 'string') : null,
@@ -93,7 +95,7 @@
 
     async function saveCurrent() {
       const cap = await ctx.capture();
-      const look = { id: uid(), name: uniqueName('Look ' + (looks.length + 1)), videoId: cap.videoId, layers: cap.layers, overlays: cap.overlays, themeId: cap.themeId || null };
+      const look = { id: uid(), name: uniqueName(LABEL.one + ' ' + (looks.length + 1)), videoId: cap.videoId, layers: cap.layers, overlays: cap.overlays, themeId: cap.themeId || null };
       looks.push(look);
       persist(); renaming = look.id; render();
       const i = modal && modal.querySelector('.vd-card-input'); if (i) { i.focus(); i.select(); }
@@ -196,7 +198,7 @@
       c.appendChild(pic);
       const row = el('div', 'vd-lk-row');
       if (renaming === look.id) {
-        const inp = el('input', 'vd-card-input'); inp.type = 'text'; inp.maxLength = 40; inp.value = look.name; inp.setAttribute('aria-label', 'Look name');
+        const inp = el('input', 'vd-card-input'); inp.type = 'text'; inp.maxLength = 40; inp.value = look.name; inp.setAttribute('aria-label', LABEL.one + ' name');
         inp.addEventListener('click', (e) => e.stopPropagation());
         inp.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') { e.preventDefault(); commitRename(look.id, inp.value); } else if (e.key === 'Escape') { e.preventDefault(); renaming = null; render(); } });
         inp.addEventListener('blur', () => { if (renaming === look.id) commitRename(look.id, inp.value); });
@@ -258,6 +260,17 @@
       item('Update from current', () => { closeMenu(); updateFromCurrent(look.id); });
       item('Duplicate', () => { closeMenu(); duplicate(look.id); });
       if (ctx.screenThemes && ctx.screenThemes().length) item('Screen theme', () => openThemes(look, anchor));
+      if (ctx.customizeTheme) {
+        const has = !!themeOf(look);
+        item(has ? 'Customize in Theme Studio' : 'Create a screen theme…', () => {
+          closeMenu();
+          const id = ctx.customizeTheme(look);
+          if (!id) return;
+          look.themeId = id; persist(); ctx.onChange();
+          close();   // the dialog reopens with the new picture when you come back
+        });
+        menu.lastChild.title = 'Built-in themes are copied first, so the original stays as it is.';
+      }
       menu.appendChild(el('div', 'vd-lk-sep'));
       item('Delete', () => { closeMenu(); remove(look.id); }, 'is-danger');
       modal.querySelector('.modal-content').appendChild(menu);
@@ -308,7 +321,7 @@
       grid.replaceChildren();
       looks.forEach((l, i) => grid.appendChild(tile(l, i)));
       const add = el('button', 'vd-lk vd-lk-new'); add.type = 'button';
-      add.innerHTML = '<span class="vd-lk-new-pic"><span aria-hidden="true">+</span></span><span class="vd-lk-name">New Look from current</span>';
+      add.innerHTML = `<span class="vd-lk-new-pic"><span aria-hidden="true">+</span></span><span class="vd-lk-name">New ${LABEL.one} from current</span>`;
       add.addEventListener('click', saveCurrent);
       grid.appendChild(add);
       fitThumbs();
@@ -319,12 +332,12 @@
       if (modal) return;
       prevFocus = document.activeElement;
       modal = el('div', 'modal vd-looks-modal');
-      modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-label', 'Looks');
+      modal.setAttribute('role', 'dialog'); modal.setAttribute('aria-modal', 'true'); modal.setAttribute('aria-label', LABEL.many);
       const overlay = el('div', 'modal-overlay');
       overlay.addEventListener('mousedown', close);
       const content = el('div', 'modal-content vd-lk-content');
       const head = el('div', 'modal-header');
-      const title = el('div', 'vd-lk-title'); title.append(el('h2', null, 'Looks'), el('span', 'vd-lk-sub', 'Loads into Preview. Nothing goes out until you send it.'));
+      const title = el('div', 'vd-lk-title'); title.append(el('h2', null, LABEL.many), el('span', 'vd-lk-sub', 'Loads into Preview. Nothing goes out until you send it.'));
       const x = el('button', 'modal-close-btn'); x.type = 'button'; x.textContent = 'Close';
       x.addEventListener('click', close);
       head.append(title, x);
@@ -348,6 +361,7 @@
       window.addEventListener('resize', fitThumbs);
       render();
       paintToast();
+      ctx.onToggle && ctx.onToggle(true);
       const f = focusables(); (f[0] || x).focus();
       // Overlay names for the info line arrive a moment later.
       if (window.KairoOverlays && window.KairoOverlays.load) {
@@ -360,6 +374,7 @@
       window.removeEventListener('resize', fitThumbs);
       closeMenu();
       modal.remove(); modal = null; renaming = null;
+      ctx.onToggle && ctx.onToggle(false);
       if (prevFocus && prevFocus.focus && prevFocus.isConnected) prevFocus.focus();
     }
 
@@ -373,5 +388,5 @@
     };
   }
 
-  window.KairoVideoLooks = { create, normalize };
+  window.KairoVideoLooks = { create, normalize, LABEL };
 })();
