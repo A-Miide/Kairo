@@ -1632,11 +1632,20 @@
                                 <ul>
                                     <li><strong>Inputs</strong> — your cameras and capture cards, as a grid of tiles or a list. Add them under <strong>Settings → Video Sources</strong>; an input can be a named placeholder before the device is connected. Click an input to put it on air; Shift-click stages it on Preview.</li>
                                     <li><strong>Preview and Output</strong> — Preview is what is staged, Output is what is live. Under them: <strong>Send</strong> (Space), Cut or Fade with the fade length, Fade to black and Undo.</li>
-                                    <li><strong>Layouts</strong> — saved setups for Preview: the input, which layers are on, the overlays and a screen theme. Click one to load it into Preview, then Send. Alt+1 to 9 load the first nine. Customize a screen theme in Theme Studio from the menu on a Layout.</li>
+                                    <li><strong>Layouts</strong> — saved setups for Preview: the input, which layers are on, the overlays and a screen theme. Click one to load it into Preview, then Send. Alt+1 to 9 load the first nine. A screen theme is drawn around the slide or verse: the slide or Bible verse keeps its own theme and branding inside it, unless the screen theme has its own verse text. Customize a screen theme in Theme Studio (Video zone and Content zone tools) from the menu on a Layout.</li>
                                     <li><strong>Remote</strong> — Stream Deck and OSC can drive Send, Fade to black, Undo, Layouts 1 to 9 and Inputs 1 to 9.</li>
-                                    <li><strong>Scripture sends</strong> — search, the Bible, Theme and the Live Queue in one place. Detected verses go live as usual.</li>
-                                    <li><strong>Bottom half</strong> — the playlist, and the media bin with toggles for Slides, Video, Images, Music and Overlays.</li>
+                                    <li><strong>Scripture sends</strong> — search, the Bible, Theme, the verse transition and the Live Queue in one place. The <strong>Auto</strong> switch decides whether detected verses go straight to the screen or wait on Preview for Send.</li>
+                                    <li><strong>Top menu</strong> — Media, Songs, Timer and Slides open their full screens over Director, with a Back to Director button. The cameras keep running.</li>
+                                    <li><strong>Bottom half</strong> — the playlist, and the media bin with toggles for Slides, Songs and one for each media folder. A click stages a slide or media item on Preview; Send (or a double-click) puts it on the screen. Right-click a slide to edit it.</li>
                                 </ul>
+                            </div>
+                        </details>
+
+                        <details class="help-group">
+                            <summary>Streaming</summary>
+                            <div class="help-body">
+                                <p><strong>Settings → Streaming</strong> is where the destinations for a live stream are kept: YouTube, Facebook, Twitch or any RTMP or RTMPS address, each with its own switch, so one stream can go to several places. Pick the video size, frame rate and quality your internet upload can carry, and the audio quality. Audio always comes from the input chosen under <strong>Settings → Audio</strong>.</p>
+                                <p><strong>Check</strong> tests that this computer can reach the server. It does not start anything. Stream keys stay on this computer. Going live from Kairo is not switched on in this version yet.</p>
                             </div>
                         </details>
 
@@ -1646,6 +1655,7 @@
                                 <p>Under <strong>Settings → Language</strong>: <em>Spoken language</em> is what the preacher is actually speaking (it drives transcription). <em>Scripture shows in</em> is the language a matched verse appears in, picked from the Bibles that come with Kairo, all of them working offline. If the preacher's language has a Bible and the screen isn't showing it, a line offers to switch. <em>Also show beside it</em> adds a second language next to the verse and on slides, for the Multi-Language theme. <em>Languages on this computer</em> lists each language's Bible (always included) and its slide translation, which is the one download.</p>
                                 <p>For a service preached in <strong>Spanish, Portuguese, French or German</strong>, set the spoken language and Kairo understands citations in that language ("Juan capítulo tres versículo dieciséis", "siguiente versículo") and matches verses read aloud against that language's Bible. Other spoken languages are transcribed, but detection follows English citations and readings.</p>
                                 <p><strong>Church vocabulary</strong> (same page) — names and words your services use that transcription may mishear: the pastor, the church, local places. One per line; used from the next Start Listening (English and auto-detect services).</p>
+                                <p><strong>Yoruba, Igbo, Hausa, Swahili and German</strong> can be the second language too. Scripture comes from that language's own Bible. For songs and slides there is no translation model, so choose the language in the theme's <em>Translate to</em> list and use <strong>Write translations…</strong> to type what each slide shows. Your text is saved with the song.</p>
                                 <p><strong>Slide Translation Models</strong> are separate — they translate ordinary (non-scripture) slide/sermon text for the Multi-Language split theme, using a small bundled local model with no setup, API key, or internet connection required once downloaded.</p>
                             </div>
                         </details>
