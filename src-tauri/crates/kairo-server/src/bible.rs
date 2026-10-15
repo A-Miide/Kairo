@@ -16,13 +16,15 @@ pub struct Bible {
     pub k: Arc<Knowledge>,
     pub nlt: Translation,
     db_dir: PathBuf,
+    /// Packs downloaded by the user (app data folder); looked at before the ones inside the app.
+    user_packs: PathBuf,
     translations: Mutex<HashMap<String, Pack>>,
     languages: Mutex<HashMap<String, Pack>>,
 }
 
 impl Bible {
-    pub fn new(k: Arc<Knowledge>, nlt: Translation, db_dir: PathBuf) -> Bible {
-        Bible { k, nlt, db_dir, translations: Mutex::new(HashMap::new()), languages: Mutex::new(HashMap::new()) }
+    pub fn new(k: Arc<Knowledge>, nlt: Translation, db_dir: PathBuf, user_packs: PathBuf) -> Bible {
+        Bible { k, nlt, db_dir, user_packs, translations: Mutex::new(HashMap::new()), languages: Mutex::new(HashMap::new()) }
     }
 
     pub fn reference(&self, v: VerseId) -> String {
@@ -101,12 +103,31 @@ impl Bible {
         replace_text(verses, &pack);
     }
 
+    /// Where a language's Bible is: a downloaded copy if there is one, else the one inside the app.
+    pub fn pack_path(&self, lang: &str) -> PathBuf {
+        let downloaded = self.user_packs.join(format!("{lang}.json"));
+        if downloaded.is_file() { downloaded } else { self.db_dir.join("packs").join(format!("{lang}.json")) }
+    }
+
+    pub fn user_packs_dir(&self) -> &std::path::Path {
+        &self.user_packs
+    }
+
+    pub fn bundled_pack(&self, lang: &str) -> bool {
+        self.db_dir.join("packs").join(format!("{lang}.json")).is_file()
+    }
+
+    /// Drops what was loaded for a language, so a pack just added or removed is read again.
+    pub fn forget_language(&self, lang: &str) {
+        self.languages.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(lang);
+    }
+
     /// The service language's Bible in place of the English text.
     pub fn apply_language(&self, verses: &mut [Value], lang: &str) {
         if lang.is_empty() || lang == "en" {
             return;
         }
-        let Some(pack) = self.pack(&self.languages, lang, self.db_dir.join("packs").join(format!("{lang}.json"))) else { return };
+        let Some(pack) = self.pack(&self.languages, lang, self.pack_path(lang)) else { return };
         replace_text(verses, &pack);
     }
 
