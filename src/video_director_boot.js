@@ -43,7 +43,52 @@
   btn.innerHTML = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3z"/></svg>';
   const settingsBtn = document.getElementById('settings-btn');
   if (settingsBtn) settingsBtn.before(btn);
+
+  // Settings → Director mode: the same switch, as a card with one row.
+  const style = document.createElement('style');
+  style.textContent = `
+    .dm-card { border: 1px solid var(--border); border-radius: var(--radius-lg); background: rgba(255,255,255,0.015); }
+    .dm-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; }
+    .dm-name { font-size: 13px; font-weight: 600; color: var(--text); }
+    .dm-text .setting-hint { margin: 3px 0 0; }
+    .dm-armed { margin: 0; padding: 0 16px 12px; font-size: 11.5px; color: var(--orange); }
+    .dm-armed[hidden] { display: none; }`;
+  document.head.appendChild(style);
+  const nav = document.getElementById('settings-nav');
+  const panes = document.getElementById('settings-panes');
+  let dmToggle = null, dmArmed = null;
+  if (nav && panes) {
+    const navBtn = document.createElement('button');
+    navBtn.className = 'settings-nav-item';
+    navBtn.dataset.pane = 'director';
+    navBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3z"/></svg><span>Director mode</span>';
+    const outputsBtn = nav.querySelector('[data-pane="outputs"]');
+    outputsBtn ? outputsBtn.after(navBtn) : nav.appendChild(navBtn);
+    const pane = document.createElement('section');
+    pane.className = 'settings-pane';
+    pane.dataset.pane = 'director';
+    pane.innerHTML = `
+      <div class="settings-section">
+        <div class="settings-section-label">Director mode</div>
+        <div class="dm-card">
+          <div class="dm-row">
+            <div class="dm-text">
+              <div class="dm-name" id="dm-name">Video director mode</div>
+              <p class="setting-hint">Adds Preview and Program displays and a source strip in the middle for cameras and capture cards. Scripture and lower-thirds draw over the video. Turn it off and the normal screen comes back.</p>
+            </div>
+            <label class="output-toggle"><input type="checkbox" id="dm-toggle" aria-labelledby="dm-name"><span class="output-toggle-track"></span></label>
+          </div>
+          <p class="dm-armed" id="dm-armed" role="status" hidden>Video is live. Switch off again to go to no video and turn off.</p>
+        </div>
+      </div>`;
+    panes.appendChild(pane);
+    dmToggle = pane.querySelector('#dm-toggle');
+    dmArmed = pane.querySelector('#dm-armed');
+  }
+
   function paint(on, armed) {
+    if (dmToggle) dmToggle.checked = !!on;
+    if (dmArmed) dmArmed.hidden = !armed;
     btn.classList.toggle('active', on);
     btn.classList.toggle('vd-armed', !!armed);
     btn.setAttribute('aria-pressed', String(on));
@@ -96,6 +141,9 @@
 
   function toggle() { return settings.videoDirector ? disable() : enable(true); }
   btn.addEventListener('click', toggle);
+  // The switch does what the button and the View menu item do. A refused
+  // first click (video is live) leaves it on and shows the line under it.
+  if (dmToggle) dmToggle.addEventListener('change', () => { toggle(); dmToggle.checked = !!settings.videoDirector || btn.classList.contains('vd-armed'); });
   if (window.__TAURI__ && window.__TAURI__.event) {
     window.__TAURI__.event.listen('menu-video-director', toggle);
   }
