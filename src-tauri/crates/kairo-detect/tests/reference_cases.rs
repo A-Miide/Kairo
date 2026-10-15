@@ -101,6 +101,15 @@ fn near_miss_book_before_a_homophone_is_not_a_citation() {
     assert_eq!(book_mentions("in romans four", Books::get(), Lang::En), vec![b("Romans")]);
 }
 
+// A list of verses is said in order. "Romans 8 verse 26 and verse 20" (for 27) put
+// Romans 8:20 on screen next to the right verse; a lower number is a slip, not a verse.
+#[test]
+fn a_verse_listed_out_of_order_is_not_added() {
+    assert_eq!(all("romans chapter eight and verse 26 and verse 20"), ["Romans 8:26"]);
+    assert_eq!(all("romans chapter eight verse 26 and 27"), ["Romans 8:26-27"]);
+    assert_eq!(all("john three verse 16 and verse 18"), ["John 3:16+18"]);
+}
+
 #[test]
 fn near_miss_book_names() {
     assert_eq!(all("first king nineteen and verse four"), ["1 Kings 19:4"]);
@@ -296,3 +305,4 @@ fn reading_context_lasts_through_a_pause_and_stretches_for_a_slow_pace() {
     ctx.update(b("Acts"), None, 70_000);
     assert_eq!(ctx.active(70_000), Active { book: Some(b("Acts")), chapter: None }, "a new book drops the old chapter");
 }
+

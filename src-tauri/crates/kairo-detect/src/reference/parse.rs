@@ -316,6 +316,12 @@ impl Parser<'_> {
                 }
             }
             let Some(s) = num(w, scan, None) else { break };
+            // A list of verses is said in order ("verse 26 and verse 27"). A number lower than
+            // the verse before it is a slip of the speaker or of the transcript ("26 and 20"
+            // for 27), so it is not read as another verse.
+            if n32(s.value) < spans.last().map_or(0, |p| p.1) {
+                break;
+            }
             scan += s.consumed;
             let mut end = n32(s.value);
             if matches!(get(w, scan), "to" | "through") {
