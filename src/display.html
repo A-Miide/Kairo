@@ -35,8 +35,16 @@
             width: 100vw;
             height: 100vh;
             position: relative;
+            z-index: 1;
             overflow: hidden;
         }
+        /* Live video input (display_video.js): the bottom layer, under media,
+           slide and timer, so scripture and slides draw over the picture. */
+        #video-layer { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
+        #video-layer video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+        /* On a Monitor the video is a dimmed backdrop for the confidence text. */
+        body[data-mode="confidence"] #video-layer video { filter: brightness(0.4); }
+        body[data-mode="confidence"].has-video #confidence-view { background: transparent; }
 
         /* News-ticker / large-scroll text layers (layer.scroll.enabled) — see
            buildLayerDOM below. Matches Theme Studio's own preview keyframe. */
@@ -195,6 +203,7 @@
         #confidence-view {
             position: fixed;
             inset: 0;
+            z-index: 1;
             flex-direction: column;
             gap: 2.2vh;
             padding: 3.2vh 4vw 3.6vh;
@@ -279,6 +288,7 @@
 </style>
 </head>
 <body>
+    <div id="video-layer" aria-hidden="true"></div>
     <div id="stage">
         <div id="media-layer"></div>
         <div id="slide-layer"></div>
@@ -322,6 +332,8 @@
     <script src="layer_geometry.js"></script>
     <script src="motion_graphics.js"></script>
     <script src="pp_render.js"></script>
+    <script src="video_sources.js"></script>
+    <script src="display_video.js"></script>
     <script>
     'use strict';
 
@@ -445,6 +457,9 @@
     // build-in animation (layer.build — see motion_graphics.js) plays; a
     // refresh of what's already on screen passes nothing and stays still.
     function buildLayerDOM(look, verseText, verseRef, translatedText, styleByLayerId = {}, timerText = '', skipBackground = false, opts = {}) {
+        // Live video is showing under this output's words: the theme's own
+        // background must not paint over it.
+        if (videoOn && outputMode === 'theme') skipBackground = true;
         const frag    = document.createDocumentFragment();
         const layout  = look.layout || 'fullscreen';
         let   isTransparent = false;
@@ -1188,7 +1203,7 @@
     // ever been pushed yet), matching outputLayerMap's own zero-config-safe
     // default — a fresh install/window behaves exactly like before this
     // feature existed.
-    const DEFAULT_LAYERS = { bible: true, slide: true, media: true, timer: true };
+    const DEFAULT_LAYERS = { bible: true, slide: true, media: true, timer: true, video: false };
     let outputLayers = DEFAULT_LAYERS;
     // Which of Bible/Slide the CURRENTLY shown slide-layer content actually
     // is — set by handleMessage whenever it renders through showVerse/
@@ -1196,6 +1211,24 @@
     // "Slide" doesn't blank a Bible verse that's currently on screen (and
     // vice versa).
     let currentSlideIsBible = false;
+
+    // Live video input under this output's layers (display_video.js). The
+    // sources and which one is live come from the main window the same way
+    // the layer map does: localStorage + the 'storage' event.
+    let videoLayer = null;
+    let videoOn = false;     // a source's picture is showing on this output
+    function readJson(key, fallback) {
+        try { const v = JSON.parse(localStorage.getItem(key) || 'null'); return v == null ? fallback : v; } catch { return fallback; }
+    }
+    function syncVideo() {
+        if (!videoLayer) return;
+        videoLayer.sync({
+            outputKey: OUTPUT_KEY,
+            layers: outputLayers,
+            sources: readJson('kairo-video-sources', []),
+            live: readJson('kairo-video-live', {}),
+        });
+    }
 
     function loadOutputLayers() {
         try {
@@ -1243,6 +1276,7 @@
     function applyOutputLayers(next) {
         const prev = outputLayers;
         outputLayers = next;
+        if (!!prev.video !== !!next.video) syncVideo();
         // Only actually blank the slide layer if the layer that just turned
         // off is the one the CURRENTLY showing content belongs to — turning
         // off Slide shouldn't blank a Bible verse that's on screen, and
@@ -1886,6 +1920,7 @@
                 if (map && map[OUTPUT_KEY]) applyOutputLayers({ ...DEFAULT_LAYERS, ...map[OUTPUT_KEY] });
             } catch {}
         }
+        if (e.key === 'kairo-video-sources' || e.key === 'kairo-video-live') syncVideo();
         if (e.key === 'kairo-output-keying' && e.newValue) {
             try { applyOutputKeying((JSON.parse(e.newValue) || {})[OUTPUT_KEY]); } catch {}
         }
@@ -1893,6 +1928,22 @@
             try { applyOutputMode((JSON.parse(e.newValue) || {})[OUTPUT_KEY]); } catch {}
         }
     });
+
+    // The Video Input layer. A capture window (NDI, Syphon, DeckLink) and the
+    // monitor's live copies never open a camera: Phase 1 sends video to
+    // display windows only, and a copy would hold the device a second time.
+    videoLayer = window.KairoDisplayVideo.create({
+        host: document.getElementById('video-layer'),
+        enabled: !CAPTURE && !MONITOR,
+        getTransition: () => ({ animation: outputAnimation, speed: outputAnimationSpeed }),
+        onActive: (on) => {
+            videoOn = on;
+            document.body.classList.toggle('has-video', on);
+            // The words repaint with or without their theme background.
+            if (outputMode === 'theme') { try { applyLook(activeLook, false); } catch {} }
+        },
+    });
+    syncVideo();
 
     // Re-fit when the output window resizes (projector attach, fullscreen toggle).
     window.addEventListener('resize', () => { try { fitVerse(); fitConfidenceText(); } catch {} });

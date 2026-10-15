@@ -8,6 +8,12 @@
     <key>NSMicrophoneUsageDescription</key>
     <string>KAIRO listens to your sermon audio to detect Bible verses in real time.</string>
 
+    <!-- Shown by macOS the first time KAIRO opens a camera or capture card
+         for live video input. Without this key the OS refuses camera access
+         outright. -->
+    <key>NSCameraUsageDescription</key>
+    <string>KAIRO shows your camera or capture card as live video behind scripture on your outputs.</string>
+
     <!-- Allow loading localhost over HTTP (the bundled Node server). -->
     <key>NSAppTransportSecurity</key>
     <dict>

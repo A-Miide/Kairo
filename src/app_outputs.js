@@ -1864,8 +1864,18 @@ async function applyOutputThemes() {
 // necessarily want to clear my media." Order here drives every checkbox
 // row, the Output Control matrix's row order, and the layers summary —
 // one list, so all three can't drift out of sync with each other again.
-const OUTPUT_LAYER_KEYS = [['bible', 'Bible'], ['slide', 'Slide'], ['timer', 'Timer'], ['media', 'Media']];
-const DEFAULT_OUTPUT_LAYERS = { bible: true, slide: true, media: true, timer: true };
+// Video input (live camera / capture card, see video_sources.js) is the fifth
+// layer, drawn UNDER the rest so scripture and slides sit over the picture. It
+// is the one layer that defaults OFF: nothing changes until it is turned on.
+const OUTPUT_LAYER_KEYS = [['bible', 'Bible'], ['slide', 'Slide'], ['timer', 'Timer'], ['media', 'Media'], ['video', 'Video input']];
+const DEFAULT_OUTPUT_LAYERS = { bible: true, slide: true, media: true, timer: true, video: false };
+
+// Video input goes to display windows and the Monitor only (Phase 1). NDI,
+// Syphon/Spout and DeckLink render natively and don't carry it yet.
+const VIDEO_NATIVE_NOTE = 'Video input is not sent to NDI, Syphon or DeckLink outputs yet.';
+function outputSupportsVideo(outputId) {
+  return displayOutputs().some(d => d.id === outputId);
+}
 
 function outputLayerMap() {
   const src = settings.outputLayers && typeof settings.outputLayers === 'object' ? settings.outputLayers : {};
@@ -1877,6 +1887,7 @@ function outputLayerMap() {
       slide: entry.slide !== false,
       media: entry.media !== false,
       timer: entry.timer !== false,
+      video: entry.video === true,
     };
   }
   return map;
@@ -1898,6 +1909,9 @@ function buildOutputLayersSummary(outputId, map) {
   el.className = 'outputs-layers-summary';
   el.title = 'What this output is currently showing';
   OUTPUT_LAYER_KEYS.forEach(([key, label]) => {
+    // Video input only shows up here once it is on, so every other output's
+    // summary reads as it always did.
+    if (key === 'video' && !(want.video && outputSupportsVideo(outputId))) return;
     const item = document.createElement('span');
     item.className = 'outputs-layers-summary-item' + (want[key] ? '' : ' is-off');
     item.textContent = label;
@@ -1915,15 +1929,18 @@ function buildOutputLayersHint(outputId, map) {
   const want = (map || outputLayerMap())[outputId] || DEFAULT_OUTPUT_LAYERS;
   // Words only (a Monitor, or Text only): media never goes out there.
   const wordsOnly = isMonitorOutput(outputId) || !!outputTextOnlyMap()[outputId];
-  const keys = wordsOnly ? OUTPUT_LAYER_KEYS.filter(([k]) => k !== 'media') : OUTPUT_LAYER_KEYS;
+  const noVideo = !outputSupportsVideo(outputId);
+  const keys = OUTPUT_LAYER_KEYS.filter(([k]) => !(wordsOnly && k === 'media') && !(noVideo && k === 'video'));
   const on  = keys.filter(([k]) => want[k]).map(([, l]) => l);
-  const off = keys.filter(([k]) => !want[k]).map(([, l]) => l);
+  // Video input is off by default and optional: it is not listed as hidden.
+  const off = keys.filter(([k]) => !want[k] && k !== 'video').map(([, l]) => l);
   const hint = document.createElement('p');
   hint.className = 'setting-hint outputs-layers-hint';
-  if (!off.length) hint.textContent = wordsOnly ? `Going out on this output: ${on.join(', ')}.` : 'Everything is going out on this output: Bible, Slide, Media, and Timer.';
+  if (!off.length) hint.textContent = wordsOnly ? `Going out on this output: ${on.join(', ')}.` : `Everything is going out on this output: ${on.join(', ')}.`;
   else if (!on.length) hint.textContent = 'Nothing is going out on this output right now — every layer is hidden.';
   else hint.textContent = `Going out on this output: ${on.join(', ')}. Hidden: ${off.join(', ')}.`;
   if (wordsOnly && on.length) hint.textContent += isMonitorOutput(outputId) ? ' Words only.' : ' Text only — just the words: no background, shapes, pictures or media.';
+  if (noVideo) hint.textContent += ` ${VIDEO_NATIVE_NOTE}`;
   return hint;
 }
 
@@ -1965,6 +1982,7 @@ function setOutputLayer(outputId, layerKey, value) {
   settings.outputLayers = current;
   saveSettingsPatch({ outputLayers: current });
   applyOutputLayers();
+  if (layerKey === 'video' && typeof onVideoLayerChanged === 'function') onVideoLayerChanged();
   // Keep the list's own per-row summary (buildOutputLayersSummary) in sync
   // live — owner: "you cannot see all of the selected output per display"
   // was as much about staying current after a toggle as about being
@@ -1997,6 +2015,7 @@ function buildLayerChecksRow(outputId, map) {
     cb.checked = want[layerKey] !== false;
     cb.dataset.layerKey = layerKey;
     if (monitor && layerKey === 'media') { cb.checked = false; cb.disabled = true; wrap.title = 'A Monitor shows words only'; }
+    else if (layerKey === 'video' && !outputSupportsVideo(outputId)) { cb.checked = false; cb.disabled = true; wrap.title = VIDEO_NATIVE_NOTE; }
     else cb.addEventListener('change', () => setOutputLayer(outputId, layerKey, cb.checked));
     wrap.appendChild(cb);
     wrap.appendChild(document.createTextNode(label));
@@ -2087,6 +2106,7 @@ function renderOutputControlMatrix() {
       cb.checked = map[o.id]?.[layerKey] !== false;
       cb.title = `${label} on ${o.name}`;
       if (o.monitor && layerKey === 'media') { cb.checked = false; cb.disabled = true; cb.title = 'A Monitor shows words only'; }
+      else if (layerKey === 'video' && !outputSupportsVideo(o.id)) { cb.checked = false; cb.disabled = true; cb.title = VIDEO_NATIVE_NOTE; }
       else cb.addEventListener('change', () => setOutputLayer(o.id, layerKey, cb.checked));
       td.appendChild(cb);
       tr.appendChild(td);
