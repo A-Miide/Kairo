@@ -317,10 +317,10 @@
   // ── Layout: three columns over a bottom half, with draggable splits ───────
   // Only widths the operator set by dragging are kept; the rest follow these defaults.
   const LAYOUT_KEY = 'kairo-vd-layout2';
-  const layoutDefaults = { c1: 0.26, c2: 0.50, bl: 0.21 };
+  const layoutDefaults = { c1: 0.22, c2: 0.56, bl: 0.21 };
   // The top half's share of the height depends on the window: short windows give it more.
   const sizeClass = () => (window.innerHeight < 700 ? 's' : window.innerHeight < 1000 ? 'm' : 'l');
-  const topDefaults = { s: 0.64, m: 0.5, l: 0.56 };
+  const topDefaults = { s: 0.64, m: 0.45, l: 0.44 };
   function readLayout() {
     let v = null;
     try { v = JSON.parse(localStorage.getItem(LAYOUT_KEY) || 'null'); } catch {}
@@ -852,5 +852,7 @@
     // For the dock's input tiles.
     state: () => ({ previewId: D.previewId, program: D.programState, transition: transitionPref(), active: D.active }),
     setPreview, sendToProgram, mountSettings,
+    // A detected verse held back by Auto-send off: staged in Preview, never sent.
+    stageDetected: (verse, look) => { if (D.active && verse) stage(verse, look); },
   };
 })();
