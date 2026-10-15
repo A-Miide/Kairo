@@ -3312,6 +3312,21 @@
         host.appendChild(d);
         return;
       }
+      // A video zone: the live picture's window (see display.html applyVideoZone).
+      // Previews and theme cards show it as a dark box with the same corners and frame.
+      if (layer.type === 'videozone') {
+        const p = layer.pos || { x: 0, y: 0, w: DESIGN_W, h: DESIGN_H };
+        const d = document.createElement('div');
+        d.style.cssText = 'position:absolute;background:#000;';
+        d.style.left = (p.x / DESIGN_W * 100) + '%';
+        d.style.top = (p.y / DESIGN_H * 100) + '%';
+        d.style.width = (p.w / DESIGN_W * 100) + '%';
+        d.style.height = (p.h / DESIGN_H * 100) + '%';
+        d.style.borderRadius = ((layer.radius || 0) / DESIGN_H * 100) + 'vh';
+        if (layer.frameWidth > 0) d.style.boxShadow = `0 0 0 ${layer.frameWidth / DESIGN_H * 100}vh ${layer.frameColor || '#ffffff'}`;
+        host.appendChild(d);
+        return;
+      }
       // Motion graphic (motion_graphics.js) — the same renderer the real
       // output uses, so this preview matches it.
       if (layer.type === 'motion') {
@@ -3614,6 +3629,8 @@
   // belong to no group stay as plain rows. The group holding the current
   // theme starts open; the rest start closed.
   function buildThemeTree(allLooks, buildRow, currentId) {
+    // Screen themes (a video zone and the verse side by side) are a Director mode feature.
+    if (!settings.videoDirector) allLooks = allLooks.filter(l => l.groupId !== 'grp-screen');
     const root = document.createElement('div');
     root.className = 'thm-tree';
     const seen = new Set();

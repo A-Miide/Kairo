@@ -86,7 +86,7 @@
         #slide-layer { z-index: 1; }
         #timer-layer { z-index: 2; pointer-events: none; }
         /* Overlays (logo, bug, lower-third picture) sit above everything. */
-        #overlay-layer { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
+        #overlay-layer { position: fixed; inset: 0; z-index: 5; pointer-events: none; overflow: hidden; }
         #overlay-layer .kairo-overlay { position: absolute; height: auto; transform: translate(-50%, -50%); transition: opacity 300ms ease; }
         #timer-layer:empty { display: none; }
         #media-layer video, #media-layer img {
@@ -198,6 +198,7 @@
         body[data-mode="text"] #media-layer { display: none; }
         body[data-mode="confidence"] { background: #000 !important; }
         body[data-mode="confidence"] #stage,
+        body[data-mode="confidence"] #overlay-layer,
         body[data-mode="confidence"] #timer-badge,
         body[data-mode="confidence"] #clock-badge,
         body[data-mode="confidence"] #kairo-label { display: none !important; }
@@ -206,7 +207,7 @@
         /* Multiview (Video director mode): the input grid full screen, read-only. */
         #multiview-view { display: none; }
         body[data-mode="multiview"] { background: #000 !important; }
-        body[data-mode="multiview"] #stage, body[data-mode="multiview"] #video-layer,
+        body[data-mode="multiview"] #stage, body[data-mode="multiview"] #video-layer, body[data-mode="multiview"] #overlay-layer,
         body[data-mode="multiview"] #timer-badge, body[data-mode="multiview"] #clock-badge,
         body[data-mode="multiview"] #kairo-label, body[data-mode="multiview"] #confidence-view { display: none !important; }
         body[data-mode="multiview"] #multiview-view { display: block; position: fixed; inset: 0; z-index: 1; padding: 2vh 2vw; background: #000; overflow: hidden; }
@@ -309,8 +310,9 @@
         <div id="media-layer"></div>
         <div id="slide-layer"></div>
         <div id="timer-layer"></div>
-        <div id="overlay-layer"></div>
     </div>
+    <!-- Overlays sit above everything, including the video zone: outside #stage, on top. -->
+    <div id="overlay-layer"></div>
     <div id="kairo-label">KAIRO</div>
     <div id="conn-status" class="visible reconnecting">Connecting…</div>
     <div id="timer-badge" class="hidden"></div>
@@ -472,6 +474,28 @@
     // is called below with a vh-converting closure instead of a scale number.
     function shapeRadiusVh(r) { return (r / DESIGN_H * 100) + 'vh'; }
 
+    // ── Video zone: a theme that frames the live picture ───────────────────
+    // A "screen theme" (Director mode) has a video zone layer: the picture shows in that
+    // rectangle, over the theme's background and frames, instead of filling the whole screen.
+    function hasVideoZone(look) { return !!(look && (look.layers || []).some(l => l.type === 'videozone' && l.visible !== false)); }
+    function applyVideoZone(z) {
+        const host = document.getElementById('video-layer');
+        if (!host) return;
+        const props = ['inset', 'left', 'top', 'width', 'height', 'z-index', 'border-radius', 'box-shadow'];
+        if (!z) { if (host.dataset.zone) { host.removeAttribute('data-zone'); props.forEach(k => host.style.removeProperty(k)); } return; }
+        const p = z.pos || { x: 0, y: 0, w: DESIGN_W, h: DESIGN_H };
+        host.dataset.zone = '1';
+        host.style.setProperty('inset', 'auto');
+        host.style.setProperty('left', (p.x / DESIGN_W * 100) + '%');
+        host.style.setProperty('top', (p.y / DESIGN_H * 100) + '%');
+        host.style.setProperty('width', (p.w / DESIGN_W * 100) + '%');
+        host.style.setProperty('height', (p.h / DESIGN_H * 100) + '%');
+        host.style.setProperty('z-index', '2');
+        host.style.setProperty('border-radius', ((z.radius || 0) / DESIGN_H * 100) + 'vh');
+        if (z.frameWidth > 0) host.style.setProperty('box-shadow', `0 0 0 ${z.frameWidth / DESIGN_H * 100}vh ${z.frameColor || '#ffffff'}`);
+        else host.style.removeProperty('box-shadow');
+    }
+
     // ── Build layer DOM from look ──────────────────────────────────────────
     // `styleByLayerId` is a per-slide, per-layer-id override map (Kairo's
     // "Full Edit" feature) — a specific playlist item's specific slide can
@@ -483,7 +507,7 @@
     function buildLayerDOM(look, verseText, verseRef, translatedText, styleByLayerId = {}, timerText = '', skipBackground = false, opts = {}) {
         // Live video is showing under this output's words: the theme's own
         // background must not paint over it.
-        if (videoOn && outputMode === 'theme') skipBackground = true;
+        if (videoOn && outputMode === 'theme' && !hasVideoZone(look)) skipBackground = true;
         const frag    = document.createDocumentFragment();
         const layout  = look.layout || 'fullscreen';
         let   isTransparent = false;
@@ -518,6 +542,7 @@
         // (no verse layer at all) has nothing else to show, so its reference
         // must still paint even when verseText is empty. Same rule
         // paintLookLayers (service.js) applies for every preview.
+        const zoneLayer = layers.find(l => l.type === 'videozone' && l.visible !== false) || null;
         const hasVerseLayer = layers.some(l => (l.type === 'text' || l.type === 'pp') && l.binding === 'verse' && l.visible !== false);
         const animOf = (layer) => animOverride(layer, (styleByLayerId || {})[layer.id]);
         const paintLayer = (layer) => {
@@ -525,6 +550,9 @@
             // The slide's own rotation / accent colour / photo look, if any
             // (see layer_geometry.js's withLayerOverride).
             layer = withLayerOverride(layer, (styleByLayerId || {})[layer.id]);
+
+            // A video zone is a window for the live picture (placed by applyVideoZone), not drawn here.
+            if (layer.type === 'videozone') return;
 
             // An element imported from ProPresenter, drawn exactly (pp_render.js).
             if (layer.type === 'pp') {
@@ -1083,6 +1111,7 @@
             for (let i = before; i < frag.childNodes.length; i++) window.KairoMotion.animateLayer(frag.childNodes[i], anim, { builds: !!opts.builds, unit: '1vh' });
         });
 
+        applyVideoZone(zoneLayer);
         return { frag, isTransparent };
     }
 
@@ -1429,7 +1458,7 @@
             // A timer segment has no verse/reference at all, only timerText
             // — must NOT be treated as "nothing to show" just because those
             // two are blank.
-            if (!verseText && !verseRef && !timerText) { fitVerse(); return; }
+            if (!verseText && !verseRef && !timerText && !hasVideoZone(look)) { applyVideoZone(null); fitVerse(); return; }
 
             const { frag, isTransparent } = buildLayerDOM(look, verseText, verseRef, translatedText, styleByLayerId, timerText, false, { builds: animate });
             if (isTransparent) document.body.classList.add('transparent-bg');

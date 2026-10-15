@@ -8518,3 +8518,14 @@ input[type="checkbox"], input[type="radio"], input[type="range"], progress, mete
 .oc-switch.na { opacity: 0.45; cursor: default; }
 .oc-summary { margin: 0; font-size: 12px; color: var(--text-2); }
 .dl-row .dl-what { flex: 1 1 auto; white-space: normal; }
+
+/* Video zone in Theme Studio (screen themes, Director mode only). */
+#ts-add-videozone-btn { display: none; }
+body.video-director #ts-add-videozone-btn { display: inline-flex; }
+.ts-videozone {
+  display: flex; align-items: center; justify-content: center;
+  background: repeating-linear-gradient(135deg, rgba(255,255,255,0.10) 0 10px, rgba(255,255,255,0.04) 10px 20px);
+  outline: 2px dashed rgba(255,255,255,0.55); outline-offset: -2px;
+  color: rgba(255,255,255,0.85); font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase;
+  font-size: clamp(10px, 1.6vw, 22px);
+}
