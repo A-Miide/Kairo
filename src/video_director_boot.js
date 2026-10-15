@@ -75,7 +75,7 @@
           <div class="dm-row">
             <div class="dm-text">
               <div class="dm-name" id="dm-name">Video director mode</div>
-              <p class="setting-hint">Adds Preview and Program displays and a source strip in the middle for cameras and capture cards. Scripture and lower-thirds draw over the video. Turn it off and the normal screen comes back.</p>
+              <p class="setting-hint">A screen for cameras and inputs: Preview and Output, saved Layouts, and the playlist and media bin. Scripture and lower-thirds draw over the video. Turn it off and the normal screen comes back.</p>
             </div>
             <label class="output-toggle"><input type="checkbox" id="dm-toggle" aria-labelledby="dm-name"><span class="output-toggle-track"></span></label>
           </div>

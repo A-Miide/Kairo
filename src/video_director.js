@@ -188,6 +188,7 @@
     const now = Date.now();
     if (D.stageKey === key && now - D.stageAt < DOUBLE_MS) {
       // Quick cut: the real send goes straight out; Preview holds the same item (it now matches the Output).
+      D.last = { ...(D.last || {}), verse: true };   // Undo can take the slide back
       if (D.staged && D.staged.key === key) { D.staged.sent = true; refresh(); }
       else D.sentKey = key;        // the staged copy is still being made: it is marked sent when it lands
       D.stageAt = 0;               // the next click starts staging again
@@ -206,6 +207,7 @@
   // Stage something and mark it as already sent (a direct send): Preview then holds it.
   function stageSent(key, build, make) {
     D.sentKey = key;
+    D.last = { ...(D.last || {}), verse: true };
     stageContent(key, build, make);
   }
   // The real dblclick event, as a fallback where the second-click timing above did not catch it, and for
@@ -403,6 +405,7 @@
   function loadLookToPreview(look) {
     D.pendingLook = look;
     D.lookSent = false;
+    if (settings.directorPreviewLook !== look.id) { settings.directorPreviewLook = look.id; saveSettingsPatch({ directorPreviewLook: look.id }); }
     D.previewLookId = look.id;
     D.previewId = lookVideo(look) || null;
     syncPreviewFrame();
@@ -570,6 +573,44 @@
 
   // Preview and Output as large as their area allows, always 16:9: half the
   // width, or what the height leaves above the transition bar.
+  // ── The "?" popover: the Director keys. ──
+  const KEY_HELP = [
+    ['1 to 9', 'Send input to the Output'],
+    ['Shift + 1 to 9', 'Stage input on Preview'],
+    ['Alt + 1 to 9', 'Load Layout into Preview'],
+    ['Space', 'Send Preview to the Output'],
+    ['Double-click', 'Send a slide, verse or media straight out'],
+    ['Esc', 'Clear what is staged'],
+    ['Cmd/Ctrl + Z', 'Undo the last send'],
+  ];
+  function closeKeyHelp() {
+    const h = D.keyHelp;
+    if (!h) return;
+    h.pop.remove();
+    document.removeEventListener('mousedown', h.off, true); document.removeEventListener('keydown', h.esc, true);
+    h.anchor.setAttribute('aria-expanded', 'false');
+    D.keyHelp = null;
+    try { h.anchor.focus(); } catch {}
+  }
+  function toggleKeyHelp(anchor) {
+    if (D.keyHelp) { closeKeyHelp(); return; }
+    const pop = vEl('div', 'vd-pop vd-pop-keys');
+    pop.setAttribute('role', 'dialog'); pop.setAttribute('aria-label', 'Keyboard shortcuts');
+    pop.appendChild(vEl('div', 'vd-keys-title', 'Keyboard shortcuts'));
+    const dl = vEl('dl', 'vd-keys');
+    KEY_HELP.forEach(([k, d]) => { dl.append(vEl('dt', null, k), vEl('dd', null, d)); });
+    pop.appendChild(dl);
+    document.body.appendChild(pop);
+    const r = anchor.getBoundingClientRect();
+    pop.style.top = (r.bottom + 4) + 'px';
+    pop.style.left = Math.max(8, Math.min(window.innerWidth - pop.offsetWidth - 8, r.right - pop.offsetWidth)) + 'px';
+    anchor.setAttribute('aria-expanded', 'true');
+    const off = (e) => { if (!pop.contains(e.target) && !anchor.contains(e.target)) closeKeyHelp(); };
+    const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeKeyHelp(); } };
+    document.addEventListener('mousedown', off, true); document.addEventListener('keydown', esc, true);
+    D.keyHelp = { pop, anchor, off, esc };
+  }
+
   function fitScreens() {
     const band = D.root;
     if (!band || !D.ui.strip) return;
@@ -752,7 +793,9 @@
     looksBtn.setAttribute('aria-haspopup', 'dialog'); looksBtn.setAttribute('aria-expanded', 'false');
     D.ui.looksBtn = looksBtn;
     D.ui.looksChip = vEl('span', 'vd-looks-chip'); D.ui.looksChip.hidden = true;
-    dctl.append(D.ui.looksChip, looksBtn);
+    const helpBtn = vBtn('?', 'Keyboard shortcuts', (e) => toggleKeyHelp(e.currentTarget), 'vd-mini vd-help-btn');
+    helpBtn.setAttribute('aria-label', 'Keyboard shortcuts'); helpBtn.setAttribute('aria-haspopup', 'dialog');
+    dctl.append(D.ui.looksChip, looksBtn, helpBtn);
     dhead.appendChild(dctl);
     displays.append(dhead, band);
 
@@ -1026,6 +1069,7 @@
     document.addEventListener('dblclick', onDblClick, true);
     wrapSend();
     try { migrateScreenOrig(); } catch {}
+    D.restoreLook = settings.directorPreviewLook || null;
     publishTransition();
     publishFade();
     if (typeof applyOutputModes === 'function') applyOutputModes();   // a chosen multiview display switches over
@@ -1050,6 +1094,12 @@
       D.liveObserver.observe(queue, { attributes: true, attributeFilter: ['class'], subtree: true, childList: true });
     }
     refresh();
+    // The Layout that was on Preview when the app last closed comes back (staged, not sent).
+    if (D.restoreLook && D.looks) {
+      const l = D.looks.byId(D.restoreLook);
+      if (l) loadLookToPreview(l);
+      else { settings.directorPreviewLook = null; saveSettingsPatch({ directorPreviewLook: null }); }
+    }
     // A Preview frame needs its page up before it can be fed.
     D.frames.pvw.frame.addEventListener('load', syncPreviewFrame);
   }
@@ -1078,6 +1128,7 @@
     stopVideoSources();
     window.KairoVideoHub?.releaseAll();
     try { applyScreenTheme(null); } catch {}
+    closeKeyHelp();
     D.looks && D.looks.destroy(); D.looks = null; D.pendingLook = null; D.previewLookId = null; D.liveLookId = null;
     D.fitObs?.disconnect(); D.fitObs = null;
     D.topObs?.disconnect(); D.topObs = null;
