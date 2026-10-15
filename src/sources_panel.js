@@ -254,6 +254,10 @@ function buildAddFlow() {
   return flow;
 }
 
+// Every open floating panel, so leaving Director mode can close them all.
+const videoPanelClosers = new Set();
+window.KairoVideoPanels = { closeAll() { [...videoPanelClosers].forEach(c => { try { c(); } catch {} }); } };
+
 // A small floating panel for the Director screen (and the device picker).
 function openVideoPanel(anchor, title, build) {
   document.querySelectorAll('.vd-add-panel').forEach(p => p.remove());
@@ -264,6 +268,7 @@ function openVideoPanel(anchor, title, build) {
   head.appendChild(vEl('span', 'vd-add-title', title));
   const flows = [];
   const close = () => {
+    videoPanelClosers.delete(close);
     panel.remove();
     flows.forEach(f => videoState.addFlows.delete(f));
     document.removeEventListener('mousedown', outside, true);
@@ -271,7 +276,7 @@ function openVideoPanel(anchor, title, build) {
     try { if (anchor && anchor.isConnected) anchor.focus(); } catch {}   // focus goes back to what opened it
   };
   const outside = (e) => { if (!panel.contains(e.target) && !(anchor && anchor.contains(e.target))) close(); };
-  const esc = (e) => { if (e.key === 'Escape') close(); };
+  const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); } };   // the Director's own Esc (clear staging) must not also fire
   head.appendChild(vBtn('Close', 'Close', close, 'vd-mini'));
   panel.appendChild(head);
   const body = build(close, (f) => flows.push(f));
@@ -284,6 +289,7 @@ function openVideoPanel(anchor, title, build) {
   panel.style.top = Math.max(8, Math.min(window.innerHeight - h - 8, r.top - h - 6 > 8 ? r.top - h - 6 : r.bottom + 6)) + 'px';
   document.addEventListener('mousedown', outside, true);
   document.addEventListener('keydown', esc, true);
+  videoPanelClosers.add(close);
   // Keyboard users land inside the panel: the first field, else the first button after Close.
   const first = panel.querySelector('input, select') || panel.querySelectorAll('button')[1] || panel.querySelector('button');
   if (first) try { first.focus({ preventScroll: true }); } catch {}
@@ -414,7 +420,9 @@ function renderVideoSources() {
 
   // + Add input, and the detected devices
   sec.appendChild(vEl('div', 'vsrc-add-title', 'Add another input'));
+  if (videoState.pageFlow) videoState.addFlows.delete(videoState.pageFlow);   // the form of the last redraw is gone
   const flow = buildAddFlow();
+  videoState.pageFlow = flow;
   sec.appendChild(flow.el);
   root.appendChild(sec);
 
@@ -470,4 +478,6 @@ function stopVideoSources() {
   videoState.root = null;
   videoState.built = false;
   videoState.visible = false;
+  videoState.addFlows.clear();
+  videoState.pageFlow = null;
 }

@@ -147,9 +147,13 @@
   }
 
   // ── Staging ──────────────────────────────────────────────────────────────
+  // Undo of a verse-only send takes back just that verse. Inside one Send that also moves video or a Layout
+  // (D.composite) the verse joins that step's snapshot, so a single Undo reverses the whole Send.
+  function markVerse() { D.last = D.composite ? { ...(D.last || {}), verse: true } : { verse: true }; }
   const sameVerse = (a, b) => !!a && !!b && (a.reference || a.ref) === (b.reference || b.ref) && (a.text || a.verse) === (b.text || b.verse);
   function stage(verse, look) {
     D.staged = { verse, look: look || null };
+    D.detected = null;
     syncPreviewFrame();
     refresh();
   }
@@ -162,7 +166,8 @@
     if (!D.staged) return;
     const { verse, look, slide, media } = D.staged;
     D.staged.sent = true;   // Preview keeps showing it: it now matches the Output
-    D.last = { ...(D.last || {}), verse: true };
+    D.detected = null;
+    markVerse();
     refresh();
     // A staged slide goes out through the playlist's own send, a verse through the normal one.
     // A staged slide or media item goes out through the app's own send, as an explicit one (not staged again).
@@ -183,12 +188,15 @@
   // ── Slides and media: a click stages them in Preview, Send puts them on the Output. ──
   // A second click on the same thing within 500 ms (a double-click) sends it straight to the Output.
   const DOUBLE_MS = 500;
+  // The second-click rule is for the pointer only: a held arrow key or a quick Next must stage, never send.
+  function trackClick() { D.lastClickAt = Date.now(); }
+  const fromPointer = () => Date.now() - (D.lastClickAt || 0) < 150;
   function stageContent(key, build, make) {
     if (!D.active) return false;
     const now = Date.now();
-    if (D.stageKey === key && now - D.stageAt < DOUBLE_MS) {
+    if (D.stageKey === key && now - D.stageAt < DOUBLE_MS && fromPointer()) {
       // Quick cut: the real send goes straight out; Preview holds the same item (it now matches the Output).
-      D.last = { ...(D.last || {}), verse: true };   // Undo can take the slide back
+      markVerse();   // Undo can take the slide back
       if (D.staged && D.staged.key === key) { D.staged.sent = true; refresh(); }
       else D.sentKey = key;        // the staged copy is still being made: it is marked sent when it lands
       D.stageAt = 0;               // the next click starts staging again
@@ -207,7 +215,7 @@
   // Stage something and mark it as already sent (a direct send): Preview then holds it.
   function stageSent(key, build, make) {
     D.sentKey = key;
-    D.last = { ...(D.last || {}), verse: true };
+    markVerse();
     stageContent(key, build, make);
   }
   // The real dblclick event, as a fallback where the second-click timing above did not catch it, and for
@@ -274,7 +282,7 @@
       // A double-click (direct) goes straight out, and Preview holds the same verse.
       if (opts && opts.direct) {
         if (!(D.staged && sameVerse(D.staged.verse, verse))) { D.staged = { verse, look: look || null }; D.stageKey = null; }
-        D.staged.sent = true; D.last = { ...(D.last || {}), verse: true };
+        D.staged.sent = true; markVerse();
         syncPreviewFrame(); refresh();
         return D.origSend(verse, look);
       }
@@ -372,6 +380,7 @@
       const now = outputLayerMap();
       for (const [id, ly] of Object.entries(last.layers)) for (const k of Object.keys(ly)) if (now[id] && now[id][k] !== ly[k]) setOutputLayer(id, k, ly[k]);
     }
+    if (last.overlays) setOverlayLive(last.overlays);
     D.liveLookId = null;
     // The verse goes back through the app's own "Back to the previous screen".
     if (last.verse) document.getElementById('output-back-btn')?.click();
@@ -387,6 +396,11 @@
       clearTimeout(D.sendTimer); D.sendTimer = setTimeout(() => D.ui.take && D.ui.take.classList.remove('is-sending'), ms + 60);
     }
     const mode = transitionPref();
+    D.composite = true;
+    D.last = null;                 // this Send is its own Undo step: an older camera cut is not part of it
+    try { takeStagedInner(mode); } finally { D.composite = false; }
+  }
+  function takeStagedInner(mode) {
     const hadVerse = !!(D.staged && !D.staged.sent);
     const hadLook = D.pendingLook && !D.lookSent ? D.pendingLook : null;
     if (hadLook) { snapshot(); applyLook(hadLook); }
@@ -427,15 +441,39 @@
     return { videoId: ps.mixed ? null : ps.id, layers, overlays, themeId: cur && cur.groupId === 'grp-screen' ? cur.id : null };
   }
   // Take: the Look's layers and overlays go onto the real outputs. Its video goes with the ordinary take.
+  // What the outputs had before the first Layout of this session, put back when Director mode ends.
+  function recordBaseline() {
+    if (D.baseLayers) return;
+    const ly = outputLayerMap();
+    D.baseLayers = {};
+    for (const o of videoOutputs()) D.baseLayers[o.id] = { ...(ly[o.id] || {}) };
+  }
+  function restoreBaseline() {
+    if (D.baseLayers) {
+      const now = outputLayerMap();
+      for (const [id, ly] of Object.entries(D.baseLayers)) for (const k of Object.keys(ly)) if (now[id] && now[id][k] !== ly[k]) setOutputLayer(id, k, ly[k]);
+      D.baseLayers = null;
+    }
+    if (D.baseOverlays) { setOverlayLive(D.baseOverlays); D.baseOverlays = null; }
+  }
+  const setOverlayLive = (map) => {
+    for (const [id, live] of Object.entries(map)) fetch(`${SERVER}/api/overlays/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ live: !!live }) }).catch(() => {});
+  };
   function applyLook(look) {
     D.lookSnap = D.last;
+    recordBaseline();
     const targets = videoOutputs();
     for (const o of targets) {
       for (const k of ['bible', 'slide', 'media', 'timer']) { if (!o.monitor) setOutputLayerIf(o.id, k, look.layers[k]); }
       setOutputLayerIf(o.id, 'video', look.layers.video);
     }
     if (Array.isArray(look.overlays) && window.KairoOverlays && window.KairoOverlays.load) {
-      window.KairoOverlays.load().then(items => items.forEach(it => {
+      window.KairoOverlays.load().then(items => {
+        const prev = {}; items.forEach(it => { prev[it.id] = !!it.live; });
+        if (!D.baseOverlays) D.baseOverlays = prev;          // the state before any Layout
+        if (D.last) D.last.overlays = prev;                  // Undo puts the overlays back too
+        return items;
+      }).then(items => items.forEach(it => {
         const want = look.overlays.includes(it.id);
         if (!!it.live !== want) fetch(`${SERVER}/api/overlays/${it.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ live: want }) }).catch(() => {});
       })).catch(() => {});
@@ -447,8 +485,14 @@
     const cur = outputLayerMap()[id];
     if (cur && cur[key] !== !!val) setOutputLayer(id, key, !!val);
   }
+  // Esc: cancel what is staged and not yet sent. Something already sent stays held in Preview.
   function clearStaging() {
-    D.staged = null; D.stageKey = null;
+    if (D.staged && !D.staged.sent) D.staged = null;
+    if (D.pendingLook && !D.lookSent) {
+      D.pendingLook = null; D.previewLookId = null;
+      if (settings.directorPreviewLook) { settings.directorPreviewLook = null; saveSettingsPatch({ directorPreviewLook: null }); }
+    }
+    D.stageKey = null; D.stageAt = 0; D.sentKey = null; D.detected = null;
     D.previewId = null;
     syncPreviewFrame();
     refresh();
@@ -793,9 +837,11 @@
     looksBtn.setAttribute('aria-haspopup', 'dialog'); looksBtn.setAttribute('aria-expanded', 'false');
     D.ui.looksBtn = looksBtn;
     D.ui.looksChip = vEl('span', 'vd-looks-chip'); D.ui.looksChip.hidden = true;
+    D.ui.detChip = vBtn('', 'Stage the verse that was just heard', () => { const d = D.detected; if (d) stage(d.verse, d.look); }, 'vd-mini vd-det-chip');
+    D.ui.detChip.hidden = true;
     const helpBtn = vBtn('?', 'Keyboard shortcuts', (e) => toggleKeyHelp(e.currentTarget), 'vd-mini vd-help-btn');
     helpBtn.setAttribute('aria-label', 'Keyboard shortcuts'); helpBtn.setAttribute('aria-haspopup', 'dialog');
-    dctl.append(D.ui.looksChip, looksBtn, helpBtn);
+    dctl.append(D.ui.detChip, D.ui.looksChip, looksBtn, helpBtn);
     dhead.appendChild(dctl);
     displays.append(dhead, band);
 
@@ -953,6 +999,10 @@
     D.ui.take.classList.toggle('is-ready', ready);
     if (ready) D.ui.take.removeAttribute('title'); else D.ui.take.title = 'Nothing staged';
     D.looks && D.looks.render();
+    if (D.ui.detChip) {
+      D.ui.detChip.hidden = !D.detected;
+      D.ui.detChip.textContent = D.detected ? `Heard: ${D.detected.verse.reference || D.detected.verse.ref || 'a verse'}` : '';
+    }
     if (D.ui.looksChip) { D.ui.looksChip.textContent = D.pendingLook ? D.pendingLook.name : ''; D.ui.looksChip.title = D.pendingLook ? `Staged in Preview: ${D.pendingLook.name}` : ''; D.ui.looksChip.hidden = !D.pendingLook; }
   }
 
@@ -1067,6 +1117,7 @@
     D.active = true;
     document.addEventListener('keydown', onKey);
     document.addEventListener('dblclick', onDblClick, true);
+    document.addEventListener('click', trackClick, true);
     wrapSend();
     try { migrateScreenOrig(); } catch {}
     D.restoreLook = settings.directorPreviewLook || null;
@@ -1074,6 +1125,7 @@
     publishFade();
     if (typeof applyOutputModes === 'function') applyOutputModes();   // a chosen multiview display switches over
     await startVideoSources();     // the Sources pane, device list, published state
+    if (!D.active) return;         // switched off while starting: stop() has already cleaned up
     window.KairoVideoLayout?.start();
     window.KairoVideoLayout?.fillSends(D.sendsHost);
     window.KairoVideoDock?.mount(D.bottomHost);
@@ -1113,6 +1165,7 @@
     document.removeEventListener('dblclick', onDblClick, true);
     unwrapSend();
     D.staged = null;   // a staged verse is dropped, never sent: the screen keeps what it shows
+    document.removeEventListener('click', trackClick, true);
     D.liveObserver?.disconnect();
     unmountSettings();
     window.KairoVideoDock?.unmount();
@@ -1128,7 +1181,12 @@
     stopVideoSources();
     window.KairoVideoHub?.releaseAll();
     try { applyScreenTheme(null); } catch {}
+    try { restoreBaseline(); } catch {}
     closeKeyHelp();
+    try { window.KairoVideoPanels && window.KairoVideoPanels.closeAll(); } catch {}
+    // Nothing of this session carries into the next: no Undo, no staged input, no remembered live content.
+    D.last = null; D.previewId = null; D.liveMsg = null; D.liveMedia = null; D.detected = null;
+    D.stageKey = null; D.stageAt = 0; D.sentKey = null; D.lookSent = false; D.composite = false; D.lookSnap = null;
     D.looks && D.looks.destroy(); D.looks = null; D.pendingLook = null; D.previewLookId = null; D.liveLookId = null;
     D.fitObs?.disconnect(); D.fitObs = null;
     D.topObs?.disconnect(); D.topObs = null;
@@ -1165,6 +1223,12 @@
       } catch { return false; }
     },
     // A detected verse held back by Auto-send off: staged in Preview, never sent.
-    stageDetected: (verse, look) => { if (D.active && verse) stage(verse, look); },
+    // A verse the server held back (Auto-send off). It never replaces something the operator staged by hand:
+    // then it waits behind a "Detected" chip beside the Layouts button.
+    stageDetected: (verse, look) => {
+      if (!D.active || !verse) return;
+      if (D.staged && !D.staged.sent) { D.detected = { verse, look: look || null }; refresh(); return; }
+      stage(verse, look);
+    },
   };
 })();

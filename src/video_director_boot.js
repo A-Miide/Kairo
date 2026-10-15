@@ -161,12 +161,19 @@
       refreshOutputsUi();
     } catch (err) {
       console.warn('[Video] director mode could not start:', err.message);
+      try { window.KairoVideoDirector && window.KairoVideoDirector.stop(); } catch {}   // never leave it half started
       save(false);
       paint(false, false);
-    } finally { busy = false; }
+    } finally {
+      busy = false;
+      // Switched off while it was starting: do it now.
+      if (wantOff) { wantOff = false; disable(); }
+    }
   }
 
+  let wantOff = false;
   function disable() {
+    if (busy) { wantOff = true; return; }   // a start is still running: off comes right after it
     const dir = window.KairoVideoDirector;
     // Taking live video off air is deliberate: the first choice arms it.
     if (dir && dir.isLive() && !btn.classList.contains('vd-armed')) {

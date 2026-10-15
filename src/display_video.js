@@ -59,7 +59,13 @@
     }
 
     function release(slot, stream, ms) {
-      const done = () => { stream && stream.release && stream.release(); slots[slot].srcObject = null; slots[slot].style.opacity = '0'; };
+      const done = () => {
+        stream && stream.release && stream.release();
+        // The slot may have been taken again in the meantime (1, 2, 1 in quick succession): leave it alone then.
+        if (slot === front) return;
+        if (stream && stream.stream && slots[slot].srcObject && slots[slot].srcObject !== stream.stream) return;
+        slots[slot].srcObject = null; slots[slot].style.opacity = '0';
+      };
       if (ms > 0) setTimeout(done, ms + 50); else done();
     }
 

@@ -195,7 +195,7 @@
     pop.style.top = (r.bottom + 4) + 'px';
     pop.style.left = Math.max(8, Math.min(window.innerWidth - pop.offsetWidth - 8, r.right - pop.offsetWidth)) + 'px';
     const off = (e) => { if (!pop.contains(e.target) && !anchor.contains(e.target)) closeNodePop(); };
-    const esc = (e) => { if (e.key === 'Escape') closeNodePop(); };
+    const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); closeNodePop(); } };
     document.addEventListener('mousedown', off, true); document.addEventListener('keydown', esc, true);
     L.np = { pop, home, node, off, esc };
   }
@@ -281,6 +281,7 @@
     // Order: title, Auto, then on the right the Bible select, the message button and Theme together.
     // How verse text arrives (Fade / Slide / Cut): the app's own bar, in a small popover.
     S.verseBtn = hb('vd-hbtn', 'Verse transition', ICONS.verse, (e) => nodePopover(e.currentTarget, document.getElementById('rs-transition-bar'), 'vd-pop-verse'));
+    moveTo(document.getElementById('translation-select'), head);   // with a home marker, so it goes back when Director mode ends
     [spacer, document.getElementById('translation-select'), S.monBtn, S.verseBtn, theme].forEach(n => n && head.appendChild(n));
     host.appendChild(head);
     S.head = head;
