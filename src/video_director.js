@@ -217,6 +217,14 @@
     syncPreviewFrame();
     refresh();
   }
+  // Take everything down: the video fades to none and the verse, slide, timer and media layers clear.
+  // This is what the Clear buttons did; Undo (the app's Back) brings the previous screen back.
+  function fadeToBlack() {
+    if (programState().on.length) sendToProgram(null, 'fade'); else snapshot();
+    D.last = { ...(D.last || {}), verse: true };
+    document.getElementById('clear-all-layers-btn')?.click();
+    refresh();
+  }
   // One click on an input tile: straight to Program with the current transition,
   // or with `mode` for this one send (Fade to black).
   function sendToProgram(id, mode) {
@@ -412,7 +420,7 @@
     D.ui.clearStage = vBtn('Clear', 'Clear what is staged (Esc)', clearStaging, 'vd-take');
     D.ui.cut = vBtn('Cut', 'Preview to Output at once', () => take('cut'), 'vd-take');
     D.ui.fade = vBtn('Fade', 'Fade Preview onto Output', () => take('fade'), 'vd-take');
-    D.ui.black = vBtn('Fade to black', 'Fade Output to no video', () => sendToProgram(null, 'fade'), 'vd-take');
+    D.ui.black = vBtn('Fade to black', 'Fade Output to black: no video, and the verse, slide and timer come down', fadeToBlack, 'vd-take');
     const dur = vEl('label', 'vd-dur');
     const durIn = vEl('input'); durIn.type = 'number'; durIn.min = '0'; durIn.max = '5000'; durIn.step = '50'; durIn.value = String(fadeMs());
     durIn.setAttribute('aria-label', 'Fade length in milliseconds');
@@ -597,9 +605,8 @@
       btn.setAttribute('aria-pressed', String(mode === cur));
       btn.title = canTake ? (mode === 'cut' ? 'Put the Preview video source on Output at once' : 'Fade the Preview video source onto Output') : 'Turn on Video input for an output in Director mode settings';
     }
-    D.ui.black.disabled = !canTake;
     D.ui.tbar.disabled = !canTake;
-    D.ui.black.title = canTake ? 'Fade Output to no video' : 'Turn on Video input for an output in Director mode settings';
+    D.ui.black.title = 'Fade Output to black: no video, and the verse, slide and timer come down';
   }
 
   // ── Settings → Director mode: rows for what the screen no longer carries ─

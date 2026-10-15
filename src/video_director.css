@@ -387,3 +387,14 @@ body.video-director #live-queue-section .cs-section-label { flex-shrink: 1; min-
 }
 .vg-col.vg-4 .vg-tile.is-empty .vg-empty-mid { display: none; }
 .vg-col.vg-4 .vg-tile.is-empty { justify-content: center; }
+
+/* Media bin grid: equal tiles that fill the width, scrolling when there are more than fit. */
+.vd-media-body { display: block; overflow-x: hidden; overflow-y: auto; }
+.vd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--vd-tile, 120px), 1fr)); gap: 8px; align-content: start; }
+.vd-grid .svc-slide { width: auto; min-width: 0; margin: 0; padding: 4px; gap: 0; }
+.vd-grid .svc-slide .svc-slide-preview { width: 100%; padding: 0; }
+.vd-grid .media-card { width: auto; min-width: 0; flex: none; }
+.vd-grid .vd-empty { grid-column: 1 / -1; }
+
+/* No Clear buttons on the Director screen: the displays' own controls take things down. */
+body.video-director #clear-locked-btn { display: none !important; }
