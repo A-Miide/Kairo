@@ -349,3 +349,9 @@ body.video-director .vd-section-sends #live-queue-section { flex: 1 1 0; min-hei
 .vd-sends-head > select { max-width: 60px; padding-left: 6px; padding-right: 14px; }
 .vd-hbtn { padding: 0 6px; min-width: 26px; }
 .vd-sends-head > .cs-theme-btn { width: 28px; padding: 0; }
+
+/* Ready check, and the multiview confirmation line in Settings. */
+.vd-ready.has-issues { border-color: var(--accent); color: var(--text); }
+.dm-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 16px 12px; padding: 8px 10px; border: 1px solid var(--selected-border); border-radius: var(--radius-sm); background: var(--selected-dim); font-size: 12px; }
+.dm-confirm[hidden] { display: none; }
+.dm-confirm span { flex: 1 1 200px; }

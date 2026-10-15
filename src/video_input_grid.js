@@ -20,7 +20,9 @@
 
   // opts: { getSources(), getDevices(), getState() → {programId, mixed, hasOutputs, previewId},
   //         onProgram(id), onPreview(id), onPlaceholder(source, el), onAdd(el), mode: 2|4, onMode(mode),
-  //         layout: 'row' (default, sized by height) | 'column' (fills a narrow column's width) }
+  //         layout: 'row' (default, sized by height) | 'column' (fills a narrow column's width)
+  //                 | 'fill' (every input at once, filling the space; for a full-screen multiview),
+  //         readOnly: true (a mirror: no clicks, keys or drag), profile: 'thumb' | 'mid' }
   function create(opts) {
     const V = window.KairoVideoSources;
     const hub = window.KairoVideoHub;
@@ -76,10 +78,31 @@
       return t;
     }
 
+    // A read-only copy of a tile: the picture, the name and the on-air or Preview frame, nothing to click.
+    function mirrorTile(source, st) {
+      const onAir = !st.mixed && st.hasOutputs && st.programId === source.id;
+      const staged = st.previewId === source.id;
+      const t = h('div', 'vg-tile is-mirror' + (onAir ? ' is-pgm' : '') + (staged ? ' is-pvw' : ''));
+      const v = h('video'); v.muted = true; v.playsInline = true; v.setAttribute('aria-hidden', 'true');
+      t.appendChild(v);
+      const devId = V.resolveDevice(source, opts.getDevices());
+      if (devId && thumbsOn && shown) {
+        leases.push(hub.lease(devId, opts.profile || 'thumb', (stream) => {
+          if (!v.isConnected) return;
+          v.srcObject = stream; v.play().catch(() => {});
+        }, () => { t.dataset.msg = 'Unavailable'; }));
+      }
+      t.appendChild(h('div', 'vg-name', source.name));
+      if (onAir) t.appendChild(h('span', 'vg-flag vg-flag-pgm', 'On air'));
+      else if (staged) t.appendChild(h('span', 'vg-flag vg-flag-pvw', 'Preview'));
+      return t;
+    }
+
     function tile(source, st, index) {
       const state = V.stateOf(source, opts.getDevices());
       if (state === 'placeholder') return emptyTile(source, 'No device');
       if (state === 'missing') return emptyTile(source, 'Not connected');
+      if (opts.readOnly) return mirrorTile(source, st);
       const onAir = !st.mixed && st.hasOutputs && st.programId === source.id;
       const staged = st.previewId === source.id;
       const t = h('div', 'vg-tile' + (onAir ? ' is-pgm' : '') + (staged ? ' is-pvw' : ''));
@@ -119,13 +142,15 @@
     function render() {
       const sources = opts.getSources();
       const st = opts.getState();
-      const per = mode;
+      const fill = opts.layout === 'fill';
+      const per = fill ? Math.max(1, sources.length) : mode;
       const pages = Math.max(1, Math.ceil(sources.length / per));
       page = Math.min(page, pages - 1);
       // New leases are taken before the old ones go, so the hub keeps each camera open across a redraw.
       const old = leases;
       leases = [];
-      el.className = 'vg vg-' + mode + (opts.layout === 'column' ? ' vg-col' : '');
+      el.className = fill ? 'vg vg-fill' : 'vg vg-' + mode + (opts.layout === 'column' ? ' vg-col' : '');
+      if (fill) el.style.gridTemplateColumns = `repeat(${sources.length <= 1 ? 1 : sources.length === 2 ? 2 : Math.ceil(Math.sqrt(sources.length))}, minmax(0, 1fr))`;
       el.replaceChildren();
       const visible = sources.slice(page * per, page * per + per);
       visible.forEach((s, i) => el.appendChild(tile(s, st, page * per + i)));
@@ -139,7 +164,7 @@
       }
       old.forEach(release => release());
       modeBtns.forEach(([n, b]) => { b.classList.toggle('is-on', n === mode); b.setAttribute('aria-pressed', String(n === mode)); });
-      pager.hidden = pages <= 1;
+      pager.hidden = pages <= 1 || fill;
       count.textContent = `${page + 1}/${pages}`;
       prev.disabled = page === 0;
       next.disabled = page >= pages - 1;
