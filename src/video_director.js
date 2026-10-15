@@ -274,11 +274,12 @@
     const ihead = vEl('div', 'vd-section-head');
     ihead.appendChild(vEl('span', 'vd-label', 'Inputs'));
     D.grid = window.KairoVideoGrid.create({
-      getSources: () => videoSourceList(),
+      getSources: () => videoSourceList().filter(s => s.enabled !== false),
       getDevices: () => videoState.devices,
       getState: () => { const ps = D.programState; return { programId: ps.id, mixed: ps.mixed, hasOutputs: ps.on.length > 0, previewId: D.previewId }; },
       onProgram: (id) => sendToProgram(id),
       onPreview: setPreview,
+      onPlaceholder: (source, el) => openDevicePicker(source.id, el),
       mode: settings.videoGridMode === 2 ? 2 : 4,
       onMode: (n) => { settings.videoGridMode = n; saveSettingsPatch({ videoGridMode: n }); },
       layout: 'column',
@@ -288,8 +289,8 @@
     D.ui.noVideo = vBtn('No video', 'Send no video to Output', () => sendToProgram(null), 'vd-mini');
     ifoot.append(
       D.ui.noVideo,
-      vBtn('Add', 'Add a video source', () => openSources(), 'vd-mini'),
-      vBtn('Manage', 'Rename, reorder or remove video sources', () => openSources(), 'vd-mini'),
+      vBtn('+ Add', 'Add an input without leaving Director mode', (e) => openAddInputPanel(e.currentTarget), 'vd-mini'),
+      vBtn('Manage', 'Rename, reorder, switch off or remove inputs', () => openSources(), 'vd-mini'),
     );
     inputs.append(ihead, D.grid.el, ifoot);
 

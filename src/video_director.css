@@ -68,10 +68,6 @@ body.video-director .center-stage { grid-column: 1; grid-row: 1; min-width: 0; b
 /* Centre column, top to bottom: top line, stage, verses, dock. */
 body.video-director .center-stage { padding: 8px 12px 10px; gap: 8px; overflow: hidden; }
 .vd-topline { order: 0; display: flex; align-items: center; gap: 12px; flex: 0 0 auto; min-height: 30px; }
-.vd-listen-state { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 700; letter-spacing: 0.04em; color: var(--text-3); }
-.vd-listen-state::before { content: ''; width: 8px; height: 8px; border-radius: 50%; background: var(--text-4); }
-.vd-listen-state.is-on { color: var(--text); }
-.vd-listen-state.is-on::before { background: var(--red); }
 .vd-ticker { flex: 1 1 auto; min-width: 0; height: 28px; display: flex; justify-content: flex-end; align-items: center; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 8%); mask-image: linear-gradient(90deg, transparent 0, #000 8%); }
 .vd-ticker-text { flex: 0 0 auto; white-space: nowrap; font-size: 15px; color: var(--text); }
 .vd-ticker-text.is-empty { color: var(--text-3); font-size: 12px; }
@@ -202,8 +198,6 @@ body.video-director #current-display-card .is-live .lvc-ref::before { content: '
 .vd-pl-list .svc-item { cursor: pointer; }
 .vd-pl-list .svc-item.vd-selected { background: var(--selected-dim) !important; box-shadow: inset 0 0 0 1px var(--selected-border); }
 
-/* Top line: the Clear buttons at its right end. */
-.vd-topline .rs-layer-clear-bar { flex: 0 0 auto; margin: 0; padding: 0; border: 0; background: none; }
 
 /* Scripture sends: Bible select and an icon-only Theme button on top, the search bar full width below. */
 body.video-director .vd-section-sends .cs-lookup { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 0; border: 0; background: none; box-shadow: none; }
@@ -227,3 +221,48 @@ body.video-director .vd-section-sends .cs-search-wrap { order: 2; flex: 1 1 100%
 .vd-kind[data-show="images"] .media-card:has(.media-card-badge) { display: none; }
 body.video-director .vd-section-sends .cs-theme-btn { background: transparent; border: 1px solid var(--border-md); color: var(--text-2); }
 body.video-director .vd-section-sends .cs-theme-btn:hover { color: var(--text); border-color: var(--selected-border); }
+
+/* Top line: only the live words, and no height at all until there are some. */
+.vd-topline { display: none; }
+.vd-topline.has-text { display: flex; }
+.vd-sends-foot .rs-layer-clear-bar { margin: 0; padding: 0; border: 0; background: none; flex-wrap: wrap; }
+
+/* An input with no device (or whose device is unplugged): a dashed tile. */
+.vg-tile.is-empty { background: transparent; border: 2px dashed var(--border-md); display: flex; align-items: center; justify-content: center; }
+.vg-tile.is-empty:hover { border-color: var(--selected-border); }
+.vg-empty-mid { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--text-3); }
+.vg-empty-why { font-size: 10px; font-weight: 600; }
+.vg-tile.is-empty .vg-name { background: none; color: var(--text-2); }
+
+/* Video Sources page: one row per input. */
+.vsrc-inputs { display: flex; flex-direction: column; gap: 8px; }
+.vsrc-input { padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: rgba(255,255,255,0.015); display: flex; flex-direction: column; gap: 8px; cursor: pointer; }
+.vsrc-input.is-sel { border-color: var(--selected-border); }
+.vsrc-input.is-empty { border-style: dashed; }
+.vsrc-input.is-off { opacity: 0.6; }
+.vsrc-input-top { display: flex; align-items: center; gap: 8px; }
+.vsrc-name { flex: 1 1 auto; min-width: 0; }
+.vsrc-input-sub { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.vsrc-input-sub .setting-input { width: 100%; min-width: 0; }
+.vsrc-input-status { font-size: 11px; color: var(--text-3); }
+.vsrc-input .vsrc-preview { margin: 0; max-width: 320px; }
+.vsrc-add-title { margin-top: 8px; font-size: 11px; font-weight: 700; color: var(--text-2); }
+.vsrc-add { display: flex; flex-direction: column; gap: 8px; }
+.vsrc-add-row { display: flex; gap: 8px; align-items: center; }
+.vsrc-add-row .setting-input { flex: 1 1 auto; min-width: 0; }
+.vsrc-det-head { display: flex; align-items: center; gap: 8px; }
+.vsrc-det-head .vd-label { margin-right: auto; }
+.vsrc-det { display: flex; flex-direction: column; gap: 4px; }
+.vsrc-det-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12px; }
+.vsrc-det-row.is-added { opacity: 0.65; }
+.vsrc-det-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.vsrc-det-added { font-size: 10.5px; color: var(--text-3); white-space: nowrap; }
+.vsrc-offer { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--selected-border); border-radius: var(--radius-sm); background: var(--selected-dim); font-size: 12px; }
+.vsrc-offer span { flex: 1 1 auto; min-width: 0; }
+
+/* The Director screen's add panel and device picker. */
+.vd-add-panel { position: fixed; z-index: 200; width: 340px; max-height: 70vh; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; background: var(--bg); border: 1px solid var(--border-md); border-radius: var(--radius-lg); box-shadow: 0 10px 34px rgba(0,0,0,0.6); }
+.vd-add-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.vd-add-title { font-size: 12px; font-weight: 700; color: var(--text); }
+.vg-tile.is-empty { flex-direction: column; gap: 2px; padding: 4px; }
+.vg-tile.is-empty .vg-name { position: static; padding: 0; text-align: center; max-width: 100%; }

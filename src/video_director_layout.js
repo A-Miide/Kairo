@@ -2,9 +2,9 @@
 //
 // Lazy-loaded with the mode and fully undone when it ends. Nothing in the
 // normal layout's code changes: this adds a body class (the stylesheet does the
-// rest), hides both sidebars, builds a top line (the listening state, the live
-// transcript on one line and the Clear buttons), and moves the search bar, the
-// Live Queue, the range bar, the Monitor message and the verse transition into
+// rest), hides both sidebars, builds a top line (the live transcript on one line,
+// with no height until words arrive), and moves the search bar, the Live Queue,
+// the Clear buttons, the range bar, the Monitor message and the verse transition into
 // the Scripture sends group and back. Possible Matches is hidden by the stylesheet
 // while the mode is on; detection keeps running underneath.
 'use strict';
@@ -27,18 +27,13 @@
     L.moved = [];
   }
 
-  // ── Top line: the listening state and the transcript's last words. The
-  // Start Listening button stays in the top bar where it always is. ────────
+  // ── Top line: the live transcript's last words, on one line. It has no
+  // height at all until words arrive, so the screen below it moves up. ──────
   function mountTopline() {
     const center = document.querySelector('main.center-stage');
-    const listen = document.getElementById('listen-btn');
     if (!center) return;
     const line = document.createElement('div');
     line.className = 'vd-topline';
-    const state = document.createElement('span');
-    state.className = 'vd-listen-state';
-    state.setAttribute('role', 'status');
-    line.appendChild(state);
     const ticker = document.createElement('div');
     ticker.className = 'vd-ticker';
     ticker.setAttribute('aria-label', 'Live transcript');
@@ -47,25 +42,15 @@
     ticker.appendChild(text);
     line.appendChild(ticker);
     center.prepend(line);
-    L.topline = line; L.ticker = text; L.state = state;
-    // The per-layer Clear buttons live at the right end of this line.
-    moveTo(document.querySelector('.rs-layer-clear-bar'), line);
-
-    const paintState = () => {
-      const on = !!(listen && listen.classList.contains('active'));
-      state.textContent = on ? 'Listening' : 'Not listening';
-      state.classList.toggle('is-on', on);
-    };
-    if (listen) { L.listenObs = new MutationObserver(paintState); L.listenObs.observe(listen, { attributes: true, attributeFilter: ['class'] }); }
-    paintState();
+    L.topline = line; L.ticker = text;
 
     const src = document.getElementById('transcript-content');
     const update = () => {
       L.tickTimer = null;
       const t = src && src.querySelector('.transcript-text');
       const words = t ? t.textContent.replace(/\s+/g, ' ').trim() : '';
-      text.textContent = words ? words.slice(-240) : 'Transcript appears here when listening';
-      text.classList.toggle('is-empty', !words);
+      text.textContent = words.slice(-240);
+      line.classList.toggle('has-text', !!words);
     };
     if (src) {
       // Interim words arrive several times a second: at most one redraw per 150 ms.
@@ -76,9 +61,8 @@
   }
   function unmountTopline() {
     L.tickObs?.disconnect(); L.tickObs = null;
-    L.listenObs?.disconnect(); L.listenObs = null;
     clearTimeout(L.tickTimer); L.tickTimer = null;
-    L.topline?.remove(); L.topline = null; L.ticker = null; L.state = null;
+    L.topline?.remove(); L.topline = null; L.ticker = null;
   }
 
   // ── Views: the stage, verses and dock replace the Slides, Songs, Media and
@@ -133,6 +117,8 @@
     foot.className = 'vd-sends-foot';
     host.appendChild(foot);
     L.sends.foot = foot;
+    // The per-layer Clear buttons first, then the range bar, media transport, Monitor message and verse transition.
+    moveTo(document.querySelector('.rs-layer-clear-bar'), foot);
     ['range-nav-bar', 'media-transport', 'monitor-message-bar', 'rs-transition-bar'].forEach(id => moveTo(document.getElementById(id), foot));
     const q = document.querySelector('#live-queue-section .cs-section-label');
     if (q) { L.sends.queueLabel = q.textContent; q.textContent = 'Verses'; L.sends.queueEl = q; }
