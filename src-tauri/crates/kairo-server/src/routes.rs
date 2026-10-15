@@ -671,10 +671,12 @@ async fn look_apply(State(app): State<Shared>, Json(b): Json<Value>) -> Response
     Json(json!({ "ok": true })).into_response()
 }
 
+/// A message from the booth: to the Monitor outputs (the stage), the audience screens, or both.
 async fn monitor_message(State(app): State<Shared>, Json(b): Json<Value>) -> Json<Value> {
     let text: String = b["text"].as_str().unwrap_or("").split_whitespace().collect::<Vec<_>>().join(" ").chars().take(200).collect();
-    app.hub.broadcast(json!({ "type": "monitor-message", "text": text }));
-    Json(json!({ "ok": true, "text": text }))
+    let to = match b["to"].as_str() { Some("screens") => "screens", Some("all") => "all", _ => "monitors" };
+    app.hub.broadcast(json!({ "type": "monitor-message", "text": text, "to": to }));
+    Json(json!({ "ok": true, "text": text, "to": to }))
 }
 
 /// Where debug.log is, so code without the app state (the detection thread)

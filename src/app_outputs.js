@@ -1817,9 +1817,17 @@ async function applyOutputModes() {
 // ── Monitor message — a line from the booth to the Monitor outputs ─────────
 // Under the preview while there is a Monitor output.
 function refreshMonitorMessageBar() {
-  // A Monitor showing the multiview has no message to carry.
+  // Always there: a message can go to the audience screens too. Without a Monitor (or with
+  // only the multiview one) the choice starts on the screens.
   const mv = settings.videoDirector ? settings.videoMultiview : '';
-  document.getElementById('monitor-message-bar')?.classList.toggle('hidden', !monitorOutputs().some(m => m.id !== mv));
+  const hasMonitor = monitorOutputs().some(m => m.id !== mv);
+  document.getElementById('monitor-message-bar')?.classList.remove('hidden');
+  const to = document.getElementById('monitor-message-to');
+  if (to) {
+    to.querySelector('option[value="monitors"]').disabled = !hasMonitor;
+    to.querySelector('option[value="all"]').disabled = !hasMonitor;
+    if (!hasMonitor && to.value !== 'screens') to.value = 'screens';
+  }
 }
 function showMonitorMessageState(text) {
   const bar = document.getElementById('monitor-message-bar');
@@ -1830,19 +1838,20 @@ function showMonitorMessageState(text) {
   if (clear) clear.disabled = !live;
   const send = document.getElementById('monitor-message-send');
   if (send) {
-    send.title = live ? 'Update the message on the Monitor' : 'Show on the Monitor';
+    send.title = live ? 'Update the message' : 'Show the message';
     send.setAttribute('aria-label', send.title);
   }
   // What's up on the Monitor stays in view (and editable) — unless being typed over.
   const input = document.getElementById('monitor-message-input');
   if (input && document.activeElement !== input) input.value = live ? String(text).trim() : '';
 }
-async function sendMonitorMessage(text) {
+async function sendMonitorMessage(text, to) {
+  to = to || document.getElementById('monitor-message-to')?.value || 'monitors';
   try {
     await fetch(`${SERVER}/api/monitor-message`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text }),
+      body: JSON.stringify({ text, to }),
     });
   } catch (err) {
     console.warn('[Monitor] message failed:', err.message);
@@ -1859,6 +1868,10 @@ async function sendMonitorMessage(text) {
     if (e.key === 'Enter') { e.preventDefault(); show(); }
   });
   clear.addEventListener('click', () => { sendMonitorMessage(''); input.value = ''; });
+  // A message already up moves to the newly chosen audience.
+  document.getElementById('monitor-message-to')?.addEventListener('change', () => {
+    if (document.getElementById('monitor-message-bar')?.classList.contains('is-live')) { const t = input.value.trim(); if (t) sendMonitorMessage(t); }
+  });
 })();
 
 // ── Keying — how a display output's background keys out for a mixer ───────
@@ -2003,8 +2016,8 @@ async function applyOutputThemes() {
 // Video input (live camera / capture card, see video_sources.js) is the fifth
 // layer, drawn UNDER the rest so scripture and slides sit over the picture. It
 // is the one layer that defaults OFF: nothing changes until it is turned on.
-const OUTPUT_LAYER_KEYS = [['bible', 'Bible'], ['slide', 'Slide'], ['timer', 'Timer'], ['media', 'Media'], ['overlay', 'Overlays'], ['video', 'Video input']];
-const DEFAULT_OUTPUT_LAYERS = { bible: true, slide: true, media: true, timer: true, overlay: true, video: false };
+const OUTPUT_LAYER_KEYS = [['bible', 'Bible'], ['slide', 'Slide'], ['timer', 'Timer'], ['media', 'Media'], ['overlay', 'Overlays'], ['message', 'Messages'], ['video', 'Video input']];
+const DEFAULT_OUTPUT_LAYERS = { bible: true, slide: true, media: true, timer: true, overlay: true, message: true, video: false };
 
 // Video input goes to display windows and the Monitor only (Phase 1). NDI,
 // Syphon/Spout and DeckLink render natively and don't carry it yet.
@@ -2028,6 +2041,7 @@ function outputLayerMap() {
       media: entry.media !== false,
       timer: entry.timer !== false,
       overlay: entry.overlay !== false,
+      message: entry.message !== false,
       video: entry.video === true,
     };
   }
@@ -2213,6 +2227,7 @@ const OC_ROWS = [
   { key: 'timer', label: 'Timer' },
   { key: 'media', label: 'Media' },
   { key: 'overlay', label: 'Overlays' },
+  { key: 'message', label: 'Messages' },
   { key: 'video', label: 'Video input' },
   { key: 'textOnly', label: 'Words only' },
 ];
