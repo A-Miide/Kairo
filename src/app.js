@@ -223,6 +223,7 @@ const _actionHandlers = new Map();
 function registerActionHandler(actionId, fn) { _actionHandlers.set(actionId, fn); }
 
 function handleServerMessage(msg) {
+  try { window.KairoVideoDirector?.onServerMessage?.(msg); } catch {}   // Video director: Preview follows the Output when nothing is staged
   switch (msg.type) {
 
     case 'action':

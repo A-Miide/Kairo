@@ -692,3 +692,4 @@ body.video-director .svc-slide.is-staged, body.video-director .media-card.is-sta
 .vd-band .vd-cluster .vd-send::after { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: rgba(255,255,255,0.28); pointer-events: none; }
 .vd-band .vd-cluster .vd-send.is-sending::after { animation: vd-send-fill var(--vd-send-ms, 300ms) linear forwards; }
 @keyframes vd-send-fill { from { width: 0; } to { width: 100%; } }
+.vd-frame.has-zone .vd-frame-name { display: none; }

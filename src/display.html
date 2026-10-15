@@ -42,6 +42,8 @@
            slide and timer, so scripture and slides draw over the picture. */
         #video-layer { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
         #video-layer video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+        /* An empty video zone of a layout frame says so, inside the zone. */
+        body:not(.has-video) #video-layer[data-zone]::after { content: 'No video'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 2.4vh; font-weight: 600; letter-spacing: 0.04em; color: rgba(255,255,255,0.45); }
         /* On a Monitor the video is a dimmed backdrop for the confidence text. */
         body[data-mode="confidence"] #video-layer video { filter: brightness(0.4); }
         body[data-mode="confidence"].has-video #confidence-view { background: transparent; }

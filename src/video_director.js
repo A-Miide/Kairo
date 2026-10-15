@@ -67,6 +67,7 @@
     frame.style.width = '1920px';
     frame.style.height = '1080px';
     box.appendChild(frame);
+    if (kind === 'pvw') frame.addEventListener('load', () => syncPreviewFrame());   // a (re)loaded Preview picks its state back up
     const name = vEl('span', 'vd-frame-name');
     box.appendChild(name);
     if (kind === 'pgm') box.appendChild(vEl('span', 'vd-live-badge', 'Live'));
@@ -105,14 +106,44 @@
     const f = D.frames[kind];
     try { f && f.frame.contentWindow && f.frame.contentWindow.postMessage({ kairoPreview: true, msg }, location.origin); } catch {}
   }
+  // Preview is a persistent staging screen: it holds the layout (frame, layers), the staged content and the
+  // staged input until something else is chosen, and it keeps showing them after a send. With nothing
+  // staged it shows what the Output shows (the live layout frame, slide or verse and the live input).
+  const liveFrameTheme = () => themeById(frameMap()[PRIMARY_DISPLAY]);
+  const hasZone = (t) => !!(t && (t.layers || []).some(l => l && l.type === 'videozone'));
+  function pvwFrameTheme() { return D.pendingLook ? (D.pendingLook.themeId ? themeById(D.pendingLook.themeId) : null) : liveFrameTheme(); }
   function syncPreviewFrame() {
-    post('pvw', { type: 'vd-source', sourceId: D.previewId });
+    const ps = programState();
+    const src = D.previewId != null ? D.previewId : (ps.mixed ? null : (ps.id || null));
+    post('pvw', { type: 'vd-source', sourceId: src });
+    post('pvw', { type: 'vd-layers', layers: D.pendingLook ? D.pendingLook.layers : null });
+    post('pvw', { type: 'vd-frame', look: pvwFrameTheme() });
     if (D.staged && D.staged.media) {
       const m = D.staged.media;
       post('pvw', { type: 'clear' });
       post('pvw', { type: 'media', target: 'viewer', src: m.src, kind: m.kind, fit: m.fit });
-    } else if (D.staged) post('pvw', { type: 'detection', target: 'viewer', verses: [D.staged.verse], look: D.staged.look || null, next: D.staged.next || undefined });
-    else { post('pvw', { type: 'clear' }); post('pvw', { type: 'clear-layer', layer: 'media' }); }
+    } else if (D.staged) {
+      post('pvw', { type: 'clear-layer', layer: 'media' });
+      post('pvw', { type: 'detection', target: 'viewer', verses: [D.staged.verse], look: D.staged.look || null, next: D.staged.next || undefined });
+    } else {
+      // Nothing staged: the content follows the Output.
+      if (D.liveMsg) post('pvw', { type: 'detection', target: 'viewer', verses: D.liveMsg.verses, look: D.liveMsg.look || null, next: D.liveMsg.next });
+      else post('pvw', { type: 'clear' });
+      if (D.liveMedia) post('pvw', { type: 'media', target: 'viewer', src: D.liveMedia.src, kind: D.liveMedia.kind, fit: D.liveMedia.fit });
+      else post('pvw', { type: 'clear-layer', layer: 'media' });
+    }
+  }
+  // What the Output is showing, from the server's broadcasts (app.js hands them over).
+  function onServerMessage(msg) {
+    if (!D.active || !msg) return;
+    let changed = false;
+    if (msg.type === 'detection' && msg.target === 'viewer' && msg.verses && msg.verses.length && !msg.retranslated) { D.liveMsg = msg; changed = true; }
+    else if (msg.type === 'media' && msg.target === 'viewer') { D.liveMedia = msg; changed = true; }
+    else if (msg.type === 'clear-layer') {
+      if (msg.layer === 'slide' || msg.layer === 'all') { D.liveMsg = null; changed = true; }
+      if (msg.layer === 'media' || msg.layer === 'all') { D.liveMedia = null; changed = true; }
+    }
+    if (changed && !D.staged) syncPreviewFrame();
   }
 
   // ── Staging ──────────────────────────────────────────────────────────────
@@ -130,9 +161,8 @@
   function takeVerse() {
     if (!D.staged) return;
     const { verse, look, slide, media } = D.staged;
-    D.staged = null; D.stageKey = null;
+    D.staged.sent = true;   // Preview keeps showing it: it now matches the Output
     D.last = { ...(D.last || {}), verse: true };
-    syncPreviewFrame();
     refresh();
     // A staged slide goes out through the playlist's own send, a verse through the normal one.
     // A staged slide or media item goes out through the app's own send, as an explicit one (not staged again).
@@ -157,8 +187,9 @@
     if (!D.active) return false;
     const now = Date.now();
     if (D.stageKey === key && now - D.stageAt < DOUBLE_MS) {
-      // Quick cut: the staged copy gives way to the real send.
-      if (D.staged) { D.staged = null; D.stageKey = null; syncPreviewFrame(); refresh(); }
+      // Quick cut: the real send goes straight out; Preview holds the same item (it now matches the Output).
+      if (D.staged && D.staged.key === key) { D.staged.sent = true; refresh(); }
+      else D.sentKey = key;
       D.stageKey = null;
       return false;
     }
@@ -167,6 +198,7 @@
       if (!b || D.stageKey !== key) return;
       D.staged = make(b);
       D.staged.key = key;
+      if (D.sentKey === key) { D.staged.sent = true; D.sentKey = null; }
       syncPreviewFrame(); refresh();
     }).catch(() => {});
     return true;
@@ -307,14 +339,15 @@
       clearTimeout(D.sendTimer); D.sendTimer = setTimeout(() => D.ui.take && D.ui.take.classList.remove('is-sending'), ms + 60);
     }
     const mode = transitionPref();
-    const hadVerse = !!D.staged;
-    const hadLook = D.pendingLook;
+    const hadVerse = !!(D.staged && !D.staged.sent);
+    const hadLook = D.pendingLook && !D.lookSent ? D.pendingLook : null;
     if (hadLook) { snapshot(); applyLook(hadLook); }
     const ps = programState();
     if (hadVerse) takeVerse();
-    if (ps.on.length && (D.previewId || null) !== (ps.mixed ? undefined : (ps.id || null))) take(mode);
+    if (ps.on.length && D.previewId != null && D.previewId !== (ps.mixed ? undefined : (ps.id || null))) take(mode);
     if (hadVerse) D.last = { ...(D.last || {}), verse: true };   // Undo takes the verse back too
     if (hadLook) { D.last = { ...(D.last || {}), layers: D.lookSnap && D.lookSnap.layers, screen: D.lookSnap && D.lookSnap.screen }; D.liveLookId = hadLook.id; D.lookSnap = null; }
+    syncPreviewFrame();
     refresh();
   }
 
@@ -323,6 +356,7 @@
   const lookVideo = (look) => (look.videoId === '@first' ? firstReady() : look.videoId);
   function loadLookToPreview(look) {
     D.pendingLook = look;
+    D.lookSent = false;
     D.previewLookId = look.id;
     D.previewId = lookVideo(look) || null;
     syncPreviewFrame();
@@ -358,30 +392,26 @@
       })).catch(() => {});
     }
     applyScreenTheme(look.themeId || null);
-    D.pendingLook = null; D.previewLookId = null;
-    post('pvw', { type: 'vd-layers', layers: null });
-    post('pvw', { type: 'vd-frame', look: null });
+    D.lookSent = true;   // Preview keeps holding the layout: it now matches the Output
   }
   function setOutputLayerIf(id, key, val) {
     const cur = outputLayerMap()[id];
     if (cur && cur[key] !== !!val) setOutputLayer(id, key, !!val);
   }
   function clearStaging() {
-    D.staged = null;
+    D.staged = null; D.stageKey = null;
     D.previewId = null;
     syncPreviewFrame();
     refresh();
   }
-  // Preview → Program with `mode`; the old Program source is staged next.
+  // Preview → Program with `mode`; Preview keeps showing the same input.
   function take(mode) {
     const ps = programState();
     if (!ps.on.length) return;
     snapshot();
     D.liveLookId = null;
     setTransition(mode);                       // written first: the display reads it when the source changes
-    const outgoing = ps.mixed ? D.previewId : ps.id;
-    setVideoLiveFor(ps.on.map(o => o.id), D.previewId);
-    D.previewId = outgoing;
+    setVideoLiveFor(ps.on.map(o => o.id), D.previewId);   // Preview keeps the same input: it now matches the Output
     syncPreviewFrame();
     refresh();
   }
@@ -409,11 +439,11 @@
       setTimeout(publishTransition, fadeMs() + 400);
     } else publishTransition();
     setVideoLiveFor(ps.on.map(o => o.id), id || null);
+    syncPreviewFrame();   // with nothing staged, Preview follows the Output's input
     refresh();
   }
 
   function setPreview(id) {
-    if (D.pendingLook) { D.pendingLook = null; D.previewLookId = null; post('pvw', { type: 'vd-layers', layers: null }); post('pvw', { type: 'vd-frame', look: null }); }
     D.previewId = id || null;
     syncPreviewFrame();
     refresh();
@@ -808,9 +838,16 @@
 
     // Preview header
     const pvwSource = sources.find(s => s.id === D.previewId);
-    const staged = D.staged ? (D.staged.verse.reference || D.staged.verse.ref || 'Verse') : '';
+    const staged = D.staged ? (D.staged.verse.reference || D.staged.verse.ref || D.staged.verse.label || 'Staged') : '';
     markStaged();
-    D.ui.pvwRef.textContent = staged ? `${pvwSource ? pvwSource.name : 'No video'} · ${staged}` : (pvwSource ? pvwSource.name : 'No video');
+    const bits = [];
+    if (pvwSource) bits.push(pvwSource.name);
+    if (staged) bits.push(staged);
+    if (D.pendingLook) bits.push(`Layout: ${D.pendingLook.name}`);
+    D.ui.pvwRef.textContent = bits.length ? bits.join(' · ') : 'Same as output';
+    // The empty-picture label sits inside the video zone when the layout has one, not over the frame.
+    if (D.frames.pvw) D.frames.pvw.box.classList.toggle('has-zone', hasZone(pvwFrameTheme()));
+    if (D.frames.pgm) D.frames.pgm.box.classList.toggle('has-zone', hasZone(liveFrameTheme()));
     D.ui.undo.disabled = !D.last;
     if (D.frames.pvw) D.frames.pvw.name.textContent = pvwSource ? pvwSource.name : '';
     const canTake = ps.on.length > 0;
@@ -821,8 +858,8 @@
       btn.setAttribute('aria-pressed', String(mode === cur));
     }
     // Send is live when there is a verse or slide staged, or a Preview source that differs from Output.
-    const videoDiff = canTake && (D.previewId || null) !== (ps.mixed ? undefined : (ps.id || null));
-    const ready = !!(D.staged || videoDiff || D.pendingLook);
+    const videoDiff = canTake && D.previewId != null && D.previewId !== (ps.mixed ? undefined : (ps.id || null));
+    const ready = !!((D.staged && !D.staged.sent) || videoDiff || (D.pendingLook && !D.lookSent));
     D.ui.take.disabled = !ready;
     D.ui.take.classList.toggle('is-ready', ready);
     if (ready) D.ui.take.removeAttribute('title'); else D.ui.take.title = 'Nothing staged';
@@ -1012,7 +1049,7 @@
     // For the dock's input tiles.
     state: () => ({ previewId: D.previewId, program: D.programState, transition: transitionPref(), active: D.active }),
     setPreview, sendToProgram, mountSettings,
-    stageSlide: stageSlideSend, stageMedia: stageMediaSend, stagedSlideKey,
+    stageSlide: stageSlideSend, stageMedia: stageMediaSend, stagedSlideKey, onServerMessage,
     // A detected verse held back by Auto-send off: staged in Preview, never sent.
     stageDetected: (verse, look) => { if (D.active && verse) stage(verse, look); },
   };
