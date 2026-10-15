@@ -1784,7 +1784,9 @@ function setOutputTextOnly(outputId, on) {
 function outputModeMap() {
   const textOnly = outputTextOnlyMap();
   const map = {};
-  for (const d of displayOutputs()) map[d.id] = d.kind === 'monitor' ? 'confidence' : textOnly[d.id] ? 'text' : 'theme';
+  // Video director mode can show its input grid full screen on one display.
+  const mv = settings.videoDirector ? settings.videoMultiview : '';
+  for (const d of displayOutputs()) map[d.id] = mv && d.id === mv ? 'multiview' : d.kind === 'monitor' ? 'confidence' : textOnly[d.id] ? 'text' : 'theme';
   return map;
 }
 async function applyOutputModes() {
@@ -1805,7 +1807,9 @@ async function applyOutputModes() {
 // ── Monitor message — a line from the booth to the Monitor outputs ─────────
 // Under the preview while there is a Monitor output.
 function refreshMonitorMessageBar() {
-  document.getElementById('monitor-message-bar')?.classList.toggle('hidden', !monitorOutputs().length);
+  // A Monitor showing the multiview has no message to carry.
+  const mv = settings.videoDirector ? settings.videoMultiview : '';
+  document.getElementById('monitor-message-bar')?.classList.toggle('hidden', !monitorOutputs().some(m => m.id !== mv));
 }
 function showMonitorMessageState(text) {
   const bar = document.getElementById('monitor-message-bar');

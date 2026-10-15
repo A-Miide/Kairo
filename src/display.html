@@ -203,6 +203,19 @@
         body[data-mode="confidence"] #kairo-label { display: none !important; }
         #confidence-view { display: none; }
         body[data-mode="confidence"] #confidence-view { display: flex; }
+        /* Multiview (Video director mode): the input grid full screen, read-only. */
+        #multiview-view { display: none; }
+        body[data-mode="multiview"] { background: #000 !important; }
+        body[data-mode="multiview"] #stage, body[data-mode="multiview"] #video-layer,
+        body[data-mode="multiview"] #timer-badge, body[data-mode="multiview"] #clock-badge,
+        body[data-mode="multiview"] #kairo-label, body[data-mode="multiview"] #confidence-view { display: none !important; }
+        body[data-mode="multiview"] #multiview-view { display: block; position: fixed; inset: 0; z-index: 1; padding: 2vh 2vw; background: #000; overflow: hidden; }
+        #multiview-view { --border-md: rgba(255,255,255,0.14); --red: #ed1c24; --accent: #FF9130; --text: #f0f0f0; --text-2: #8e8e8e; --text-3: #6e6e6e; --selected-border: rgba(255,255,255,0.38); --radius-sm: 5px; --bg: #161618; }
+        #multiview-view .vg { height: 100%; gap: 1.2vh 1.2vw; align-content: center; justify-content: stretch; }
+        #multiview-view .vg-tile { width: 100%; height: auto; aspect-ratio: 16 / 9; border-width: 3px; cursor: default; }
+        #multiview-view .vg-name { font-size: 2vh; padding: 3vh 1vw 1vh; }
+        #multiview-view .vg-flag { font-size: 1.5vh; padding: 0.3vh 0.8vh; top: 1vh; left: 1vh; }
+        #multiview-view .vg-empty-why, #multiview-view .vg-empty-mid { font-size: 1.8vh; }
         #confidence-view {
             position: fixed;
             inset: 0;
@@ -303,6 +316,7 @@
     <div id="timer-badge" class="hidden"></div>
     <div id="clock-badge" class="hidden"></div>
     <!-- A Monitor output: the confidence monitor (renderConfidenceView). -->
+    <div id="multiview-view" aria-label="Multiview"></div>
     <div id="confidence-view">
         <div class="cv-top">
             <div class="cv-clock" id="cv-clock"></div>
@@ -1174,7 +1188,7 @@
     // app_outputs.js outputModeMap: a Monitor output → 'confidence', a display
     // with Output Control → Text only → 'text', else 'theme'. Delivered the
     // same two ways as keying: localStorage + a look-update broadcast.
-    const OUTPUT_MODES = ['theme', 'text', 'confidence'];
+    const OUTPUT_MODES = ['theme', 'text', 'confidence', 'multiview'];
     function loadOutputMode() {
         try {
             const map = JSON.parse(localStorage.getItem('kairo-output-modes') || 'null');
@@ -1250,7 +1264,19 @@
         // A copy inside the operator window uses the parent's one capture per device.
         try { return SHARED && window.parent !== window ? window.parent.KairoVideoHub : null; } catch { return null; }
     }
+    // Multiview (Video director mode): this display shows the input grid, read-only.
+    // Copies inside the operator window and capture windows never open the cameras.
+    function startMultiview() {
+        if (CAPTURE || MONITOR || PREVIEW) return;
+        if (videoLayer) { try { videoLayer.dispose(); } catch {} videoLayer = null; videoOn = false; document.body.classList.remove('has-video'); }
+        if (!document.getElementById('mv-css')) { const l = document.createElement('link'); l.id = 'mv-css'; l.rel = 'stylesheet'; l.href = 'video_director.css'; document.head.appendChild(l); }
+        loadScript('display_multiview.js').then(() => window.KairoDisplayMultiview.start(document.getElementById('multiview-view'), loadScript)).catch(() => {});
+    }
+    function stopMultiview() {
+        try { window.KairoDisplayMultiview && window.KairoDisplayMultiview.stop(); } catch {}
+    }
     async function syncVideo() {
+        if (outputMode === 'multiview') return;
         if (CAPTURE || (MONITOR && !SHARED)) return;
         const layers = PREVIEW ? { ...outputLayers, video: true } : outputLayers;
         const live = PREVIEW ? { [OUTPUT_KEY]: previewSourceId } : readJson('kairo-video-live', {});
@@ -2002,6 +2028,7 @@
     // The Video Input layer: a capture window (NDI, Syphon, DeckLink) never
     // opens a camera, and a monitor copy only does in the director's frames.
     syncVideo();
+    if (outputMode === 'multiview') startMultiview();
     window.addEventListener('pagehide', () => { try { videoLayer && videoLayer.dispose(); } catch {} });
     // Video director mode's Preview: the parent stages a verse and a source here.
     if (PREVIEW) {
@@ -2292,6 +2319,7 @@
         if (mode === 'theme' && lastMediaArgs) renderMediaStage(...lastMediaArgs);
         else if (mode !== 'theme') mediaLayer.innerHTML = '';
         if (mode === 'confidence') { startConfidenceClock(); renderConfidenceView(); } else stopConfidenceClock();
+        if (mode === 'multiview') startMultiview(); else stopMultiview();
         // Repaint with (or without) everything that isn't words.
         if (currentImageSlide) renderImageStage(currentImageSlide.src, false, currentImageSlide.fit);
         else applyLook(activeLook, false);
