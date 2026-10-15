@@ -47,8 +47,9 @@ impl Translator {
             });
             (|| bible.as_ref()?[book][chapter.checked_sub(1)? as usize][verse.checked_sub(1)? as usize].as_str().map(str::to_string))()
         };
-        // Any other language that has a Bible pack (Yoruba, Igbo, Hausa, Swahili, German).
-        from_i18n.or_else(|| app.bible.get()?.pack_verse(lang, book, chapter, verse))
+        // The language's Bible pack first: it is corrected for the Hebrew Psalm numbering
+        // (bible.rs); the older i18n copy is the fallback.
+        app.bible.get().and_then(|b| b.pack_verse(lang, book, chapter, verse)).or(from_i18n)
     }
 
     fn remember(&self, key: String, t: String) -> String {
