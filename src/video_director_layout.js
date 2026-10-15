@@ -120,6 +120,31 @@
     L.prevView = null;
   }
 
+  // ── Scripture sends: the search bar and the Live Queue, moved into the
+  // section (and put back exactly where they were when the mode ends). ──────
+  function fillSends(host) {
+    if (!host || L.sends) return;
+    const parts = [document.querySelector('.cs-lookup'), document.getElementById('live-queue-section')].filter(Boolean);
+    L.sends = { host, parts: parts.map(node => { const home = document.createComment('vd-home'); node.before(home); return { node, home }; }) };
+    const label = document.createElement('div');
+    label.className = 'vd-label';
+    label.textContent = 'Scripture sends';
+    host.appendChild(label);
+    L.sends.label = label;
+    parts.forEach(n => host.appendChild(n));
+    // The queue's own heading says what it is in this mode.
+    const q = document.querySelector('#live-queue-section .cs-section-label');
+    if (q) { L.sends.queueLabel = q.textContent; q.textContent = 'Verses'; L.sends.queueEl = q; }
+  }
+  function emptySends() {
+    if (!L.sends) return;
+    const { parts, queueEl, queueLabel, label } = L.sends;
+    if (queueEl) queueEl.textContent = queueLabel;
+    parts.forEach(({ node, home }) => { if (home.parentNode) { home.after(node); home.remove(); } });
+    label.remove();
+    L.sends = null;
+  }
+
   function start() {
     if (L.on) return;
     L.on = true;
@@ -140,5 +165,5 @@
     document.body.classList.remove('video-director');
   }
 
-  window.KairoVideoLayout = { start, stop };
+  window.KairoVideoLayout = { start, stop, fillSends, emptySends };
 })();
