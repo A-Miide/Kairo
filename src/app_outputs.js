@@ -1913,7 +1913,9 @@ function buildKeyingSelect(outputId) {
 // output in settings.outputFrames ({ outputId: themeId }). The normal theme stays what it is.
 // Same dual delivery as the themes: localStorage for windows on this machine plus a broadcast.
 async function applyOutputFrames() {
-  const src = settings.outputFrames && typeof settings.outputFrames === 'object' ? settings.outputFrames : {};
+  // Frames belong to Director mode: with it off, every output is unframed (also clears a
+  // frame left in this machine's storage by an earlier session).
+  const src = settings.videoDirector && settings.outputFrames && typeof settings.outputFrames === 'object' ? settings.outputFrames : {};
   const frames = {};
   for (const [key, id] of Object.entries(src)) {
     const look = looks.find(l => l.id === id);
@@ -2235,6 +2237,7 @@ function setRowForOutputs(row, ids, value) {
   settings.outputLayers = current;
   saveSettingsPatch({ outputLayers: current });
   applyOutputLayers();
+  if (row.key === 'video' && typeof onVideoLayerChanged === 'function') onVideoLayerChanged();
   renderOutputsList();
 }
 
