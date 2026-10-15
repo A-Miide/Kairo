@@ -3,8 +3,9 @@
 // node tests alike. The panel (sources_panel.js) and the output runtime
 // (display_video.js) are the only callers.
 //
-// A source is a camera or capture card the operator added:
-//   { id, name, deviceId, label, width, height, fps }
+// A source is an input the operator added: a camera or capture card, or a
+// placeholder with only a name and no device yet:
+//   { id, name, deviceId, label, width, height, fps, enabled }
 // `deviceId` is what getUserMedia wants, but webviews can rotate it (cleared
 // site data, a different USB port, an OS update); `label` is the fallback used
 // to find the same device again. Sources persist in settings.videoSources.
@@ -71,28 +72,57 @@
         width: int(r.width, 160, 7680),
         height: int(r.height, 120, 4320),
         fps: int(r.fps, 1, 240),
+        enabled: r.enabled !== false,
       };
-      if (!src.deviceId && !src.label) continue;
-      src.name = uniqueName(out, cleanName(r.name) || label || 'Camera', id);
+      src.name = uniqueName(out, cleanName(r.name) || label || 'Input', id);
       out.push(src);
     }
     return out;
   }
 
-  // `device` is a MediaDeviceInfo-like { deviceId, label }.
+  // `device` is a MediaDeviceInfo-like { deviceId, label }, or null for a
+  // placeholder (a name and nothing else: it opens no device).
   function addSource(list, device, opts = {}) {
     const d = device || {};
-    if (!str(d.deviceId) && !str(d.label)) return { list, added: null };
     const added = {
       id: newSourceId(list),
-      name: uniqueName(list, opts.name || d.label || 'Camera'),
+      name: uniqueName(list, opts.name || d.label || 'Input'),
       deviceId: str(d.deviceId),
       label: str(d.label).trim(),
       width: int(opts.width, 160, 7680),
       height: int(opts.height, 120, 4320),
       fps: int(opts.fps, 1, 240),
+      enabled: true,
     };
     return { list: [...list, added], added };
+  }
+
+  // Give an input a device (or take it away with null) and keep everything else.
+  function assignDevice(list, id, device) {
+    const d = device || {};
+    return list.map(s => (s.id === id ? { ...s, deviceId: str(d.deviceId), label: str(d.label).trim() } : s));
+  }
+  function setEnabled(list, id, on) {
+    return list.map(s => (s.id === id ? { ...s, enabled: !!on } : s));
+  }
+
+  // 'placeholder' (no device chosen), 'missing' (chosen, not plugged in now) or 'ready'.
+  function stateOf(source, devices) {
+    if (!source || (!source.deviceId && !source.label)) return 'placeholder';
+    return resolveDevice(source, devices) ? 'ready' : 'missing';
+  }
+  // Devices no input uses yet.
+  function freeDevices(list, devices) {
+    const inputs = (devices || []).filter(d => d && d.kind === 'videoinput');
+    const used = new Set();
+    for (const s of list) { const id = resolveDevice(s, inputs); if (id) used.add(id); }
+    return inputs.filter(d => !used.has(d.deviceId));
+  }
+  // One new input for every device not used yet.
+  function addAll(list, devices) {
+    let next = list;
+    for (const d of freeDevices(list, devices)) next = addSource(next, d).list;
+    return next;
   }
 
   function renameSource(list, id, name) {
@@ -105,6 +135,7 @@
     return list.map(s => {
       if (s.id !== id) return s;
       const next = { ...s };
+      if ('enabled' in patch) next.enabled = !!patch.enabled;
       if ('deviceId' in patch) next.deviceId = str(patch.deviceId);
       if ('label' in patch) next.label = str(patch.label).trim();
       if ('width' in patch) next.width = int(patch.width, 160, 7680);
@@ -188,7 +219,8 @@
   function liveSourceFor(outputId, layers, live, sources) {
     if (!layers || layers.video !== true) return null;
     const id = live && live[outputId];
-    return (sources || []).find(s => s.id === id) || null;
+    // A placeholder or an input switched off is never taken to air.
+    return (sources || []).find(s => s.id === id && s.enabled !== false && (s.deviceId || s.label)) || null;
   }
 
   // How a switch should be done: 'cut' when the output's transition is Cut (or
@@ -200,7 +232,7 @@
   }
 
   const API = {
-    RESOLUTIONS, FPS_OPTIONS, normalizeSources, addSource, renameSource, updateSource,
+    RESOLUTIONS, FPS_OPTIONS, normalizeSources, addSource, assignDevice, setEnabled, stateOf, freeDevices, addAll, renameSource, updateSource,
     removeSource, moveSource, resolveDevice, buildConstraints, describeCaptureError,
     normalizeLive, setLive, liveSourceFor, switchPlan, uniqueName,
   };
