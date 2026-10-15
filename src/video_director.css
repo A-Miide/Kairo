@@ -368,7 +368,7 @@ body.video-director #live-queue-section .cs-section-label { flex-shrink: 1; min-
   #cs-auto-badge-label::after { content: 'Auto'; font-size: 10px; }
 }
 @container (max-width: 335px) { .vd-clr-text { display: none; } }
-@container (max-width: 340px) { .vd-sends-title, .vd-gh > .vd-sends-title { display: none; } }
+@container (max-width: 299px) { .vd-sends-title, .vd-gh > .vd-sends-title { display: none; } }
 @container (max-width: 720px) {
   .vd-transbar { gap: 5px 6px; }
   .vd-tbar-label, .vd-bar-sep, .vd-verse-seg .vd-bar-label { display: none; }
@@ -561,11 +561,13 @@ body.video-director #cs-auto-badge.vd-auto-switch.off .cs-auto-dot::after { left
 body.video-director #cs-auto-badge.vd-auto-switch #cs-auto-badge-label { font-size: 0; }
 body.video-director #cs-auto-badge.vd-auto-switch #cs-auto-badge-label::after { content: 'Auto-send on'; font-size: 10px; letter-spacing: 0.06em; }
 body.video-director #cs-auto-badge.vd-auto-switch.off #cs-auto-badge-label::after { content: 'Auto-send off'; color: var(--text-3); }
-@container (max-width: 360px) {
+@container (max-width: 399px) {
   body.video-director #cs-auto-badge.vd-auto-switch #cs-auto-badge-label::after { content: 'Auto'; }
   body.video-director #cs-auto-badge.vd-auto-switch.off #cs-auto-badge-label::after { content: 'Auto off'; }
 }
-@container (max-width: 340px) { .vd-sends-head.vd-gh > .vd-sends-title { display: none !important; } }
+/* The Scripture group keeps its title: short ("Scripture") from 300px, none below. */
+@container (min-width: 300px) and (max-width: 469px) { .vd-sends-head.vd-gh > .vd-sends-title { font-size: 0; letter-spacing: 0; } .vd-sends-head.vd-gh > .vd-sends-title::after { content: 'Scripture'; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; } }
+@container (max-width: 299px) { .vd-sends-head.vd-gh > .vd-sends-title { display: none !important; } }
 
 /* ── Looks: the screen theme of a Look ── */
 
@@ -717,3 +719,22 @@ body.video-director.vd-sheet #timer-view:not(.hidden) { position: absolute; top:
 .vd-sheet-back { height: 26px; border-color: var(--accent); color: var(--accent); }
 .vd-sheet-back:hover { background: var(--accent-dim); color: var(--text); }
 body.video-director .vd-tab-off { opacity: 1; cursor: pointer; }
+
+/* ── Inputs: the empty state ── */
+.vg-add.vg-add-first { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 96px; aspect-ratio: auto; color: var(--text-2); }
+.vg-add.vg-add-first svg { color: var(--text-3); }
+.vg-add.vg-add-first:hover svg { color: var(--accent); }
+
+/* ── The "?" keyboard help ── */
+.vd-help-btn { width: 24px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; }
+.vd-pop.vd-pop-keys { width: max-content; max-width: calc(100vw - 16px); padding: 10px 12px 12px; }
+.vd-keys-title { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); margin-bottom: 8px; }
+.vd-keys { display: grid; grid-template-columns: auto auto; gap: 6px 14px; margin: 0; font-size: 12px; }
+.vd-keys dt { color: var(--text); font-weight: 600; white-space: nowrap; }
+.vd-keys dd { margin: 0; color: var(--text-2); white-space: nowrap; }
+
+/* ── On air, the same everywhere: red means live. A live slide or media tile gets a red edge and a small dot. ── */
+body.video-director .svc-slide.live, body.video-director .media-card.is-live { position: relative; border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
+body.video-director .svc-slide.live::after, body.video-director .media-card.is-live::after { content: ''; position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--red); box-shadow: 0 0 6px rgba(237,28,36,0.7); pointer-events: none; z-index: 2; }
+/* A tile that is both staged and live keeps the live edge. */
+body.video-director .svc-slide.live.is-staged, body.video-director .media-card.is-live.is-staged { outline-color: var(--accent); }

@@ -388,5 +388,7 @@
     };
   }
 
-  window.KairoVideoLooks = { create, normalize, LABEL };
+  const API = { create, normalize, LABEL };
+  if (typeof window !== 'undefined') window.KairoVideoLooks = API;
+  if (typeof module !== 'undefined' && module.exports) module.exports = API;
 })();
