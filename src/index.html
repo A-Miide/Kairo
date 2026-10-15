@@ -1232,6 +1232,10 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
                     <span>Outputs</span>
                 </button>
+                <button class="settings-nav-item" data-pane="streaming">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8a6 6 0 0 1 0 8.4M7.8 16.2a6 6 0 0 1 0-8.4M19 5a10 10 0 0 1 0 14M5 19A10 10 0 0 1 5 5"/></svg>
+                    <span>Streaming</span>
+                </button>
                 <button class="settings-nav-item" data-pane="overlays">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="5" rx="1"/></svg>
                     <span>Overlays</span>
@@ -1452,6 +1456,13 @@
                         <label class="setting-label">Addresses</label>
                         <div id="osc-addresses" class="dl-list osc-addresses"></div>
                     </div>
+                </div>
+            </section>
+
+            <section class="settings-pane" data-pane="streaming">
+                <div class="settings-section">
+                    <div class="settings-section-label">Streaming</div>
+                    <div id="streaming-panel"></div>
                 </div>
             </section>
 
@@ -2352,6 +2363,7 @@
     <script src="audio_lane.js"></script>
     <script src="overlay_layer.js"></script>
     <script src="overlay_panel.js"></script>
+    <script src="streaming_panel.js"></script>
     <script src="settings_layout.js"></script>
     <script src="design_space.js"></script>
     <script src="word_split.js"></script>
