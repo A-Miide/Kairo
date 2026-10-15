@@ -19,7 +19,7 @@
   }
 
   // opts: { getSources(), getDevices(), getState() → {programId, mixed, hasOutputs, previewId},
-  //         onProgram(id), onPreview(id), onPlaceholder(source, el), mode: 2|4, onMode(mode),
+  //         onProgram(id), onPreview(id), onPlaceholder(source, el), onAdd(el), mode: 2|4, onMode(mode),
   //         layout: 'row' (default, sized by height) | 'column' (fills a narrow column's width) }
   function create(opts) {
     const V = window.KairoVideoSources;
@@ -76,7 +76,7 @@
       return t;
     }
 
-    function tile(source, st) {
+    function tile(source, st, index) {
       const state = V.stateOf(source, opts.getDevices());
       if (state === 'placeholder') return emptyTile(source, 'No device');
       if (state === 'missing') return emptyTile(source, 'Not connected');
@@ -86,7 +86,7 @@
       t.tabIndex = 0;
       t.setAttribute('role', 'button');
       t.setAttribute('aria-label', `${source.name}${onAir ? ', on air' : staged ? ', on Preview' : ''}. Click to send to Program, Shift-click for Preview`);
-      t.title = 'Click: send to Program. Shift-click: stage on Preview.';
+      t.title = `Click: on air. Shift-click: Preview.${index < 9 ? ` Key ${index + 1}, Shift+${index + 1} for Preview.` : ''}`;
       const v = h('video'); v.muted = true; v.playsInline = true; v.setAttribute('aria-hidden', 'true');
       t.appendChild(v);
       const devId = V.resolveDevice(source, opts.getDevices());
@@ -97,6 +97,7 @@
         }, () => { t.dataset.msg = 'Unavailable'; }));
       } else t.dataset.msg = devId ? '' : 'Not connected';
       t.appendChild(h('div', 'vg-name', source.name));
+      if (index < 9) t.appendChild(h('span', 'vg-key', String(index + 1)));
       if (onAir) t.appendChild(h('span', 'vg-flag vg-flag-pgm', 'On air'));
       else if (staged) t.appendChild(h('span', 'vg-flag vg-flag-pvw', 'Preview'));
       const pv = h('button', 'vg-pvw', 'Preview'); pv.type = 'button'; pv.title = `Stage ${source.name} on Preview`;
@@ -104,7 +105,14 @@
       t.appendChild(pv);
       const go = (e) => (e.shiftKey ? opts.onPreview(source.id) : opts.onProgram(source.id));
       t.addEventListener('click', go);
-      t.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(e); } });
+      // Enter sends it; Space is the Take key of the whole screen.
+      t.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go(e); } });
+      // Drag it onto Preview or Output. Draggable only while pressed, as elsewhere in the app.
+      t.draggable = false;
+      t.addEventListener('mousedown', (e) => { if (!e.target.closest('button')) t.draggable = true; });
+      t.addEventListener('mouseup', () => { t.draggable = false; });
+      t.addEventListener('dragstart', (e) => { e.dataTransfer.setData('application/x-kairo-input', source.id); e.dataTransfer.effectAllowed = 'copy'; });
+      t.addEventListener('dragend', () => { t.draggable = false; });
       return t;
     }
 
@@ -120,8 +128,15 @@
       el.className = 'vg vg-' + mode + (opts.layout === 'column' ? ' vg-col' : '');
       el.replaceChildren();
       const visible = sources.slice(page * per, page * per + per);
-      visible.forEach(s => el.appendChild(tile(s, st)));
-      if (!sources.length) el.appendChild(h('p', 'vg-empty', 'No video sources yet.'));
+      visible.forEach((s, i) => el.appendChild(tile(s, st, page * per + i)));
+      if (!sources.length) {
+        // One clear way in, instead of a blank area.
+        const add = h('button', 'vg-add', '+ Add input');
+        add.type = 'button';
+        add.title = 'Add a camera or a named placeholder';
+        add.addEventListener('click', () => { if (opts.onAdd) opts.onAdd(add); });
+        el.appendChild(add);
+      }
       old.forEach(release => release());
       modeBtns.forEach(([n, b]) => { b.classList.toggle('is-on', n === mode); b.setAttribute('aria-pressed', String(n === mode)); });
       pager.hidden = pages <= 1;
