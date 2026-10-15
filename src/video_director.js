@@ -272,33 +272,43 @@
   // ── Layout: three columns over a bottom half, with draggable splits ───────
   // Only widths the operator set by dragging are kept; the rest follow these defaults.
   const LAYOUT_KEY = 'kairo-vd-layout2';
-  const layoutDefaults = { c1: 0.20, c2: 0.57, top: 0.5, bl: 0.21 };
+  const layoutDefaults = { c1: 0.20, c2: 0.57, bl: 0.21 };
+  // The top half's share of the height depends on the window: short windows give it more.
+  const sizeClass = () => (window.innerHeight < 700 ? 's' : window.innerHeight < 1000 ? 'm' : 'l');
+  const topDefaults = { s: 0.6, m: 0.5, l: 0.56 };
   function readLayout() {
     let v = null;
     try { v = JSON.parse(localStorage.getItem(LAYOUT_KEY) || 'null'); } catch {}
     v = v && typeof v === 'object' ? v : {};
+    const cls = sizeClass();
     return {
       c1: clamp(v.c1, 0.12, 0.35, layoutDefaults.c1),
       c2: clamp(v.c2, 0.35, 0.75, layoutDefaults.c2),
-      top: clamp(v.top, 0.25, 0.8, layoutDefaults.top),
       bl: clamp(v.bl, 0.14, 0.5, layoutDefaults.bl),
+      top: clamp(v['top_' + cls], 0.25, 0.8, topDefaults[cls]),
+      cls,
     };
   }
   function clamp(n, lo, hi, d) { n = Number(n); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; }
-  // Saves only what differs from the defaults, i.e. what was dragged.
+  // Saves only what was dragged: what differs from the defaults (the top share per window size class).
   function saveLayout() {
-    const out = {};
-    for (const k of Object.keys(layoutDefaults)) if (Math.abs(D.layout[k] - layoutDefaults[k]) > 0.002) out[k] = D.layout[k];
-    try { Object.keys(out).length ? localStorage.setItem(LAYOUT_KEY, JSON.stringify(out)) : localStorage.removeItem(LAYOUT_KEY); } catch {}
+    let v = {};
+    try { v = JSON.parse(localStorage.getItem(LAYOUT_KEY) || 'null') || {}; } catch {}
+    for (const k of Object.keys(layoutDefaults)) { if (Math.abs(D.layout[k] - layoutDefaults[k]) > 0.002) v[k] = D.layout[k]; else delete v[k]; }
+    const cls = D.layout.cls;
+    if (Math.abs(D.layout.top - topDefaults[cls]) > 0.002) v['top_' + cls] = D.layout.top; else delete v['top_' + cls];
+    try { Object.keys(v).length ? localStorage.setItem(LAYOUT_KEY, JSON.stringify(v)) : localStorage.removeItem(LAYOUT_KEY); } catch {}
   }
   function applyLayout() {
     const { top } = D.layout;
-    // The Inputs column is never narrower than about 260px.
+    // Columns as clamps: Inputs no narrower than 170px, Scripture sends no narrower than 300px,
+    // and the displays take everything else.
     const tw = D.top.clientWidth || 1200;
-    const c1 = Math.max(D.layout.c1, 260 / tw);
-    const c2 = D.layout.c2;
-    const c3 = Math.max(0.12, 1 - c1 - c2);
-    D.top.style.gridTemplateColumns = `minmax(0, ${c1}fr) 8px minmax(0, ${c2}fr) 8px minmax(0, ${c3}fr)`;
+    // Untouched, the Inputs column is its minimum in a narrow window so the displays keep the room.
+    const dragged = Math.abs(D.layout.c1 - layoutDefaults.c1) > 0.002;
+    const c1px = Math.max(170, tw < 1100 && !dragged ? 0 : Math.round(D.layout.c1 * tw));
+    const c3px = Math.max(300, Math.round(Math.max(0.12, 1 - D.layout.c1 - D.layout.c2) * tw));
+    D.top.style.gridTemplateColumns = `${c1px}px 8px minmax(0, 1fr) 8px ${c3px}px`;
     D.top.style.flexGrow = String(top);
     D.bottomWrap.style.flexGrow = String(1 - top);
     // The playlist group is about the width of the normal screen's sidebar; the media bin takes the rest.
@@ -484,6 +494,8 @@
     D.fitObs.observe(band);
     D.topObs = new ResizeObserver(() => applyLayout());
     D.topObs.observe(top);
+    D.onResize = () => { if (sizeClass() !== D.layout.cls) { D.layout = readLayout(); } applyLayout(); };
+    window.addEventListener('resize', D.onResize);
     applyLayout();
     return true;
   }
@@ -746,6 +758,7 @@
     window.KairoVideoHub?.releaseAll();
     D.fitObs?.disconnect(); D.fitObs = null;
     D.topObs?.disconnect(); D.topObs = null;
+    if (D.onResize) { window.removeEventListener('resize', D.onResize); D.onResize = null; }
     D.main?.remove();
     D.root = null; D.main = null; D.top = null; D.bottomWrap = null;
     try { localStorage.setItem('kairo-video-live', '{}'); localStorage.removeItem('kairo-video-fade'); localStorage.removeItem('kairo-video-tbar'); localStorage.removeItem('kairo-video-director'); } catch {}
