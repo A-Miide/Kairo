@@ -1,57 +1,94 @@
-// KAIRO — Video director mode: the dock, one bar along the bottom.
+// KAIRO — Video director mode: the bottom area, two groups side by side.
 //
-// A secondary shelf under the four main sections: filter chips for Slides
-// (only slides), Video, Images and, when the app has them, Overlays. Video and Images reuse the Media Bin's
-// own cards (moved here while the mode is on, so clicking one does exactly
-// what it does there); Slides sends through the playlist's own sendSlide.
+// Playlist: the normal service playlist's header (its switcher and New button,
+// moved here while the mode is on) and every slide in it as a tile, with chips
+// for All, Slides, Songs and Scripture. A tile sends that slide through the
+// playlist's own sendSlide.
+// Media bin: chips for Video, Images, Music and Overlays. Video and Images reuse
+// the Media Bin's own cards (moved here, so a click does what it does there);
+// Music plays through the audio lane; Overlays switch on and off.
+// Slide, media, music and overlay sends go straight out; only the verses you
+// send by hand are staged on Preview.
 'use strict';
 (function () {
-  const K = { mounted: false, root: null, body: null, chips: null, active: 'slides', slideObs: null, binHome: null, binToggled: false };
+  const K = {
+    mounted: false, root: null,
+    pl: { chips: null, body: null, kind: 'all', obs: null, headHome: null },
+    md: { chips: null, body: null, kind: 'video', laneOff: null },
+    binHome: null, binToggled: false,
+  };
 
-  const dir = () => window.KairoVideoDirector;
-
-  // ── Chips ────────────────────────────────────────────────────────────────
-  const CHIPS = [
-    { id: 'slides', label: 'Slides', available: () => !!(window.KairoService && window.KairoService.slidesFor) },
-    { id: 'video', label: 'Video', available: () => !!document.getElementById('media-bin') },
-    { id: 'images', label: 'Images', available: () => !!document.getElementById('media-bin') },
-    // Overlays come from Settings → Overlays where the app has them.
-    { id: 'overlays', label: 'Overlays', available: () => !!(window.KairoOverlays && window.KairoOverlays.load) },
-    // Music: the app has no audio media yet, so there is nothing to list.
+  const PL_CHIPS = [['all', 'All'], ['slides', 'Slides'], ['songs', 'Songs'], ['scripture', 'Scripture']];
+  const MD_CHIPS = [
+    ['video', 'Video', () => !!document.getElementById('media-bin')],
+    ['images', 'Images', () => !!document.getElementById('media-bin')],
+    ['music', 'Music', () => !!(window.KairoAudioLane && window.KairoAudioLane.tracks)],
+    ['overlays', 'Overlays', () => !!(window.KairoOverlays && window.KairoOverlays.load)],
   ];
 
-  function show(id) {
-    if (!K.mounted) return;
-    if (!CHIPS.some(c => c.id === id && c.available())) return;
-    K.active = id;
-    renderMedia();
-  }
-
-  // ── Media shelf ──────────────────────────────────────────────────────────
-  function renderChips() {
-    K.chips.replaceChildren();
-    CHIPS.filter(c => c.available()).forEach(c => {
-      const b = vBtn(c.label, `Show ${c.label.toLowerCase()}`, () => show(c.id), 'vd-chip' + (K.active === c.id ? ' is-on' : ''));
-      b.setAttribute('aria-pressed', String(K.active === c.id));
-      K.chips.appendChild(b);
+  function chipRow(host, list, current, onPick) {
+    host.replaceChildren();
+    list.forEach(([id, label]) => {
+      const b = vBtn(label, `Show ${label.toLowerCase()}`, () => onPick(id), 'vd-chip' + (current === id ? ' is-on' : ''));
+      b.setAttribute('aria-pressed', String(current === id));
+      host.appendChild(b);
     });
   }
 
+  // For the Slides and Media tabs in the top bar.
+  function show(id) {
+    if (!K.mounted) return;
+    if (id === 'slides') { K.pl.kind = 'slides'; renderPlaylist(); }
+    else if (MD_CHIPS.some(c => c[0] === id && c[2]())) { K.md.kind = id; renderMedia(); }
+  }
+
+  // ── Playlist group ───────────────────────────────────────────────────────
+  const kindOf = (item) => ({ song: 'songs', scripture: 'scripture', slides: 'slides', image: 'slides' })[item.type] || null;
+
+  function renderPlaylist() {
+    chipRow(K.pl.chips, PL_CHIPS, K.pl.kind, (id) => { K.pl.kind = id; renderPlaylist(); });
+    const body = K.pl.body;
+    body.replaceChildren();
+    const svc = window.KairoService;
+    const items = ((svc && svc.service && svc.service.items) || []).filter(i => kindOf(i) && (K.pl.kind === 'all' || kindOf(i) === K.pl.kind));
+    let n = 0;
+    items.forEach(item => {
+      const slides = svc.slidesFor(item);
+      if (!slides.length) return;
+      body.appendChild(vEl('span', 'vd-group', item.title || 'Untitled'));
+      slides.forEach((s, i) => {
+        const tile = vEl('button', 'vd-slide');
+        tile.type = 'button';
+        tile.title = `Send ${item.title || 'slide'} ${i + 1} to the screens`;
+        if (s.image) { const img = vEl('img'); img.src = s.image; img.alt = ''; img.loading = 'lazy'; tile.appendChild(img); }
+        else tile.appendChild(vEl('span', 'vd-slide-text', (s.text || s.label || '').slice(0, 90)));
+        tile.appendChild(vEl('span', 'vd-slide-num', String(i + 1)));
+        tile.addEventListener('click', () => svc.sendSlide(item, i));
+        body.appendChild(tile);
+        n++;
+      });
+    });
+    if (!n) body.appendChild(vEl('p', 'vd-empty', 'Nothing in this playlist yet.'));
+  }
+
+  // ── Media bin group ──────────────────────────────────────────────────────
   function releaseBin() {
     const bin = document.getElementById('media-bin');
     if (bin && K.binHome && K.binHome.parentNode && bin.parentNode !== K.binHome.parentNode) K.binHome.after(bin);
   }
 
   function renderMedia() {
-    renderChips();
-    K.slideObs?.disconnect(); K.slideObs = null;
-    const body = K.body;
+    const avail = MD_CHIPS.filter(c => c[2]());
+    if (!avail.some(c => c[0] === K.md.kind)) K.md.kind = (avail[0] || [])[0];
+    chipRow(K.md.chips, avail.map(c => [c[0], c[1]]), K.md.kind, (id) => { K.md.kind = id; renderMedia(); });
+    K.md.laneOff && K.md.laneOff(); K.md.laneOff = null;
     releaseBin();
+    const body = K.md.body;
     body.replaceChildren();
-    body.dataset.kind = K.active;
-    if (K.active === 'slides') renderSlides(body);
-    else if (K.active === 'overlays') renderOverlays(body);
-    else renderBin(body);
+    body.dataset.kind = K.md.kind;
+    if (K.md.kind === 'music') renderMusic(body);
+    else if (K.md.kind === 'overlays') renderOverlays(body);
+    else if (K.md.kind) renderBin(body);
   }
 
   function renderBin(body) {
@@ -63,45 +100,35 @@
     body.appendChild(bin);
   }
 
-  function renderSlides(body) {
-    const svc = window.KairoService;
-    const build = () => {
+  function renderMusic(body) {
+    const lane = window.KairoAudioLane;
+    const draw = () => {
+      if (!K.mounted || K.md.kind !== 'music') return;
       body.replaceChildren();
-      const items = ((svc && svc.service && svc.service.items) || []).filter(i => i.type === 'slides');
-      let n = 0;
-      items.forEach(item => {
-        const slides = svc.slidesFor(item);
-        if (!slides.length) return;
-        body.appendChild(vEl('span', 'vd-group', item.title || 'Slides'));
-        slides.forEach((s, i) => {
-          const tile = vEl('button', 'vd-slide');
-          tile.type = 'button';
-          tile.title = `Send ${item.title || 'slide'} ${i + 1} to the screens`;
-          if (s.image) { const img = vEl('img'); img.src = s.image; img.alt = ''; img.loading = 'lazy'; tile.appendChild(img); }
-          else tile.appendChild(vEl('span', 'vd-slide-text', (s.text || s.label || '').slice(0, 90)));
-          tile.appendChild(vEl('span', 'vd-slide-num', String(i + 1)));
-          tile.addEventListener('click', () => svc.sendSlide(item, i));
-          body.appendChild(tile);
-          n++;
-        });
+      const st = lane.state();
+      if (!lane.tracks.length) { body.appendChild(vEl('p', 'vd-empty', 'No music yet. Add some in Settings, Audio.')); return; }
+      lane.tracks.forEach((t, i) => {
+        const playing = st.index === i && st.playing;
+        const tile = vEl('button', 'vd-slide vd-overlay' + (playing ? ' is-on' : ''));
+        tile.type = 'button';
+        tile.setAttribute('aria-pressed', String(playing));
+        tile.title = playing ? `Pause ${t.label}` : `Play ${t.label}`;
+        tile.append(vEl('span', 'vd-slide-text', t.label), vEl('span', 'vd-slide-num', playing ? 'Playing' : 'Music'));
+        tile.addEventListener('click', () => (i === st.index ? lane.toggle() : lane.play(i)));
+        body.appendChild(tile);
       });
-      if (!n) body.appendChild(vEl('p', 'vd-empty', 'No slides in this playlist.'));
     };
-    build();
-    const list = document.getElementById('svc-items-list');
-    if (list) {
-      K.slideObs = new MutationObserver(() => build());
-      K.slideObs.observe(list, { childList: true });
-    }
+    lane.refresh().then(draw);
+    K.md.laneOff = lane.onChange(draw);
   }
 
   async function renderOverlays(body) {
     body.appendChild(vEl('p', 'vd-empty', 'Loading overlays'));
     let items = [];
     try { items = await window.KairoOverlays.load(); } catch {}
-    if (K.active !== 'overlays' || !K.mounted) return;
+    if (K.md.kind !== 'overlays' || !K.mounted) return;
     body.replaceChildren();
-    if (!items.length) { body.appendChild(vEl('p', 'vd-empty', 'No overlays yet. Add them in Settings.')); return; }
+    if (!items.length) { body.appendChild(vEl('p', 'vd-empty', 'No overlays yet. Add some in Settings, Overlays.')); return; }
     items.forEach(o => {
       const tile = vEl('button', 'vd-slide vd-overlay' + (o.live ? ' is-on' : ''));
       tile.type = 'button';
@@ -120,36 +147,58 @@
     });
   }
 
-  // ── Mount / refresh ──────────────────────────────────────────────────────
-  function mount() {
-    if (K.mounted) return;
-    const center = document.querySelector('main.center-stage');
-    if (!center) return;
-    K.mounted = true;
-    const root = vEl('section', 'vd-dock');
-    root.setAttribute('aria-label', 'Inputs and media');
-    const mediaBox = vEl('div', 'vd-media');
-    K.chips = vEl('div', 'vd-chips');
-    K.chips.setAttribute('role', 'group');
-    K.chips.setAttribute('aria-label', 'Media');
-    K.body = vEl('div', 'vd-media-body');
-    mediaBox.append(K.chips, K.body);
-    root.append(mediaBox);
-    center.appendChild(root);
-    K.root = root;
+  // ── Mount / unmount ──────────────────────────────────────────────────────
+  function group(label) {
+    const sec = vEl('section', 'vd-section vd-group-box');
+    sec.setAttribute('aria-label', label);
+    return sec;
+  }
 
-    if (!CHIPS.some(c => c.id === K.active && c.available())) K.active = (CHIPS.find(c => c.available()) || {}).id || 'slides';
+  function mount(host) {
+    if (K.mounted || !host) return;
+    K.mounted = true;
+    K.root = host;
+
+    const pl = group('Playlist');
+    const plHead = vEl('div', 'vd-section-head');
+    // The playlist's own switcher and New button, so playlists are managed here.
+    const home = document.querySelector('.ls-playlist-section .ls-transcript-header');
+    if (home) { K.pl.headHome = document.createComment('playlist-head'); home.before(K.pl.headHome); home.classList.add('vd-pl-head'); plHead.appendChild(home); }
+    else plHead.appendChild(vEl('span', 'vd-label', 'Playlist'));
+    K.pl.chips = vEl('div', 'vd-chips');
+    K.pl.chips.setAttribute('role', 'group'); K.pl.chips.setAttribute('aria-label', 'Playlist filter');
+    K.pl.body = vEl('div', 'vd-media-body');
+    pl.append(plHead, K.pl.chips, K.pl.body);
+
+    const md = group('Media bin');
+    const mdHead = vEl('div', 'vd-section-head');
+    mdHead.appendChild(vEl('span', 'vd-label', 'Media bin'));
+    K.md.chips = vEl('div', 'vd-chips');
+    K.md.chips.setAttribute('role', 'group'); K.md.chips.setAttribute('aria-label', 'Media filter');
+    mdHead.appendChild(K.md.chips);
+    K.md.body = vEl('div', 'vd-media-body');
+    md.append(mdHead, K.md.body);
+
+    host.append(pl, md);
+    renderPlaylist();
     renderMedia();
+    // The playlist changes while the mode is on: slides added, items removed.
+    const list = document.getElementById('svc-items-list');
+    if (list) { K.pl.obs = new MutationObserver(() => renderPlaylist()); K.pl.obs.observe(list, { childList: true }); }
   }
 
   function unmount() {
     if (!K.mounted) return;
     K.mounted = false;
-    K.slideObs?.disconnect(); K.slideObs = null;
+    K.pl.obs?.disconnect(); K.pl.obs = null;
+    K.md.laneOff && K.md.laneOff(); K.md.laneOff = null;
     releaseBin();
     if (K.binToggled) { document.getElementById('media-bin-toggle-btn')?.click(); K.binToggled = false; }
     K.binHome?.remove(); K.binHome = null;
-    K.root?.remove(); K.root = null;
+    const head = document.querySelector('.vd-pl-head');
+    if (head && K.pl.headHome && K.pl.headHome.parentNode) { K.pl.headHome.after(head); head.classList.remove('vd-pl-head'); }
+    K.pl.headHome?.remove(); K.pl.headHome = null;
+    K.root?.replaceChildren(); K.root = null;
   }
 
   window.KairoVideoDock = { mount, unmount, show };
