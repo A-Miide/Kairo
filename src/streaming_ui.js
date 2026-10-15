@@ -12,6 +12,8 @@
   const invoke = T && T.core && T.core.invoke;
   const SIZES = { '720p': [1280, 720], '1080p': [1920, 1080] };
   const status = {};          // output → the engine's status for it
+  const runs = {};            // output → the newest run seen (a Go live after a Stop is a new run)
+  let captureOk = true;       // can this computer capture the outputs' graphics?
   let live = false;
   let listeners = [];
   let topBtn = null;
@@ -44,9 +46,15 @@
     if (noKey.length && !(await ask(`${noKey.map(d => d.name || d.url).join(', ')} ${noKey.length > 1 ? 'have' : 'has'} no stream key. Go live anyway?`, 'Go live'))) return;
     const [w, h] = SIZES[(c.video || {}).resolution] || SIZES['1080p'];
     const fps = Number((c.video || {}).fps) || 30;
-    const cameras = readJson('kairo-video-sources', [])
-      .filter(s => s && s.enabled !== false && (s.label || s.name))
-      .map(s => ({ id: s.id, label: s.label || s.name }));
+    // Cameras belong to Director mode; placeholders (no device yet) can't be opened.
+    const director = !!(typeof settings === 'object' && settings && settings.videoDirector);
+    const cameras = director ? readJson('kairo-video-sources', [])
+      .filter(s => s && s.enabled !== false && (s.deviceId || s.label) && s.label)
+      .map(s => ({ id: s.id, label: s.label })) : [];
+    // Every video zone the screen themes have: the stream prepares the camera for each.
+    const zones = director && typeof looks !== 'undefined' && Array.isArray(looks)
+      ? looks.filter(l => l && l.groupId === 'grp-screen').flatMap(l => (l.layers || []).filter(x => x.type === 'videozone' && x.visible !== false && x.pos).map(x => ({ x: x.pos.x, y: x.pos.y, w: x.pos.w, h: x.pos.h })))
+      : [];
     const audioInput = await audioLabel();
     const liveMap = readJson('kairo-video-live', {});
     const layers = readJson('kairo-output-layers', {});
@@ -60,16 +68,23 @@
       cameras,
       program: (layers[output] && layers[output].video && liveMap[output]) || null,
       zone: null,
+      zones,
       audioInput: (c.audio || {}).input === false ? null : (audioInput || null),
     }));
     // The pictures first, so the stream starts with Kairo's graphics on it.
+    captureOk = !!(window.KairoCapture && await window.KairoCapture.isSupported());
+    if (!captureOk && !(await ask('This computer can\'t capture Kairo\'s graphics for the stream yet, so it would carry the camera and sound only. Go live anyway?', 'Go live'))) return;
     for (const p of pipelines) {
       try { await window.KairoCapture?.open(`stream-${p.output}`, w, h, { output: p.output, stream: true }); } catch {}
     }
     try {
       await invoke('stream_start', { pipelines });
       live = true;
-      pipelines.forEach(p => { status[p.output] = { output: p.output, state: 'starting', destinations: p.destinations.map(d => ({ id: d.id, name: d.name, state: 'connecting' })) }; });
+      // What the engine says now (it may already have reported, or failed).
+      const now = await invoke('stream_status').catch(() => []);
+      (now || []).forEach(take);
+      pipelines.forEach(p => { if (!status[p.output]) status[p.output] = { output: p.output, state: 'starting', destinations: p.destinations.map(d => ({ id: d.id, name: d.name, state: 'connecting' })) }; });
+      if (!captureOk) watchProgramWithoutCapture();
     } catch (e) {
       alertMsg(String(e && e.message || e));
       pipelines.forEach(p => window.KairoCapture?.close(`stream-${p.output}`));
@@ -109,7 +124,9 @@
     const states = all.map(s => s.state);
     const up = Math.max(0, ...all.map(s => s.uptimeSecs || 0));
     const state = states.includes('live') ? 'live' : states.includes('retrying') ? 'retrying' : states.every(s => s === 'failed') ? 'failed' : 'starting';
-    return { state, uptime: up, warnings: all.flatMap(s => s.warnings || []), errors: all.map(s => s.error).filter(Boolean) };
+    const warnings = all.flatMap(s => s.warnings || []);
+    if (!captureOk) warnings.push('Kairo\'s graphics are not in the stream on this computer: camera and sound only.');
+    return { state, uptime: up, warnings, errors: all.map(s => s.error).filter(Boolean) };
   }
   const clock = (secs) => { const h = Math.floor(secs / 3600), m = Math.floor(secs / 60) % 60, s = secs % 60; return (h ? `${h}:` : '') + `${String(m).padStart(h ? 2 : 1, '0')}:${String(s).padStart(2, '0')}`; };
 
@@ -136,17 +153,35 @@
     topBtn.title = live ? 'Click to stop the stream' : 'Start streaming to the destinations under Settings → Streaming';
   }
 
+  // One status from the engine; an older run's (a stream stopped before this Go live) is ignored.
+  function take(s) {
+    if (!s || !s.output) return;
+    if ((runs[s.output] || 0) > (s.run || 0)) return;
+    runs[s.output] = s.run || 0;
+    if (s.state === 'stopped') delete status[s.output]; else status[s.output] = s;
+  }
+  // Without a capture window, the main window tells the engine which camera is on air.
+  let watching = false;
+  function watchProgramWithoutCapture() {
+    if (watching) return;
+    watching = true;
+    const send = () => {
+      const liveMap = readJson('kairo-video-live', {}), layers = readJson('kairo-output-layers', {});
+      Object.keys(status).forEach(o => invoke('stream_program', { output: o, program: (layers[o] && layers[o].video && liveMap[o]) || null, zone: null }).catch(() => {}));
+    };
+    window.addEventListener('storage', (e) => { if (e.key === 'kairo-video-live' || e.key === 'kairo-output-layers') send(); });
+    setInterval(send, 2000);
+  }
+
   if (T && T.event && T.event.listen) {
     T.event.listen('stream-status', (e) => {
-      const s = e && e.payload;
-      if (!s || !s.output) return;
-      if (s.state === 'stopped') delete status[s.output]; else status[s.output] = s;
+      take(e && e.payload);
       live = Object.keys(status).length > 0;
       notify();
     });
     // A reload of this window while streaming: pick the state up again.
     invoke('stream_status').then(list => {
-      (list || []).forEach(s => { if (s.state !== 'stopped') status[s.output] = s; });
+      (list || []).forEach(take);
       live = Object.keys(status).length > 0;
       notify();
     }).catch(() => {});

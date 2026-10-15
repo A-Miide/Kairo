@@ -783,12 +783,14 @@ async fn stream_start(app: AppHandle, pipelines: Vec<stream::PipelineConfig>) ->
         .send().await.map_err(|e| e.to_string())?
         .json().await.map_err(|e| e.to_string())?;
     let own = found["path"].as_str().map(std::path::PathBuf::from);
-    let Some(ffmpeg) = tauri::async_runtime::spawn_blocking(move || stream::streaming_ffmpeg(own)).await.map_err(|e| e.to_string())? else {
+    let need_tls = pipelines.iter().flat_map(|p| &p.destinations).any(|d| d.url.trim().to_lowercase().starts_with("rtmps://"));
+    let Some(ffmpeg) = tauri::async_runtime::spawn_blocking(move || stream::streaming_ffmpeg(own, need_tls)).await.map_err(|e| e.to_string())? else {
         return Err("No copy of FFmpeg that can stream was found on this computer.".into());
     };
     let app2 = app.clone();
     let on_status: stream::OnStatus = Arc::new(move |s| { let _ = app2.emit("stream-status", s); });
-    app.state::<stream::StreamState>().start(ffmpeg, pipelines, on_status)
+    let app3 = app.clone();
+    tauri::async_runtime::spawn_blocking(move || app3.state::<stream::StreamState>().start(ffmpeg, pipelines, on_status)).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
