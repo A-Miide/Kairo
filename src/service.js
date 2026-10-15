@@ -3321,6 +3321,19 @@
         host.appendChild(d);
         return;
       }
+      // A content zone: where slides and verses show. Thumbnails mark it with a soft panel.
+      if (layer.type === 'contentzone') {
+        const p = layer.pos || { x: 0, y: 0, w: DESIGN_W, h: DESIGN_H };
+        const d = document.createElement('div');
+        d.style.cssText = 'position:absolute;background:rgba(255,255,255,0.12);';
+        d.style.left = (p.x / DESIGN_W * 100) + '%';
+        d.style.top = (p.y / DESIGN_H * 100) + '%';
+        d.style.width = (p.w / DESIGN_W * 100) + '%';
+        d.style.height = (p.h / DESIGN_H * 100) + '%';
+        d.style.borderRadius = ((layer.radius || 0) / DESIGN_H * 100) + 'vh';
+        host.appendChild(d);
+        return;
+      }
       // A video zone: the live picture's window (see display.html applyVideoZone).
       // Previews and theme cards show it as a dark box with the same corners and frame.
       if (layer.type === 'videozone') {

@@ -1909,6 +1909,29 @@ function buildKeyingSelect(outputId) {
   return sel;
 }
 
+// A layout's frame (Director mode): a screen theme drawn around the slide or verse, set per
+// output in settings.outputFrames ({ outputId: themeId }). The normal theme stays what it is.
+// Same dual delivery as the themes: localStorage for windows on this machine plus a broadcast.
+async function applyOutputFrames() {
+  const src = settings.outputFrames && typeof settings.outputFrames === 'object' ? settings.outputFrames : {};
+  const frames = {};
+  for (const [key, id] of Object.entries(src)) {
+    const look = looks.find(l => l.id === id);
+    if (look) frames[key] = look;
+  }
+  localStorage.setItem('kairo-output-frames', JSON.stringify(frames));
+  try {
+    await fetch(`${SERVER}/api/look/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ frames }),
+    });
+  } catch (err) {
+    console.warn('[Look] frame broadcast failed:', err.message);
+  }
+}
+window.applyOutputFrames = applyOutputFrames;
+
 async function applyOutputThemes() {
   const map = outputThemeMap();
   const themes = {};

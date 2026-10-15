@@ -2588,6 +2588,7 @@ async function loadSettings() {
     applyOutputThemes();
     applyOutputLayers();
     applyOutputKeying();
+    if (typeof applyOutputFrames === "function") applyOutputFrames();
     applyOutputModes();
     // Language
     const sttLang = document.getElementById('stt-language');
