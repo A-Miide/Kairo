@@ -8535,8 +8535,8 @@ body.video-director #ts-add-videozone-btn, body.video-director #ts-add-contentzo
 .oc-order { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: rgba(255,255,255,0.015); display: flex; flex-direction: column; gap: 4px; }
 .oc-order-title { font-size: 11px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-muted, #8b8b96); margin-bottom: 4px; }
 .oc-order-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding: 5px 10px; border-radius: 8px; background: rgba(255,255,255,calc(0.07 - var(--n, 0) * 0.008)); font-size: 12.5px; }
-.oc-order-name { font-weight: 600; color: var(--text); }
-.oc-order-note { color: var(--text-muted, #8b8b96); font-size: 11.5px; }
+.oc-order-name { font-weight: 600; color: var(--text); white-space: nowrap; }
+.oc-order-note { color: var(--text-muted, #8b8b96); font-size: 11.5px; text-align: right; }
 
 /* Writing a second language by hand (Yoruba, Igbo, Hausa, Swahili, German). */
 .tr-editor-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.6); display: flex; align-items: center; justify-content: center; padding: 24px; }
