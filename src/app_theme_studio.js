@@ -5059,18 +5059,18 @@ function layerNameSection(panel, layer) {
 function renderVideoZoneProps(panel, layer) {
   layerNameSection(panel, layer);
   renderLayoutProps(panel, layer);
+  const hint = document.createElement('p');
+  hint.className = 'setting-hint';
+  hint.textContent = layer.type === 'contentzone'
+    ? 'Slides and Bible verses show here, each with its own theme and branding. To style the verse text from this theme instead, add a verse text layer to it.'
+    : 'The live picture from the video input shows here when this theme is on the screen.';
   panel.appendChild(section('style', layer.type === 'contentzone' ? 'Content zone' : 'Video zone',
     fieldRow([numField('Corners', layer.radius || 0, { min: 0, max: 200, unit: 'px', onChange: v => { layer.radius = v ?? 0; up(); } })]),
     fieldRow([
-      numField('Frame', layer.frameWidth || 0, { min: 0, max: 60, unit: 'px', title: 'A coloured border around the picture', onChange: v => { layer.frameWidth = v ?? 0; up(); } }),
+      numField('Frame', layer.frameWidth || 0, { min: 0, max: 60, unit: 'px', title: 'A coloured border around it', onChange: v => { layer.frameWidth = v ?? 0; up(); } }),
       swatchField('Frame colour', layer.frameColor || '#ffffff', v => { layer.frameColor = v; up(); }),
-    ], { cols: 2 })));
-  const hint = document.createElement('p');
-  hint.className = 'ts-hint';
-  hint.textContent = layer.type === 'contentzone'
-    ? 'Slides and Bible verses show here, each with its own theme and branding. To style the verse text from this theme instead, add a verse text layer to it.'
-    : 'The live picture from the video input shows here when this theme is on the screen. Draw frames, logos and text around it as usual.';
-  panel.appendChild(hint);
+    ], { cols: 2 }),
+    hint));
 }
 // Adds a content zone (screen themes, Director mode): where slides and verses show.
 function addContentZone() {
