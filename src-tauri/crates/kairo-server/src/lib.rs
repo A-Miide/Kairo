@@ -31,6 +31,7 @@ mod video;
 mod ndi_runtime;
 mod osc;
 mod overlays;
+mod stream_check;
 mod vocabulary;
 mod ws;
 

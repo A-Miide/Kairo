@@ -782,6 +782,13 @@ const DEFAULT_LOOKS = [
 // Screen themes (Director mode): a whole screen in one theme. The live picture shows in
 // the video zone, the verse or slide fills the other side, over a background. Listed only
 // while Director mode is on (groupId 'grp-screen').
+// The Screens' backdrop: a deep navy, dark enough for white text and a camera picture to stand out.
+function screenCanvas() {
+  const stops = [{ pos: 0, color: '#050b1f' }, { pos: 55, color: '#0a1a45' }, { pos: 100, color: '#13266b' }];
+  return { id: 'bg', type: 'background', name: 'Canvas', visible: true,
+    fill: 'gradient', color: stops[0].color, color2: stops[2].color, opacity: 100, angle: 150,
+    gradientStops: stops, gradientGlows: [{ x: 100, y: 100, rx: 55, ry: 45, color: '#1f3fb8' }] };
+}
 function screenTheme(id, name, videoLeft, videoW) {
   const gap = 40, margin = 60, top = 120, h = 840;
   const W = window.KAIRO_DESIGN_W || 1920;
@@ -793,22 +800,13 @@ function screenTheme(id, name, videoLeft, videoW) {
     id, name, layout: 'fullscreen', animation: 'fade',
     groupId: 'grp-screen', groupName: 'Screens (Director mode)',
     layers: [
-      gradientCanvas('blue-hour'),
-      { id: 'panel', type: 'background', name: 'Verse panel', visible: true, shape: 'rectangle',
-        fill: 'solid', color: '#0b0b1c', opacity: 55, color2: '#0b0b1c', angle: 135, radius: 36,
-        pos: { x: tx, y: top, w: textW, h } },
+      screenCanvas(),
       { id: 'zone', type: 'videozone', name: 'Video zone', visible: true, radius: 36, frameWidth: 8, frameColor: '#ffffff', opacity: 100,
         pos: { x: vx, y: top, w: videoW, h } },
-      { id: 'verse', type: 'text', name: 'Verse', visible: true, binding: 'verse', customText: '',
-        pos: { x: tx + inset, y: top + 100, w: textW - inset * 2, h: 560 },
-        font: { family: 'Manrope', size: 56, weight: 600, italic: false, lineHeight: 1.3, letterSpacing: 0, transform: 'none' },
-        color: '#ffffff', opacity: 100, align: 'center',
-        shadow: { ...TXT_SHADOW_SOFT }, outline: { ...NO_OUTLINE } },
-      { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '', follows: 'verse',
-        pos: { x: tx + inset, y: top + h - 140, w: textW - inset * 2, h: 0 },
-        font: { family: 'Manrope', size: 30, weight: 700, italic: false, lineHeight: 1.2, letterSpacing: 3, transform: 'uppercase' },
-        color: '#ffd23f', opacity: 100, align: 'center',
-        shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
+      // Where slides and Bible verses show. They keep their own theme and branding here; add text
+      // layers bound to the verse to this theme and it styles the text itself instead.
+      { id: 'content', type: 'contentzone', name: 'Content zone', visible: true, radius: 36, frameWidth: 0, frameColor: '#ffffff', opacity: 100,
+        pos: { x: tx, y: top, w: textW, h } },
     ],
   };
 }
@@ -926,6 +924,20 @@ let looks = (function loadLooks() {
         }
       }
       if (def && def.groupId && !l.groupId) { l.groupId = def.groupId; l.groupName = def.groupName; }
+      // The first Screens had their own verse text; they now use a content zone, so slides and
+      // verses keep their own theme. Saved copies still on the old layers take the new ones.
+      if (def && def.groupId === 'grp-screen' && (l.layers || []).some(ly => ly.id === 'panel') && !(l.layers || []).some(ly => ly.type === 'contentzone')) {
+        l.layers = deepClone(def.layers);
+        backgroundMigrated = true;
+      }
+      // The first Screens shipped on bright Blue Hour; their backdrop is now a darker navy.
+      if (def && def.groupId === 'grp-screen') {
+        const cv = (l.layers || []).find(ly => ly.id === 'bg' && ly.type === 'background' && !ly.pos);
+        if (cv && cv.gradientStops && cv.gradientStops[0]?.color === '#0b97df') {
+          Object.assign(cv, deepClone(def.layers.find(ly => ly.id === 'bg')));
+          backgroundMigrated = true;
+        }
+      }
       // Word/Activate/Karaoke/Typewriter/Impact/Bold Caption/Bounce/Highlight Box/
       // Shimmer used to be crammed into the same `animation` field as the
       // real Fade/Slide/Cut transitions — every install saved before that
@@ -1621,6 +1633,7 @@ function renderLayersList() {
                          : layer.type === 'image-cycle' ? '▤'
                          : layer.type === 'motion' ? '✺'
                          : layer.type === 'videozone' ? '▶'
+                         : layer.type === 'contentzone' ? '▤'
                          : layer.type === 'background' ? '■'
                          : 'T';
 
@@ -2093,10 +2106,10 @@ function renderStage() {
 
     // Video zone (Director mode screen themes): a window for the live picture.
     // Here it is a striped placeholder you can move and resize like any box.
-    if (layer.type === 'videozone') {
+    if (layer.type === 'videozone' || layer.type === 'contentzone') {
       const p = layer.pos || { x: 0, y: 0, w: TS_DESIGN_W, h: TS_DESIGN_H };
       const div = document.createElement('div');
-      div.className = 'ts-videozone';
+      div.className = 'ts-videozone' + (layer.type === 'contentzone' ? ' is-content' : '');
       div.style.cssText = `
         position:absolute;
         left:${(p.x / TS_DESIGN_W * 100)}%;
@@ -2106,7 +2119,7 @@ function renderStage() {
         border-radius:${(layer.radius || 0) / TS_DESIGN_H * 100}vh;
         ${layer.frameWidth > 0 ? `box-shadow:0 0 0 ${layer.frameWidth / TS_DESIGN_H * 100}vh ${layer.frameColor || '#ffffff'};` : ''}
       `;
-      div.textContent = 'Video';
+      div.textContent = layer.type === 'contentzone' ? 'Slides and verses' : 'Video';
       stage.appendChild(div);
       tsDecorateLayerEl(div, layer, true);
       return;
@@ -3539,7 +3552,7 @@ function renderProps() {
     renderImageCycleProps(panel, activeLayer);
   } else if (activeLayer.type === 'motion') {
     renderMotionProps(panel, activeLayer);
-  } else if (activeLayer.type === 'videozone') {
+  } else if (activeLayer.type === 'videozone' || activeLayer.type === 'contentzone') {
     renderVideoZoneProps(panel, activeLayer);
   } else {
     renderTextProps(panel, activeLayer);
@@ -5046,7 +5059,7 @@ function layerNameSection(panel, layer) {
 function renderVideoZoneProps(panel, layer) {
   layerNameSection(panel, layer);
   renderLayoutProps(panel, layer);
-  panel.appendChild(section('style', 'Video zone',
+  panel.appendChild(section('style', layer.type === 'contentzone' ? 'Content zone' : 'Video zone',
     fieldRow([numField('Corners', layer.radius || 0, { min: 0, max: 200, unit: 'px', onChange: v => { layer.radius = v ?? 0; up(); } })]),
     fieldRow([
       numField('Frame', layer.frameWidth || 0, { min: 0, max: 60, unit: 'px', title: 'A coloured border around the picture', onChange: v => { layer.frameWidth = v ?? 0; up(); } }),
@@ -5054,8 +5067,22 @@ function renderVideoZoneProps(panel, layer) {
     ], { cols: 2 })));
   const hint = document.createElement('p');
   hint.className = 'ts-hint';
-  hint.textContent = 'The live picture from the video input shows here when this theme is on the screen. Draw frames, logos and text around it as usual.';
+  hint.textContent = layer.type === 'contentzone'
+    ? 'Slides and Bible verses show here, each with its own theme and branding. To style the verse text from this theme instead, add a verse text layer to it.'
+    : 'The live picture from the video input shows here when this theme is on the screen. Draw frames, logos and text around it as usual.';
   panel.appendChild(hint);
+}
+// Adds a content zone (screen themes, Director mode): where slides and verses show.
+function addContentZone() {
+  if (!activeLook) return;
+  const layer = {
+    id: 'content-' + Date.now(), type: 'contentzone', name: 'Content zone', visible: true,
+    radius: 36, frameWidth: 0, frameColor: '#ffffff', opacity: 100,
+    pos: { x: 960, y: 160, w: 900, h: 760 },
+  };
+  activeLook.layers.push(layer);
+  activeLayer = layer; multiSelectedLayerIds.clear();
+  up(); renderProps();
 }
 // Adds a video zone (screen themes, Director mode). Half the screen to start with.
 function addVideoZone() {
@@ -7538,6 +7565,7 @@ const tsImageFile = document.getElementById('ts-image-file');
 // Image ▾ — a picture from the computer or the Media Library. (A slideshow is
 // slides — a countdown's "+ Add Slide" — each fully editable.)
 document.getElementById('ts-add-videozone-btn')?.addEventListener('click', () => addVideoZone());
+document.getElementById('ts-add-contentzone-btn')?.addEventListener('click', () => addContentZone());
 document.getElementById('ts-add-image-btn')?.addEventListener('click', (e) => {
   const r = e.currentTarget.getBoundingClientRect();
   window.KairoService.openContextMenu(r.left, r.bottom + 4, [[
@@ -7757,13 +7785,26 @@ importLookFile?.addEventListener('change', async () => {
 
 // New theme — lands straight into rename mode on its own row, since that's
 // the only place a theme gets named now.
-newLookBtn?.addEventListener('click', () => {
-  const base = deepClone(DEFAULT_LOOKS[0]);
+newLookBtn?.addEventListener('click', (e) => {
+  // In Director mode a new theme can also be a screen theme (a video zone with the verse
+  // beside it): a copy of Screen — Video left to make your own from.
+  if (settings.videoDirector && window.KairoService?.openContextMenu) {
+    const r = newLookBtn.getBoundingClientRect();
+    window.KairoService.openContextMenu(r.left, r.bottom + 4, [[
+      { label: 'New theme', onClick: () => createNewLook(false) },
+      { label: 'New screen theme', onClick: () => createNewLook(true) },
+    ]]);
+    return;
+  }
+  createNewLook(false);
+});
+function createNewLook(screen) {
+  const base = deepClone(screen ? (DEFAULT_LOOKS.find(d => d.id === 'screen-split-left') || DEFAULT_LOOKS[0]) : DEFAULT_LOOKS[0]);
   base.id   = 'look-' + Date.now();
-  base.name = 'New Theme';
+  base.name = screen ? 'New Screen' : 'New Theme';
   // A new theme's canvas starts transparent, with nothing behind the
   // content; Background picks a picture, a colour or a gradient for it.
-  const canvasFill = base.layers.find(l => l.type === 'background' && !l.pos);
+  const canvasFill = screen ? null : base.layers.find(l => l.type === 'background' && !l.pos);
   if (canvasFill) {
     canvasFill.fillBefore = 'solid';
     Object.assign(canvasFill, { fill: 'transparent', color: '#000000', color2: '#1c1c30', angle: 160 });
@@ -7780,4 +7821,4 @@ newLookBtn?.addEventListener('click', () => {
   renderPreview();
   renderProps();
   document.querySelector('.ts-theme-item.active .ts-theme-name')?.dispatchEvent(new Event('dblclick', { bubbles: true }));
-});
+}
