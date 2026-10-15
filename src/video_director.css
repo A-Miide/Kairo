@@ -314,3 +314,38 @@ body.video-director .vd-section-sends .cs-theme-btn:hover { color: var(--text); 
 .vd-slide.is-live { border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
 .vd-slide:hover { border-color: var(--selected-border); }
 .vd-bottom > .vd-split-v { min-height: 0; }
+
+/* ── Displays: one group card, a single title, the transitions inside it. ── */
+.vd-section-displays { padding: 8px 10px; gap: 6px; }
+.vd-section-displays > .vd-label { flex: 0 0 auto; }
+.vd-section-displays .vd-band { flex: 1 1 0; }
+.vd-bar-label { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-3); }
+.vd-verse-seg { flex: 1 1 100%; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.vd-verse-seg .rs-transition-bar { margin: 0; padding: 0; border: 0; background: none; gap: 8px; flex-wrap: nowrap; }
+.vd-verse-seg .rs-transition-bar .rs-anim-btn { height: 26px; }
+
+/* ── Scripture sends: the queue is the hero. ── */
+.vd-section-sends { gap: 8px; }
+.vd-sends-head { flex: 0 0 auto; display: flex; align-items: center; flex-wrap: nowrap; gap: 6px; min-width: 0; }
+.vd-sends-title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vd-sends-spacer { flex: 1 1 0; min-width: 0; }
+.vd-sends-head > select, .vd-sends-head > .cs-theme-btn, .vd-hbtn { height: 28px; flex: 0 0 auto; }
+.vd-sends-head > select { width: auto; min-width: 0; max-width: 90px; }
+.vd-hbtn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 28px; padding: 0 8px; border: 1px solid var(--border-md); border-radius: var(--radius-sm); background: transparent; color: var(--text-2); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.vd-hbtn[hidden] { display: none; }
+.vd-hbtn:hover { color: var(--text); border-color: var(--selected-border); }
+.vd-hbtn:focus-visible { outline: 2px solid var(--selected-border); outline-offset: 1px; }
+body.video-director .vd-section-sends .cs-lookup { flex: 0 0 auto; }
+body.video-director .vd-section-sends .cs-search-wrap { flex: 1 1 100%; }
+body.video-director .vd-section-sends #live-queue-section { flex: 1 1 0; min-height: 0; }
+.vd-pop { position: fixed; z-index: 230; width: 340px; padding: 8px; background: var(--bg); border: 1px solid var(--border-md); border-radius: var(--radius-lg); box-shadow: 0 10px 34px rgba(0,0,0,0.6); }
+.vd-pop .monitor-message-bar { margin: 0; }
+/* The footer shows only while a range or a playing video has controls to show. */
+.vd-sends-foot { display: none; }
+.vd-sends-foot:has(> :not(.hidden):not([hidden]):not([style*="display: none"]):not([style*="display:none"])) { display: flex; flex-direction: column; gap: 6px; }
+
+.vd-sends-head { gap: 4px; }
+.vd-sends-title { letter-spacing: 0.03em; flex: 0 0 auto; }
+.vd-sends-head > select { max-width: 60px; padding-left: 6px; padding-right: 14px; }
+.vd-hbtn { padding: 0 6px; min-width: 26px; }
+.vd-sends-head > .cs-theme-btn { width: 28px; padding: 0; }

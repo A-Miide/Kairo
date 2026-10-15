@@ -419,8 +419,15 @@
     D.ui.pgm = pgm;
     screens.append(pvw, pgm);
     band.append(screens, bar);
-    const displays = vEl('div', 'vd-col-displays');
-    displays.appendChild(band);
+    // One group card: a single title, Preview and Output, and every transition beneath them.
+    const displays = vEl('section', 'vd-section vd-section-displays');
+    displays.setAttribute('aria-label', 'Displays');
+    displays.append(vEl('span', 'vd-label', 'Displays'), band);
+    // The verse transition (how a verse arrives: Fade, Slide or Cut, and its speed), next to the video ones.
+    const seg = vEl('div', 'vd-verse-seg');
+    seg.appendChild(vEl('span', 'vd-bar-label', 'Verse'));
+    window.KairoVideoLayout?.moveTo(document.getElementById('rs-transition-bar'), seg);
+    bar.appendChild(seg);
 
     // ── Column 3: Scripture sends ──
     const sends = vEl('section', 'vd-section vd-section-sends');
