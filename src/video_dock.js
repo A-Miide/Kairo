@@ -189,7 +189,7 @@
     K.root = host;
 
     const pl = group('Playlist');
-    const plHead = vEl('div', 'vd-section-head vd-pl-top');
+    const plHead = vEl('div', 'vd-gh vd-pl-top');
     // The playlist's own switcher and New button, so playlists are managed here.
     const home = document.querySelector('.ls-playlist-section .ls-transcript-header');
     if (home) { K.pl.headHome = document.createComment('playlist-head'); home.before(K.pl.headHome); home.classList.add('vd-pl-head'); plHead.appendChild(home); }
@@ -209,17 +209,16 @@
     list && list.addEventListener('click', K.pl.click, true);
 
     const md = group('Media bin');
-    const mdHead = vEl('div', 'vd-md-head');
-    mdHead.appendChild(vEl('span', 'vd-label', 'Media bin'));
-    const mdRow = vEl('div', 'vd-md-row');
-    K.md.chips = vEl('div', 'vd-chips');
+    // One header row: the title, the toggles beside it, the tile size at the far right.
+    const mdHead = vEl('div', 'vd-gh');
+    mdHead.appendChild(vEl('span', 'vd-label vd-gh-title', 'Media bin'));
+    K.md.chips = vEl('div', 'vd-chips vd-gh-ctl vd-gh-start');
     K.md.chips.setAttribute('role', 'group'); K.md.chips.setAttribute('aria-label', 'Media filter');
     const size = vEl('input', 'vd-size'); size.type = 'range'; size.min = '90'; size.max = '240'; size.step = '10';
     size.value = String(loadTile()); size.title = 'Smallest tile size'; size.setAttribute('aria-label', 'Tile size');
     size.addEventListener('input', () => { applyTile(Number(size.value)); });
     size.addEventListener('change', () => { try { localStorage.setItem(TILE_KEY, size.value); } catch {} repaintThumbs(); });
-    mdRow.append(K.md.chips, size);
-    mdHead.appendChild(mdRow);
+    mdHead.append(K.md.chips, size);
     K.md.body = vEl('div', 'vd-media-body');
     K.md.kinds = loadKinds();
     applyTile(loadTile());

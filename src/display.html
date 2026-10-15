@@ -1246,6 +1246,7 @@
     // Video code is loaded only when a source is actually live here, so an
     // output that never uses video never starts any of it.
     let previewSourceId = null;      // PREVIEW: the staged source, from the parent
+    let previewVideoOn = true;       // PREVIEW: whether the loaded Look carries the video layer
     let videoModulesPromise = null;
     function loadScript(src) {
         return new Promise((resolve, reject) => {
@@ -1278,7 +1279,7 @@
     async function syncVideo() {
         if (outputMode === 'multiview') return;
         if (CAPTURE || (MONITOR && !SHARED)) return;
-        const layers = PREVIEW ? { ...outputLayers, video: true } : outputLayers;
+        const layers = PREVIEW ? { ...outputLayers, video: previewVideoOn } : outputLayers;
         const live = PREVIEW ? { [OUTPUT_KEY]: previewSourceId } : readJson('kairo-video-live', {});
         // Nothing live and nothing showing: nothing to load or start.
         if (!videoLayer && !(layers.video && live[OUTPUT_KEY])) return;
@@ -2036,6 +2037,8 @@
             if (e.origin !== location.origin || !e.data || !e.data.kairoPreview) return;
             const m = e.data.msg || {};
             if (m.type === 'vd-source') { previewSourceId = m.sourceId || null; syncVideo(); return; }
+            // A Look loaded into Preview: its layers apply here only (null goes back to this output's own).
+            if (m.type === 'vd-layers') { previewVideoOn = !m.layers || m.layers.video !== false; applyOutputLayers(m.layers ? { ...DEFAULT_LAYERS, ...m.layers } : loadOutputLayers()); syncVideo(); return; }
             handleMessage(m);
         });
     }
