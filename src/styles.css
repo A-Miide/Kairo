@@ -8538,3 +8538,16 @@ body.video-director #ts-add-videozone-btn, body.video-director #ts-add-contentzo
 .oc-order-name { font-weight: 600; color: var(--text); white-space: nowrap; }
 .oc-order-note { color: var(--text-muted, #8b8b96); font-size: 11.5px; text-align: right; }
 
+
+/* Tour: the production step's three small pictures. */
+.ob-art-dir i { position: absolute; top: 18px; width: 58px; height: 34px; border-radius: 5px; background: #0d0d11; border: 2px solid #c27a3a; }
+.ob-art-dir i:nth-child(1) { left: calc(50% - 64px); }
+.ob-art-dir i:nth-child(2) { left: calc(50% + 6px); border-color: #b5532c; background: linear-gradient(135deg, #3a1a10, #120a08); }
+.ob-art-dir b { position: absolute; left: 50%; bottom: 12px; width: 54px; height: 12px; margin-left: -27px; border-radius: 6px; background: #7a2a1a; }
+.ob-art-live span { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); padding: 3px 9px; border-radius: 999px; background: #5a2414; color: #ffe9e0; font-size: 11px; font-weight: 700; letter-spacing: .06em; animation: ob-blink 2.4s ease-in-out infinite; }
+@keyframes ob-blink { 50% { opacity: .55; } }
+@media (prefers-reduced-motion: reduce) { .ob-art-live span { animation: none; } }
+.ob-art-live i { position: absolute; bottom: 14px; width: 30px; height: 20px; border-radius: 4px; background: #2a2a31; }
+.ob-art-live i:nth-of-type(1) { left: calc(50% - 52px); } .ob-art-live i:nth-of-type(2) { left: calc(50% - 15px); } .ob-art-live i:nth-of-type(3) { left: calc(50% + 22px); }
+.ob-art-ovl i { position: absolute; left: 50%; top: 14px; width: 110px; height: 58px; margin-left: -55px; border-radius: 6px; background: linear-gradient(135deg, #0a1a45, #13266b); }
+.ob-art-ovl b { position: absolute; left: calc(50% + 30px); top: 20px; width: 18px; height: 18px; border-radius: 50%; background: linear-gradient(135deg, #FF9130, #F5301A); box-shadow: 0 0 0 2px rgba(255,255,255,.15); }

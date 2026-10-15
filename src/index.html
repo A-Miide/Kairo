@@ -1391,7 +1391,7 @@
                     <label class="bs-check-label">
                         <input type="checkbox" id="auto-send-settings" checked>
                         <span><strong>Put confident matches on screen automatically</strong>
-                        <span class="setting-hint">Turn off to send every verse yourself from the Live Queue.</span></span>
+                        <span class="setting-hint">Turn off to send every verse yourself: detected verses wait in Possible Matches.</span></span>
                     </label>
                     <label class="bs-check-label">
                         <input type="checkbox" id="show-confidence-settings" checked>
@@ -1515,6 +1515,7 @@
                                     <li>Press <strong>Start Listening</strong>. Live Status switches from Idle to Listening, and the Live Transcript Log starts filling in as words are heard. <strong>Stop</strong> ends the session — nothing else does: if the internet drops, the status shows <em>Reconnecting…</em> and Kairo keeps listening; the words said meanwhile are caught up when it's back.</li>
                                 </ol>
                                 <p>Everything else — playlists, slides, songs, themes — can be prepared before or during the service; detection runs independently in the background the whole time.</p>
+                                <p>Cameras, layouts and the live stream are there when you want them: see <strong>Director mode</strong> and <strong>Streaming</strong> below.</p>
                             </div>
                         </details>
 
@@ -1530,6 +1531,7 @@
                                 <p>Once a passage is up, the preacher can move within it: "verse 5", a number said on its own, "next verse" / "the following verse", "previous verse", "go back to verse 3", "the last verse". A spoken range ("verses 1 to 9", "from verse 4 to the end") advances verse by verse as the reading continues.</p>
                                 <p>Kairo also follows a verse put in the preacher's <strong>own words</strong> ("the Bible says don't worry about anything, pray about everything…"). A paraphrase goes to the screen on its own only when every check agrees; otherwise it waits in Possible Matches. Modern wording counts too: a verse quoted from memory the way the NIV or NLT puts it ("plans to prosper you and not to harm you") is offered even when your church reads the KJV. Well-known passages named in passing ("the prodigal son", "the Lord's Prayer") are offered in Possible Matches too.</p>
                                 <p><strong>Possible Matches</strong> holds what Kairo found but isn't certain enough to put up on its own — click one to send it. This is deliberate: a wrong verse on screen is worse than a missed one. While a song or slide is live, only a spoken citation goes up on its own; lyrics that quote scripture are offered in Possible Matches instead.</p>
+                                <p>To decide every verse yourself, switch <strong>Auto</strong> off (the Auto-Deploy badge, or <em>Put confident matches on screen automatically</em> under Settings → Bible): nothing goes to the screen by itself, and every detected verse waits in Possible Matches for a click (in Director mode, on Preview for Send).</p>
                                 <p>The <strong>Live Queue</strong> marks the verse on screen right now with <strong>LIVE</strong>. If a wrong verse goes up — or something is cleared by mistake — press <strong>Back</strong> (the arrow by Clear Bible, or ⌘←) to put back what was showing before; Kairo won't immediately send the undone verse again. In the Live Transcript Log, a chip marks the words that sent each verse — click it to send that verse again.</p>
                             </div>
                         </details>
@@ -1593,9 +1595,10 @@
                         <details class="help-group">
                             <summary>Theme Studio &amp; looks</summary>
                             <div class="help-body">
-                                <p>Theme Studio (the Looks tab) is where a slide's actual design lives — background, text position/font/color, animations. A theme applies to every slide in an item that doesn't have its own override.</p>
+                                <p>Theme Studio is where a slide's actual design lives — background, text position/font/color, animations. A theme applies to every slide in an item that doesn't have its own override.</p>
                                 <p>A ProPresenter-imported slide is the one exception: it carries its own preserved layout directly (see Importing above), independent of whichever theme is assigned to the rest of the item — editing it in Full-Scale Edit adjusts that one slide's own layers, not a shared theme.</p>
                                 <p>The Multi-Language theme is a special split layout — the verse's own language on one side, a translated version on the other (see Multi-Language below).</p>
+                                <p><strong>Screen themes</strong> (Director mode only, under <strong>Screens</strong>) are whole-screen designs for layouts: a background, frames and logos, a <strong>Video zone</strong> where the camera shows and a <strong>Content zone</strong> where slides and Bible verses show, each in its own theme. Add the zones with the two tools next to Image, or start from <strong>New → New screen theme</strong>. Put a verse text layer in a screen theme and it styles the verse itself instead of using a content zone.</p>
                             </div>
                         </details>
 
@@ -1613,7 +1616,7 @@
                                 <p>The <strong>Monitor</strong> (right side, under Clear Bible) shows exactly what each output is showing right now. Pick <strong>Main</strong> or any output that's on from its list, or use the grid button to see them all side by side — click a tile to watch just that one. The arrow button opens the monitor in its own window, about the size of Settings: resize or move it as you like; it stays above Kairo while you keep working.</p>
                                 <p>Each NDI/Syphon output also has its own configurable resolution and network/source name, editable any time under its detail panel.</p>
                                 <p><strong>Output Control</strong> (further down the same page) has one card per output with a switch for each kind of content: Scripture, Slides and songs, Timer, Media, Overlays, and Words only. Each card ends with one sentence saying what that output shows and what is hidden. <em>Copy from…</em> copies another output's choices. A Monitor always shows words only, so Media is dimmed there.</p>
-                                <p><strong>Output layers</strong>, bottom to top: <strong>Media</strong> (background image or video), <strong>Slide</strong>, <strong>Bible</strong>. When a scripture goes up — called by the preacher or sent by you — it covers the live slide without ending it, and your view stays where it is. Slides that follow along while listening keep the slide underneath up to date. <strong>Clear Bible</strong> (lit while a scripture covers a slide) brings that slide back; <strong>Clear Slide</strong> removes only the slide; clicking a slide yourself sends it straight out.</p>
+                                <p><strong>Output layers</strong>, bottom to top: the background (the theme's, or a layout's in Director mode), <strong>Media</strong> (background image or video), <strong>Slide</strong>, <strong>Bible</strong>, the timer, and <strong>Overlays</strong> always on top. Output Control shows this order too. A <strong>Words only</strong> or keyed output shows the words alone: no media, overlays or layout frame. When a scripture goes up — called by the preacher or sent by you — it covers the live slide without ending it, and your view stays where it is. Slides that follow along while listening keep the slide underneath up to date. <strong>Clear Bible</strong> (lit while a scripture covers a slide) brings that slide back; <strong>Clear Slide</strong> removes only the slide; clicking a slide yourself sends it straight out.</p>
                             </div>
                         </details>
 
@@ -1634,6 +1637,8 @@
                                     <li><strong>Preview and Output</strong> — Preview is what is staged, Output is what is live. Under them: <strong>Send</strong> (Space), Cut or Fade with the fade length, Fade to black and Undo.</li>
                                     <li><strong>Layouts</strong> — saved setups for Preview: the input, which layers are on, the overlays and a screen theme. Click one to load it into Preview, then Send. Alt+1 to 9 load the first nine. A screen theme is drawn around the slide or verse: the slide or Bible verse keeps its own theme and branding inside it, unless the screen theme has its own verse text. Customize a screen theme in Theme Studio (Video zone and Content zone tools) from the menu on a Layout.</li>
                                     <li><strong>Remote</strong> — Stream Deck and OSC can drive Send, Fade to black, Undo, Layouts 1 to 9 and Inputs 1 to 9.</li>
+                                    <li><strong>Keys</strong> — 1 to 9 put an input on air, Shift + 1 to 9 stage one on Preview, Alt + 1 to 9 load a layout, Space sends, Esc clears what is staged, ⌘Z (Ctrl+Z) undoes the last send. The <strong>?</strong> button lists them all. <strong>Ready check</strong> lists anything not ready (an input with no device, a missing camera) before the service.</li>
+                                    <li><strong>Leaving Director mode</strong> puts the normal screen back as it was: the outputs' layers and overlays a layout changed are restored, the layout frame goes, and every camera is released.</li>
                                     <li><strong>Scripture sends</strong> — search, the Bible, Theme, the verse transition and the Live Queue in one place. The <strong>Auto</strong> switch decides whether detected verses go straight to the screen or wait on Preview for Send.</li>
                                     <li><strong>Top menu</strong> — Media, Songs, Timer and Slides open their full screens over Director, with a Back to Director button. The cameras keep running.</li>
                                     <li><strong>Bottom half</strong> — the playlist, and the media bin with toggles for Slides, Songs and one for each media folder. A click stages a slide or media item on Preview; Send (or a double-click) puts it on the screen. Right-click a slide to edit it.</li>
@@ -1684,6 +1689,10 @@
                                     <li><strong>Live Status says Reconnecting…</strong> — the internet connection dropped. Kairo keeps listening and reconnects by itself; words said in the meantime are caught up. Nothing to do.</li>
                                     <li><strong>A name keeps being misheard</strong> (the pastor, the church) — add it under Settings → Language → Church vocabulary.</li>
                                     <li><strong>A citation's book or verse number comes through wrong</strong> ("Philippians" for Ephesians, "John" for First John, 53 for 63) — Kairo switches once the words around it show which verse is meant. If the preacher only names the verse and moves on, nothing tells them apart: send the right one from Possible Matches or the search box.</li>
+                                    <li><strong>A stream destination says Reconnecting</strong> — that server dropped the connection; Kairo keeps trying while the others stay live. If it stays that way, check the key with the service (a key is often only valid for one event) and use <strong>Check</strong> on the Streaming page.</li>
+                                    <li><strong>A camera is missing from the stream</strong> — the Streaming page says which camera couldn't be opened; it is left out so the stream keeps going. Close any other app using it, then stop and go live again.</li>
+                                    <li><strong>Go live says no FFmpeg can stream</strong> — install a current FFmpeg (on a Mac: <code>brew install ffmpeg</code>), or set <code>KAIRO_FFMPEG</code> to one.</li>
+                                    <li><strong>A camera light stays on after leaving Director mode</strong> — that shouldn't happen; quit and reopen Kairo, and send <code>server.log</code> (see above).</li>
                                 </ul>
                             </div>
                         </details>
@@ -1694,7 +1703,7 @@
                             <summary>About &amp; credits</summary>
                             <div class="help-body">
                                 <p><strong>NDI®</strong> — NDI® is a registered trademark of Vizrt NDI AB. Kairo uses NDI's free runtime, downloaded from NDI on first use; see <a href="https://ndi.video" target="_blank" rel="noopener">ndi.video</a>. Its licence notices ship with Kairo (libndi_licenses.txt).</p>
-                                <p><strong>FFmpeg</strong> — Kairo carries a build of <a href="https://ffmpeg.org" target="_blank" rel="noopener">FFmpeg</a> (LGPL 2.1 or later), run as a separate program to convert video the app can't play directly.</p>
+                                <p><strong>FFmpeg</strong> — Kairo carries a build of <a href="https://ffmpeg.org" target="_blank" rel="noopener">FFmpeg</a> (LGPL 2.1 or later), run as a separate program to convert video the app can't play directly. It is also the encoder for live streaming.</p>
                                 <p><strong>Blackmagic Design</strong> — Kairo is compatible with Blackmagic Design DeckLink. DeckLink is a trademark of Blackmagic Design Pty. Ltd.</p>
                             </div>
                         </details>
@@ -2055,13 +2064,38 @@
                         <div class="ob-tile">
                             <div class="ob-art ob-art-lang" aria-hidden="true"><span>Welcome</span><span>&#7864; k&uacute; &agrave;b&#7885;&#768;</span><span>Bienvenue</span><span>Nn&#7885;&#768;&#7885;</span><span>Bienvenido</span></div>
                             <h3>Every language in the room</h3>
-                            <p>Nine Bibles, including Yoruba, Igbo and Hausa &mdash; and slides translated on this computer.</p>
+                            <p>Nine Bibles, including Yoruba, Igbo and Hausa, all working offline &mdash; and slides translated into French, Spanish or Portuguese on this computer.</p>
                         </div>
                     </div>
                 </section>
 
-                <!-- 4 · Ready: the real controls, spotlit -->
+                <!-- 4 · Production: cameras, streaming, overlays -->
                 <section class="onboarding-step ob-step hidden" data-step="4">
+                    <div class="ob-copy">
+                        <p class="ob-eyebrow">When you&rsquo;re ready for more</p>
+                        <h2 class="ob-title">Cameras, the live stream and the extras.</h2>
+                    </div>
+                    <div class="ob-tiles">
+                        <div class="ob-tile">
+                            <div class="ob-art ob-art-dir" aria-hidden="true"><i></i><i></i><b></b></div>
+                            <h3>Director mode</h3>
+                            <p>Cameras and inputs, Preview and Output, layouts that frame the verse beside the camera. Turn it on in Settings when you need it.</p>
+                        </div>
+                        <div class="ob-tile">
+                            <div class="ob-art ob-art-live" aria-hidden="true"><span>&#9679; LIVE</span><i></i><i></i><i></i></div>
+                            <h3>Go live, everywhere at once</h3>
+                            <p>Stream what the screen shows to YouTube, Facebook, Twitch or any RTMP server, with the sound from your desk.</p>
+                        </div>
+                        <div class="ob-tile">
+                            <div class="ob-art ob-art-ovl" aria-hidden="true"><i></i><b></b></div>
+                            <h3>Overlays and background music</h3>
+                            <p>A logo or badge over every screen, and music that plays on its own while slides and scripture change.</p>
+                        </div>
+                    </div>
+                </section>
+
+                <!-- 5 · Ready: the real controls, spotlit -->
+                <section class="onboarding-step ob-step hidden" data-step="5">
                     <div class="ob-copy">
                         <p class="ob-eyebrow">Step 2 of 2</p>
                         <h2 class="ob-title">You&rsquo;re ready.</h2>

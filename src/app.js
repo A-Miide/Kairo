@@ -2621,7 +2621,7 @@ async function loadSettings() {
 // the tour once, since the tour is about the whole app, not just that one
 // step. Re-openable anytime from Settings → Help ("Take the tour again").
 let firstRunDismissed = false;
-const ONBOARDING_STEP_COUNT = 5; // see the step panels' data-step: welcome, listening, standout features, inside, ready
+const ONBOARDING_STEP_COUNT = 6; // see the step panels' data-step: welcome, listening, standout features, inside, production, ready
 const ONBOARDING_LISTEN_STEP = 1;
 let onboardingStep = 0;
 
