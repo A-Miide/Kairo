@@ -693,3 +693,17 @@ body.video-director .svc-slide.is-staged, body.video-director .media-card.is-sta
 .vd-band .vd-cluster .vd-send.is-sending::after { animation: vd-send-fill var(--vd-send-ms, 300ms) linear forwards; }
 @keyframes vd-send-fill { from { width: 0; } to { width: 100%; } }
 .vd-frame.has-zone .vd-frame-name { display: none; }
+
+/* ── Send, toned down: a deep desaturated brand fill, a soft label, at most a slow border pulse. ── */
+.vd-band .vd-cluster .vd-send.is-ready { background: linear-gradient(180deg, #8f3d1f, #7a2a1a); border: 1px solid #b5532c; color: #f3e6dc; box-shadow: 0 0 10px rgba(181, 83, 44, 0.22); }
+.vd-band .vd-cluster .vd-send.is-ready:hover { filter: none; background: linear-gradient(180deg, #9c4523, #84301d); }
+.vd-band .vd-cluster .vd-send .vd-send-key, .vd-band .vd-cluster .vd-send.is-ready .vd-send-key { background: rgba(255,255,255,0.10); color: rgba(243,230,220,0.72); }
+.vd-band .vd-cluster .vd-send:disabled .vd-send-key { color: var(--text-3); }
+.vd-band .vd-cluster .vd-send::after { background: rgba(255,255,255,0.16); }
+.vd-band .vd-cluster .vd-send.is-ready:not(.is-sending)::before { content: ''; position: absolute; inset: 0; border: 1px solid #e0916a; border-radius: inherit; pointer-events: none; opacity: 0; animation: vd-send-pulse 3.2s ease-in-out infinite; }
+@keyframes vd-send-pulse { 0%, 100% { opacity: 0; } 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .vd-band .vd-cluster .vd-send.is-ready:not(.is-sending)::before { animation: none; opacity: 0.35; } }
+/* Fade to black and Undo: quiet outlines, muted until usable, no bright fill at any state. */
+.vd-band .vd-cluster .vd-quiet { background: transparent; border: 1px solid var(--border-md); color: var(--text-2); box-shadow: none; }
+.vd-band .vd-cluster .vd-quiet:hover:not(:disabled) { background: rgba(255,255,255,0.04); color: var(--text); border-color: var(--border-md); }
+.vd-band .vd-cluster .vd-quiet:disabled { color: var(--text-3); border-color: var(--border); opacity: 0.6; cursor: default; }
