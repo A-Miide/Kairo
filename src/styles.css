@@ -8520,8 +8520,9 @@ input[type="checkbox"], input[type="radio"], input[type="range"], progress, mete
 .dl-row .dl-what { flex: 1 1 auto; white-space: normal; }
 
 /* Video zone in Theme Studio (screen themes, Director mode only). */
-#ts-add-videozone-btn { display: none; }
-body.video-director #ts-add-videozone-btn { display: inline-flex; }
+#ts-add-videozone-btn, #ts-add-contentzone-btn { display: none; }
+body.video-director #ts-add-videozone-btn, body.video-director #ts-add-contentzone-btn { display: inline-flex; }
+.ts-videozone.is-content { background: rgba(255,255,255,0.07); outline-style: solid; outline-color: rgba(255,255,255,0.35); }
 .ts-videozone {
   display: flex; align-items: center; justify-content: center;
   background: repeating-linear-gradient(135deg, rgba(255,255,255,0.10) 0 10px, rgba(255,255,255,0.04) 10px 20px);

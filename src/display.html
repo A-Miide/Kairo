@@ -83,6 +83,9 @@
             inset: 0;
         }
         #media-layer { z-index: 0; }
+        /* A layout's frame (Director mode): the screen around the slide or verse. */
+        #screen-layer { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
+        #screen-layer:empty { display: none; }
         #slide-layer { z-index: 1; }
         #timer-layer { z-index: 2; pointer-events: none; }
         /* Overlays (logo, bug, lower-third picture) sit above everything. */
@@ -307,6 +310,7 @@
 <body>
     <div id="video-layer" aria-hidden="true"></div>
     <div id="stage">
+        <div id="screen-layer"></div>
         <div id="media-layer"></div>
         <div id="slide-layer"></div>
         <div id="timer-layer"></div>
@@ -496,6 +500,72 @@
         else host.style.removeProperty('box-shadow');
     }
 
+    // ── Layout frame (Director mode) ────────────────────────────────────────
+    // A layout's screen theme is drawn around the slide or verse: its background, frames, logos
+    // and the video zone go in #screen-layer, and the slide or verse is drawn as before, with its
+    // own theme and branding, shrunk into the theme's content zone. If the screen theme styles
+    // the verse text itself, it dictates the text instead and no content zone is used.
+    let frameLook = null;
+    let frameMode = false;      // the screen is drawn around a content card
+    let frameDictates = false;  // the screen theme styles the text itself
+    const screenLayerEl = document.getElementById('screen-layer');
+    const frameHasText = (look) => (look.layers || []).some(l => (l.type === 'text' || l.type === 'pp') && l.visible !== false && l.binding === 'verse');
+    const frameContentZone = (look) => (look.layers || []).find(l => l.type === 'contentzone' && l.visible !== false) || null;
+    function frameBaseLook() { return frameLook && frameDictates ? frameLook : assignedLook; }
+    function resetContentBox() {
+        ['translate', 'scale', 'transform-origin', 'overflow', 'border-radius'].forEach(k => slideLayer.style.removeProperty(k));
+    }
+    function layoutContentBox() {
+        const ring = screenLayerEl.querySelector('.content-ring');
+        if (ring) ring.remove();
+        if (!frameMode) { resetContentBox(); return; }
+        const c = frameContentZone(frameLook);
+        if (!c || !c.pos) { resetContentBox(); return; }
+        const vw = window.innerWidth, vh = window.innerHeight;
+        const sx = vw / DESIGN_W, sy = vh / DESIGN_H;
+        const rx = c.pos.x * sx, ry = c.pos.y * sy, rw = c.pos.w * sx, rh = c.pos.h * sy;
+        const k = Math.min(rw / vw, rh / vh);
+        const left = rx + (rw - vw * k) / 2, top = ry + (rh - vh * k) / 2;
+        slideLayer.style.transformOrigin = '0 0';
+        // translate and scale are their own properties, so the layer's fade and slide (transform) keep working.
+        slideLayer.style.translate = `${left}px ${top}px`;
+        slideLayer.style.scale = String(k);
+        slideLayer.style.overflow = 'hidden';
+        const radius = (c.radius || 0) * sy;
+        slideLayer.style.borderRadius = (radius / k) + 'px';
+        if (c.frameWidth > 0) {
+            const r = document.createElement('div');
+            r.className = 'content-ring';
+            r.style.cssText = `position:absolute;left:${left}px;top:${top}px;width:${vw * k}px;height:${vh * k}px;border-radius:${radius}px;box-shadow:0 0 0 ${c.frameWidth * sy}px ${c.frameColor || '#ffffff'};`;
+            screenLayerEl.appendChild(r);
+        }
+    }
+    function setFrame(look) {
+        frameLook = look && Array.isArray(look.layers) ? look : null;
+        screenLayerEl.innerHTML = '';
+        frameMode = false;
+        frameDictates = !!(frameLook && frameHasText(frameLook));
+        if (!frameLook) {
+            resetContentBox();
+            applyVideoZone(null);
+            if (assignedLook && activeLook !== assignedLook) applyLook(assignedLook, false);
+            return;
+        }
+        if (frameDictates) {
+            resetContentBox();
+            activeLook = frameLook;
+            renderStage(currentVerseText, currentVerseRef, false, currentTranslatedText, currentStyleByLayerId, currentTimerText);
+            return;
+        }
+        const bare = { ...frameLook, layers: frameLook.layers.filter(l => l.type !== 'text' && l.type !== 'pp' && l.type !== 'contentzone') };
+        const { frag } = buildLayerDOM(bare, '', '', '', {}, '', false, {});   // places the video zone too
+        screenLayerEl.appendChild(frag);
+        frameMode = true;
+        if (assignedLook && activeLook !== assignedLook) applyLook(assignedLook, false);
+        layoutContentBox();
+    }
+    window.addEventListener('resize', () => { try { layoutContentBox(); } catch {} });
+
     // ── Build layer DOM from look ──────────────────────────────────────────
     // `styleByLayerId` is a per-slide, per-layer-id override map (Kairo's
     // "Full Edit" feature) — a specific playlist item's specific slide can
@@ -507,7 +577,7 @@
     function buildLayerDOM(look, verseText, verseRef, translatedText, styleByLayerId = {}, timerText = '', skipBackground = false, opts = {}) {
         // Live video is showing under this output's words: the theme's own
         // background must not paint over it.
-        if (videoOn && outputMode === 'theme' && !hasVideoZone(look)) skipBackground = true;
+        if (videoOn && outputMode === 'theme' && !hasVideoZone(look) && !frameMode) skipBackground = true;
         const frag    = document.createDocumentFragment();
         const layout  = look.layout || 'fullscreen';
         let   isTransparent = false;
@@ -1111,7 +1181,7 @@
             for (let i = before; i < frag.childNodes.length; i++) window.KairoMotion.animateLayer(frag.childNodes[i], anim, { builds: !!opts.builds, unit: '1vh' });
         });
 
-        applyVideoZone(zoneLayer);
+        if (!frameMode) applyVideoZone(zoneLayer);
         return { frag, isTransparent };
     }
 
@@ -1427,10 +1497,12 @@
     let assignedLook = null;
 
     function applyContentLook(look) {
-        if (look) {
+        // A layout that styles the text itself dictates it; otherwise the slide or verse keeps its own theme.
+        const base = frameBaseLook();
+        if (look && !frameDictates) {
             if (activeLook !== look) applyLook(look, false);
-        } else if (assignedLook && activeLook !== assignedLook) {
-            applyLook(assignedLook, false);
+        } else if (base && activeLook !== base) {
+            applyLook(base, false);
         }
     }
 
@@ -1458,7 +1530,7 @@
             // A timer segment has no verse/reference at all, only timerText
             // — must NOT be treated as "nothing to show" just because those
             // two are blank.
-            if (!verseText && !verseRef && !timerText && !hasVideoZone(look)) { applyVideoZone(null); fitVerse(); return; }
+            if (!verseText && !verseRef && !timerText && !hasVideoZone(look)) { if (!frameMode) applyVideoZone(null); fitVerse(); return; }
 
             const { frag, isTransparent } = buildLayerDOM(look, verseText, verseRef, translatedText, styleByLayerId, timerText, false, { builds: animate });
             if (isTransparent) document.body.classList.add('transparent-bg');
@@ -2046,6 +2118,9 @@
                 if (map && map[OUTPUT_KEY]) applyOutputLayers({ ...DEFAULT_LAYERS, ...map[OUTPUT_KEY] });
             } catch {}
         }
+        if (e.key === 'kairo-output-frames' && !PREVIEW) {
+            try { const map = JSON.parse(e.newValue || 'null'); setFrame(map && map[OUTPUT_KEY] || null); } catch {}
+        }
         if (e.key === 'kairo-video-sources' || e.key === 'kairo-video-live') syncVideo();
         if (e.key === 'kairo-output-keying' && e.newValue) {
             try { applyOutputKeying((JSON.parse(e.newValue) || {})[OUTPUT_KEY]); } catch {}
@@ -2069,6 +2144,7 @@
             // A Look loaded into Preview: its layers apply here only (null goes back to this output's own).
             if (m.type === 'vd-layers') { previewVideoOn = !m.layers || m.layers.video !== false; applyOutputLayers(m.layers ? { ...DEFAULT_LAYERS, ...m.layers } : loadOutputLayers()); syncVideo(); return; }
             // A Look's screen theme loaded into Preview (null goes back to this output's own theme).
+            if (m.type === 'vd-frame') { setFrame(m.look || null); return; }
             if (m.type === 'vd-theme') { assignedLook = m.look || loadActiveLook() || assignedLook; applyLook(assignedLook, false); return; }
             handleMessage(m);
         });
@@ -2325,6 +2401,7 @@
             if (mine) { assignedLook = mine; try { applyLook(mine, true); } catch {} }
             const myLayers = pickLayers(msg);
             if (myLayers) { try { applyOutputLayers(myLayers); } catch {} }
+            if (msg.frames && typeof msg.frames === 'object' && !PREVIEW) { try { setFrame(msg.frames[OUTPUT_KEY] || null); } catch {} }
             if (msg.keying && typeof msg.keying === 'object') { try { applyOutputKeying(msg.keying[OUTPUT_KEY]); } catch {} }
             return;
         }
@@ -2695,6 +2772,8 @@
     // 1. Load active look from localStorage
     activeLook = loadActiveLook() || FALLBACK_LOOK;
     assignedLook = activeLook;   // baseline this output reverts to
+    // A layout's frame saved by the main window (Director mode).
+    if (!PREVIEW) { try { const fm = JSON.parse(localStorage.getItem('kairo-output-frames') || 'null'); if (fm && fm[OUTPUT_KEY]) setFrame(fm[OUTPUT_KEY]); } catch {} }
 
     // 2. Start genuinely blank — nothing painted yet, not even the theme's
     // background — until the first real slide/verse actually arrives. See
