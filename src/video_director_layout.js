@@ -185,23 +185,6 @@
     }
     head.appendChild(S.monBtn);
 
-    // Clear: one menu instead of six buttons.
-    const clearBtn = hb('vd-hbtn vd-hbtn-text', 'Clear what is on the screens', ICONS.eraser + '<span class="vd-clr-text">Clear</span>' + ICONS.caret, (e) => {
-      if (S.menu) { closePop(); return; }
-      const menu = document.createElement('div');
-      menu.className = 'vd-menu';
-      [['clear-all-layers-btn', 'Clear all'], ['clear-bible-layer-btn', 'Clear Bible'], ['clear-slide-layer-btn', 'Clear Slide'], ['clear-timer-layer-btn', 'Clear Timer'], ['clear-media-layer-btn', 'Clear Media']].forEach(([id, label]) => {
-        const it = document.createElement('button');
-        it.type = 'button'; it.className = 'vd-menu-item'; it.textContent = label;
-        it.addEventListener('click', () => { press(id); closePop(); });
-        menu.appendChild(it);
-      });
-      openOverlay(e.currentTarget, menu);
-      S.menu = menu;
-    });
-    head.appendChild(clearBtn);
-    head.appendChild(hb('vd-hbtn', 'Back to the previous screen', ICONS.back, () => press('output-back-btn')));
-
     host.appendChild(head);
     S.head = head;
     parts.forEach(n => host.appendChild(n));
