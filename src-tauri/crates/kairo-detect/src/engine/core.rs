@@ -232,7 +232,27 @@ impl Engine {
         while let Some(c) = self.redo.pop() {
             self.decide(c, now);
         }
-        std::mem::take(&mut self.out)
+        let mut out = std::mem::take(&mut self.out);
+        self.drop_misheard_in_same_breath(&mut out.effects);
+        out
+    }
+
+    /// A citation misheard and corrected in the same moment never reaches the screen: a
+    /// number misheard within the chapter ("Genesis 24 verse 53" for the 24:63 being read) or a
+    /// book misheard for one with the same chapter and verse (Ephesians 2:10 for Philippians
+    /// 2:10). Only the corrected verse goes up, instead of the wrong one flashing first.
+    fn drop_misheard_in_same_breath(&self, effects: &mut Vec<Effect>) {
+        let fixes: Vec<(VerseId, VerseId)> = effects.iter().filter_map(|e| match e {
+            Effect::Show { target: Target::Screen, corrected_from: Some(from), verses, .. } if verses.len() == 1 => Some((*from, verses[0])),
+            _ => None,
+        }).collect();
+        if fixes.is_empty() { return; }
+        let misheard = |from: VerseId, to: VerseId| {
+            let (a, b) = (self.r(from), self.r(to));
+            (a.book == b.book && a.chapter == b.chapter) || (a.chapter == b.chapter && a.verse == b.verse)
+        };
+        effects.retain(|e| !matches!(e, Effect::Show { target: Target::Screen, verses, corrected_from: None, .. }
+            if verses.len() == 1 && fixes.iter().any(|(from, to)| *from == verses[0] && misheard(*from, *to))));
     }
 
     /// What belongs to the utterance being heard, not the sermon.
