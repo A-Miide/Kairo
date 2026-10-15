@@ -151,11 +151,13 @@
 
     // Header row: one line, every control the same height.
     const head = document.createElement('div');
-    head.className = 'vd-sends-head';
+    head.className = 'vd-sends-head vd-gh';
     const title = document.createElement('span');
-    title.className = 'vd-label vd-sends-title';
+    title.className = 'vd-label vd-sends-title vd-gh-title';
     title.textContent = 'Scripture sends';
     head.appendChild(title);
+    // Auto-deploy beside the title (the queue has no header of its own).
+    moveTo(document.getElementById('cs-auto-badge'), head);
     moveTo(document.getElementById('translation-select'), head);
     const theme = document.getElementById('bible-theme-btn');
     if (theme) { S.themeTitle = theme.title; theme.title = 'Theme'; theme.setAttribute('aria-label', 'Theme'); moveTo(theme, head); }
