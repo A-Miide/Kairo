@@ -5,8 +5,7 @@ use std::collections::HashSet;
 
 use kairo_bible::VerseId;
 
-use super::core::Engine;
-use super::event::Effect;
+use super::core::{Candidate, Engine};
 use super::evidence::{fits_first_at_least_as_well, meaningful_words};
 use super::state::CorrectedAway;
 use super::types::{Method, Target};
@@ -122,13 +121,20 @@ impl Engine {
             return false;
         }
 
+        // The verse read must still earn the screen like any other detection: the same score,
+        // twin and on-screen checks (a repeated word is not a reading). Short of that it is
+        // offered in Possible Matches, and the citation stays up.
+        let mut c = Candidate::new(vec![top.verse], top.method, top.similarity, Target::Screen);
+        c.evidence.matched_idf = top.matched_idf;
+        c.corrected_from = Some(cited);
+        c.source = Some(source.to_string());
+        if self.decide(c, now) != Target::Screen {
+            return true;
+        }
         self.screen.corrected_away = Some(CorrectedAway { verse: cited, replaced_by: top.verse, at: now });
         self.screen.last_citation = None;
-        self.effect(Effect::Show { verses: vec![top.verse], method: top.method, score: top.similarity, target: Target::Screen, corrected_from: Some(cited) });
         self.screen.last_sent_book = Some((t.book, now));
         self.screen.last_sent = Some((top.verse, now));
-        self.screen.last_detected = Some((top.verse, now, top.method));
-        self.screen.recent_detections.insert(top.verse, now);
         self.mark_shown(top.verse, now);
         true
     }
