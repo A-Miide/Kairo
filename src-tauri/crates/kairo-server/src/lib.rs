@@ -14,6 +14,7 @@ mod library;
 mod media;
 mod import;
 mod installer;
+mod bible_packs;
 pub mod notes;
 pub mod offline;
 mod mt;
@@ -199,7 +200,7 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         let also: Vec<_> = [nlt.clone(), niv].into_iter().flatten().collect();
         let k = Arc::new(Knowledge::build(corpus, Wordings { own: None, also }));
         let nlt = nlt.unwrap_or_else(|| k.corpus.kjv().clone());
-        let bible = Arc::new(Bible::new(k, nlt, db.clone()));
+        let bible = Arc::new(Bible::new(k, nlt, db.clone(), starting.cfg.app_data_dir.join("packs")));
         let p = starting.presentation.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
         let cfg = kairo_detect::engine::Config { auto_send: p.auto_send, ..Default::default() };
         let detector = Detector::start(bible.clone(), starting.hub.clone(), cfg, starting.presentation.clone(), rt, starting.log.clone());
