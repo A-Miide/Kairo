@@ -14,7 +14,7 @@
 'use strict';
 (function () {
   // What this feature is called, in one place: a rename is a one-line change.
-  const LABEL = { many: 'Looks', one: 'Look' };
+  const LABEL = { many: 'Layouts', one: 'Layout' };
   const LAYER_KEYS = ['bible', 'slide', 'media', 'timer', 'video'];
   const STARTERS = [
     { name: 'Scripture over video', videoId: '@first', layers: { bible: true, slide: true, media: true, timer: true, video: true }, overlays: null },
