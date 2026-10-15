@@ -103,6 +103,7 @@
   const ICONS = {
     monitor: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
     back: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14L4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg>',
+    eraser: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20H9l-5-5a2 2 0 0 1 0-2.8l9.2-9.2a2 2 0 0 1 2.8 0l5 5a2 2 0 0 1 0 2.8L13 20"/><path d="M7 11l6 6"/></svg>',
     caret: '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>',
   };
   function hb(cls, title, html, onClick) {
@@ -185,7 +186,7 @@
     head.appendChild(S.monBtn);
 
     // Clear: one menu instead of six buttons.
-    const clearBtn = hb('vd-hbtn vd-hbtn-text', 'Clear what is on the screens', 'Clear ' + ICONS.caret, (e) => {
+    const clearBtn = hb('vd-hbtn vd-hbtn-text', 'Clear what is on the screens', ICONS.eraser + '<span class="vd-clr-text">Clear</span>' + ICONS.caret, (e) => {
       if (S.menu) { closePop(); return; }
       const menu = document.createElement('div');
       menu.className = 'vd-menu';
