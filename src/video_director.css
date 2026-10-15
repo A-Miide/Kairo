@@ -306,3 +306,11 @@ body.video-director .vd-section-sends .cs-theme-btn:hover { color: var(--text); 
 .vd-menu { position: fixed; z-index: 220; min-width: 160px; max-height: 50vh; overflow-y: auto; padding: 4px; background: var(--bg); border: 1px solid var(--border-md); border-radius: var(--radius); box-shadow: 0 8px 26px rgba(0,0,0,0.55); display: flex; flex-direction: column; }
 .vd-menu-item { text-align: left; padding: 6px 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; }
 .vd-menu-item:hover, .vd-menu-item.is-on { background: var(--selected-dim); color: var(--text); }
+
+/* Slide tiles in the media bin: real thumbnails, 16:9, the slide number bottom-left. */
+.vd-slide { padding: 0; background: #000; overflow: hidden; }
+.vd-slide .vd-slide-thumb { position: absolute; inset: 0; }
+.vd-slide .vd-slide-num { left: 5px; right: auto; bottom: 3px; padding: 1px 5px; border-radius: 3px; background: rgba(0,0,0,0.6); color: #fff; font-size: 9px; font-weight: 700; z-index: 2; }
+.vd-slide.is-live { border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
+.vd-slide:hover { border-color: var(--selected-border); }
+.vd-bottom > .vd-split-v { min-height: 0; }
