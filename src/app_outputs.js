@@ -342,11 +342,21 @@ function renderLangPills() {
   const current = bibleSel.value || settings.bibleLanguage || 'en';
   screen.innerHTML = '';
   LANG_PACKS.forEach((p) => {
-    screen.appendChild(pill(p.name, p.code === current, p.translations, () => {
+    const missing = typeof bibleAvailability !== 'undefined' && bibleAvailability[p.code] === false;
+    const el = pill((missing ? '\u2193 ' : '') + p.name, p.code === current, missing ? `${p.translations}. Downloads when you pick it.` : p.translations, async () => {
+      if (missing) {
+        el.textContent = `${p.name}: starting\u2026`;
+        let ok = true;
+        await streamBibleInstall(p.code, { onProgress: (n) => { el.textContent = `${p.name}: ${n}%`; }, onStep: () => { el.textContent = `${p.name}: checking\u2026`; }, onComplete: (success) => { ok = success; } });
+        if (!ok) { el.textContent = `${p.name}: failed, try again`; return; }
+        bibleAvailability[p.code] = true;
+        renderMtModelList();
+      }
       bibleSel.value = p.code;
       bibleSel.dispatchEvent(new Event('change'));
       renderLangPills();
-    }));
+    });
+    screen.appendChild(el);
   });
 
   if (second && secondSel) {

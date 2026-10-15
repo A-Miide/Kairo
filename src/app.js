@@ -3826,20 +3826,31 @@ function renderMtModelList() {
   const host = document.getElementById('mt-model-list');
   if (!host) return;
   host.innerHTML = '';
-  // One row per language: its Bible (already in Kairo) and, where one exists,
-  // its slide translation, with the single Download that fetches it.
+  // One row per language: its Bible and, where one exists, its slide translation,
+  // with one Download for whatever is missing.
   const mtCodes = new Set(MT_LANGUAGES.map(l => l.code));
   const langs = (typeof LANG_PACKS !== 'undefined' ? LANG_PACKS : MT_LANGUAGES).filter(l => l.code !== 'en');
   langs.forEach(({ code, name }) => {
     const row = document.createElement('div');
     row.className = 'dl-row';
     const hasMt = mtCodes.has(code);
-    row.innerHTML = `<span class="dl-name">${name}</span><span class="dl-sub dl-what">${hasMt ? 'Bible + slide text' : 'Bible included'}</span>` + (hasMt ? `<span class="dl-sub" id="mt-sub-${code}">Checking\u2026</span>` : '');
+    const bibleHere = bibleAvailability[code] !== false; // unknown counts as here
+    row.innerHTML = `<span class="dl-name">${name}</span><span class="dl-sub dl-what">${hasMt ? (bibleHere ? 'Bible + slide text' : 'Needs Bible + slide text') : (bibleHere ? 'Bible included' : 'Bible to download')}</span><span class="dl-sub" id="lang-sub-${code}"></span>` + (hasMt ? `<span class="dl-sub" id="mt-sub-${code}">Checking\u2026</span>` : '');
     if (hasMt) {
       const btn = document.createElement('button');
       btn.id = `mt-btn-${code}`;
       btn.style.display = 'none';
-      btn.addEventListener('click', () => (btn.dataset.action === 'remove' ? removeMtModel(code) : installMtModel(code)));
+      btn.addEventListener('click', () => {
+        if (btn.dataset.action === 'remove') { removeMtModel(code); return; }
+        installLanguage(code, bibleAvailability[code] === false, true);
+      });
+      row.appendChild(btn);
+    } else if (!bibleHere) {
+      const btn = document.createElement('button');
+      btn.id = `lang-btn-${code}`;
+      btn.className = 'modal-btn primary dl-btn';
+      btn.textContent = 'Download';
+      btn.addEventListener('click', () => installLanguage(code, true, false));
       row.appendChild(btn);
     }
     host.appendChild(row);
@@ -3943,6 +3954,73 @@ async function streamMtInstall(code, { onProgress, onDone, onComplete, onError }
       }
     }
   }
+}
+
+// ── Downloadable Bibles (bible_packs.rs): the same streaming, for a language's Bible ──
+const bibleAvailability = {}; // language code -> true when its Bible is on this computer
+
+let _bibleAvailTries = 0;
+async function refreshBibleAvailability() {
+  const codes = (typeof LANG_PACKS !== 'undefined' ? LANG_PACKS : []).map(p => p.code).filter(c => c !== 'en');
+  let notReady = false;
+  await Promise.all(codes.map(async (code) => {
+    try {
+      const s = await fetch(`${SERVER}/api/bible-packs/status?lang=${code}`).then(r => r.json());
+      if (s.ready) bibleAvailability[code] = !!s.present; else notReady = true;
+    } catch { notReady = true; }
+  }));
+  window.renderLangPills?.();
+  renderMtModelList();
+  // The Bible engine can still be starting when the app opens: ask again shortly.
+  if ((notReady || !codes.length) && _bibleAvailTries++ < 12) setTimeout(refreshBibleAvailability, 2500);
+}
+
+async function streamBibleInstall(code, { onProgress, onStep, onComplete } = {}) {
+  let res;
+  try { res = await fetch(`${SERVER}/api/bible-packs/install?lang=${encodeURIComponent(code)}`, { method: 'POST' }); }
+  catch (err) { onComplete?.(false, err.message); return; }
+  if (!res.ok || !res.body) { onComplete?.(false, `HTTP ${res.status}`); return; }
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = '';
+  let finished = false;
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    const lines = buf.split('\n');
+    buf = lines.pop();
+    for (const line of lines) {
+      if (!line.trim()) continue;
+      let evt; try { evt = JSON.parse(line); } catch { continue; }
+      if (evt.phase === 'download' && typeof evt.pct === 'number') onProgress?.(evt.pct);
+      else if (evt.phase === 'verify') onStep?.('verify');
+      else if (evt.phase === 'complete') { finished = true; onComplete?.(!!evt.ok, evt.error); }
+    }
+  }
+  if (!finished) onComplete?.(false, 'The download stopped.');
+}
+
+// One Download for a language: its Bible if that isn't here yet, then its slide text.
+async function installLanguage(code, needBible, needSlides) {
+  const sub = document.getElementById(`lang-sub-${code}`);
+  const btn = document.getElementById(`lang-btn-${code}`);
+  if (btn) btn.style.display = 'none';
+  const say = (t) => { if (sub) sub.textContent = t; };
+  if (needBible) {
+    say('Bible: connecting…');
+    let ok = true, why = '';
+    await streamBibleInstall(code, {
+      onProgress: (pct) => say(`Bible: downloading ${pct}%`),
+      onStep: () => say('Bible: checking…'),
+      onComplete: (success, error) => { ok = success; why = error || ''; },
+    });
+    if (!ok) { say(`Bible failed: ${why}`); if (btn) { btn.style.display = ''; btn.textContent = 'Try again'; } return; }
+    bibleAvailability[code] = true;
+    window.renderLangPills?.();
+  }
+  if (needSlides) { await installMtModel(code); }
+  await refreshBibleAvailability();
 }
 
 async function installMtModel(code) {
@@ -4060,6 +4138,7 @@ function _startInlineTranslateInstall(container, code, name) {
 }
 
 renderMtModelList();
+refreshBibleAvailability();
 
 // The semantic layer ("meaning-based Candidates") used to have its own
 // install/download UI+polling here — owner, 2026-09-22: "this is part of
