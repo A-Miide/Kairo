@@ -6397,6 +6397,26 @@
     });
   }
 
+  // One slide painted the way the slide grid paints it (the same look, per-slide
+  // styles and layers), for any host that is attached and sized. Used by
+  // Video director mode's media bin, so its tiles are real thumbnails.
+  function paintSlideThumb(host, item, s, i) {
+    if (s.image) {
+      host.innerHTML = '';
+      host.style.backgroundImage = `url('${s.image}')`;
+      host.style.backgroundRepeat = 'no-repeat';
+      host.style.backgroundPosition = 'center';
+      host.style.backgroundSize = item.fit === 'fill' ? '100% 100%' : (item.fit || 'contain');
+      return;
+    }
+    const look = s.isScene ? { layers: s.layers || [] } : (slideThemeLook(s, item) || themeForItem(item));
+    const style = s.isScene ? {} : (item.slideStyles?.[i] || {});
+    paintLookLayers(host, look, style, {
+      verseText: s.text, referenceText: s.reference || '',
+      translatedText: getTranslatedText(item, s, () => { if (host.isConnected) paintSlideThumb(host, item, s, i); }),
+    }, { hideReference: true });
+  }
+
   // ── Wiring ──────────────────────────────────────────────────────────────
   let inited = false;
   // Output transition (Fade/Slide/Cut + speed) — display-level, not per-
@@ -7062,6 +7082,7 @@
     // already use, rather than a second implementation of clipboard import.
     quickImportClipboard,
     advanceLiveSlide,
+    paintSlideThumb,
     quickImportFile,
     // The global search overlay (global_search.js).
     prefetchForSearch, searchContent, openFound,

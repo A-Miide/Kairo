@@ -271,11 +271,11 @@
 
   // ── Layout: three columns over a bottom half, with draggable splits ───────
   const LAYOUT_KEY = 'kairo-vd-layout';
-  const layoutDefaults = { c1: 0.14, c2: 0.60, top: 0.5 };
+  const layoutDefaults = { c1: 0.14, c2: 0.60, top: 0.5, bl: 0.21 };
   function readLayout() {
     try {
       const v = JSON.parse(localStorage.getItem(LAYOUT_KEY) || 'null');
-      if (v && typeof v === 'object') return { c1: clamp(v.c1, 0.1, 0.3, layoutDefaults.c1), c2: clamp(v.c2, 0.35, 0.75, layoutDefaults.c2), top: clamp(v.top, 0.25, 0.8, layoutDefaults.top) };
+      if (v && typeof v === 'object') return { c1: clamp(v.c1, 0.1, 0.3, layoutDefaults.c1), c2: clamp(v.c2, 0.35, 0.75, layoutDefaults.c2), top: clamp(v.top, 0.25, 0.8, layoutDefaults.top), bl: clamp(v.bl, 0.14, 0.5, layoutDefaults.bl) };
     } catch {}
     return { ...layoutDefaults };
   }
@@ -287,6 +287,8 @@
     D.top.style.gridTemplateColumns = `minmax(0, ${c1}fr) 8px minmax(0, ${c2}fr) 8px minmax(0, ${c3}fr)`;
     D.top.style.flexGrow = String(top);
     D.bottomWrap.style.flexGrow = String(1 - top);
+    // The playlist group is about the width of the normal screen's sidebar; the media bin takes the rest.
+    D.bottomHost.style.gridTemplateColumns = `minmax(0, ${D.layout.bl}fr) 8px minmax(0, ${1 - D.layout.bl}fr)`;
     fitScreens();
   }
 
@@ -589,6 +591,15 @@
     window.KairoVideoLayout?.start();
     window.KairoVideoLayout?.fillSends(D.sendsHost);
     window.KairoVideoDock?.mount(D.bottomHost);
+    if (D.bottomHost.children.length === 2) {
+      const bsplit = splitter('v', (x, y, step) => {
+        if (step) { D.layout.bl = clamp(D.layout.bl + step, 0.14, 0.5, D.layout.bl); return; }
+        const r = D.bottomHost.getBoundingClientRect();
+        D.layout.bl = clamp((x - r.left) / r.width, 0.14, 0.5, D.layout.bl);
+      }, 'Resize the playlist and the media bin');
+      D.bottomHost.insertBefore(bsplit, D.bottomHost.children[1]);
+    }
+    applyLayout();
     mountSettings();
     // The Program frame follows the verse going live and clearing.
     const queue = document.getElementById('current-display-card');
