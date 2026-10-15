@@ -332,8 +332,6 @@
     <script src="layer_geometry.js"></script>
     <script src="motion_graphics.js"></script>
     <script src="pp_render.js"></script>
-    <script src="video_sources.js"></script>
-    <script src="display_video.js"></script>
     <script>
     'use strict';
 
@@ -342,7 +340,13 @@
     // A live copy of this output inside the operator's monitor (app.js): it
     // renders exactly what the real screen shows, but stays silent — no media
     // status reports, no audio, never touches the app window.
-    const MONITOR     = params.get('monitor') === '1';
+    // PREVIEW (video director mode): the staging screen. It draws through this
+    // same page, but is fed by its parent window instead of the server socket.
+    // SHARED: a copy inside the operator window that takes camera streams from
+    // the parent's hub rather than opening the camera again.
+    const PREVIEW     = params.get('preview') === '1';
+    const SHARED      = PREVIEW || params.get('shared') === '1';
+    const MONITOR     = params.get('monitor') === '1' || PREVIEW;
     // The hidden window behind an NDI / Syphon output (see "Capture mode" below).
     const CAPTURE     = params.get('capture') === '1';
     if (MONITOR) document.documentElement.classList.add('is-monitor');
@@ -1220,13 +1224,54 @@
     function readJson(key, fallback) {
         try { const v = JSON.parse(localStorage.getItem(key) || 'null'); return v == null ? fallback : v; } catch { return fallback; }
     }
-    function syncVideo() {
-        if (!videoLayer) return;
-        videoLayer.sync({
-            outputKey: OUTPUT_KEY,
-            layers: outputLayers,
-            sources: readJson('kairo-video-sources', []),
-            live: readJson('kairo-video-live', {}),
+    // Video code is loaded only when a source is actually live here, so an
+    // output that never uses video never starts any of it.
+    let previewSourceId = null;      // PREVIEW: the staged source, from the parent
+    let videoModulesPromise = null;
+    function loadScript(src) {
+        return new Promise((resolve, reject) => {
+            const s = document.createElement('script');
+            s.src = src; s.onload = resolve; s.onerror = reject;
+            document.head.appendChild(s);
+        });
+    }
+    function ensureVideoModules() {
+        if (!videoModulesPromise) {
+            videoModulesPromise = loadScript('video_sources.js').then(() => loadScript('display_video.js'));
+        }
+        return videoModulesPromise;
+    }
+    function videoProvider() {
+        // A copy inside the operator window uses the parent's one capture per device.
+        try { return SHARED && window.parent !== window ? window.parent.KairoVideoHub : null; } catch { return null; }
+    }
+    async function syncVideo() {
+        if (CAPTURE || (MONITOR && !SHARED)) return;
+        const layers = PREVIEW ? { ...outputLayers, video: true } : outputLayers;
+        const live = PREVIEW ? { [OUTPUT_KEY]: previewSourceId } : readJson('kairo-video-live', {});
+        // Nothing live and nothing showing: nothing to load or start.
+        if (!videoLayer && !(layers.video && live[OUTPUT_KEY])) return;
+        const args = { outputKey: OUTPUT_KEY, layers, sources: readJson('kairo-video-sources', []), live };
+        try { await ensureVideoModules(); } catch { return; }
+        if (!videoLayer) videoLayer = createVideoLayer();
+        videoLayer.sync(args);
+    }
+    function createVideoLayer() {
+        return window.KairoDisplayVideo.create({
+            host: document.getElementById('video-layer'),
+            enabled: true,
+            provider: videoProvider(),
+            // The director's cut or fade, else this output's own transition.
+            getTransition: () => ({
+                animation: PREVIEW ? 'cut' : (readJson('kairo-video-transition', null) || outputAnimation),
+                speed: outputAnimationSpeed,
+            }),
+            onActive: (on) => {
+                videoOn = on;
+                document.body.classList.toggle('has-video', on);
+                // The words repaint with or without their theme background.
+                if (outputMode === 'theme') { try { applyLook(activeLook, false); } catch {} }
+            },
         });
     }
 
@@ -1929,21 +1974,19 @@
         }
     });
 
-    // The Video Input layer. A capture window (NDI, Syphon, DeckLink) and the
-    // monitor's live copies never open a camera: Phase 1 sends video to
-    // display windows only, and a copy would hold the device a second time.
-    videoLayer = window.KairoDisplayVideo.create({
-        host: document.getElementById('video-layer'),
-        enabled: !CAPTURE && !MONITOR,
-        getTransition: () => ({ animation: outputAnimation, speed: outputAnimationSpeed }),
-        onActive: (on) => {
-            videoOn = on;
-            document.body.classList.toggle('has-video', on);
-            // The words repaint with or without their theme background.
-            if (outputMode === 'theme') { try { applyLook(activeLook, false); } catch {} }
-        },
-    });
+    // The Video Input layer: a capture window (NDI, Syphon, DeckLink) never
+    // opens a camera, and a monitor copy only does in the director's frames.
     syncVideo();
+    window.addEventListener('pagehide', () => { try { videoLayer && videoLayer.dispose(); } catch {} });
+    // Video director mode's Preview: the parent stages a verse and a source here.
+    if (PREVIEW) {
+        window.addEventListener('message', (e) => {
+            if (e.origin !== location.origin || !e.data || !e.data.kairoPreview) return;
+            const m = e.data.msg || {};
+            if (m.type === 'vd-source') { previewSourceId = m.sourceId || null; syncVideo(); return; }
+            handleMessage(m);
+        });
+    }
 
     // Re-fit when the output window resizes (projector attach, fullscreen toggle).
     window.addEventListener('resize', () => { try { fitVerse(); fitConfidenceText(); } catch {} });
@@ -2566,7 +2609,7 @@
 
     // 3. Connect WebSocket (after the auth token is loaded so the upgrade
     //    URL carries it; falls back to unauthed when not running under Tauri).
-    loadAuthToken().finally(connect);
+    if (!PREVIEW) loadAuthToken().finally(connect);   // the Preview is fed by its parent, not the socket
 
     // 4. Reveal the window now that its own dark CSS has actually settled.
     // openDisplayWindow (index.html) creates this window hidden — same

@@ -11,7 +11,8 @@
 // height, fps}] and settings.videoLive {[outputId]: sourceId|null}, saved with
 // saveSettingsPatch, and mirrored to localStorage (kairo-video-sources /
 // kairo-video-live) for the display windows, as the layer map is.
-// Loaded after app_outputs.js; initVideoSources() is called once settings load.
+// Lazy-loaded by video_director_boot.js only while Video director mode is on;
+// startVideoSources() builds the pane and stopVideoSources() removes it again.
 'use strict';
 
 const VSRC = window.KairoVideoSources;
@@ -20,7 +21,7 @@ const videoState = {
   blind: false,         // devices listed but unlabelled: camera access not granted yet
   error: '',            // last permission/detect problem, in operator words
   selectedId: null,
-  previews: new Map(),  // deviceId → { promise, stream, refs }
+  leases: [],           // hub leases held by the thumbnails now drawn
   visible: false,
   root: null,
   built: false,
@@ -93,46 +94,20 @@ function previewKey(source) {
   return VSRC.resolveDevice(source, videoState.devices);
 }
 
-// One shared low-res stream per physical device for every thumbnail and the
-// properties preview.
-function acquirePreview(deviceId) {
-  let entry = videoState.previews.get(deviceId);
-  if (!entry) {
-    entry = { refs: 0, stream: null, promise: null };
-    entry.promise = navigator.mediaDevices.getUserMedia({
-      video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false,
-    }).then(s => { entry.stream = s; return s; }).catch(err => { videoState.previews.delete(deviceId); throw err; });
-    videoState.previews.set(deviceId, entry);
-  }
-  return entry;
-}
+// Thumbnails and the properties preview take their stream from the hub: one
+// low-rate capture per device, shared with the director's Preview and Program.
 function releaseAllPreviews() {
-  for (const entry of videoState.previews.values()) {
-    if (entry.stream) entry.stream.getTracks().forEach(t => t.stop());
-    else entry.promise.then(s => s.getTracks().forEach(t => t.stop())).catch(() => {});
-  }
-  videoState.previews.clear();
+  videoState.leases.forEach(release => release());
+  videoState.leases = [];
 }
-// Keep only the devices still wanted; stop the rest.
-function pruneVideoPreviews(wanted) {
-  for (const [id, entry] of [...videoState.previews]) {
-    if (wanted.has(id)) continue;
-    if (entry.stream) entry.stream.getTracks().forEach(t => t.stop());
-    else entry.promise.then(s => s.getTracks().forEach(t => t.stop())).catch(() => {});
-    videoState.previews.delete(id);
-  }
-}
-async function attachVideoPreview(el, deviceId, statusEl) {
-  try {
-    const entry = acquirePreview(deviceId);
-    const stream = await entry.promise;
+function attachVideoPreview(el, deviceId, statusEl) {
+  const release = window.KairoVideoHub.lease(deviceId, 'thumb', (stream) => {
     if (!el.isConnected) return;
     el.srcObject = stream;
     el.play().catch(() => {});
     if (statusEl) statusEl.textContent = '';
-  } catch (err) {
-    if (statusEl) statusEl.textContent = VSRC.describeCaptureError(err);
-  }
+  }, (err) => { if (statusEl) statusEl.textContent = VSRC.describeCaptureError(err); });
+  videoState.leases.push(release);
 }
 
 // ── DOM helpers ────────────────────────────────────────────────────────────
@@ -184,29 +159,23 @@ function buildVideoPane() {
   panes.appendChild(pane);
 
   // Previews run only while this pane is on screen.
-  new IntersectionObserver(async (entries) => {
+  videoState.observer = new IntersectionObserver(async (entries) => {
     const on = entries.some(e => e.isIntersecting);
     if (on === videoState.visible) return;
     videoState.visible = on;
     if (on) { await refreshVideoDevices(false); renderVideoSources(); }
     else releaseAllPreviews();
-  }).observe(videoState.root);
-  navigator.mediaDevices?.addEventListener?.('devicechange', async () => {
+  });
+  videoState.observer.observe(videoState.root);
+  videoState.onDeviceChange = async () => {
     await refreshVideoDevices(false);
     renderVideoSources();
-  });
-
-  // The quick switcher under the transition bar.
-  const bar = document.getElementById('rs-transition-bar');
-  if (bar) {
-    const sw = vEl('div', 'rs-video-bar hidden');
-    sw.id = 'rs-video-bar';
-    bar.after(sw);
-  }
+  };
+  navigator.mediaDevices?.addEventListener?.('devicechange', videoState.onDeviceChange);
 }
 
 function renderVideoSources() {
-  renderVideoSwitcher();
+  if (window.KairoVideoDirector) window.KairoVideoDirector.refresh();
   const root = videoState.root;
   if (!root) return;
   const sources = videoSourceList();
@@ -242,7 +211,6 @@ function renderVideoSources() {
   else if (videoState.blind) sec.appendChild(vEl('p', 'setting-hint', 'Choose Detect devices and allow camera access to see device names.'));
   else if (!videoState.devices.length) sec.appendChild(vEl('p', 'setting-hint', 'No cameras found. Connect a camera or capture card, then choose Detect devices.'));
 
-  const wanted = new Set();
   const split = vEl('div', 'vsrc-split');
   const listCol = vEl('div', 'vsrc-list');
   listCol.setAttribute('role', 'listbox');
@@ -273,7 +241,7 @@ function renderVideoSources() {
     row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(); } });
     listCol.appendChild(row);
     const id = previewKey(src);
-    if (id && videoState.visible) { wanted.add(id); attachments.push([vid, id, msg]); }
+    if (id && videoState.visible) { attachments.push([vid, id, msg]); }
     else msg.textContent = id ? '' : 'Not connected';
   });
   if (!sources.length) listCol.appendChild(vEl('p', 'setting-hint vsrc-empty', 'No sources yet. Choose a device above and add it.'));
@@ -288,7 +256,7 @@ function renderVideoSources() {
     big.append(bv, bmsg);
     props.appendChild(big);
     const sid = previewKey(selected);
-    if (sid && videoState.visible) { wanted.add(sid); attachments.push([bv, sid, bmsg]); }
+    if (sid && videoState.visible) { attachments.push([bv, sid, bmsg]); }
     else bmsg.textContent = sid ? '' : 'Not connected';
 
     const field = (label, control) => {
@@ -352,53 +320,35 @@ function renderVideoSources() {
   out.appendChild(table);
   root.appendChild(out);
 
-  pruneVideoPreviews(wanted);
+  // Re-rendering takes new leases before the old ones go, so the hub keeps
+  // each camera open across the redraw.
+  const old = videoState.leases;
+  videoState.leases = [];
   attachments.forEach(([el, id, msg]) => attachVideoPreview(el, id, msg));
-}
-
-// ── Quick switcher (main window, under the transition bar) ────────────────
-function renderVideoSwitcher() {
-  const host = document.getElementById('rs-video-bar');
-  if (!host) return;
-  const sources = videoSourceList();
-  host.innerHTML = '';
-  host.classList.toggle('hidden', !sources.length);
-  if (!sources.length) return;
-  const outs = videoOutputs();
-  const layers = outputLayerMap();
-  const live = videoLiveMap();
-  const on = outs.filter(o => layers[o.id] && layers[o.id].video);
-  // What the outputs with Video input on agree on; mixed shows no active chip.
-  const basis = on.length ? on : outs;
-  const ids = new Set(basis.map(o => live[o.id] || ''));
-  const activeId = ids.size === 1 ? [...ids][0] : null;
-
-  host.appendChild(vEl('span', 'rs-video-label', 'Video'));
-  const group = vEl('div', 'rs-video-chips');
-  group.setAttribute('role', 'group');
-  group.setAttribute('aria-label', 'Live video source');
-  const chip = (id, label) => {
-    const b = vBtn(label, `Make ${label.toLowerCase() === 'no video' ? 'no video' : label} live`, () => setVideoLiveFor(outs.map(o => o.id), id || null), 'rs-video-chip' + (activeId === id ? ' active' : ''));
-    b.setAttribute('aria-pressed', String(activeId === id));
-    return b;
-  };
-  group.appendChild(chip('', 'No video'));
-  sources.forEach(s => group.appendChild(chip(s.id, s.name)));
-  host.appendChild(group);
-  if (!on.length) {
-    const hint = vEl('p', 'rs-video-hint', 'Video input is off on every output. Turn it on in Settings, Outputs.');
-    host.appendChild(hint);
-  }
+  old.forEach(release => release());
 }
 
 // Called by setOutputLayer (app_outputs.js) when a Video input box changes.
-function onVideoLayerChanged() { renderVideoSwitcher(); if (videoState.visible) renderVideoSources(); }
+function onVideoLayerChanged() { if (window.KairoVideoDirector) window.KairoVideoDirector.refresh(); if (videoState.visible) renderVideoSources(); }
 
-async function initVideoSources() {
+async function startVideoSources() {
   buildVideoPane();
   videoSourceList();
   settings.videoLive = videoLiveMap();
   publishVideoState();
   await refreshVideoDevices(false);
   renderVideoSources();
+}
+
+// Mode off: take the pane and every capture away again.
+function stopVideoSources() {
+  videoState.observer?.disconnect();
+  navigator.mediaDevices?.removeEventListener?.('devicechange', videoState.onDeviceChange);
+  releaseAllPreviews();
+  videoState.root?.closest('.settings-pane')?.remove();
+  document.querySelector('#settings-nav .settings-nav-item[data-pane="sources"]')?.remove();
+  if (document.querySelector('.settings-pane.active') == null && typeof showFirstSettingsPane === 'function') showFirstSettingsPane();
+  videoState.root = null;
+  videoState.built = false;
+  videoState.visible = false;
 }

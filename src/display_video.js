@@ -12,6 +12,19 @@
 (function () {
   const V = window.KairoVideoSources;
 
+  // Where a device stream comes from. By default this window opens the device
+  // itself; a copy inside the operator window passes the parent's hub so the
+  // camera is captured once.
+  const directProvider = {
+    async open(source) {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      const deviceId = V.resolveDevice(source, devices);
+      if (!deviceId) { const e = new Error('device missing'); e.name = 'NotFoundError'; throw e; }
+      const stream = await navigator.mediaDevices.getUserMedia(V.buildConstraints(source, deviceId));
+      return { stream, deviceId, release: () => { try { stream.getTracks().forEach(t => t.stop()); } catch {} } };
+    },
+  };
+
   // opts: { host, enabled, getTransition(): {animation, speed}, onActive(bool) }
   function create(opts) {
     const host = opts.host;
@@ -43,17 +56,12 @@
     }
 
     function release(slot, stream, ms) {
-      const done = () => { stopStream(stream); slots[slot].srcObject = null; slots[slot].style.opacity = '0'; };
+      const done = () => { stream && stream.release && stream.release(); slots[slot].srcObject = null; slots[slot].style.opacity = '0'; };
       if (ms > 0) setTimeout(done, ms + 50); else done();
     }
 
-    async function open(source) {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const deviceId = V.resolveDevice(source, devices);
-      if (!deviceId) { const e = new Error('device missing'); e.name = 'NotFoundError'; throw e; }
-      const stream = await navigator.mediaDevices.getUserMedia(V.buildConstraints(source, deviceId));
-      return { stream, deviceId };
-    }
+    const provider = opts.provider || directProvider;
+    const open = (source) => provider.open(source);
 
     function waitForFrame(el) {
       return new Promise((resolve) => {
@@ -76,7 +84,7 @@
       if (!want) {   // nothing to show: fade out, then let go of the camera
         if (front >= 0) {
           const plan = V.switchPlan(opts.getTransition().animation, opts.getTransition().speed, true);
-          const old = { slot: front, stream: current && current.stream };
+          const old = { slot: front, stream: current };
           fadeStyle(slots[old.slot], plan.ms);
           slots[old.slot].style.opacity = '0';
           front = -1; current = null;
@@ -100,22 +108,22 @@
         retryTimer = setTimeout(() => sync(lastArgs), 3000);
         return;
       }
-      if (myGen !== gen) { stopStream(opened.stream); return; }
+      if (myGen !== gen) { opened.release(); return; }
 
       const spare = front === 0 ? 1 : 0;
       const el = slots[spare];
       el.srcObject = opened.stream;
       try { await el.play(); } catch {}
       await waitForFrame(el);
-      if (myGen !== gen) { stopStream(opened.stream); el.srcObject = null; return; }
+      if (myGen !== gen) { opened.release(); el.srcObject = null; return; }
 
       const plan = V.switchPlan(opts.getTransition().animation, opts.getTransition().speed, front >= 0);
-      const old = front >= 0 ? { slot: front, stream: current && current.stream } : null;
+      const old = front >= 0 ? { slot: front, stream: current } : null;
       fadeStyle(el, plan.ms);
       el.style.opacity = '1';
       if (old) { fadeStyle(slots[old.slot], plan.ms); slots[old.slot].style.opacity = '0'; }
       front = spare;
-      current = { stream: opened.stream, sourceId: want.id, settings: [want.width, want.height, want.fps].join('x'), key: sourceKey(want, opened.deviceId) };
+      current = { stream: opened.stream, release: opened.release, sourceId: want.id, settings: [want.width, want.height, want.fps].join('x'), key: sourceKey(want, opened.deviceId) };
       setActive(true);
       if (old) release(old.slot, old.stream, plan.ms);
 
@@ -128,16 +136,24 @@
         fadeStyle(slots[slot], 200);
         slots[slot].style.opacity = '0';
         setActive(false);
-        release(slot, opened.stream, 200);
+        release(slot, { release: opened.release }, 200);
         retryTimer = setTimeout(() => sync(lastArgs), 2000);
       }, { once: true });
     }
 
-    if (opts.enabled && navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+    if (opts.enabled && !opts.provider && navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
       navigator.mediaDevices.addEventListener('devicechange', () => { if (lastArgs) sync(lastArgs); });
     }
 
-    return { sync, isActive: () => active };
+    // The page is going away: let go of the device now.
+    function dispose() {
+      gen++;
+      clearTimeout(retryTimer);
+      if (current && current.release) current.release();
+      current = null; front = -1;
+    }
+
+    return { sync, dispose, isActive: () => active };
   }
 
   window.KairoDisplayVideo = { create };
