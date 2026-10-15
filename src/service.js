@@ -795,10 +795,13 @@
   // network round-trip.
   // Write the second-language text for each slide of a song or deck by hand, for languages
   // that have no translation model (Yoruba, Igbo, Hausa, Swahili, German). Saved on the item,
-  // keyed by the slide's own text, so it survives regrouping the lines.
+  // keyed by the slide's own text: editing a line, or regrouping lines into different slides,
+  // needs that slide translated again.
   function openTranslationEditor(item, code) {
     const lang = TRANSLATE_LANGUAGES.find(l => l.code === code);
-    const slides = slidesFor(item).filter(sl => (sl.text || '').trim() && !sl.isScene && !sl.image);
+    // Each different slide text once: a chorus sung three times is translated once.
+    const seen = new Set();
+    const slides = slidesFor(item).filter(sl => (sl.text || '').trim() && !sl.isScene && !sl.image && !seen.has(sl.text) && seen.add(sl.text));
     const overlay = document.createElement('div');
     overlay.className = 'tr-editor-overlay';
     const box = document.createElement('div');
@@ -834,6 +837,8 @@
       const map = { ...(item.manualTr || {}) };
       const mine = { ...(map[code] || {}) };
       boxes.forEach(([text, ta]) => { const v = ta.value.trim(); if (v) mine[text] = v; else delete mine[text]; });
+      // Translations of lines that are no longer in this song (edited since) stay, unused, so
+      // putting a line back brings its translation back.
       if (Object.keys(mine).length) map[code] = mine; else delete map[code];
       item.manualTr = map;
       item.translateTo = code;
