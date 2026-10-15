@@ -148,7 +148,7 @@ function buildVideoPane() {
 
   const navBtn = vEl('button', 'settings-nav-item');
   navBtn.dataset.pane = 'sources';
-  navBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3z"/></svg><span>Sources</span>';
+  navBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3z"/></svg><span>Video Sources</span>';
   const anchor = nav.querySelector('[data-pane="director"]') || nav.querySelector('[data-pane="outputs"]');
   anchor ? anchor.after(navBtn) : nav.appendChild(navBtn);
 
@@ -185,8 +185,8 @@ function renderVideoSources() {
 
   // Sources
   const sec = vEl('div', 'settings-section');
-  sec.appendChild(vEl('div', 'settings-section-label', 'Sources'));
-  sec.appendChild(vEl('p', 'setting-hint', 'Cameras and capture cards. Turn on Video input for an output in Outputs, then choose what is live on it below. Video input goes to display windows and Monitors. NDI, Syphon and DeckLink outputs do not carry it yet.'));
+  sec.appendChild(vEl('div', 'settings-section-label', 'Video Sources'));
+  sec.appendChild(vEl('p', 'setting-hint', 'Cameras and capture cards. Turn on Video input for an output in Director mode settings, then choose what is live on it below. Video input goes to display windows and Monitors. NDI, Syphon and DeckLink outputs do not carry it yet.'));
 
   const addRow = vEl('div', 'vsrc-add-row');
   const free = videoState.devices.filter(d => !sources.some(s => VSRC.resolveDevice(s, [d]) === d.deviceId));
@@ -195,7 +195,7 @@ function renderVideoSources() {
   sel.disabled = !free.length;
   sel.setAttribute('aria-label', 'Device to add');
   addRow.appendChild(sel);
-  addRow.appendChild(vBtn('Add source', 'Add the chosen device as a source', () => {
+  addRow.appendChild(vBtn('Add video source', 'Add the chosen device as a video source', () => {
     const d = free.find(x => x.deviceId === sel.value);
     if (!d) return;
     const r = VSRC.addSource(sources, d);
@@ -214,7 +214,7 @@ function renderVideoSources() {
   const split = vEl('div', 'vsrc-split');
   const listCol = vEl('div', 'vsrc-list');
   listCol.setAttribute('role', 'listbox');
-  listCol.setAttribute('aria-label', 'Sources');
+  listCol.setAttribute('aria-label', 'Video Sources');
   const attachments = [];
   sources.forEach((src, i) => {
     const row = vEl('div', 'vsrc-item' + (src.id === videoState.selectedId ? ' active' : ''));
@@ -244,7 +244,7 @@ function renderVideoSources() {
     if (id && videoState.visible) { attachments.push([vid, id, msg]); }
     else msg.textContent = id ? '' : 'Not connected';
   });
-  if (!sources.length) listCol.appendChild(vEl('p', 'setting-hint vsrc-empty', 'No sources yet. Choose a device above and add it.'));
+  if (!sources.length) listCol.appendChild(vEl('p', 'setting-hint vsrc-empty', 'No video sources yet. Choose a device above and add it.'));
   split.appendChild(listCol);
 
   // Properties
@@ -287,9 +287,9 @@ function renderVideoSources() {
       saveVideoSources(VSRC.updateSource(sources, selected.id, { fps: Number(v) }));
     })));
     props.appendChild(vEl('p', 'setting-hint', 'The camera uses the closest size and rate it supports.'));
-    props.appendChild(vBtn('Remove source', 'Remove this source from Kairo', () => saveVideoSources(VSRC.removeSource(sources, selected.id)), 'modal-btn vsrc-remove'));
+    props.appendChild(vBtn('Remove video source', 'Remove this video source from Kairo', () => saveVideoSources(VSRC.removeSource(sources, selected.id)), 'modal-btn vsrc-remove'));
   } else {
-    props.appendChild(vEl('p', 'setting-hint', 'Select a source to see its preview and properties.'));
+    props.appendChild(vEl('p', 'setting-hint', 'Select a video source to see its preview and properties.'));
   }
   split.appendChild(props);
   sec.appendChild(split);
@@ -300,14 +300,14 @@ function renderVideoSources() {
   const layers = outputLayerMap();
   const out = vEl('div', 'settings-section');
   out.appendChild(vEl('div', 'settings-section-label', 'Live on each output'));
-  out.appendChild(vEl('p', 'setting-hint', 'One source is live per output. Changes use the output transition. The Video input layer must be on for the output, in Outputs.'));
+  out.appendChild(vEl('p', 'setting-hint', 'One video source is live per output. Changes use the output transition. Video input must be on for the output, in Director mode settings.'));
   const table = vEl('div', 'vsrc-live');
   videoOutputs().forEach(o => {
     const row = vEl('div', 'vsrc-live-row');
     row.appendChild(vEl('span', 'vsrc-live-name', o.monitor ? `${o.name} (Monitor)` : o.name));
     const opts = [['', 'No video']].concat(sources.map(s => [s.id, s.name]));
     const select = vSelect(opts, live[o.id] || '', (v) => setVideoLiveFor([o.id], v || null));
-    select.setAttribute('aria-label', `Live source on ${o.name}`);
+    select.setAttribute('aria-label', `Live video source on ${o.name}`);
     row.appendChild(select);
     const layerOn = layers[o.id] && layers[o.id].video;
     const toggle = vEl('label', 'vsrc-layer-toggle');

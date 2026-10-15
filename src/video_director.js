@@ -2,10 +2,11 @@
 // lifecycle.
 //
 // Lazy-loaded by video_director_boot.js while the mode is on, and removed
-// again when it is turned off. Three more lazy files build the rest of the
-// screen: video_director_layout.js (rails, top line, verses rail), and
-// video_dock.js (the bottom dock: inputs and media). Nothing in the normal
-// layout's own code is edited for this mode.
+// again when it is turned off. The screen has four labelled sections: Inputs
+// (video_input_grid.js), Preview, Output (the Program screen) and Scripture
+// sends (the search bar and the Live Queue, moved in by
+// video_director_layout.js). The dock below (video_dock.js) holds slides and
+// media. Nothing in the normal layout's own code is edited for this mode.
 //
 //   PROGRAM  what the outputs show now: a live copy of the output's own page
 //            (display.html?monitor=1&shared=1), fed by the same socket. Its
@@ -70,7 +71,7 @@
     const f = D.frames[kind];
     if (!f || f.src === src) return;
     f.src = src;
-    f.frame.title = kind === 'pvw' ? 'Preview' : 'Program';
+    f.frame.title = kind === 'pvw' ? 'Preview' : 'Output';
     f.frame.src = src;
   }
   function post(kind, msg) {
@@ -183,13 +184,13 @@
     const ctl = vEl('div', 'vd-ctl');
     ctl.setAttribute('role', 'group');
     ctl.setAttribute('aria-label', 'Transition');
-    D.ui.cut = vBtn('Cut', 'Put the Preview source on Program at once', () => take('cut'), 'vd-take');
-    D.ui.fade = vBtn('Fade', 'Fade the Preview source onto Program', () => take('fade'), 'vd-take');
+    D.ui.cut = vBtn('Cut', 'Put the Preview video source on Program at once', () => take('cut'), 'vd-take');
+    D.ui.fade = vBtn('Fade', 'Fade the Preview video source onto Program', () => take('fade'), 'vd-take');
     ctl.append(D.ui.cut, D.ui.fade);
     // Program
     const pgm = vEl('div', 'vd-screen vd-screen-pgm');
     const pgmHead = vEl('div', 'vd-screen-head');
-    pgmHead.appendChild(vEl('span', 'vd-tag vd-tag-pgm', 'Program'));
+    pgmHead.appendChild(vEl('span', 'vd-tag vd-tag-pgm', 'Output'));
     D.ui.pgmName = vEl('span', 'vd-ref');
     pgmHead.appendChild(D.ui.pgmName);
     pgm.append(pgmHead, buildFrame('pgm'));
@@ -197,8 +198,39 @@
     screens.append(pvw, ctl, pgm);
 
     band.appendChild(screens);
+
+    // Second row: Inputs (left) and Scripture sends (right).
+    const row = vEl('div', 'vd-row2');
+    const inputs = vEl('section', 'vd-section vd-section-inputs');
+    inputs.setAttribute('aria-label', 'Inputs');
+    const ihead = vEl('div', 'vd-section-head');
+    ihead.appendChild(vEl('span', 'vd-label', 'Inputs'));
+    D.ui.noVideo = vBtn('No video', 'Send no video to Program', () => sendToProgram(null), 'vd-mini');
+    ihead.appendChild(D.ui.noVideo);
+    D.grid = window.KairoVideoGrid.create({
+      getSources: () => videoSourceList(),
+      getDevices: () => videoState.devices,
+      getState: () => { const ps = D.programState; return { programId: ps.id, mixed: ps.mixed, hasOutputs: ps.on.length > 0, previewId: D.previewId }; },
+      onProgram: sendToProgram,
+      onPreview: setPreview,
+      mode: settings.videoGridMode === 2 ? 2 : 4,
+      onMode: (n) => { settings.videoGridMode = n; saveSettingsPatch({ videoGridMode: n }); },
+    });
+    ihead.appendChild(D.grid.controls);
+    ihead.appendChild(vBtn('Manage video sources', 'Add, rename or remove video sources', () => {
+      document.getElementById('settings-modal')?.classList.remove('hidden');
+      if (typeof showSettingsPane === 'function') showSettingsPane('sources');
+    }, 'vd-mini vd-manage'));
+    inputs.append(ihead, D.grid.el);
+    const sends = vEl('section', 'vd-section vd-section-sends');
+    sends.setAttribute('aria-label', 'Scripture sends');
+    row.append(inputs, sends);
+    D.sendsHost = sends;
+
+    center.prepend(row);
     center.prepend(band);
     D.root = band;
+    D.row2 = row;
     return true;
   }
 
@@ -211,7 +243,6 @@
 
   function refresh() {
     if (!D.active) return;
-    if (window.KairoVideoDock) window.KairoVideoDock.refresh();
     if (!D.root) return;
     const sources = videoSourceList();
     if (D.previewId && !sources.some(s => s.id === D.previewId)) D.previewId = null;
@@ -224,6 +255,8 @@
     setFrameSrc('pvw', `/display.html?output=${encodeURIComponent(PRIMARY_DISPLAY)}&preview=1`);
     const pgmSource = ps.mixed ? null : sources.find(s => s.id === ps.id);
     D.ui.pgmName.textContent = !ps.on.length ? 'Video off' : ps.mixed ? 'Mixed' : pgmSource ? pgmSource.name : 'No video';
+    D.grid.render();
+    D.ui.noVideo.classList.toggle('is-on', !ps.mixed && ps.on.length > 0 && !ps.id);
     D.ui.pgm.classList.toggle('is-live', isOnAir());
 
     // Preview header
@@ -238,7 +271,7 @@
       btn.disabled = !canTake;
       btn.classList.toggle('is-current', mode === cur);
       btn.setAttribute('aria-pressed', String(mode === cur));
-      btn.title = canTake ? (mode === 'cut' ? 'Put the Preview source on Program at once' : 'Fade the Preview source onto Program') : 'Turn on Video input for an output in Director mode settings';
+      btn.title = canTake ? (mode === 'cut' ? 'Put the Preview video source on Program at once' : 'Fade the Preview video source onto Program') : 'Turn on Video input for an output in Director mode settings';
     }
   }
 
@@ -283,6 +316,7 @@
     publishTransition();
     await startVideoSources();     // the Sources pane, device list, published state
     window.KairoVideoLayout?.start();
+    window.KairoVideoLayout?.fillSends(D.sendsHost);
     window.KairoVideoDock?.mount();
     mountSettings();
     // The Program frame follows the verse going live and clearing.
@@ -306,6 +340,8 @@
     D.liveObserver?.disconnect();
     unmountSettings();
     window.KairoVideoDock?.unmount();
+    window.KairoVideoLayout?.emptySends();
+    D.grid?.destroy(); D.grid = null;
     window.KairoVideoLayout?.stop();
     // Going off air fades, without changing the transition the operator chose.
     try { localStorage.setItem('kairo-video-transition', JSON.stringify('fade')); } catch {}
@@ -315,8 +351,8 @@
     D.frames = {};
     stopVideoSources();
     window.KairoVideoHub?.releaseAll();
-    D.root?.remove();
-    D.root = null;
+    D.root?.remove(); D.row2?.remove();
+    D.root = null; D.row2 = null;
     try { localStorage.setItem('kairo-video-live', '{}'); } catch {}
   }
 

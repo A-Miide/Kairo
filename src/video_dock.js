@@ -1,17 +1,12 @@
 // KAIRO — Video director mode: the dock, one bar along the bottom.
 //
-// Left, Inputs: the cameras and capture cards as a row of tiles of their own.
-// One click sends an input to Program with the current transition; Shift-click
-// or the small Preview button stages it on Preview instead.
-// Right, a media shelf with filter chips: Slides (only slides), Video, Images
-// and, when the app has them, Overlays. Video and Images reuse the Media Bin's
+// A secondary shelf under the four main sections: filter chips for Slides
+// (only slides), Video, Images and, when the app has them, Overlays. Video and Images reuse the Media Bin's
 // own cards (moved here while the mode is on, so clicking one does exactly
 // what it does there); Slides sends through the playlist's own sendSlide.
-// Thumbnails take their stream from the hub (one low-rate capture per camera)
-// and run only while the dock is on screen.
 'use strict';
 (function () {
-  const K = { mounted: false, root: null, inputs: null, body: null, chips: null, active: 'slides', leases: [], thumbsOn: true, io: null, onVis: null, slideObs: null, binHome: null, binToggled: false };
+  const K = { mounted: false, root: null, body: null, chips: null, active: 'slides', slideObs: null, binHome: null, binToggled: false };
 
   const dir = () => window.KairoVideoDirector;
 
@@ -30,50 +25,6 @@
     if (!CHIPS.some(c => c.id === id && c.available())) return;
     K.active = id;
     renderMedia();
-  }
-
-  // ── Inputs ───────────────────────────────────────────────────────────────
-  function inputTile(id, name, flag, source) {
-    const t = vEl('div', 'vd-tile' + (flag === 'PGM' ? ' is-pgm' : '') + (flag === 'PVW' ? ' is-pvw' : ''));
-    t.tabIndex = 0;
-    t.setAttribute('role', 'button');
-    t.setAttribute('aria-label', `${name}. Click to send to Program, Shift-click for Preview`);
-    t.title = 'Click: send to Program. Shift-click: stage on Preview.';
-    const thumb = vEl('div', 'vd-thumb');
-    if (source) {
-      const v = vEl('video'); v.muted = true; v.playsInline = true; v.setAttribute('aria-hidden', 'true');
-      thumb.appendChild(v);
-      const devId = previewKey(source);
-      if (devId && K.thumbsOn) {
-        K.leases.push(window.KairoVideoHub.lease(devId, 'thumb', (stream) => {
-          if (!v.isConnected) return;
-          v.srcObject = stream; v.play().catch(() => {});
-        }, () => { thumb.dataset.msg = 'Unavailable'; }));
-      } else thumb.dataset.msg = devId ? '' : 'Not connected';
-    } else thumb.classList.add('vd-thumb-none');
-    t.append(thumb, vEl('div', 'vd-tile-name', name));
-    if (flag) t.appendChild(vEl('span', 'vd-flag ' + (flag === 'PGM' ? 'vd-flag-pgm' : 'vd-flag-pvw'), flag));
-    const pvwBtn = vBtn('Preview', `Stage ${name} on Preview`, (e) => { e.stopPropagation(); dir().setPreview(id); }, 'vd-tile-pvw');
-    t.appendChild(pvwBtn);
-    const go = (e) => (e.shiftKey ? dir().setPreview(id) : dir().sendToProgram(id));
-    t.addEventListener('click', go);
-    t.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(e); } });
-    return t;
-  }
-
-  function renderInputs() {
-    const st = dir().state();
-    const sources = videoSourceList();
-    const ps = st.program;
-    const old = K.leases;
-    K.leases = [];
-    const row = K.inputs;
-    row.replaceChildren();
-    const flagFor = (id) => (!ps.mixed && ps.on.length && (ps.id || null) === (id || null) ? 'PGM' : (st.previewId || null) === (id || null) ? 'PVW' : '');
-    row.appendChild(inputTile('', 'No video', flagFor(''), null));
-    sources.forEach(s => row.appendChild(inputTile(s.id, s.name, flagFor(s.id), s)));
-    if (!sources.length) row.appendChild(vEl('p', 'vd-empty', 'No inputs yet.'));
-    old.forEach(release => release());
   }
 
   // ── Media shelf ──────────────────────────────────────────────────────────
@@ -177,60 +128,29 @@
     K.mounted = true;
     const root = vEl('section', 'vd-dock');
     root.setAttribute('aria-label', 'Inputs and media');
-    const inputsBox = vEl('div', 'vd-inputs');
-    const head = vEl('div', 'vd-dock-head');
-    head.appendChild(vEl('span', 'vd-label', 'Inputs'));
-    head.appendChild(vBtn('Manage', 'Add, rename or remove inputs', () => {
-      document.getElementById('settings-modal')?.classList.remove('hidden');
-      if (typeof showSettingsPane === 'function') showSettingsPane('sources');
-    }, 'vd-mini'));
-    K.inputs = vEl('div', 'vd-input-row');
-    inputsBox.append(head, K.inputs);
     const mediaBox = vEl('div', 'vd-media');
     K.chips = vEl('div', 'vd-chips');
     K.chips.setAttribute('role', 'group');
     K.chips.setAttribute('aria-label', 'Media');
     K.body = vEl('div', 'vd-media-body');
     mediaBox.append(K.chips, K.body);
-    root.append(inputsBox, mediaBox);
+    root.append(mediaBox);
     center.appendChild(root);
     K.root = root;
 
-    // Thumbnails run only while the dock is on screen and the window is visible.
-    let shown = true;
-    const update = () => {
-      const on = shown && !document.hidden;
-      if (on === K.thumbsOn) return;
-      K.thumbsOn = on;
-      renderInputs();
-    };
-    K.io = new IntersectionObserver((es) => { shown = es.some(e => e.isIntersecting); update(); });
-    K.io.observe(root);
-    K.onVis = update;
-    document.addEventListener('visibilitychange', K.onVis);
-    K.thumbsOn = !document.hidden;
     if (!CHIPS.some(c => c.id === K.active && c.available())) K.active = (CHIPS.find(c => c.available()) || {}).id || 'slides';
-    renderInputs();
     renderMedia();
   }
 
   function unmount() {
     if (!K.mounted) return;
     K.mounted = false;
-    K.io?.disconnect(); K.io = null;
-    document.removeEventListener('visibilitychange', K.onVis);
     K.slideObs?.disconnect(); K.slideObs = null;
-    K.leases.forEach(release => release()); K.leases = [];
     releaseBin();
     if (K.binToggled) { document.getElementById('media-bin-toggle-btn')?.click(); K.binToggled = false; }
     K.binHome?.remove(); K.binHome = null;
     K.root?.remove(); K.root = null;
   }
 
-  function refresh() {
-    if (!K.mounted || !dir().state().active) return;
-    renderInputs();
-  }
-
-  window.KairoVideoDock = { mount, unmount, refresh, show };
+  window.KairoVideoDock = { mount, unmount, show };
 })();
