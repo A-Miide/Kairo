@@ -359,7 +359,9 @@
     ihead.appendChild(D.grid.controls);
     const ifoot = vEl('div', 'vd-section-foot');
     D.ui.noVideo = vBtn('No video', 'Send no video to Output', () => sendToProgram(null), 'vd-mini');
+    D.ui.ready = vBtn('Ready check', 'List anything not ready before going live', (e) => openReadyCheck(e.currentTarget), 'vd-mini vd-ready');
     ifoot.append(
+      D.ui.ready,
       D.ui.noVideo,
       vBtn('+ Add', 'Add an input without leaving Director mode', (e) => openAddInputPanel(e.currentTarget), 'vd-mini'),
       vBtn('Manage', 'Rename, reorder, switch off or remove inputs', () => openSources(), 'vd-mini'),
@@ -470,6 +472,49 @@
     return true;
   }
 
+  // ── Ready check: what is not ready before going live. It only informs. ──
+  function readyIssues() {
+    const issues = [];
+    const sources = videoSourceList().filter(x => x.enabled !== false);
+    for (const x of sources) {
+      const st = VSRC.stateOf(x, videoState.devices);
+      if (st === 'placeholder') issues.push({ text: `${x.name}: no device`, fix: 'Choose device', run: (btn) => openDevicePicker(x.id, btn) });
+      else if (st === 'missing') issues.push({ text: `${x.name}: device not connected`, fix: 'Choose device', run: (btn) => openDevicePicker(x.id, btn) });
+    }
+    const ps = programState();
+    if (!ps.on.length) issues.push({ text: 'Video input is off on every output', fix: 'Turn on', run: () => setOutputLayer(PRIMARY_DISPLAY, 'video', true) });
+    else if (!ps.mixed && !ps.id) {
+      const first = sources.find(x => VSRC.stateOf(x, videoState.devices) === 'ready');
+      issues.push(first ? { text: 'Output has no video source', fix: `Send ${first.name}`, run: () => sendToProgram(first.id) } : { text: 'Output has no video source', fix: 'Add input', run: (btn) => openAddInputPanel(btn) });
+    }
+    if (typeof allConfiguredOutputs === 'function' && typeof isOutputEnabled === 'function') {
+      for (const o of allConfiguredOutputs()) {
+        if (o.type === 'display' && !isOutputEnabled(o)) issues.push({ text: `${o.name} is off`, fix: 'Open Outputs', run: () => { document.getElementById('settings-modal')?.classList.remove('hidden'); if (typeof showSettingsPane === 'function') showSettingsPane('outputs'); } });
+      }
+    }
+    return issues;
+  }
+  function openReadyCheck(anchor) {
+    openVideoPanel(anchor, 'Ready check', (close) => {
+      const box = vEl('div', 'vsrc-det');
+      const issues = readyIssues();
+      if (!issues.length) box.appendChild(vEl('p', 'setting-hint', 'Everything is ready.'));
+      issues.forEach(it => {
+        const r = vEl('div', 'vsrc-det-row');
+        r.appendChild(vEl('span', 'vsrc-det-name', it.text));
+        r.appendChild(vBtn(it.fix, it.fix, (e) => { const b = e.currentTarget; close(); it.run(anchor || b); }, 'vd-mini'));
+        box.appendChild(r);
+      });
+      return box;
+    });
+  }
+  function paintReady() {
+    if (!D.ui.ready) return;
+    const n = readyIssues().length;
+    D.ui.ready.textContent = n ? `Ready check · ${n}` : 'Ready check';
+    D.ui.ready.classList.toggle('has-issues', n > 0);
+  }
+
   function openSources() {
     document.getElementById('settings-modal')?.classList.remove('hidden');
     if (typeof showSettingsPane === 'function') showSettingsPane('sources');
@@ -496,9 +541,15 @@
     setFrameSrc('pvw', `/display.html?output=${encodeURIComponent(PRIMARY_DISPLAY)}&preview=1`);
     const pgmSource = ps.mixed ? null : sources.find(s => s.id === ps.id);
     D.ui.pgmName.textContent = !ps.on.length ? 'Video off' : ps.mixed ? 'Mixed' : pgmSource ? pgmSource.name : 'No video';
+    // What the multiview display mirrors.
+    try {
+      const pub = JSON.stringify({ programId: ps.id, mixed: ps.mixed, hasOutputs: ps.on.length > 0, previewId: D.previewId });
+      if (D.lastPub !== pub) { D.lastPub = pub; localStorage.setItem('kairo-video-director', pub); }
+    } catch {}
     D.grid.render();
     D.ui.noVideo.classList.toggle('is-on', !ps.mixed && ps.on.length > 0 && !ps.id);
     fitScreens();
+    paintReady();
     D.ui.pgm.classList.toggle('is-live', isOnAir());
     if (D.frames.pgm) D.frames.pgm.name.textContent = !ps.on.length ? '' : ps.mixed ? 'Mixed' : pgmSource ? pgmSource.name : 'No video';
 
@@ -542,6 +593,41 @@
       r.append(text, label);
       return r;
     };
+    // Multiview display: the input grid full screen on one chosen display (Off by default).
+    const mvRow = vEl('div', 'dm-row');
+    const mvText = vEl('div', 'dm-text');
+    mvText.append(vEl('div', 'dm-name', 'Multiview display'), vEl('p', 'setting-hint', 'Show the inputs full screen on one display.'));
+    const mvSel = vEl('select', 'setting-input');
+    const mvOpts = [['', 'Off']].concat(displayOutputs().map(d => [d.id, d.name + (d.kind === 'monitor' ? ' (Monitor)' : '')]));
+    mvOpts.forEach(([v, l]) => mvSel.add(new Option(l, v, false, v === (settings.videoMultiview || ''))));
+    mvSel.setAttribute('aria-label', 'Multiview display');
+    const mvConfirm = vEl('div', 'dm-confirm');
+    mvConfirm.hidden = true;
+    const applyMultiview = (id) => {
+      settings.videoMultiview = id || '';
+      saveSettingsPatch({ videoMultiview: settings.videoMultiview });
+      if (typeof applyOutputModes === 'function') applyOutputModes();
+      unmountSettings(); mountSettings();
+      refresh();
+      if (typeof onVideoLayerChanged === 'function') onVideoLayerChanged();
+    };
+    mvSel.addEventListener('change', () => {
+      const id = mvSel.value;
+      // The audience screen asks once, by name, before it stops showing the audience.
+      if (id && id === PRIMARY_DISPLAY) {
+        const name = (displayOutputs().find(d => d.id === id) || {}).name || 'This display';
+        mvConfirm.replaceChildren(
+          vEl('span', null, `${name} is your audience screen. Show the multiview there instead?`),
+          vBtn('Show multiview', 'Replace the audience screen with the multiview', () => applyMultiview(id), 'vd-mini vd-mini-primary'),
+          vBtn('Keep as is', 'Leave the audience screen alone', () => { mvSel.value = settings.videoMultiview || ''; mvConfirm.hidden = true; }, 'vd-mini'));
+        mvConfirm.hidden = false;
+        return;
+      }
+      mvConfirm.hidden = true;
+      applyMultiview(id);
+    });
+    mvRow.append(mvText, mvSel);
+    card.append(mvRow, mvConfirm);
     const layers = outputLayerMap();
     videoOutputs().forEach(o => {
       card.appendChild(row(`Video on ${o.name}`, 'Show the live input behind scripture.', !!(layers[o.id] && layers[o.id].video), (on) => setOutputLayer(o.id, 'video', on)));
@@ -594,6 +680,7 @@
     wrapSend();
     publishTransition();
     publishFade();
+    if (typeof applyOutputModes === 'function') applyOutputModes();   // a chosen multiview display switches over
     await startVideoSources();     // the Sources pane, device list, published state
     window.KairoVideoLayout?.start();
     window.KairoVideoLayout?.fillSends(D.sendsHost);
@@ -644,7 +731,10 @@
     D.fitObs?.disconnect(); D.fitObs = null;
     D.main?.remove();
     D.root = null; D.main = null; D.top = null; D.bottomWrap = null;
-    try { localStorage.setItem('kairo-video-live', '{}'); localStorage.removeItem('kairo-video-fade'); localStorage.removeItem('kairo-video-tbar'); } catch {}
+    try { localStorage.setItem('kairo-video-live', '{}'); localStorage.removeItem('kairo-video-fade'); localStorage.removeItem('kairo-video-tbar'); localStorage.removeItem('kairo-video-director'); } catch {}
+    D.lastPub = null;
+    // The display chosen for the multiview goes back to its normal mode (the Monitor gets its confidence view back).
+    if (typeof applyOutputModes === 'function') applyOutputModes();
   }
 
   // Is video on air right now? (the toggle asks before taking it off)
