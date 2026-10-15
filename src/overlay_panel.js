@@ -191,8 +191,8 @@
       nameIn.addEventListener('change', () => patch(o.id, { name: nameIn.value.trim() || o.name }, true));
       ed.appendChild(nameIn);
       ed.appendChild(slider('Size', 'w', 2, 100, o));
-      ed.appendChild(slider('Left to right', 'x', 0, 100, o));
-      ed.appendChild(slider('Top to bottom', 'y', 0, 100, o));
+      ed.appendChild(slider('Horizontal', 'x', 0, 100, o));
+      ed.appendChild(slider('Vertical', 'y', 0, 100, o));
       ed.appendChild(slider('Opacity', 'opacity', 0, 100, o));
       const mv = el('label', 'ov-row'); mv.appendChild(el('span', 'ov-label', 'Set'));
       const sel = document.createElement('select'); sel.className = 'setting-input';
