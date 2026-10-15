@@ -129,6 +129,12 @@
     meta.append(keyEl, reveal);
     card.appendChild(meta);
 
+    const live = window.KairoStreaming && window.KairoStreaming.destStatus(d.id);
+    if (live) {
+      const label = { live: 'Live', connecting: 'Connecting…', failed: 'Not reaching it' }[live.state] || live.state;
+      const line = el('p', 'st-result st-live ' + (live.state === 'live' ? 'ok' : live.state === 'failed' ? 'bad' : ''), `● ${label}${live.error ? ' · ' + live.error : ''}`);
+      card.appendChild(line);
+    }
     const res = checking[d.id];
     if (res && res !== 'checking') card.appendChild(el('p', 'st-result ' + (res.ok ? 'ok' : 'bad'), res.message));
     return card;
@@ -163,8 +169,11 @@
     keyIn.addEventListener('input', () => { draft.key = keyIn.value.trim(); });
     fill();
 
+    const outputs = typeof displayOutputs === 'function' ? displayOutputs() : [];
+    const outSel = outputs.length > 1 ? select(outputs.map(o => [o.id, o.name]), draft.output || outputs[0].id, (v) => { draft.output = v; }) : null;
     form.append(
       row('Service', 'Fills in the address for you', presetSel),
+      ...(outSel ? [row('Streams', 'Which output this destination gets', outSel)] : []),
       row('Name', 'How you will recognise it here', nameIn),
       row('Server address', 'Starts with rtmp:// or rtmps://', urlIn),
       row('Stream key', null, keyIn),
@@ -203,6 +212,16 @@
     const dests = el('div', 'st-card');
     const dHead = el('div', 'st-card-head');
     dHead.appendChild(el('div', 'st-card-title', 'Destinations'));
+    const S = window.KairoStreaming;
+    if (S && c.destinations.some(d => d.enabled !== false && d.url)) {
+      const isLive = S.isLive();
+      const go = el('button', 'modal-btn ' + (isLive ? 'secondary st-stop' : 'secondary st-go'), isLive ? 'Stop stream' : 'Go live');
+      go.type = 'button';
+      go.disabled = !S.available;
+      if (!S.available) go.title = 'Streaming needs the Kairo app';
+      go.addEventListener('click', () => (isLive ? S.stop() : S.start()));
+      dHead.appendChild(go);
+    }
     const add = el('button', 'modal-btn primary', '+ Add destination'); add.type = 'button';
     add.disabled = editingId === 'new';
     add.addEventListener('click', () => { editingId = 'new'; render(); });
@@ -241,7 +260,12 @@
     audio.appendChild(ab);
     h.appendChild(audio);
 
-    const note = el('p', 'setting-hint st-foot', 'Your stream keys stay on this computer. Going live from Kairo is not switched on in this version yet; set the destinations up here and use Check to confirm each server can be reached.');
+    const S2 = window.KairoStreaming;
+    const o = S2 ? S2.overall() : { state: 'off' };
+    if (o.state !== 'off') {
+      (o.warnings || []).concat(o.errors || []).forEach(t => h.appendChild(el('p', 'st-result bad st-foot', t)));
+    }
+    const note = el('p', 'setting-hint st-foot', 'The stream is what the output shows: scripture, slides, the layout, overlays and the camera on air in Director mode, with the sound of the audio input chosen under Audio. Your stream keys stay on this computer.');
     h.appendChild(note);
   }
 
@@ -251,6 +275,9 @@
     .st-card { border: 1px solid var(--border); border-radius: var(--radius-lg); background: rgba(255,255,255,0.015); }
     .st-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
     .st-card-head .modal-btn { white-space: nowrap; flex: none; }
+    .st-card-head .st-go { margin-left: auto; }
+    .st-card-head .st-stop { margin-left: auto; border-color: #b5532c; color: #ffd9cc; }
+    .st-live { font-weight: 600; }
     .st-card-title { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim, var(--text)); }
     .st-card-body { padding: 4px 16px 12px; display: flex; flex-direction: column; }
     .st-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--border); }
@@ -279,6 +306,9 @@
   document.head.appendChild(style);
 
   window.KairoStreamingPanel = { render };
+  // Live status: redraw while the pane is open (not while a destination form is being typed in).
+  const hook = () => { if (window.KairoStreaming) window.KairoStreaming.onChange(() => { if (!editingId && host() && host().offsetParent) render(); }); else setTimeout(hook, 500); };
+  hook();
   // Draw when the pane is opened (settings are loaded by then), and once now.
   document.addEventListener('click', (e) => {
     const b = e.target.closest && e.target.closest('[data-pane="streaming"]');

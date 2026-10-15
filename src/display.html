@@ -44,6 +44,9 @@
         #video-layer video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
         /* An empty video zone of a layout frame says so, inside the zone. */
         body:not(.has-video) #video-layer[data-zone]::after { content: 'No video'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 2.4vh; font-weight: 600; letter-spacing: 0.04em; color: rgba(255,255,255,0.45); }
+        /* Capture windows (NDI, Syphon, DeckLink, the stream) never show the 'No video' hint: the
+           stream puts the camera there, and other outputs get the empty frame. */
+        html.is-capture #video-layer[data-zone]::after { content: none; }
         /* On a Monitor the video is a dimmed backdrop for the confidence text. */
         body[data-mode="confidence"] #video-layer video { filter: brightness(0.4); }
         body[data-mode="confidence"].has-video #confidence-view { background: transparent; }
@@ -377,6 +380,9 @@
     const MONITOR     = params.get('monitor') === '1' || PREVIEW;
     // The hidden window behind an NDI / Syphon output (see "Capture mode" below).
     const CAPTURE     = params.get('capture') === '1';
+    // A capture window feeding the live stream (src-tauri stream.rs): the camera is put under
+    // its picture by FFmpeg, so where the camera shows it must be see-through.
+    const STREAM_CAP  = CAPTURE && params.get('stream') === '1';
     if (MONITOR) document.documentElement.classList.add('is-monitor');
     if (CAPTURE) document.documentElement.classList.add('is-capture');
     function sendToServer(msg) { if (MONITOR) return; try { ws?.send(JSON.stringify(msg)); } catch {} }
@@ -484,7 +490,10 @@
     // A "screen theme" (Director mode) has a video zone layer: the picture shows in that
     // rectangle, over the theme's background and frames, instead of filling the whole screen.
     function hasVideoZone(look) { return !!(look && (look.layers || []).some(l => l.type === 'videozone' && l.visible !== false)); }
+    let currentZone = null;   // the video zone in use (design pixels), for the stream
     function applyVideoZone(z) {
+        currentZone = z && z.pos ? { x: z.pos.x, y: z.pos.y, w: z.pos.w, h: z.pos.h } : null;
+        if (STREAM_CAP) queueStreamReport();
         const host = document.getElementById('video-layer');
         if (!host) return;
         const props = ['inset', 'left', 'top', 'width', 'height', 'z-index', 'border-radius', 'box-shadow'];
@@ -500,6 +509,42 @@
         host.style.setProperty('border-radius', ((z.radius || 0) / DESIGN_H * 100) + 'vh');
         if (z.frameWidth > 0) host.style.setProperty('box-shadow', `0 0 0 ${z.frameWidth / DESIGN_H * 100}vh ${z.frameColor || '#ffffff'}`);
         else host.style.removeProperty('box-shadow');
+    }
+
+    // ── Stream capture: tell the engine the camera and its place, and cut its window ──
+    let streamReportTimer = null, lastStreamReport = '';
+    function queueStreamReport() {
+        if (!STREAM_CAP) return;
+        clearTimeout(streamReportTimer);
+        streamReportTimer = setTimeout(() => {
+            const program = (outputLayers.video && readJson('kairo-video-live', {})[OUTPUT_KEY]) || null;
+            const zone = program ? currentZone : null;
+            updateStreamHole(program ? zone : null, !!program);
+            const msg = JSON.stringify({ output: OUTPUT_KEY, program, zone });
+            if (msg === lastStreamReport) return;
+            lastStreamReport = msg;
+            try { window.__TAURI__?.core?.invoke('stream_program', { output: OUTPUT_KEY, program, zone }); } catch {}
+        }, 40);
+    }
+    // Again every 2 s: the stream may have started after this window first said it (the
+    // engine ignores a repeat that changes nothing).
+    if (STREAM_CAP) setInterval(() => { lastStreamReport = ''; queueStreamReport(); }, 2000);
+    // The camera's window: everything on #stage is cut away there (overlays stay on top).
+    function updateStreamHole(zone, on) {
+        const st = document.getElementById('stage');
+        if (!st) return;
+        if (!on || !zone) {
+            ['-webkit-mask-image', '-webkit-mask-size', '-webkit-mask-position', '-webkit-mask-repeat', '-webkit-mask-composite', 'mask-composite']
+                .forEach(k => st.style.removeProperty(k));
+            return;
+        }
+        const sx = window.innerWidth / DESIGN_W, sy = window.innerHeight / DESIGN_H;
+        st.style.setProperty('-webkit-mask-image', 'linear-gradient(#000, #000), linear-gradient(#000, #000)');
+        st.style.setProperty('-webkit-mask-size', `100% 100%, ${zone.w * sx}px ${zone.h * sy}px`);
+        st.style.setProperty('-webkit-mask-position', `0 0, ${zone.x * sx}px ${zone.y * sy}px`);
+        st.style.setProperty('-webkit-mask-repeat', 'no-repeat');
+        st.style.setProperty('-webkit-mask-composite', 'xor');
+        st.style.setProperty('mask-composite', 'exclude');
     }
 
     // ── Layout frame (Director mode) ────────────────────────────────────────
@@ -1380,6 +1425,13 @@
     }
     async function syncVideo() {
         if (outputMode === 'multiview') return;
+        if (STREAM_CAP) {
+            // The stream's camera comes from FFmpeg; here only whether it is on decides the page.
+            const on = !!(outputLayers.video && readJson('kairo-video-live', {})[OUTPUT_KEY]);
+            if (on !== videoOn) { videoOn = on; if (outputMode === 'theme') { try { applyLook(activeLook, false); } catch {} } }
+            queueStreamReport();
+            return;
+        }
         if (CAPTURE || (MONITOR && !SHARED)) return;
         const layers = PREVIEW ? { ...outputLayers, video: previewVideoOn } : outputLayers;
         const live = PREVIEW ? { [OUTPUT_KEY]: previewSourceId } : readJson('kairo-video-live', {});
@@ -2809,7 +2861,7 @@
     }
     if (CAPTURE) {
         captureTransition();
-        const outputParam = params.get('output') || '';
+        const outputParam = params.get('capid') || params.get('output') || '';
         const capW = Math.max(16, parseInt(params.get('w'), 10) || 1920);
         const capH = Math.max(16, parseInt(params.get('h'), 10) || 1080);
         const invoke = window.__TAURI__?.core?.invoke;
