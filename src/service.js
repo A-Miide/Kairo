@@ -842,14 +842,6 @@
       if (Object.keys(mine).length) map[code] = mine; else delete map[code];
       item.manualTr = map;
       item.translateTo = code;
-      // The song keeps them: its copy in Default (the library) and every playlist's copy of it.
-      const root = item.libraryId || item.id;
-      playlists.forEach(p => p.items.forEach(other => {
-        if (other === item || (other.id !== root && other.libraryId !== root)) return;
-        const m = { ...(other.manualTr || {}) };
-        if (Object.keys(mine).length) m[code] = { ...mine }; else delete m[code];
-        other.manualTr = m;
-      }));
       saveService(); renderStack();
       if (activeItemId === item.id) renderFullEdit();
       close();
