@@ -258,6 +258,11 @@ fn words_after_citation(text: &str, verse: Option<u32>) -> String {
             }
         }
     }
+    // Said without "verse" ("Joshua 1: 18 this book of the law…"): after the number itself.
+    let start = start.or_else(|| {
+        let n = verse.to_string();
+        (0..w.len()).rev().find(|&i| w[i] == n).map(|i| i + 1)
+    });
     let Some(mut start) = start else { return String::new() };
     if matches!(w.get(start), Some(&"to") | Some(&"through") | Some(&"-")) {
         start += 1 + consume_number(&w, start + 1, None).map_or(0, |n| n.consumed);
@@ -753,6 +758,28 @@ impl Engine {
         book_mentions(&combined, self.k.books, self.cfg.lang).into_iter().any(|b| Some(b) != current && book_is_announced(&toks, b))
     }
 
+    /// "Joshua one, eight" can reach us as "Joshua 1: 18": a verse from 11 to 19 written
+    /// straight after the chapter's number (not after "verse") may be its last digit alone.
+    /// Returns that other reading when it is a real verse, so the words read next decide.
+    pub(crate) fn glued_verse_alt(&self, c: &Citation, text: &str) -> Option<Citation> {
+        let Verses::One(v) = c.verses else { return None };
+        if !(11..=19).contains(&v) || c.alt_chapter.is_some() {
+            return None;
+        }
+        let words: Vec<String> = text.split_whitespace()
+            .map(|w| w.trim_matches(|ch: char| !ch.is_alphanumeric()).to_lowercase()).collect();
+        let (ch, vs) = (c.chapter.to_string(), v.to_string());
+        let glued = words.windows(2).enumerate().any(|(i, w)| {
+            w[0] == ch && w[1] == vs && !(i > 0 && matches!(words[i - 1].as_str(), "verse" | "verses" | "chapter"))
+        });
+        if !glued {
+            return None;
+        }
+        let mut alt = c.clone();
+        alt.verses = Verses::One(v % 10);
+        (!self.citation_verses(&alt).is_empty()).then_some(alt)
+    }
+
     /// Settles citations whose chapter was said twice ("Luke chapter six four
     /// and verse 14"): chosen already, chosen now by the words after it, or
     /// held until the words read next (or the hold) decide.
@@ -770,23 +797,34 @@ impl Engine {
             }
         }
         self.cites.decided.retain(|d| now.saturating_sub(d.at) <= RESTATED_DECIDED_TTL_MS);
-        if !refs.iter().any(|r| r.c.alt_chapter.is_some()) && self.cites.restated.is_none() && self.cites.decided.is_empty() {
+        let glued: Vec<Option<Citation>> = refs.iter().map(|r| self.glued_verse_alt(&r.c, text)).collect();
+        if !refs.iter().any(|r| r.c.alt_chapter.is_some()) && glued.iter().all(Option::is_none) && self.cites.restated.is_none() && self.cites.decided.is_empty() {
             return (refs, false);
         }
         let mut out = Vec::new();
         let mut held = false;
-        for r in refs {
-            if let Some(alt_chapter) = r.c.alt_chapter {
+        for (r, glued_alt) in refs.into_iter().zip(glued) {
+            // The other reading: a chapter said twice, or a verse number heard glued to the
+            // chapter's ("Joshua one, eight" written "1: 18").
+            let other = match r.c.alt_chapter {
+                Some(alt_chapter) => {
+                    let mut alt = r.c.clone();
+                    alt.alt_chapter = None;
+                    alt.chapter = alt_chapter;
+                    Some((format!("{alt_chapter}"), alt))
+                }
+                None => glued_alt.map(|alt| (format!("v{}", first_verse(&alt).unwrap_or(0)), alt)),
+            };
+            if let Some((alt_key, alt_reading)) = other {
                 let mut plain = r.c.clone();
                 plain.alt_chapter = None;
-                let key = format!("{}|{alt_chapter}", cite_key(&plain));
+                let key = format!("{}|{alt_key}", cite_key(&plain));
                 if let Some(d) = self.cites.decided.iter().find(|d| d.key == key) {
                     out.push(Cite { c: d.chosen.clone(), unresolved: r.unresolved });
                     continue;
                 }
                 if self.cites.restated.as_ref().is_none_or(|p| p.key != key) {
-                    let mut alt = plain.clone();
-                    alt.chapter = alt_chapter;
+                    let alt = alt_reading;
                     let (pv, av) = (self.citation_verses(&plain), self.citation_verses(&alt));
                     if av.is_empty() {
                         out.push(Cite { c: plain, unresolved: r.unresolved });
@@ -813,7 +851,7 @@ impl Engine {
                 }
             } else if let Some(p) = self.cites.restated.clone().filter(|p| is_restated(&r.c, &p.plain, &p.alt)) {
                 // Re-heard without the extra number: the second chapter alone is the one meant.
-                if r.c.chapter == p.alt.chapter {
+                if p.alt.chapter != p.plain.chapter && r.c.chapter == p.alt.chapter {
                     self.settle(p.clone(), p.alt.clone(), now);
                     out.push(Cite { c: p.alt, unresolved: r.unresolved });
                     continue;
