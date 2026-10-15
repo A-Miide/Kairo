@@ -258,10 +258,11 @@ fn words_after_citation(text: &str, verse: Option<u32>) -> String {
             }
         }
     }
-    // Said without "verse" ("Joshua 1: 18 this book of the law…"): after the number itself.
+    // Said without "verse" ("Joshua 1: 18 this book of the law…"): after the number that
+    // follows the chapter's own number.
     let start = start.or_else(|| {
         let n = verse.to_string();
-        (0..w.len()).rev().find(|&i| w[i] == n).map(|i| i + 1)
+        (1..w.len()).find(|&i| w[i] == n && w[i - 1].chars().all(|c| c.is_ascii_digit())).map(|i| i + 1)
     });
     let Some(mut start) = start else { return String::new() };
     if matches!(w.get(start), Some(&"to") | Some(&"through") | Some(&"-")) {
@@ -769,9 +770,8 @@ impl Engine {
         let words: Vec<String> = text.split_whitespace()
             .map(|w| w.trim_matches(|ch: char| !ch.is_alphanumeric()).to_lowercase()).collect();
         let (ch, vs) = (c.chapter.to_string(), v.to_string());
-        let glued = words.windows(2).enumerate().any(|(i, w)| {
-            w[0] == ch && w[1] == vs && !(i > 0 && matches!(words[i - 1].as_str(), "verse" | "verses" | "chapter"))
-        });
+        // Right after the book's name: "Joshua 1: 18", not some other "1 18" in the sentence.
+        let glued = words.windows(3).any(|w| w[1] == ch && w[2] == vs && self.k.books.alias(&w[0]).is_some());
         if !glued {
             return None;
         }

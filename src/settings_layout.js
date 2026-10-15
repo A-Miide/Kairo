@@ -13,10 +13,10 @@
       copy.className = 'setting-copy';
       const control = document.createElement('div');
       control.className = 'setting-control';
-      Array.from(g.children).forEach((c) => {
-        if (c === label) copy.appendChild(c);
-        else control.appendChild(c);
-      });
+      // Hints go after the control, wherever they were written.
+      const kids = Array.from(g.children);
+      kids.forEach((c) => { if (c === label) copy.appendChild(c); else if (!c.matches('.setting-hint')) control.appendChild(c); });
+      kids.forEach((c) => { if (c !== label && c.matches('.setting-hint')) control.appendChild(c); });
       g.append(copy, control);
       g.dataset.arranged = '1';
     });

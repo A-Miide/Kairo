@@ -397,8 +397,14 @@
     }
     const mode = transitionPref();
     D.composite = true;
-    D.last = null;                 // this Send is its own Undo step: an older camera cut is not part of it
-    try { takeStagedInner(mode); } finally { D.composite = false; }
+    // This Send is its own Undo step (an older camera cut is not part of it), unless it sends
+    // nothing: then the previous step stays undoable.
+    const before = D.last;
+    D.last = null;
+    try { takeStagedInner(mode); } finally {
+      D.composite = false;
+      if (!D.last) D.last = before;
+    }
   }
   function takeStagedInner(mode) {
     const hadVerse = !!(D.staged && !D.staged.sent);
@@ -461,6 +467,7 @@
   };
   function applyLook(look) {
     D.lookSnap = D.last;
+    const step = D.last;   // this send's Undo step, kept for the overlays read below
     recordBaseline();
     const targets = videoOutputs();
     for (const o of targets) {
@@ -471,7 +478,7 @@
       window.KairoOverlays.load().then(items => {
         const prev = {}; items.forEach(it => { prev[it.id] = !!it.live; });
         if (!D.baseOverlays) D.baseOverlays = prev;          // the state before any Layout
-        if (D.last) D.last.overlays = prev;                  // Undo puts the overlays back too
+        if (step) step.overlays = prev;                      // Undo puts the overlays back too (this step's, even if another came since)
         return items;
       }).then(items => items.forEach(it => {
         const want = look.overlays.includes(it.id);
