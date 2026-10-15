@@ -566,6 +566,29 @@ async fn clear_layer_route(State(app): State<Shared>, Json(body): Json<Value>) -
     Json(out)
 }
 
+/// Back pressed soon after Kairo put a verse up by itself: most likely a wrong send. Logged
+/// (debug.log "server:likely-wrong-send", and server.log) with what was taken down and how it was
+/// found, so real services show which detections go wrong.
+const LIKELY_WRONG_WITHIN_MS: u64 = 20_000;
+
+fn note_likely_wrong_send(app: &Shared, undone: Option<&Value>, restored: Option<&Value>) {
+    let Some(m) = undone else { return };
+    if m["type"] != "detection" { return; }
+    let method = m["method"].as_str().unwrap_or("");
+    // Sent by the operator (search, a click), not by detection.
+    if method.is_empty() || method == "service" { return; }
+    let at = m["timestamp"].as_u64().unwrap_or(0);
+    let on_screen = epoch_ms().saturating_sub(at);
+    if at == 0 || on_screen > LIKELY_WRONG_WITHIN_MS { return; }
+    let reference = m["verses"][0]["reference"].as_str().unwrap_or("").to_string();
+    let back_to = restored.and_then(|r| r["verses"][0]["reference"].as_str()).unwrap_or("").to_string();
+    eprintln!("[Detect] Back {:.1}s after {reference} went up by itself ({method}): likely a wrong send", on_screen as f64 / 1000.0);
+    write_debug_line(app, "server:likely-wrong-send", json!({
+        "reference": reference, "method": method, "score": m["topScore"], "secondsOnScreen": (on_screen as f64 / 100.0).round() / 10.0,
+        "correctedFrom": m["correctedFrom"], "backTo": back_to,
+    }));
+}
+
 /// Back: undoes the last change to what's on screen.
 async fn output_back(State(app): State<Shared>) -> Json<Value> {
     let (prev, undone) = {
@@ -591,6 +614,7 @@ async fn output_back(State(app): State<Shared>) -> Json<Value> {
         l.restoring = false;
     }
     app.hub.layer_state();
+    note_likely_wrong_send(&app, undone.as_ref(), prev.slide.as_ref());
     let restored_ref = prev.slide.as_ref().and_then(|s| s["verses"][0]["reference"].as_str().map(str::to_string));
     if let Some((bible, d)) = app.ready() {
         let id = |m: Option<&Value>| {

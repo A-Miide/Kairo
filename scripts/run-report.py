@@ -45,7 +45,7 @@ def clock(ms):
 
 shown = []
 for r in sorted(rows, key=lambda r: r["t"]):
-    if r["event"] not in ("server:transcript", "server:detect"):
+    if r["event"] not in ("server:transcript", "server:detect", "server:likely-wrong-send"):
         continue
     c = clock(r["t"])
     if (lo and c < lo) or (hi and c > hi):
@@ -60,6 +60,8 @@ for c, r in shown:
     if r["event"] == "server:transcript":
         if not sends_only:
             print(f"{c}  {d['text']}")
+    elif r["event"] == "server:likely-wrong-send":
+        print(f"{c}      x BACK after {d['reference']} went up by itself  [{d['method']}, {d['secondsOnScreen']}s on screen]")
     else:
         mark = "+" if d["target"] == "screen" else "?"
         fix = f"  (corrects {d['correctsFrom']})" if d.get("correctsFrom") else ""
