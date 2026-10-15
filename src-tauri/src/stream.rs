@@ -6,27 +6,31 @@
 //!   output's hidden capture window (display.html?capture=1&stream=1) is snapshotted on
 //!   every change (capture.rs); here the last snapshot is written to FFmpeg at the stream's
 //!   frame rate over a local TCP socket, with its transparency.
-//! - The Program camera: every camera of the Director's inputs is opened by FFmpeg itself,
-//!   and the one on air is chosen live with a `streamselect` command, so switching inputs
-//!   never drops the stream. It is placed in the layout's video zone (or full frame) by
-//!   `crop`/`scale`/`overlay` commands, also live.
+//! - The Program camera: the Director's cameras are opened by FFmpeg itself, and the one on
+//!   air is chosen live with a `streamselect` command, so switching inputs never drops the
+//!   stream. It is placed in the layout's video zone (or full frame) by `crop`/`scale`/
+//!   `overlay` commands, also live.
 //! - Sound: the one audio input chosen in Settings → Audio.
 //! It is encoded once (a hardware H.264 encoder where there is one, AAC audio) and sent to
-//! every destination with FFmpeg's tee muxer; one destination failing does not stop the
-//! others. If FFmpeg stops, it is started again after a short wait.
+//! every destination with FFmpeg's tee muxer, each destination behind its own fifo that
+//! reconnects by itself, so one destination dropping or stalling never touches the others.
+//! If FFmpeg itself stops or stalls, it is started again after a short wait; a camera that
+//! won't open is left out on the next start instead of stopping the stream.
 //!
-//! Stream keys are never logged or reported: every message that leaves this module has
-//! them replaced. They do reach FFmpeg as part of its output address (FFmpeg has no other
-//! way to take them), so they are visible to other processes of the same user on this
-//! computer for as long as the stream runs.
+//! Stream keys are never logged or reported: every message that leaves this module has the
+//! destinations' addresses and keys replaced. They do reach FFmpeg as part of its output
+//! address (FFmpeg has no other way to take them), so they are visible to other processes of
+//! the same user on this computer for as long as the stream runs.
 
+use std::collections::HashSet;
 use std::io::{BufReader, Read, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
-use std::thread;
+use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -36,6 +40,8 @@ use crate::capture::{blend, Frame};
 /// The design canvas zones are given in (display.html's 1920×1080).
 const DESIGN_W: f64 = 1920.0;
 const DESIGN_H: f64 = 1080.0;
+/// No progress from FFmpeg for this long while live: it is stuck, start it again.
+const STALL: Duration = Duration::from_secs(12);
 
 #[derive(Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -85,6 +91,10 @@ pub struct PipelineConfig {
     /// The audio input's name (Settings → Audio), or none for silence.
     #[serde(default)]
     pub audio_input: Option<String>,
+    /// Every video zone the layouts use: the camera is prepared for each of them, so a layout
+    /// change only switches between ready pictures (resizing while running isn't reliable).
+    #[serde(default)]
+    pub zones: Vec<Zone>,
 }
 
 #[derive(Serialize, Clone, Debug, Default)]
@@ -92,7 +102,7 @@ pub struct PipelineConfig {
 pub struct DestStatus {
     pub id: String,
     pub name: String,
-    /// "connecting" | "live" | "failed"
+    /// "connecting" | "live" | "reconnecting"
     pub state: String,
     pub error: Option<String>,
 }
@@ -101,6 +111,8 @@ pub struct DestStatus {
 #[serde(rename_all = "camelCase")]
 pub struct PipelineStatus {
     pub output: String,
+    /// Which start this status belongs to: a later Go live has a higher number.
+    pub run: u64,
     /// "starting" | "live" | "retrying" | "stopped" | "failed"
     pub state: String,
     pub uptime_secs: u64,
@@ -116,11 +128,28 @@ pub struct PipelineStatus {
 
 // ── FFmpeg: which one, its encoders, its devices ─────────────────────────────
 
-/// The H.264 encoder to use with this FFmpeg: hardware first. Kairo's own builds carry only
-/// LGPL code; a user's own FFmpeg may also have libx264, used only as the last resort.
-pub fn pick_encoder(encoders_listing: &str) -> Option<&'static str> {
-    const ORDER: [&str; 6] = ["h264_videotoolbox", "h264_mf", "h264_nvenc", "h264_qsv", "h264_amf", "libx264"];
-    ORDER.into_iter().find(|e| encoders_listing.lines().any(|l| l.split_whitespace().nth(1) == Some(*e)))
+/// H.264 encoders in the order tried: hardware first. Kairo's own builds carry only LGPL
+/// code; a user's own FFmpeg may also have libx264, used only as the last resort.
+const ENCODERS: [&str; 6] = ["h264_videotoolbox", "h264_nvenc", "h264_qsv", "h264_amf", "h264_mf", "libx264"];
+
+/// The encoders this FFmpeg lists, in the order to try them.
+pub fn encoder_candidates(encoders_listing: &str) -> Vec<&'static str> {
+    ENCODERS.into_iter().filter(|e| encoders_listing.lines().any(|l| l.split_whitespace().nth(1) == Some(*e))).collect()
+}
+
+/// The first encoder that actually works on this computer (a listed hardware encoder may
+/// have no hardware behind it): one tiny frame each.
+fn working_encoder(ffmpeg: &Path, listing: &str) -> Option<&'static str> {
+    encoder_candidates(listing).into_iter().find(|enc| {
+        let mut args: Vec<String> = ["-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=black:s=320x240:r=30", "-frames:v", "2", "-c:v"].map(String::from).to_vec();
+        args.push(enc.to_string());
+        if *enc == "h264_mf" { args.extend(["-hw_encoding", "1"].map(String::from)); }
+        args.extend(["-pix_fmt", "yuv420p", "-f", "null", "-"].map(String::from));
+        Command::new(ffmpeg).args(&args).stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success())
+            // Media Foundation without a hardware encoder: its software one, still LGPL.
+            || (*enc == "h264_mf" && Command::new(ffmpeg).args(args.iter().filter(|a| *a != "-hw_encoding" && *a != "1"))
+                .stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success()))
+    })
 }
 
 fn encoder_args(enc: &str, cfg: &PipelineConfig) -> Vec<String> {
@@ -131,6 +160,7 @@ fn encoder_args(enc: &str, cfg: &PipelineConfig) -> Vec<String> {
         "h264_videotoolbox" => a.extend(["-realtime", "1", "-allow_sw", "1", "-profile:v", "high"].map(String::from)),
         "libx264" => a.extend(["-preset", "veryfast", "-tune", "zerolatency"].map(String::from)),
         "h264_nvenc" => a.extend(["-preset", "p4", "-tune", "ll"].map(String::from)),
+        "h264_mf" => a.extend(["-hw_encoding", "1", "-rate_control", "cbr"].map(String::from)),
         _ => {}
     }
     a.extend([
@@ -144,7 +174,7 @@ fn encoder_args(enc: &str, cfg: &PipelineConfig) -> Vec<String> {
 }
 
 /// Device names from `ffmpeg -f avfoundation -list_devices true -i ""` (macOS) or
-/// `-f dshow -list_devices true -i dummy` (Windows): (video, audio).
+/// `-f dshow -list_devices true -i dummy` (Windows): (video, audio), in FFmpeg's order.
 pub fn parse_device_list(stderr: &str) -> (Vec<String>, Vec<String>) {
     let (mut video, mut audio) = (Vec::new(), Vec::new());
     let mut in_audio = false;
@@ -180,35 +210,40 @@ fn norm(s: &str) -> String {
     no_paren.to_lowercase().split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
-/// The device FFmpeg knows that a browser label (e.g. "FaceTime HD Camera (Built-in)")
-/// refers to: exact, then without the bracketed parts, then one containing the other.
-pub fn match_device<'a>(label: &str, names: &'a [String]) -> Option<&'a String> {
+/// The device (its position in FFmpeg's list) that a browser label refers to, e.g.
+/// "FaceTime HD Camera (Built-in)" → "FaceTime HD Camera": exact, then without the bracketed
+/// parts, then one containing the other. Devices in `used` are skipped, so two cameras of the
+/// same model ("USB Camera" twice) get the first and the second, never the same one twice.
+pub fn match_device(label: &str, names: &[String], used: &HashSet<usize>) -> Option<usize> {
     let l = norm(label);
     if l.is_empty() { return None; }
-    names.iter().find(|n| n.eq_ignore_ascii_case(label))
-        .or_else(|| names.iter().find(|n| norm(n) == l))
-        .or_else(|| names.iter().find(|n| { let n = norm(n); !n.is_empty() && (n.contains(&l) || l.contains(&n)) }))
+    let free = |i: &usize| !used.contains(i);
+    let idx = |f: &dyn Fn(&String) -> bool| names.iter().enumerate().filter(|(i, n)| free(i) && f(n)).map(|(i, _)| i).next();
+    idx(&|n| n.eq_ignore_ascii_case(label))
+        .or_else(|| idx(&|n| norm(n) == l))
+        .or_else(|| idx(&|n| { let n = norm(n); !n.is_empty() && (n.contains(&l) || l.contains(&n)) }))
 }
 
-/// Can this FFmpeg stream at all: the flv and tee muxers, RTMP, and the filters used here?
-pub fn can_stream(ffmpeg: &Path) -> bool {
+/// Can this FFmpeg stream at all: the flv, tee and fifo muxers, RTMP (and RTMPS when a
+/// destination needs it), and the filters used here?
+pub fn can_stream(ffmpeg: &Path, need_tls: bool) -> bool {
     let out = |args: &[&str]| Command::new(ffmpeg).args(args).stdin(Stdio::null()).stderr(Stdio::null()).output()
         .map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
     let has = |listing: &str, name: &str| listing.lines().any(|l| l.split_whitespace().any(|w| w == name));
     let muxers = out(&["-hide_banner", "-muxers"]);
     let protocols = out(&["-hide_banner", "-protocols"]);
     let filters = out(&["-hide_banner", "-filters"]);
-    has(&muxers, "flv") && has(&muxers, "tee") && has(&protocols, "rtmp")
+    ["flv", "tee", "fifo"].iter().all(|m| has(&muxers, m)) && has(&protocols, "rtmp") && (!need_tls || has(&protocols, "rtmps"))
         && ["streamselect", "overlay", "crop", "scale", "color", "anullsrc"].iter().all(|f| has(&filters, f))
 }
 
 /// The FFmpeg to stream with: Kairo's own when it can, else one on this computer that can.
-pub fn streaming_ffmpeg(own: Option<PathBuf>) -> Option<PathBuf> {
-    if let Some(p) = own.as_ref().filter(|p| can_stream(p)) { return Some(p.clone()); }
+pub fn streaming_ffmpeg(own: Option<PathBuf>, need_tls: bool) -> Option<PathBuf> {
+    if let Some(p) = own.as_ref().filter(|p| can_stream(p, need_tls)) { return Some(p.clone()); }
     let exe = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
     let mut dirs: Vec<PathBuf> = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()).collect();
     dirs.extend(["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"].iter().map(PathBuf::from));
-    dirs.into_iter().map(|d| d.join(exe)).filter(|p| p.is_file() && Some(p) != own.as_ref()).find(|p| can_stream(p))
+    dirs.into_iter().map(|d| d.join(exe)).filter(|p| p.is_file() && Some(p) != own.as_ref()).find(|p| can_stream(p, need_tls))
 }
 
 // ── The FFmpeg command ───────────────────────────────────────────────────────
@@ -220,17 +255,36 @@ pub fn destination_url(d: &Destination) -> String {
     if key.is_empty() { url.to_string() } else { format!("{url}/{key}") }
 }
 
-/// Tee's own special characters, escaped inside one slave address.
+/// Tee's own special characters (and the quote), escaped inside one slave address.
 fn tee_escape(s: &str) -> String {
-    s.chars().flat_map(|c| if "|[]\\".contains(c) { vec!['\\', c] } else { vec![c] }).collect()
+    s.chars().flat_map(|c| if "|[]\\'".contains(c) { vec!['\\', c] } else { vec![c] }).collect()
 }
 
-/// Replaces every stream key in `text`.
+/// `rtmp://host[:port]` of an address: what may be shown of it.
+fn server_of(url: &str) -> String {
+    let u = url.trim();
+    let (scheme, rest) = u.split_once("://").unwrap_or(("rtmp", u));
+    format!("{scheme}://{}", rest.split('/').next().unwrap_or(""))
+}
+
+/// Every destination's full address and key (as typed, joined, and escaped for tee) replaced
+/// with its server and "••••", so nothing secret leaves this module — including a key that was
+/// pasted into the address itself.
 pub fn redact(text: &str, dests: &[Destination]) -> String {
     let mut out = text.to_string();
     for d in dests {
+        let full = destination_url(d);
+        let shown = format!("{}/••••", server_of(&d.url));
+        for secret in [tee_escape(&full), full.clone(), d.url.trim().to_string()] {
+            if secret.len() > server_of(&d.url).len() { out = out.replace(&secret, &shown); }
+        }
         let k = d.key.trim();
         if k.len() >= 3 { out = out.replace(k, "••••"); }
+        // A key in the address: everything after the server's first path part.
+        let path: Vec<&str> = d.url.trim().splitn(4, '/').collect();
+        if let Some(tail) = path.get(3).and_then(|p| p.split_once('/')).map(|(_, t)| t).filter(|t| t.len() >= 6) {
+            out = out.replace(tail, "••••");
+        }
     }
     out
 }
@@ -259,7 +313,7 @@ pub fn placement(zone: Option<Zone>, width: u32, height: u32) -> Placement {
 pub struct Inputs {
     /// FFmpeg arguments for the inputs, in order.
     pub args: Vec<String>,
-    /// Index into `cameras` → FFmpeg input number, for the cameras FFmpeg could open.
+    /// Camera id → FFmpeg input number, for the cameras FFmpeg is asked to open.
     pub camera_inputs: Vec<(String, usize)>,
     pub audio_input: Option<usize>,
     pub warnings: Vec<String>,
@@ -270,38 +324,45 @@ fn device_format() -> Option<&'static str> {
     if cfg!(target_os = "macos") { Some("avfoundation") } else if cfg!(target_os = "windows") { Some("dshow") } else { None }
 }
 
-pub fn build_inputs(cfg: &PipelineConfig, graphics_port: u16, video_names: &[String], audio_names: &[String]) -> Inputs {
+/// `skip`: cameras left out (they failed to open last time).
+pub fn build_inputs(cfg: &PipelineConfig, graphics_port: u16, video_names: &[String], audio_names: &[String], skip: &HashSet<String>) -> Inputs {
     let mut args: Vec<String> = Vec::new();
     let mut warnings = Vec::new();
-    // 0: Kairo's graphics, with transparency, from our own socket.
-    args.extend([
-        "-thread_queue_size", "64", "-use_wallclock_as_timestamps", "1",
-        "-f", "rawvideo", "-pix_fmt", "bgra",
-    ].map(String::from));
+    // 0: Kairo's graphics, with transparency, from our own socket. A short queue: these are
+    // big raw frames, and a backlog only adds delay.
+    args.extend(["-thread_queue_size", "8", "-use_wallclock_as_timestamps", "1", "-f", "rawvideo", "-pix_fmt", "bgra"].map(String::from));
     args.extend(["-s".into(), format!("{}x{}", cfg.width, cfg.height), "-framerate".into(), cfg.fps.to_string()]);
     args.extend(["-i".into(), format!("tcp://127.0.0.1:{graphics_port}?listen=1")]);
     let mut next = 1;
     let mut camera_inputs = Vec::new();
     let test_sources = std::env::var("KAIRO_STREAM_TEST_DEVICES").is_ok();
+    let mut used = HashSet::new();
     for cam in &cfg.cameras {
+        if skip.contains(&cam.id) {
+            warnings.push(format!("\"{}\" couldn't be opened for the stream, so it is left out.", cam.label));
+            continue;
+        }
         if test_sources {
-            args.extend(["-f", "lavfi", "-i"].map(String::from));
+            args.extend(["-re", "-f", "lavfi", "-i"].map(String::from));
             args.push(format!("testsrc2=size=1280x720:rate={}", cfg.fps));
         } else {
             let Some(fmt) = device_format() else {
                 warnings.push(format!("Cameras can't go into the stream on this computer yet ({}).", cam.label));
                 continue;
             };
-            let Some(name) = match_device(&cam.label, video_names) else {
+            let Some(i) = match_device(&cam.label, video_names, &used) else {
                 warnings.push(format!("\"{}\" wasn't found for the stream.", cam.label));
                 continue;
             };
-            args.extend(["-thread_queue_size", "64", "-f", fmt].map(String::from));
+            used.insert(i);
+            args.extend(["-thread_queue_size", "16", "-f", fmt].map(String::from));
+            // The camera's own frame rate: the filter makes it the stream's (a camera that
+            // can't do the stream's rate exactly would otherwise refuse to open).
             if fmt == "avfoundation" {
-                args.extend(["-framerate".into(), cfg.fps.to_string()]);
-                args.extend(["-i".into(), name.clone()]);
+                // By its place in the list: names can repeat and may contain ':'.
+                args.extend(["-i".into(), i.to_string()]);
             } else {
-                args.extend(["-i".into(), format!("video={name}")]);
+                args.extend(["-i".into(), format!("video={}", video_names[i])]);
             }
         }
         camera_inputs.push((cam.id.clone(), next));
@@ -309,13 +370,13 @@ pub fn build_inputs(cfg: &PipelineConfig, graphics_port: u16, video_names: &[Str
     }
     let mut audio_input = None;
     if test_sources {
-        args.extend(["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000"].map(String::from));
+        args.extend(["-re", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000"].map(String::from));
         audio_input = Some(next);
     } else if let Some(label) = cfg.audio_input.as_deref().filter(|l| !l.trim().is_empty()) {
-        match (device_format(), match_device(label, audio_names)) {
-            (Some(fmt), Some(name)) => {
+        match (device_format(), match_device(label, audio_names, &HashSet::new())) {
+            (Some(fmt), Some(i)) => {
                 args.extend(["-thread_queue_size", "1024", "-f", fmt].map(String::from));
-                args.extend(["-i".into(), if fmt == "avfoundation" { format!(":{name}") } else { format!("audio={name}") }]);
+                args.extend(["-i".into(), if fmt == "avfoundation" { format!(":{i}") } else { format!("audio={}", audio_names[i]) }]);
                 audio_input = Some(next);
             }
             (None, _) if cfg!(target_os = "linux") => {
@@ -328,7 +389,9 @@ pub fn build_inputs(cfg: &PipelineConfig, graphics_port: u16, video_names: &[Str
         warnings.push("No audio input is chosen under Settings → Audio; the stream goes out silent.".into());
     }
     if audio_input.is_none() {
-        args.extend(["-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"].map(String::from));
+        // Generated silence is made at real-time speed (-re): nothing else paces it, and the
+        // destinations' buffers would otherwise let it run far ahead of the picture.
+        args.extend(["-re", "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"].map(String::from));
         audio_input = Some(next);
     }
     Inputs { args, camera_inputs, audio_input, warnings }
@@ -339,7 +402,25 @@ pub fn select_index(program: Option<&str>, camera_inputs: &[(String, usize)]) ->
     program.and_then(|p| camera_inputs.iter().position(|(id, _)| id == p)).unwrap_or(camera_inputs.len())
 }
 
-pub fn filter_graph(cfg: &PipelineConfig, inputs: &Inputs, selected: usize, place: Placement) -> String {
+/// The zones the camera is prepared for: the whole frame first, then each layout zone once.
+pub fn zone_list(cfg: &PipelineConfig) -> Vec<Option<Zone>> {
+    let mut out: Vec<Option<Zone>> = vec![None];
+    for z in cfg.zones.iter().chain(cfg.zone.iter()) {
+        if !out.iter().any(|o| o.is_some_and(|o| same_zone(o, *z))) { out.push(Some(*z)); }
+    }
+    out
+}
+
+fn same_zone(a: Zone, b: Zone) -> bool {
+    (a.x - b.x).abs() < 1.0 && (a.y - b.y).abs() < 1.0 && (a.w - b.w).abs() < 1.0 && (a.h - b.h).abs() < 1.0
+}
+
+/// Which prepared picture shows `zone` (0, the whole frame, when it isn't one of them).
+pub fn zone_index(zone: Option<Zone>, zones: &[Option<Zone>]) -> usize {
+    zone.and_then(|z| zones.iter().position(|o| o.is_some_and(|o| same_zone(o, z)))).unwrap_or(0)
+}
+
+pub fn filter_graph(cfg: &PipelineConfig, inputs: &Inputs, selected: usize, zones: &[Option<Zone>], zone_sel: usize) -> String {
     let (w, h, fps) = (cfg.width, cfg.height, cfg.fps);
     let mut g = String::new();
     let mut labels = String::new();
@@ -351,17 +432,44 @@ pub fn filter_graph(cfg: &PipelineConfig, inputs: &Inputs, selected: usize, plac
     labels += "[nocam]";
     let n = inputs.camera_inputs.len() + 1;
     g += &format!("{labels}streamselect@sel=inputs={n}:map={selected}[cam];");
-    g += &format!("[cam]crop@zc=w={}:h={}[camc];[camc]scale@zs=w={}:h={}[camz];", place.crop_w, place.crop_h, place.w, place.h);
-    g += &format!("color=c=black:s={w}x{h}:r={fps},format=yuv420p[base];");
-    g += &format!("[base][camz]overlay@zo=x={}:y={}:eof_action=pass[bv];", place.x, place.y);
-    g += "[0:v]format=rgba[g];[bv][g]overlay=format=auto:eof_action=repeat,format=yuv420p[v]";
+    // The camera on air, ready in every zone (each on its own black canvas, all the same size).
+    if zones.len() == 1 {
+        g += "[cam]null[bv];";
+    } else {
+        let parts: String = (0..zones.len()).map(|i| format!("[z{i}]")).collect();
+        g += &format!("[cam]split={}{parts};", zones.len());
+        let mut outs = String::new();
+        for (i, z) in zones.iter().enumerate() {
+            match z {
+                None => g += &format!("[z{i}]null[p{i}];"),
+                Some(z) => {
+                    let p = placement(Some(*z), w, h);
+                    g += &format!("[z{i}]crop={}:{},scale={}:{}[s{i}];color=c=black:s={w}x{h}:r={fps},format=yuv420p[k{i}];[k{i}][s{i}]overlay=x={}:y={}:eof_action=pass[p{i}];",
+                        p.crop_w, p.crop_h, p.w, p.h, p.x, p.y);
+                }
+            }
+            outs += &format!("[p{i}]");
+        }
+        g += &format!("{outs}streamselect@zsel=inputs={}:map={zone_sel}[bv];", zones.len());
+    }
+    // The graphics end the stream when they stop (Kairo has gone): nothing goes out unwatched.
+    g += "[0:v]format=rgba[g];[bv][g]overlay=format=auto:eof_action=endall,format=yuv420p[v]";
     g
 }
 
-pub fn ffmpeg_args(cfg: &PipelineConfig, enc: &str, inputs: &Inputs, selected: usize, place: Placement) -> Vec<String> {
+/// One destination behind its own fifo: it reconnects by itself, and a slow or dead server
+/// only drops its own packets instead of holding up the others.
+fn slave(d: &Destination) -> String {
+    format!(
+        "[f=fifo:fifo_format=flv:drop_pkts_on_overflow=1:attempt_recovery=1:recover_any_error=1:recovery_wait_time=2:restart_with_keyframe=1:onfail=ignore]{}",
+        tee_escape(&destination_url(d))
+    )
+}
+
+pub fn ffmpeg_args(cfg: &PipelineConfig, enc: &str, inputs: &Inputs, selected: usize, zones: &[Option<Zone>], zone_sel: usize) -> Vec<String> {
     let mut a: Vec<String> = ["-hide_banner", "-loglevel", "warning", "-stats", "-stats_period", "1", "-y"].map(String::from).to_vec();
     a.extend(inputs.args.iter().cloned());
-    a.extend(["-filter_complex".into(), filter_graph(cfg, inputs, selected, place)]);
+    a.extend(["-filter_complex".into(), filter_graph(cfg, inputs, selected, zones, zone_sel)]);
     a.extend(["-map".into(), "[v]".into(), "-map".into(), format!("{}:a", inputs.audio_input.unwrap_or(1))]);
     a.extend(encoder_args(enc, cfg));
     a.extend([
@@ -369,24 +477,18 @@ pub fn ffmpeg_args(cfg: &PipelineConfig, enc: &str, inputs: &Inputs, selected: u
         "-ar".into(), "48000".into(), "-ac".into(), "2".into(),
         "-flags".into(), "+global_header".into(),
     ]);
-    let slaves: Vec<String> = cfg.destinations.iter().map(|d| format!("[f=flv:onfail=ignore]{}", tee_escape(&destination_url(d)))).collect();
+    let slaves: Vec<String> = cfg.destinations.iter().map(slave).collect();
     a.extend(["-f".into(), "tee".into(), slaves.join("|")]);
     a
 }
 
-/// FFmpeg commands that move the camera from one selection and place to another, while it
-/// runs: only what changed (each command costs FFmpeg a keyboard poll, about 100 ms).
-pub fn live_commands(from: Option<(usize, Placement)>, selected: usize, place: Placement) -> Vec<String> {
+/// FFmpeg commands that put another camera on air and/or show it in another zone: switches
+/// between pictures that are already being made, so nothing is resized while running.
+pub fn live_commands(from: Option<(usize, usize)>, selected: usize, zone_sel: usize, zones: usize) -> Vec<String> {
+    // The zone first: a camera coming on air appears straight in its place.
     let mut c = Vec::new();
-    let (fs, fp) = match from { Some((s, p)) => (Some(s), Some(p)), None => (None, None) };
-    if fs != Some(selected) { c.push(format!("streamselect@sel -1 map {selected}")); }
-    let changed = |f: fn(&Placement) -> i64| fp.map_or(true, |p| f(&p) != f(&place));
-    if changed(|p| p.crop_w as i64) { c.push(format!("crop@zc -1 w {}", place.crop_w)); }
-    if changed(|p| p.crop_h as i64) { c.push(format!("crop@zc -1 h {}", place.crop_h)); }
-    if changed(|p| p.w as i64) { c.push(format!("scale@zs -1 w {}", place.w)); }
-    if changed(|p| p.h as i64) { c.push(format!("scale@zs -1 h {}", place.h)); }
-    if changed(|p| p.x as i64) { c.push(format!("overlay@zo -1 x {}", place.x)); }
-    if changed(|p| p.y as i64) { c.push(format!("overlay@zo -1 y {}", place.y)); }
+    if zones > 1 && from.map(|f| f.1) != Some(zone_sel) { c.push(format!("streamselect@zsel -1 map {zone_sel}")); }
+    if from.map(|f| f.0) != Some(selected) { c.push(format!("streamselect@sel -1 map {selected}")); }
     c
 }
 
@@ -403,7 +505,23 @@ pub fn parse_stats(line: &str) -> Option<(f32, f32, u64)> {
     Some((fps, kbps, drop))
 }
 
+/// The tee slave a message is about: "Slave muxer #1 failed" (counted from 0).
+pub fn slave_index(line: &str) -> Option<usize> {
+    let i = line.find("Slave muxer #")? + "Slave muxer #".len();
+    line[i..].split(|c: char| !c.is_ascii_digit()).next()?.parse().ok()
+}
+
+/// The FFmpeg input a start-up error is about: "[in#2 @ 0x…] Error opening input: …".
+pub fn failed_input(line: &str) -> Option<usize> {
+    let i = line.find("[in#")? + 4;
+    let n: usize = line[i..].split(|c: char| !c.is_ascii_digit()).next()?.parse().ok()?;
+    let l = line.to_lowercase();
+    (l.contains("error") || l.contains("not supported") || l.contains("failed") || l.contains("cannot")).then_some(n)
+}
+
 // ── A running pipeline ───────────────────────────────────────────────────────
+
+static RUNS: AtomicU64 = AtomicU64::new(1);
 
 struct Shared {
     cfg: Mutex<PipelineConfig>,
@@ -411,13 +529,14 @@ struct Shared {
     stop: AtomicBool,
     stdin: Mutex<Option<ChildStdin>>,
     child: Mutex<Option<Child>>,
-    /// The frame to send: (current, previous and when the fade to current began, fade ms).
     frame: Mutex<FrameSlot>,
     camera_inputs: Mutex<Vec<(String, usize)>>,
-    /// What FFmpeg was last told (selection, placement): the starting command line, then commands.
-    sent: Mutex<Option<(usize, Placement)>>,
-    /// One command sender at a time, in order.
-    commands: Mutex<()>,
+    /// What FFmpeg was last told (camera, zone picture).
+    sent: Mutex<Option<(usize, usize)>>,
+    /// The zones this FFmpeg prepared the camera for.
+    zones: Mutex<Vec<Option<Zone>>>,
+    /// When FFmpeg last reported progress.
+    progress: Mutex<Instant>,
 }
 
 #[derive(Default)]
@@ -432,14 +551,19 @@ struct FrameSlot {
 
 pub struct Pipeline {
     shared: Arc<Shared>,
+    supervisor: Option<JoinHandle<()>>,
+    /// Wakes the one thread that sends FFmpeg its camera commands.
+    nudge: mpsc::Sender<()>,
 }
 
 pub type OnStatus = Arc<dyn Fn(PipelineStatus) + Send + Sync>;
 
 impl Pipeline {
     pub fn start(ffmpeg: PathBuf, cfg: PipelineConfig, on_status: OnStatus) -> Pipeline {
+        let run = RUNS.fetch_add(1, Ordering::SeqCst);
         let status = PipelineStatus {
             output: cfg.output.clone(),
+            run,
             state: "starting".into(),
             destinations: cfg.destinations.iter().map(|d| DestStatus { id: d.id.clone(), name: d.name.clone(), state: "connecting".into(), error: None }).collect(),
             ..Default::default()
@@ -453,11 +577,15 @@ impl Pipeline {
             frame: Mutex::new(FrameSlot::default()),
             camera_inputs: Mutex::new(Vec::new()),
             sent: Mutex::new(None),
-            commands: Mutex::new(()),
+            zones: Mutex::new(vec![None]),
+            progress: Mutex::new(Instant::now()),
         });
+        let (nudge, wake) = mpsc::channel::<()>();
         let s2 = shared.clone();
-        thread::spawn(move || supervise(ffmpeg, s2, on_status));
-        Pipeline { shared }
+        thread::spawn(move || send_commands(&s2, wake));
+        let s3 = shared.clone();
+        let supervisor = Some(thread::spawn(move || supervise(ffmpeg, s3, on_status)));
+        Pipeline { shared, supervisor, nudge }
     }
 
     pub fn output(&self) -> String {
@@ -481,47 +609,68 @@ impl Pipeline {
 
     /// The camera on air and its place changed (Director switched inputs or layouts).
     pub fn set_program(&self, program: Option<String>, zone: Option<Zone>) {
-        let (selected, place) = {
-            let Ok(mut cfg) = self.shared.cfg.lock() else { return };
+        if let Ok(mut cfg) = self.shared.cfg.lock() {
             cfg.program = program;
             cfg.zone = zone;
-            let cams = self.shared.camera_inputs.lock().map(|c| c.clone()).unwrap_or_default();
-            (select_index(cfg.program.as_deref(), &cams), placement(cfg.zone, cfg.width, cfg.height))
-        };
-        // 'c' then the command line: FFmpeg's interactive filter command. FFmpeg polls its
-        // keyboard about every 100 ms and the last command of a burst waits for the next key,
-        // so the commands go one at a time and a harmless one follows them.
-        let shared = self.shared.clone();
-        thread::spawn(move || {
-            let Ok(_turn) = shared.commands.lock() else { return };
-            let from = shared.sent.lock().ok().and_then(|s| *s);
-            let mut cmds = live_commands(from, selected, place);
-            if cmds.is_empty() { return; }
-            cmds.push(format!("streamselect@sel -1 map {selected}"));
-            for c in cmds {
-                {
-                    let Ok(mut stdin) = shared.stdin.lock() else { return };
-                    let Some(w) = stdin.as_mut() else { return };
-                    if w.write_all(format!("c{c}\n").as_bytes()).and_then(|_| w.flush()).is_err() { return; }
-                }
-                thread::sleep(Duration::from_millis(110));
-            }
-            if let Ok(mut s) = shared.sent.lock() { *s = Some((selected, place)); }
-        });
+        }
+        let _ = self.nudge.send(());
     }
 
+    /// Asks FFmpeg to finish; the supervisor makes sure it is gone within a few seconds.
     pub fn stop(&self) {
         self.shared.stop.store(true, Ordering::SeqCst);
         if let Ok(mut stdin) = self.shared.stdin.lock() {
             if let Some(w) = stdin.as_mut() { let _ = w.write_all(b"q"); let _ = w.flush(); }
             *stdin = None;
         }
-        // Let FFmpeg finish the streams cleanly, then make sure it is gone.
-        let shared = self.shared.clone();
-        thread::spawn(move || {
-            thread::sleep(Duration::from_secs(3));
-            if let Ok(mut c) = shared.child.lock() { if let Some(ch) = c.as_mut() { let _ = ch.kill(); } }
-        });
+        let _ = self.nudge.send(());
+    }
+
+    fn kill(&self) {
+        self.shared.stop.store(true, Ordering::SeqCst);
+        if let Ok(mut c) = self.shared.child.lock() { if let Some(ch) = c.as_mut() { let _ = ch.kill(); let _ = ch.wait(); } }
+    }
+
+    /// Waits (up to `limit`) for the supervisor to end, killing FFmpeg if it takes too long.
+    fn join(mut self, limit: Duration) {
+        let Some(h) = self.supervisor.take() else { return };
+        let until = Instant::now() + limit;
+        while !h.is_finished() && Instant::now() < until { thread::sleep(Duration::from_millis(50)); }
+        if !h.is_finished() { self.kill(); }
+        let _ = h.join();
+    }
+}
+
+/// The one thread per pipeline that tells FFmpeg where the camera goes. It always works from
+/// the latest wish, so fast switches can never be applied out of order.
+fn send_commands(shared: &Shared, wake: mpsc::Receiver<()>) {
+    while wake.recv().is_ok() {
+        while wake.try_recv().is_ok() {}
+        if shared.stop.load(Ordering::SeqCst) { return; }
+        let (selected, zone_sel, nzones) = {
+            let Ok(cfg) = shared.cfg.lock() else { return };
+            let cams = shared.camera_inputs.lock().map(|c| c.clone()).unwrap_or_default();
+            let zones = shared.zones.lock().map(|z| z.clone()).unwrap_or_default();
+            (select_index(cfg.program.as_deref(), &cams), zone_index(cfg.zone, &zones), zones.len())
+        };
+        let from = shared.sent.lock().ok().and_then(|s| *s);
+        let mut cmds = live_commands(from, selected, zone_sel, nzones);
+        if cmds.is_empty() { continue; }
+        // FFmpeg polls its keyboard about every 100 ms and the last command of a burst waits
+        // for the next key, so they go one at a time and harmless repeats follow them.
+        let last = cmds.last().cloned().unwrap_or_default();
+        cmds.push(last.clone());
+        cmds.push(last);
+        let mut ok = true;
+        for c in cmds {
+            {
+                let Ok(mut stdin) = shared.stdin.lock() else { return };
+                let Some(w) = stdin.as_mut() else { ok = false; break };
+                if w.write_all(format!("c{c}\n").as_bytes()).and_then(|_| w.flush()).is_err() { ok = false; break; }
+            }
+            thread::sleep(Duration::from_millis(110));
+        }
+        if ok { if let Ok(mut s) = shared.sent.lock() { *s = Some((selected, zone_sel)); } }
     }
 }
 
@@ -547,55 +696,86 @@ fn list_devices(ffmpeg: &Path) -> (Vec<String>, Vec<String>) {
 fn supervise(ffmpeg: PathBuf, shared: Arc<Shared>, on_status: OnStatus) {
     let encoders = Command::new(&ffmpeg).args(["-hide_banner", "-encoders"]).stdin(Stdio::null()).stderr(Stdio::null()).output()
         .map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
-    let Some(enc) = pick_encoder(&encoders) else {
-        set_status(&shared, &on_status, |s| { s.state = "failed".into(); s.error = Some("This copy of FFmpeg has no H.264 encoder Kairo can use.".into()); });
+    let Some(enc) = working_encoder(&ffmpeg, &encoders) else {
+        set_status(&shared, &on_status, |s| { s.state = "failed".into(); s.error = Some("No H.264 encoder works with this copy of FFmpeg on this computer.".into()); });
         return;
     };
-    let (video_names, audio_names) = list_devices(&ffmpeg);
     let mut backoff = 2u64;
+    let mut skip: HashSet<String> = HashSet::new();
     while !shared.stop.load(Ordering::SeqCst) {
         let started = Instant::now();
         let cfg = match shared.cfg.lock() { Ok(c) => c.clone(), Err(_) => return };
+        // Listed again each time: a camera plugged in since is found.
+        let (video_names, audio_names) = list_devices(&ffmpeg);
         let port = match TcpListener::bind("127.0.0.1:0").and_then(|l| l.local_addr()) { Ok(a) => a.port(), Err(e) => {
             set_status(&shared, &on_status, |s| { s.state = "failed".into(); s.error = Some(format!("No local port for the picture: {e}")); });
             return;
         } };
-        let inputs = build_inputs(&cfg, port, &video_names, &audio_names);
+        let inputs = build_inputs(&cfg, port, &video_names, &audio_names, &skip);
         let selected = select_index(cfg.program.as_deref(), &inputs.camera_inputs);
+        let zones = zone_list(&cfg);
+        let zone_sel = zone_index(cfg.zone, &zones);
         if let Ok(mut c) = shared.camera_inputs.lock() { *c = inputs.camera_inputs.clone(); }
-        let place0 = placement(cfg.zone, cfg.width, cfg.height);
-        if let Ok(mut s) = shared.sent.lock() { *s = Some((selected, place0)); }
-        let args = ffmpeg_args(&cfg, enc, &inputs, selected, place0);
-        let child = Command::new(&ffmpeg).args(&args).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped()).spawn();
-        let mut child = match child {
+        if let Ok(mut z) = shared.zones.lock() { *z = zones.clone(); }
+        if let Ok(mut s) = shared.sent.lock() { *s = Some((selected, zone_sel)); }
+        let args = ffmpeg_args(&cfg, enc, &inputs, selected, &zones, zone_sel);
+        let mut child = match Command::new(&ffmpeg).args(&args).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped()).spawn() {
             Ok(c) => c,
             Err(e) => {
                 set_status(&shared, &on_status, |s| { s.state = "failed".into(); s.error = Some(format!("FFmpeg didn't start: {e}")); });
                 return;
             }
         };
+        let stderr = child.stderr.take();
+        if let Ok(mut s) = shared.stdin.lock() { *s = child.stdin.take(); }
+        // Kept before anything else can happen, so a quit at any moment finds it.
+        if let Ok(mut c) = shared.child.lock() { *c = Some(child); }
+        if shared.stop.load(Ordering::SeqCst) { break; }
         let warnings = inputs.warnings.clone();
         set_status(&shared, &on_status, |s| {
-            s.state = "starting".into(); s.encoder = enc.into(); s.error = None; s.warnings = warnings;
+            s.state = if s.state == "retrying" { "retrying".into() } else { "starting".into() };
+            s.encoder = enc.into(); s.warnings = warnings;
             for d in &mut s.destinations { d.state = "connecting".into(); d.error = None; }
         });
-        if let Ok(mut s) = shared.stdin.lock() { *s = child.stdin.take(); }
-        let stderr = child.stderr.take();
-        if let Ok(mut c) = shared.child.lock() { *c = Some(child); }
+        if let Ok(mut p) = shared.progress.lock() { *p = Instant::now(); }
 
         // The picture: our socket → FFmpeg's graphics input.
         let s_writer = shared.clone();
         let writer = thread::spawn(move || write_graphics(port, &s_writer));
-        // FFmpeg's messages: progress, and each destination's trouble.
+        // A stuck FFmpeg (no progress while live) is ended, so it is started again.
+        let s_dog = shared.clone();
+        let done = Arc::new(AtomicBool::new(false));
+        let done2 = done.clone();
+        let watchdog = thread::spawn(move || {
+            while !done2.load(Ordering::SeqCst) {
+                thread::sleep(Duration::from_millis(500));
+                let stuck = s_dog.progress.lock().map(|p| p.elapsed() > STALL).unwrap_or(false);
+                if stuck && !s_dog.stop.load(Ordering::SeqCst) {
+                    if let Ok(mut c) = s_dog.child.lock() { if let Some(ch) = c.as_mut() { let _ = ch.kill(); } }
+                    break;
+                }
+            }
+        });
+        // FFmpeg's messages: progress, each destination's trouble, cameras that won't open.
+        let mut early_failures = Vec::new();
+        let mut saw_progress = false;
         if let Some(err) = stderr {
-            read_messages(err, &shared, &on_status, &cfg.destinations, started);
+            read_messages(err, &shared, &on_status, &cfg.destinations, started, &mut early_failures, &mut saw_progress);
         }
+        done.store(true, Ordering::SeqCst);
         let code = shared.child.lock().ok().and_then(|mut c| c.as_mut().and_then(|ch| ch.wait().ok()));
         if let Ok(mut c) = shared.child.lock() { *c = None; }
         if let Ok(mut s) = shared.stdin.lock() { *s = None; }
         let _ = writer.join();
+        let _ = watchdog.join();
         if shared.stop.load(Ordering::SeqCst) { break; }
-        // It stopped on its own: try again shortly (sooner if it had run for a while).
+        // It never got going: leave out the cameras it couldn't open (or all of them, when it
+        // didn't say which) so graphics and sound still go out.
+        if !saw_progress && !inputs.camera_inputs.is_empty() {
+            let named: Vec<String> = inputs.camera_inputs.iter().filter(|(_, n)| early_failures.contains(n)).map(|(id, _)| id.clone()).collect();
+            if named.is_empty() { skip.extend(inputs.camera_inputs.iter().map(|(id, _)| id.clone())); } else { skip.extend(named); }
+            backoff = 1;
+        }
         if started.elapsed() > Duration::from_secs(60) { backoff = 2; }
         let why = code.map(|c| format!("FFmpeg stopped ({c})")).unwrap_or_else(|| "FFmpeg stopped".into());
         set_status(&shared, &on_status, |s| { s.state = "retrying".into(); if s.error.is_none() { s.error = Some(why); } });
@@ -605,13 +785,26 @@ fn supervise(ffmpeg: PathBuf, shared: Arc<Shared>, on_status: OnStatus) {
         }
         backoff = (backoff * 2).min(30);
     }
+    // Asked to stop: give FFmpeg a moment to close the streams cleanly, then make sure.
+    let until = Instant::now() + Duration::from_secs(3);
+    loop {
+        let gone = shared.child.lock().map(|mut c| c.as_mut().is_none_or(|ch| ch.try_wait().ok().flatten().is_some())).unwrap_or(true);
+        if gone { break; }
+        if Instant::now() > until {
+            if let Ok(mut c) = shared.child.lock() { if let Some(ch) = c.as_mut() { let _ = ch.kill(); let _ = ch.wait(); } }
+            break;
+        }
+        thread::sleep(Duration::from_millis(100));
+    }
     set_status(&shared, &on_status, |s| { s.state = "stopped".into(); s.fps = 0.0; s.kbps = 0.0; });
 }
 
-fn read_messages(err: impl Read, shared: &Shared, on_status: &OnStatus, dests: &[Destination], started: Instant) {
+fn read_messages(err: impl Read, shared: &Shared, on_status: &OnStatus, dests: &[Destination], started: Instant, early_failures: &mut Vec<usize>, saw_progress: &mut bool) {
     let mut reader = BufReader::new(err);
     let mut buf = Vec::new();
     let mut last_emit = Instant::now() - Duration::from_secs(5);
+    // A destination is shown reconnecting for a while after its last error.
+    let mut trouble: Vec<Option<Instant>> = vec![None; dests.len()];
     // FFmpeg ends progress lines with '\r' and messages with '\n'.
     loop {
         buf.clear();
@@ -626,31 +819,42 @@ fn read_messages(err: impl Read, shared: &Shared, on_status: &OnStatus, dests: &
         let line = redact(&String::from_utf8_lossy(&buf), dests);
         if line.trim().is_empty() { continue; }
         if let Some((fps, kbps, drop)) = parse_stats(&line) {
+            *saw_progress = true;
+            if let Ok(mut p) = shared.progress.lock() { *p = Instant::now(); }
             let emit = last_emit.elapsed() >= Duration::from_secs(1);
             let up = started.elapsed().as_secs();
             let mut snapshot = None;
             if let Ok(mut s) = shared.status.lock() {
                 s.fps = fps; s.kbps = kbps; s.dropped = drop; s.uptime_secs = up;
-                if s.state == "starting" || s.state == "retrying" { s.state = "live".into(); }
-                for d in &mut s.destinations { if d.state == "connecting" { d.state = "live".into(); } }
+                if s.state == "starting" || s.state == "retrying" { s.state = "live".into(); s.error = None; }
+                for (i, d) in s.destinations.iter_mut().enumerate() {
+                    let quiet = trouble.get(i).copied().flatten().is_none_or(|t| t.elapsed() > Duration::from_secs(15));
+                    if quiet && d.state != "live" { d.state = "live".into(); d.error = None; }
+                }
                 if emit { snapshot = Some(s.clone()); }
             }
             if let Some(snap) = snapshot { last_emit = Instant::now(); on_status(snap); }
             continue;
         }
-        if line.starts_with("Enter command") || line.starts_with("Command reply") { continue; }
+        if line.starts_with("Enter command") || line.starts_with("Command reply") { if std::env::var("KAIRO_STREAM_DEBUG").is_ok() { eprintln!("[Stream] {line}"); } continue; }
         eprintln!("[Stream] {line}");
-        // A destination's own failure names its server.
+        if !*saw_progress { if let Some(n) = failed_input(&line) { early_failures.push(n); } }
         let lower = line.to_lowercase();
-        let failed_dest = dests.iter().find(|d| {
-            let host = d.url.split("://").nth(1).and_then(|r| r.split(['/', ':']).next()).unwrap_or("");
-            !host.is_empty() && lower.contains(&host.to_lowercase())
-        });
-        let is_error = lower.contains("error") || lower.contains("failed") || lower.contains("refused") || lower.contains("timed out");
+        let is_error = lower.contains("error") || lower.contains("failed") || lower.contains("refused") || lower.contains("timed out") || lower.contains("broken pipe");
         if !is_error { continue; }
+        // Which destination: the tee slave's number, else a server name only one of them uses.
+        let by_host = || {
+            let hits: Vec<usize> = dests.iter().enumerate().filter(|(_, d)| {
+                let host = server_of(&d.url).split("://").nth(1).unwrap_or("").to_lowercase();
+                !host.is_empty() && lower.contains(&host)
+            }).map(|(i, _)| i).collect();
+            (hits.len() == 1).then(|| hits[0])
+        };
+        let which = slave_index(&line).filter(|i| *i < dests.len()).or_else(by_host);
+        if let Some(i) = which { trouble[i] = Some(Instant::now()); }
         set_status(shared, on_status, |s| {
-            match failed_dest {
-                Some(d) => if let Some(ds) = s.destinations.iter_mut().find(|x| x.id == d.id) { ds.state = "failed".into(); ds.error = Some(line.clone()); },
+            match which.and_then(|i| s.destinations.get_mut(i)) {
+                Some(ds) => { ds.state = if *saw_progress { "reconnecting".into() } else { "connecting".into() }; ds.error = Some(line.clone()); }
                 None => s.error = Some(line.clone()),
             }
         });
@@ -671,11 +875,17 @@ fn write_graphics(port: u16, shared: &Shared) {
     let Some(mut sock) = sock else { return };
     let _ = sock.set_nodelay(true);
     let clear = vec![0u8; size];
+    let mut scratch = vec![0u8; size];
     let period = Duration::from_secs_f64(1.0 / fps as f64);
     let mut next = Instant::now();
     loop {
-        let bytes = next_frame(shared, w, h);
-        let out: &[u8] = match bytes.as_deref() { Some(b) if b.len() == size => b, _ => &clear };
+        if shared.stop.load(Ordering::SeqCst) { return; }
+        let bytes = next_frame(shared, w, h, &mut scratch);
+        let out: &[u8] = match &bytes {
+            Some(NextFrame::Ready(b)) if b.len() == size => b,
+            Some(NextFrame::Mixed) => &scratch,
+            _ => &clear,
+        };
         if sock.write_all(out).is_err() { return; }
         next += period;
         let now = Instant::now();
@@ -683,25 +893,62 @@ fn write_graphics(port: u16, shared: &Shared) {
     }
 }
 
+enum NextFrame {
+    /// The newest snapshot, ready to send.
+    Ready(Arc<Vec<u8>>),
+    /// A fade between two snapshots, mixed into the writer's own buffer.
+    Mixed,
+}
+
 /// The frame to send now: the newest snapshot (fading in from the one before), with plain
-/// (not premultiplied) transparency, which FFmpeg's overlay expects.
-fn next_frame(shared: &Shared, w: u32, h: u32) -> Option<Arc<Vec<u8>>> {
-    let mut slot = shared.frame.lock().ok()?;
-    let cur = slot.current.clone()?;
-    if cur.width != w || cur.height != h { return None; }
-    if let (Some(prev), Some(from)) = (slot.previous.clone(), slot.fade_from) {
-        let t = from.elapsed().as_secs_f32() * 1000.0 / slot.fade_ms.max(1) as f32;
-        if t < 1.0 && prev.width == w && prev.height == h {
-            let mut mixed = vec![0u8; cur.bgra.len()];
-            blend(&mut mixed, &prev.bgra, &cur.bgra, t);
-            let f = Frame { width: w, height: h, bgra: mixed };
-            return Some(Arc::new(f.unpremultiplied()));
+/// (not premultiplied) transparency, which FFmpeg's overlay expects. The mixing is done
+/// outside the lock, so a new snapshot is never kept waiting.
+fn next_frame(shared: &Shared, w: u32, h: u32, scratch: &mut [u8]) -> Option<NextFrame> {
+    let (cur, prev, t) = {
+        let mut slot = shared.frame.lock().ok()?;
+        let cur = slot.current.clone()?;
+        if cur.width != w || cur.height != h { return None; }
+        match (slot.previous.clone(), slot.fade_from) {
+            (Some(prev), Some(from)) => {
+                let t = from.elapsed().as_secs_f32() * 1000.0 / slot.fade_ms.max(1) as f32;
+                if t < 1.0 && prev.width == w && prev.height == h {
+                    (cur, Some(prev), t)
+                } else {
+                    slot.previous = None;
+                    slot.fade_from = None;
+                    (cur, None, 1.0)
+                }
+            }
+            _ => (cur, None, 1.0),
         }
-        slot.previous = None;
-        slot.fade_from = None;
+    };
+    if let Some(prev) = prev {
+        blend(scratch, &prev.bgra, &cur.bgra, t);
+        unpremultiply_in_place(scratch);
+        return Some(NextFrame::Mixed);
     }
-    if slot.ready.is_none() { slot.ready = Some(Arc::new(cur.unpremultiplied())); }
-    slot.ready.clone()
+    let ready = shared.frame.lock().ok().and_then(|s| s.ready.clone());
+    let ready = match ready {
+        Some(r) => r,
+        None => {
+            let r = Arc::new(cur.unpremultiplied());
+            if let Ok(mut s) = shared.frame.lock() {
+                // Still the same snapshot: keep the ready copy.
+                if s.current.as_ref().is_some_and(|c| Arc::ptr_eq(c, &cur)) { s.ready = Some(r.clone()); }
+            }
+            r
+        }
+    };
+    Some(NextFrame::Ready(ready))
+}
+
+fn unpremultiply_in_place(px: &mut [u8]) {
+    for p in px.chunks_exact_mut(4) {
+        let a = p[3] as u32;
+        if a != 0 && a != 255 {
+            for c in &mut p[..3] { *c = ((*c as u32 * 255 + a / 2) / a).min(255) as u8; }
+        }
+    }
 }
 
 // ── All the pipelines ────────────────────────────────────────────────────────
@@ -713,8 +960,12 @@ pub struct StreamState {
 
 impl StreamState {
     pub fn start(&self, ffmpeg: PathBuf, configs: Vec<PipelineConfig>, on_status: OnStatus) -> Result<(), String> {
+        // The previous stream is finished first, so the same stream keys are never sent to
+        // twice at once.
+        let old: Vec<Pipeline> = self.pipelines.lock().map_err(|e| e.to_string())?.drain(..).collect();
+        for p in &old { p.stop(); }
+        for p in old { p.join(Duration::from_secs(4)); }
         let mut p = self.pipelines.lock().map_err(|e| e.to_string())?;
-        for old in p.drain(..) { old.stop(); }
         for cfg in configs {
             if cfg.destinations.is_empty() { continue; }
             p.push(Pipeline::start(ffmpeg.clone(), cfg, on_status.clone()));
@@ -723,17 +974,18 @@ impl StreamState {
         Ok(())
     }
 
+    /// Ends every stream. Returns at once; FFmpeg is given a moment to close each stream
+    /// cleanly and is killed after that.
     pub fn stop(&self) {
-        if let Ok(mut p) = self.pipelines.lock() { for old in p.drain(..) { old.stop(); } }
+        let old: Vec<Pipeline> = self.pipelines.lock().map(|mut p| p.drain(..).collect()).unwrap_or_default();
+        for p in &old { p.stop(); }
+        thread::spawn(move || { for p in old { p.join(Duration::from_secs(4)); } });
     }
 
     /// Kairo is quitting: end every FFmpeg now, so no stream outlives the app.
     pub fn kill_now(&self) {
         if let Ok(mut p) = self.pipelines.lock() {
-            for x in p.drain(..) {
-                x.shared.stop.store(true, Ordering::SeqCst);
-                if let Ok(mut c) = x.shared.child.lock() { if let Some(ch) = c.as_mut() { let _ = ch.kill(); let _ = ch.wait(); } }
-            }
+            for x in p.drain(..) { x.kill(); }
         }
     }
 
@@ -769,15 +1021,15 @@ mod tests {
             ],
             cameras: vec![Camera { id: "cam1".into(), label: "FaceTime HD Camera (Built-in)".into() }, Camera { id: "cam2".into(), label: "Missing".into() }],
             program: Some("cam1".into()), zone: None, audio_input: Some("MacBook Pro Microphone (Built-in)".into()),
+            zones: vec![Zone { x: 60.0, y: 120.0, w: 640.0, h: 840.0 }],
         }
     }
 
     #[test]
-    fn picks_hardware_encoders_first() {
-        let listing = " V....D libx264  libx264 H.264\n V....D h264_videotoolbox VideoToolbox\n";
-        assert_eq!(pick_encoder(listing), Some("h264_videotoolbox"));
-        assert_eq!(pick_encoder(" V....D libx264  x\n"), Some("libx264"));
-        assert_eq!(pick_encoder(" V....D mpeg4 x\n"), None);
+    fn encoders_in_order() {
+        let listing = " V....D libx264  libx264 H.264\n V....D h264_videotoolbox VideoToolbox\n V....D h264_mf MF\n";
+        assert_eq!(encoder_candidates(listing), vec!["h264_videotoolbox", "h264_mf", "libx264"]);
+        assert!(encoder_candidates(" V....D mpeg4 x\n").is_empty());
     }
 
     #[test]
@@ -785,17 +1037,33 @@ mod tests {
         let c = cfg();
         assert_eq!(destination_url(&c.destinations[0]), "rtmp://a.rtmp.youtube.com/live2/abcd-efgh-1234");
         assert_eq!(destination_url(&c.destinations[1]), "rtmps://x.example.com:443/app");
-        assert_eq!(redact("failed rtmp://a.rtmp.youtube.com/live2/abcd-efgh-1234 x", &c.destinations), "failed rtmp://a.rtmp.youtube.com/live2/•••• x");
-        assert_eq!(tee_escape("rtmp://h/a|b[c]"), "rtmp://h/a\\|b\\[c\\]");
+        let r = redact("failed rtmp://a.rtmp.youtube.com/live2/abcd-efgh-1234 x", &c.destinations);
+        assert!(!r.contains("abcd-efgh-1234"), "{r}");
+        assert!(r.contains("rtmp://a.rtmp.youtube.com"), "{r}");
+        assert_eq!(tee_escape("rtmp://h/a|b[c]'d"), "rtmp://h/a\\|b\\[c\\]\\'d");
+        // A key pasted into the address, with no key field.
+        let pasted = vec![Destination { id: "f".into(), name: "FB".into(), url: "rtmps://live-api-s.facebook.com:443/rtmp/FB-1234567890-abc".into(), key: "".into() }];
+        let r = redact("rtmps://live-api-s.facebook.com:443/rtmp/FB-1234567890-abc: I/O error", &pasted);
+        assert!(!r.contains("FB-1234567890"), "{r}");
+        // A key with tee's special characters is hidden in its escaped form too.
+        let odd = vec![Destination { id: "o".into(), name: "O".into(), url: "rtmp://h.example/app".into(), key: "k|ey[1]".into() }];
+        let r = redact(&format!("x {} y", tee_escape("rtmp://h.example/app/k|ey[1]")), &odd);
+        assert!(!r.contains("ey"), "{r}");
     }
 
     #[test]
     fn matches_browser_labels_to_devices() {
-        let names = vec!["FaceTime HD Camera".to_string(), "Capture screen 0".to_string()];
-        assert_eq!(match_device("FaceTime HD Camera (Built-in)", &names).map(String::as_str), Some("FaceTime HD Camera"));
-        assert_eq!(match_device("Nope", &names), None);
-        let audio = vec!["BlackHole 2ch".to_string(), "MacBook Pro Microphone".to_string()];
-        assert_eq!(match_device("MacBook Pro Microphone (Built-in)", &audio).map(String::as_str), Some("MacBook Pro Microphone"));
+        let names = vec!["FaceTime HD Camera".to_string(), "USB Camera".to_string(), "USB Camera".to_string()];
+        let mut used = HashSet::new();
+        assert_eq!(match_device("FaceTime HD Camera (Built-in)", &names, &used), Some(0));
+        assert_eq!(match_device("Nope", &names, &used), None);
+        // Two of the same model: the first, then the second, never the same one twice.
+        let first = match_device("USB Camera", &names, &used).unwrap();
+        used.insert(first);
+        let second = match_device("USB Camera", &names, &used).unwrap();
+        assert_eq!((first, second), (1, 2));
+        used.insert(second);
+        assert_eq!(match_device("USB Camera", &names, &used), None);
     }
 
     #[test]
@@ -812,9 +1080,7 @@ mod tests {
 
     #[test]
     fn places_the_camera_in_a_zone() {
-        // Full frame.
         assert_eq!(placement(None, 1280, 720), Placement { crop_w: 1280, crop_h: 720, w: 1280, h: 720, x: 0, y: 0 });
-        // A portrait zone on the left of a 1080p canvas: the crop keeps the zone's shape.
         let p = placement(Some(Zone { x: 60.0, y: 120.0, w: 640.0, h: 840.0 }), 1920, 1080);
         assert_eq!((p.w, p.h, p.x, p.y), (640, 840, 60, 120));
         assert_eq!(p.crop_h, 1080);
@@ -826,42 +1092,55 @@ mod tests {
     fn builds_the_command() {
         let c = cfg();
         let video = vec!["FaceTime HD Camera".to_string()];
-        let audio = vec!["MacBook Pro Microphone".to_string()];
-        let inputs = build_inputs(&c, 5555, &video, &audio);
+        let audio = vec!["BlackHole 2ch".to_string(), "MacBook Pro Microphone".to_string()];
+        let inputs = build_inputs(&c, 5555, &video, &audio, &HashSet::new());
+        let zones = zone_list(&c);
+        assert_eq!(zones.len(), 2);
+        let args = ffmpeg_args(&c, "h264_videotoolbox", &inputs, 0, &zones, 0).join(" ");
+        assert!(args.contains("streamselect@zsel=inputs=2:map=0"), "{args}");
         if cfg!(target_os = "macos") {
             assert_eq!(inputs.camera_inputs, vec![("cam1".to_string(), 1)]);
             assert_eq!(inputs.audio_input, Some(2));
             assert!(inputs.warnings.iter().any(|w| w.contains("Missing")));
+            // By position: "-i 0" for the camera, "-i :1" for the microphone; no forced rate.
+            assert!(args.contains("-f avfoundation -i 0"), "{args}");
+            assert!(args.contains("-f avfoundation -i :1"), "{args}");
         }
-        assert_eq!(select_index(Some("cam1"), &inputs.camera_inputs), if cfg!(target_os = "macos") { 0 } else { inputs.camera_inputs.len() });
-        assert_eq!(select_index(None, &inputs.camera_inputs), inputs.camera_inputs.len());
-        let args = ffmpeg_args(&c, "h264_videotoolbox", &inputs, 0, placement(None, 1280, 720)).join(" ");
         assert!(args.contains("tcp://127.0.0.1:5555?listen=1"));
-        assert!(args.contains("[f=flv:onfail=ignore]rtmp://a.rtmp.youtube.com/live2/abcd-efgh-1234|[f=flv:onfail=ignore]rtmps://x.example.com:443/app"));
-        assert!(args.contains("streamselect@sel"));
+        assert!(args.contains("[f=fifo:fifo_format=flv:"));
+        assert!(args.contains("rtmp://a.rtmp.youtube.com/live2/abcd-efgh-1234|[f=fifo"));
+        assert!(args.contains("eof_action=endall"));
         assert!(args.contains("-b:v 4500k"));
+        // A camera that failed last time is left out.
+        let skip: HashSet<String> = ["cam1".to_string()].into_iter().collect();
+        let without = build_inputs(&c, 5555, &video, &audio, &skip);
+        assert!(without.camera_inputs.is_empty());
+        assert!(without.warnings.iter().any(|w| w.contains("left out")));
     }
 
     #[test]
-    fn reads_progress() {
+    fn reads_ffmpeg_messages() {
         let l = "frame=  120 fps= 30 q=-0.0 size=    1024KiB time=00:00:04.00 bitrate=2998.4kbits/s dup=0 drop=3 speed=   1x";
         assert_eq!(parse_stats(l), Some((30.0, 2998.4, 3)));
         assert_eq!(parse_stats("Error opening output"), None);
+        assert_eq!(slave_index("[tee @ 0x1] Slave muxer #1 failed: Broken pipe, continuing with 1/2 slaves."), Some(1));
+        assert_eq!(slave_index("nothing"), None);
+        assert_eq!(failed_input("[in#2 @ 0x7f] Error opening input: Input/output error"), Some(2));
+        assert_eq!(failed_input("[in#2 @ 0x7f] Stream #0: Video: rawvideo"), None);
     }
 
     #[test]
     fn live_commands_move_the_camera() {
-        let full = placement(None, 1920, 1080);
-        let zone = placement(Some(Zone { x: 100.0, y: 50.0, w: 960.0, h: 540.0 }), 1920, 1080);
-        let cmds = live_commands(Some((0, full)), 1, zone);
-        assert_eq!(cmds[0], "streamselect@sel -1 map 1");
-        assert!(cmds.contains(&"overlay@zo -1 x 100".to_string()));
-        assert!(cmds.contains(&"scale@zs -1 w 960".to_string()));
-        // Same shape: the crop stays as it is.
-        assert!(!cmds.iter().any(|c| c.starts_with("crop@zc")));
-        // Only the camera switched.
-        assert_eq!(live_commands(Some((1, zone)), 0, zone), vec!["streamselect@sel -1 map 0".to_string()]);
-        assert!(live_commands(Some((0, zone)), 0, zone).is_empty());
+        let z = Zone { x: 100.0, y: 50.0, w: 960.0, h: 540.0 };
+        let zones = vec![None, Some(z)];
+        assert_eq!(zone_index(Some(z), &zones), 1);
+        assert_eq!(zone_index(None, &zones), 0);
+        assert_eq!(zone_index(Some(Zone { x: 1.0, y: 1.0, w: 2.0, h: 2.0 }), &zones), 0);
+        assert_eq!(live_commands(Some((0, 0)), 1, 1, 2), vec!["streamselect@zsel -1 map 1".to_string(), "streamselect@sel -1 map 1".to_string()]);
+        assert_eq!(live_commands(Some((1, 1)), 0, 1, 2), vec!["streamselect@sel -1 map 0".to_string()]);
+        assert!(live_commands(Some((0, 1)), 0, 1, 2).is_empty());
+        // No layout zones: never a zone command.
+        assert_eq!(live_commands(Some((0, 0)), 0, 0, 1), Vec::<String>::new());
     }
 
     /// End to end against two local RTMP listeners, with FFmpeg's test sources standing in for
@@ -879,7 +1158,7 @@ mod tests {
             .arg(dir.join(name)).stdin(Stdio::null()).spawn().unwrap();
         let mut l1 = listen(19351, "a.flv");
         let mut l2 = listen(19352, "b.flv");
-        thread::sleep(Duration::from_millis(800));
+        thread::sleep(Duration::from_millis(1500));
         let mut c = cfg();
         c.width = 640; c.height = 360;
         c.destinations = vec![
@@ -890,20 +1169,24 @@ mod tests {
         let statuses = Arc::new(Mutex::new(Vec::<PipelineStatus>::new()));
         let st2 = statuses.clone();
         let p = Pipeline::start(ffmpeg.clone(), c, Arc::new(move |s| st2.lock().unwrap().push(s)));
-        // A half-transparent red box over the middle, as a capture would give.
         let mut bgra = vec![0u8; 640 * 360 * 4];
         for y in 120..240 { for x in 220..420 { let i = (y * 640 + x) * 4; bgra[i..i + 4].copy_from_slice(&[0, 0, 128, 128]); } }
         p.push_frame(Arc::new(Frame { width: 640, height: 360, bgra }), 0);
-        thread::sleep(Duration::from_secs(3));
+        thread::sleep(Duration::from_secs(4));
         p.set_program(Some("cam1".into()), Some(Zone { x: 60.0, y: 120.0, w: 640.0, h: 840.0 }));
         thread::sleep(Duration::from_secs(4));
         let live = p.status();
         p.stop();
-        thread::sleep(Duration::from_secs(4));
+        p.join(Duration::from_secs(6));
+        thread::sleep(Duration::from_secs(1));
         let _ = l1.wait(); let _ = l2.wait();
         println!("status while live: {live:?}");
         assert_eq!(live.state, "live", "{live:?}");
         assert!(live.destinations.iter().all(|d| d.state == "live"), "{live:?}");
+        let all = statuses.lock().unwrap();
+        assert_eq!(all.last().map(|s| s.state.as_str()), Some("stopped"));
+        let text = format!("{all:?}");
+        assert!(!text.contains("key19351") && !text.contains("key19352"), "a key reached the status");
         for f in ["a.flv", "b.flv"] {
             let probe = Command::new(&ffmpeg).args(["-hide_banner", "-i"]).arg(dir.join(f)).output().unwrap();
             let info = String::from_utf8_lossy(&probe.stderr).to_string();
@@ -911,10 +1194,8 @@ mod tests {
             assert!(info.contains("Video: h264"), "{info}");
             assert!(info.contains("Audio: aac"), "{info}");
         }
-        // A frame from the middle of the stream, for a look.
-        let _ = Command::new(&ffmpeg).args(["-hide_banner", "-loglevel", "error", "-y", "-ss", "5", "-i"]).arg(dir.join("a.flv"))
+        let _ = Command::new(&ffmpeg).args(["-hide_banner", "-loglevel", "error", "-y", "-sseof", "-1", "-i"]).arg(dir.join("a.flv"))
             .args(["-frames:v", "1"]).arg(dir.join("a.png")).status();
         println!("frames in {}", dir.display());
     }
-
 }

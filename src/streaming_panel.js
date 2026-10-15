@@ -254,7 +254,6 @@
     const ab = el('div', 'st-card-body');
     ab.append(
       row('Sound desk or microphone', 'The input chosen under Audio', toggle(c.audio.input, '', (on) => save({ ...cfg(), audio: { ...cfg().audio, input: on } }))),
-      row('Background music', 'What the Audio lane plays', toggle(c.audio.music, '', (on) => save({ ...cfg(), audio: { ...cfg().audio, music: on } }))),
       row('Quality', null, select(AUDIO_BITRATES.map(b => [b, `${b} kbps`]), c.audio.bitrate, (v) => save({ ...cfg(), audio: { ...cfg().audio, bitrate: Number(v) } }))),
     );
     audio.appendChild(ab);
@@ -265,7 +264,8 @@
     if (o.state !== 'off') {
       (o.warnings || []).concat(o.errors || []).forEach(t => h.appendChild(el('p', 'st-result bad st-foot', t)));
     }
-    const note = el('p', 'setting-hint st-foot', 'The stream is what the output shows: scripture, slides, the layout, overlays and the camera on air in Director mode, with the sound of the audio input chosen under Audio. Your stream keys stay on this computer.');
+    if (S2 && S2.isLive()) h.insertBefore(el('p', 'st-result st-foot', 'Changes here take effect the next time you go live.'), h.firstChild);
+    const note = el('p', 'setting-hint st-foot', 'The stream is what the output shows: scripture, slides, the layout, overlays and the camera on air in Director mode, with the sound of the audio input chosen under Audio (music played inside Kairo is not in the stream). Your stream keys stay on this computer.');
     h.appendChild(note);
   }
 
