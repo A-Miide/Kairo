@@ -782,6 +782,13 @@ const DEFAULT_LOOKS = [
 // Screen themes (Director mode): a whole screen in one theme. The live picture shows in
 // the video zone, the verse or slide fills the other side, over a background. Listed only
 // while Director mode is on (groupId 'grp-screen').
+// The Screens' backdrop: a deep navy, dark enough for white text and a camera picture to stand out.
+function screenCanvas() {
+  const stops = [{ pos: 0, color: '#050b1f' }, { pos: 55, color: '#0a1a45' }, { pos: 100, color: '#13266b' }];
+  return { id: 'bg', type: 'background', name: 'Canvas', visible: true,
+    fill: 'gradient', color: stops[0].color, color2: stops[2].color, opacity: 100, angle: 150,
+    gradientStops: stops, gradientGlows: [{ x: 100, y: 100, rx: 55, ry: 45, color: '#1f3fb8' }] };
+}
 function screenTheme(id, name, videoLeft, videoW) {
   const gap = 40, margin = 60, top = 120, h = 840;
   const W = window.KAIRO_DESIGN_W || 1920;
@@ -793,7 +800,7 @@ function screenTheme(id, name, videoLeft, videoW) {
     id, name, layout: 'fullscreen', animation: 'fade',
     groupId: 'grp-screen', groupName: 'Screens (Director mode)',
     layers: [
-      gradientCanvas('blue-hour'),
+      screenCanvas(),
       { id: 'panel', type: 'background', name: 'Verse panel', visible: true, shape: 'rectangle',
         fill: 'solid', color: '#0b0b1c', opacity: 55, color2: '#0b0b1c', angle: 135, radius: 36,
         pos: { x: tx, y: top, w: textW, h } },
@@ -926,6 +933,14 @@ let looks = (function loadLooks() {
         }
       }
       if (def && def.groupId && !l.groupId) { l.groupId = def.groupId; l.groupName = def.groupName; }
+      // The first Screens shipped on bright Blue Hour; their backdrop is now a darker navy.
+      if (def && def.groupId === 'grp-screen') {
+        const cv = (l.layers || []).find(ly => ly.id === 'bg' && ly.type === 'background' && !ly.pos);
+        if (cv && cv.gradientStops && cv.gradientStops[0]?.color === '#0b97df') {
+          Object.assign(cv, deepClone(def.layers.find(ly => ly.id === 'bg')));
+          backgroundMigrated = true;
+        }
+      }
       // Word/Activate/Karaoke/Typewriter/Impact/Bold Caption/Bounce/Highlight Box/
       // Shimmer used to be crammed into the same `animation` field as the
       // real Fade/Slide/Cut transitions — every install saved before that
