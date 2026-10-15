@@ -989,6 +989,7 @@
     const t = e.target;
     if (t && (t.isContentEditable || (t.matches && t.matches('input,textarea,select')))) return;
     if (document.querySelector('.modal:not(.hidden), .vd-add-panel')) return;
+    if (document.body.classList.contains('vd-sheet')) return;   // a full screen is open over the Director: its keys are not ours
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'z') {
       if (D.last) { e.preventDefault(); undo(); }
       return;
