@@ -55,8 +55,8 @@ body.video-director .ls-status-bar,
 body.video-director .rs-preview-output-row,
 body.video-director #slide-preview,
 body.video-director #outputs-monitor-grid,
-body.video-director #svc-stack-view, body.video-director #svc-fullscreen,
-body.video-director #songs-library-view, body.video-director #media-library-view, body.video-director #timer-view,
+body.video-director:not(.vd-sheet) #svc-stack-view, body.video-director:not(.vd-sheet) #svc-fullscreen,
+body.video-director:not(.vd-sheet) #songs-library-view, body.video-director:not(.vd-sheet) #media-library-view, body.video-director:not(.vd-sheet) #timer-view,
 body.video-director .center-stage > #media-bin { display: none !important; }
 body.video-director .vd-tab-off { opacity: 0.4; cursor: default; }
 
@@ -692,3 +692,28 @@ body.video-director .svc-slide.is-staged, body.video-director .media-card.is-sta
 .vd-band .vd-cluster .vd-send::after { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: rgba(255,255,255,0.28); pointer-events: none; }
 .vd-band .vd-cluster .vd-send.is-sending::after { animation: vd-send-fill var(--vd-send-ms, 300ms) linear forwards; }
 @keyframes vd-send-fill { from { width: 0; } to { width: 100%; } }
+.vd-frame.has-zone .vd-frame-name { display: none; }
+
+/* ── Send, toned down: a deep desaturated brand fill, a soft label, at most a slow border pulse. ── */
+.vd-band .vd-cluster .vd-send.is-ready { background: linear-gradient(180deg, #8f3d1f, #7a2a1a); border: 1px solid #b5532c; color: #f3e6dc; box-shadow: 0 0 10px rgba(181, 83, 44, 0.22); }
+.vd-band .vd-cluster .vd-send.is-ready:hover { filter: none; background: linear-gradient(180deg, #9c4523, #84301d); }
+.vd-band .vd-cluster .vd-send .vd-send-key, .vd-band .vd-cluster .vd-send.is-ready .vd-send-key { background: rgba(255,255,255,0.10); color: rgba(243,230,220,0.72); }
+.vd-band .vd-cluster .vd-send:disabled .vd-send-key { color: var(--text-3); }
+.vd-band .vd-cluster .vd-send::after { background: rgba(255,255,255,0.16); }
+.vd-band .vd-cluster .vd-send.is-ready:not(.is-sending)::before { content: ''; position: absolute; inset: 0; border: 1px solid #e0916a; border-radius: inherit; pointer-events: none; opacity: 0; animation: vd-send-pulse 3.2s ease-in-out infinite; }
+@keyframes vd-send-pulse { 0%, 100% { opacity: 0; } 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .vd-band .vd-cluster .vd-send.is-ready:not(.is-sending)::before { animation: none; opacity: 0.35; } }
+/* Fade to black and Undo: quiet outlines, muted until usable, no bright fill at any state. */
+.vd-band .vd-cluster .vd-quiet { background: transparent; border: 1px solid var(--border-md); color: var(--text-2); box-shadow: none; }
+.vd-band .vd-cluster .vd-quiet:hover:not(:disabled) { background: rgba(255,255,255,0.04); color: var(--text); border-color: var(--border-md); }
+.vd-band .vd-cluster .vd-quiet:disabled { color: var(--text-3); border-color: var(--border); opacity: 0.6; cursor: default; }
+
+/* ── A top-menu tab (Media, Songs, Timer, Slides) is a full sheet over the Director screen, which keeps running underneath. ── */
+body.video-director.vd-sheet .center-stage { position: relative; }
+body.video-director.vd-sheet #svc-stack-view:not(.hidden), body.video-director.vd-sheet #svc-fullscreen:not(.hidden),
+body.video-director.vd-sheet #songs-library-view:not(.hidden), body.video-director.vd-sheet #media-library-view:not(.hidden),
+body.video-director.vd-sheet #timer-view:not(.hidden) { position: absolute; top: 44px; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--bg); overflow: auto; }
+.vd-sheet-bar { position: absolute; top: 0; left: 0; right: 0; height: 44px; z-index: 31; display: flex; align-items: center; gap: 12px; padding: 0 14px; background: var(--bg); border-bottom: 1px solid var(--border); }
+.vd-sheet-back { height: 26px; border-color: var(--accent); color: var(--accent); }
+.vd-sheet-back:hover { background: var(--accent-dim); color: var(--text); }
+body.video-director .vd-tab-off { opacity: 1; cursor: pointer; }

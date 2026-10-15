@@ -223,6 +223,7 @@ const _actionHandlers = new Map();
 function registerActionHandler(actionId, fn) { _actionHandlers.set(actionId, fn); }
 
 function handleServerMessage(msg) {
+  try { window.KairoVideoDirector?.onServerMessage?.(msg); } catch {}   // Video director: Preview follows the Output when nothing is staged
   switch (msg.type) {
 
     case 'action':
@@ -1406,7 +1407,8 @@ function buildCandidateCard(v, method, isSent = false) {
   // Double-click anywhere on the card → same action as "Send to Air", so
   // Candidates matches the Live Queue/range-card shortcut instead of being
   // the one surface where you have to hit the button precisely.
-  wireDoubleClickSend(card, sendThis);
+  // A double-click sends straight to the screen, even in Video director mode (where a single send stages).
+  wireDoubleClickSend(card, () => { showInViewer([v], method || 'direct', 1.0); sendVerseToServer(v, null, { direct: true }); });
   return card;
 }
 
@@ -1460,7 +1462,7 @@ function buildQueueRow(v, method, correctedFrom = null) {
   // Double-click anywhere on card → send to screen (no reorder)
   wireDoubleClickSend(card, () => {
     updateViewerDisplay(v);   // update preview only — card stays in place
-    sendVerseToServer(v);
+    sendVerseToServer(v, null, { direct: true });
     syncRangeJumpIfNeeded(v);
     // Flash feedback
     card.classList.add('sent-pulse');
@@ -1637,7 +1639,7 @@ function buildRangeCard(v, isActive) {
   card.addEventListener('dblclick', (e) => {
     e.preventDefault();
     updateViewerDisplay(v);   // update preview only — card stays in place
-    sendVerseToServer(v);
+    sendVerseToServer(v, null, { direct: true });
     syncRangeJumpIfNeeded(v);
     card.classList.add('sent-pulse');
     setTimeout(() => card.classList.remove('sent-pulse'), 600);
@@ -1680,7 +1682,7 @@ function buildRangeCard(v, isActive) {
 // detection pipeline and relies on the display window's own stored theme
 // rather than a look sent per-request — a real limitation of this
 // interpretation, not yet covered.
-async function sendVerseToServer(verse, look = null) {
+async function sendVerseToServer(verse, look = null, _opts = null) {
   try {
     await fetch(`${SERVER}/api/service/send`, {
       method: 'POST',

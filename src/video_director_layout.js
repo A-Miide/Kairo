@@ -68,30 +68,60 @@
   // ── Views: the stage, verses and dock replace the Slides, Songs, Media and
   // Timer screens, so the Bible view is the one shown; those tabs reach the
   // dock instead (or do nothing, for Songs and Timer).
+  // ── The top-menu tabs: Media, Songs, Timer and Slides open the real screens as a sheet over the Director
+  // screen (which stays underneath and keeps running), with a Back to Director bar. Bible comes back. ──
+  const TAB_IDS = ['slides-btn', 'timer-btn', 'songs-btn', 'media-btn', 'bible-btn'];
+  const TAB_NAMES = { 'slides-btn': 'Slides', 'timer-btn': 'Timer', 'songs-btn': 'Songs', 'media-btn': 'Media' };
+  function syncSheet() {
+    const active = TAB_IDS.find(id => document.getElementById(id)?.classList.contains('active'));
+    const open = !!active && active !== 'bible-btn';
+    const was = document.body.classList.contains('vd-sheet');
+    document.body.classList.toggle('vd-sheet', open);
+    const stage = document.querySelector('main.center-stage');
+    if (open && stage) {
+      if (!L.sheetBar) {
+        const bar = document.createElement('div');
+        bar.className = 'vd-sheet-bar';
+        const back = document.createElement('button');
+        back.type = 'button'; back.className = 'vd-mini vd-sheet-back'; back.textContent = 'Back to Director';
+        back.addEventListener('click', () => document.getElementById('bible-btn')?.click());
+        const title = document.createElement('span'); title.className = 'vd-label vd-sheet-title';
+        bar.append(back, title);
+        L.sheetBar = bar; L.sheetTitle = title;
+      }
+      L.sheetTitle.textContent = TAB_NAMES[active] || '';
+      if (!L.sheetBar.isConnected) stage.prepend(L.sheetBar);
+    } else if (L.sheetBar) { L.sheetBar.remove(); }
+    // Coming back: the media bin picks up new folders and items.
+    if (was && !open) { try { window.KairoVideoDock?.refresh?.(); } catch {} }
+  }
   function pinBibleView() {
-    L.prevView = ['slides-btn', 'timer-btn', 'songs-btn', 'media-btn', 'bible-btn'].find(id => document.getElementById(id)?.classList.contains('active')) || 'bible-btn';
+    L.prevView = TAB_IDS.find(id => document.getElementById(id)?.classList.contains('active')) || 'bible-btn';
     document.getElementById('bible-btn')?.click();
     const bar = document.querySelector('.top-bar-center');
+    // After the app's own tab handler has switched the view.
     L.tabClick = (e) => {
       const b = e.target.closest('button');
-      if (!b || !bar.contains(b)) return;
-      const map = { 'slides-btn': 'slides', 'media-btn': 'images' };
-      if (b.id in map) { e.stopPropagation(); e.preventDefault(); window.KairoVideoDock?.show(map[b.id]); }
-      else if (['timer-btn', 'songs-btn'].includes(b.id)) { e.stopPropagation(); e.preventDefault(); }
+      if (b && bar.contains(b) && TAB_IDS.includes(b.id)) setTimeout(syncSheet, 30);
     };
-    bar?.addEventListener('click', L.tabClick, true);
-    ['timer-btn', 'songs-btn'].forEach(id => {
-      const b = document.getElementById(id);
-      if (b) { b.dataset.vdTitle = b.title || ''; b.title = 'Not in director mode. Turn it off to use this.'; b.classList.add('vd-tab-off'); }
-    });
+    bar?.addEventListener('click', L.tabClick);
+    // Esc goes back to the Director screen.
+    L.sheetEsc = (e) => {
+      if (e.key !== 'Escape' || !document.body.classList.contains('vd-sheet')) return;
+      const t = e.target;
+      if (t && (t.isContentEditable || (t.matches && t.matches('input,textarea,select')))) return;
+      if (document.querySelector('.modal:not(.hidden), .vd-add-panel')) return;
+      e.preventDefault(); e.stopPropagation();
+      document.getElementById('bible-btn')?.click();
+    };
+    document.addEventListener('keydown', L.sheetEsc, true);
   }
   function unpinView() {
-    document.querySelector('.top-bar-center')?.removeEventListener('click', L.tabClick, true);
+    document.querySelector('.top-bar-center')?.removeEventListener('click', L.tabClick);
     L.tabClick = null;
-    ['timer-btn', 'songs-btn'].forEach(id => {
-      const b = document.getElementById(id);
-      if (b) { b.title = b.dataset.vdTitle || ''; delete b.dataset.vdTitle; b.classList.remove('vd-tab-off'); }
-    });
+    if (L.sheetEsc) { document.removeEventListener('keydown', L.sheetEsc, true); L.sheetEsc = null; }
+    document.body.classList.remove('vd-sheet');
+    if (L.sheetBar) { L.sheetBar.remove(); L.sheetBar = null; }
     if (L.prevView && L.prevView !== 'bible-btn') document.getElementById(L.prevView)?.click();
     L.prevView = null;
   }
