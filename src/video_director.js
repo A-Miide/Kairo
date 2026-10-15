@@ -626,7 +626,7 @@
     dhead.appendChild(vEl('span', 'vd-label vd-gh-title', 'Displays'));
     // Looks (a dialog) sits beside the title.
     const dctl = vEl('div', 'vd-gh-ctl');
-    const LK = (window.KairoVideoLooks && window.KairoVideoLooks.LABEL) || { many: 'Looks', one: 'Look' };
+    const LK = (window.KairoVideoLooks && window.KairoVideoLooks.LABEL) || { many: 'Layouts', one: 'Layout' };
     const looksBtn = vBtn('', `Saved Preview setups`, () => D.looks && D.looks.open(), 'vd-mini vd-looks-btn');
     looksBtn.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></svg>';
     looksBtn.append(vEl('span', null, LK.many));
