@@ -270,19 +270,33 @@
   }
 
   // ── Layout: three columns over a bottom half, with draggable splits ───────
-  const LAYOUT_KEY = 'kairo-vd-layout';
-  const layoutDefaults = { c1: 0.14, c2: 0.60, top: 0.5, bl: 0.21 };
+  // Only widths the operator set by dragging are kept; the rest follow these defaults.
+  const LAYOUT_KEY = 'kairo-vd-layout2';
+  const layoutDefaults = { c1: 0.20, c2: 0.57, top: 0.5, bl: 0.21 };
   function readLayout() {
-    try {
-      const v = JSON.parse(localStorage.getItem(LAYOUT_KEY) || 'null');
-      if (v && typeof v === 'object') return { c1: clamp(v.c1, 0.1, 0.3, layoutDefaults.c1), c2: clamp(v.c2, 0.35, 0.75, layoutDefaults.c2), top: clamp(v.top, 0.25, 0.8, layoutDefaults.top), bl: clamp(v.bl, 0.14, 0.5, layoutDefaults.bl) };
-    } catch {}
-    return { ...layoutDefaults };
+    let v = null;
+    try { v = JSON.parse(localStorage.getItem(LAYOUT_KEY) || 'null'); } catch {}
+    v = v && typeof v === 'object' ? v : {};
+    return {
+      c1: clamp(v.c1, 0.12, 0.35, layoutDefaults.c1),
+      c2: clamp(v.c2, 0.35, 0.75, layoutDefaults.c2),
+      top: clamp(v.top, 0.25, 0.8, layoutDefaults.top),
+      bl: clamp(v.bl, 0.14, 0.5, layoutDefaults.bl),
+    };
   }
   function clamp(n, lo, hi, d) { n = Number(n); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; }
-  function saveLayout() { try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(D.layout)); } catch {} }
+  // Saves only what differs from the defaults, i.e. what was dragged.
+  function saveLayout() {
+    const out = {};
+    for (const k of Object.keys(layoutDefaults)) if (Math.abs(D.layout[k] - layoutDefaults[k]) > 0.002) out[k] = D.layout[k];
+    try { Object.keys(out).length ? localStorage.setItem(LAYOUT_KEY, JSON.stringify(out)) : localStorage.removeItem(LAYOUT_KEY); } catch {}
+  }
   function applyLayout() {
-    const { c1, c2, top } = D.layout;
+    const { top } = D.layout;
+    // The Inputs column is never narrower than about 260px.
+    const tw = D.top.clientWidth || 1200;
+    const c1 = Math.max(D.layout.c1, 260 / tw);
+    const c2 = D.layout.c2;
     const c3 = Math.max(0.12, 1 - c1 - c2);
     D.top.style.gridTemplateColumns = `minmax(0, ${c1}fr) 8px minmax(0, ${c2}fr) 8px minmax(0, ${c3}fr)`;
     D.top.style.flexGrow = String(top);
@@ -439,9 +453,9 @@
     // ── Top row with its two vertical splits ──
     const top = vEl('div', 'vd-top');
     const split1 = splitter('v', (x, y, step) => {
-      if (step) { D.layout.c1 = clamp(D.layout.c1 + step, 0.1, 0.3, D.layout.c1); return; }
+      if (step) { D.layout.c1 = clamp(D.layout.c1 + step, 0.12, 0.35, D.layout.c1); return; }
       const r = top.getBoundingClientRect();
-      D.layout.c1 = clamp((x - r.left) / r.width, 0.1, 0.3, D.layout.c1);
+      D.layout.c1 = clamp((x - r.left) / r.width, 0.12, 0.35, D.layout.c1);
     }, 'Resize Inputs');
     const split2 = splitter('v', (x, y, step) => {
       if (step) { D.layout.c2 = clamp(D.layout.c2 + step, 0.35, 0.75, D.layout.c2); return; }
@@ -468,6 +482,8 @@
     D.root = band;
     D.fitObs = new ResizeObserver(() => fitScreens());
     D.fitObs.observe(band);
+    D.topObs = new ResizeObserver(() => applyLayout());
+    D.topObs.observe(top);
     applyLayout();
     return true;
   }
@@ -729,6 +745,7 @@
     stopVideoSources();
     window.KairoVideoHub?.releaseAll();
     D.fitObs?.disconnect(); D.fitObs = null;
+    D.topObs?.disconnect(); D.topObs = null;
     D.main?.remove();
     D.root = null; D.main = null; D.top = null; D.bottomWrap = null;
     try { localStorage.setItem('kairo-video-live', '{}'); localStorage.removeItem('kairo-video-fade'); localStorage.removeItem('kairo-video-tbar'); localStorage.removeItem('kairo-video-director'); } catch {}
