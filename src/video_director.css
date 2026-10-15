@@ -738,3 +738,5 @@ body.video-director .svc-slide.live, body.video-director .media-card.is-live { p
 body.video-director .svc-slide.live::after, body.video-director .media-card.is-live::after { content: ''; position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--red); box-shadow: 0 0 6px rgba(237,28,36,0.7); pointer-events: none; z-index: 2; }
 /* A tile that is both staged and live keeps the live edge. */
 body.video-director .svc-slide.live.is-staged, body.video-director .media-card.is-live.is-staged { outline-color: var(--accent); }
+.vd-det-chip { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-color: var(--accent); color: var(--accent); }
+.vd-det-chip[hidden] { display: none; }

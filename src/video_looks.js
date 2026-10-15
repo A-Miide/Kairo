@@ -337,7 +337,7 @@
       overlay.addEventListener('mousedown', close);
       const content = el('div', 'modal-content vd-lk-content');
       const head = el('div', 'modal-header');
-      const title = el('div', 'vd-lk-title'); title.append(el('h2', null, LABEL.many), el('span', 'vd-lk-sub', 'Loads into Preview. Nothing goes out until you send it.'));
+      const title = el('div', 'vd-lk-title'); title.append(el('h2', null, LABEL.many), el('span', 'vd-lk-sub', 'Loads into Preview. Nothing goes out until you send it. Layers apply to the display screens; NDI, Syphon and DeckLink keep their own.'));
       const x = el('button', 'modal-close-btn'); x.type = 'button'; x.textContent = 'Close';
       x.addEventListener('click', close);
       head.append(title, x);

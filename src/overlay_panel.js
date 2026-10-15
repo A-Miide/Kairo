@@ -6,7 +6,7 @@
   let items = [];
   let selectedId = null;
   let dragging = false;
-  let sendTimer = null;
+  const sendTimers = {};   // one timer per overlay, so two overlays edited at once both go out
   const pending = {};
 
   const api = (path, body, method = 'POST') => fetch(`${SERVER}${path}`, {
@@ -18,9 +18,9 @@
     Object.assign(items.find(o => o.id === id) || {}, fields);
     pending[id] = Object.assign(pending[id] || {}, fields);
     redrawStage();
-    const send = () => { const f = pending[id]; delete pending[id]; sendTimer = null; if (f) api(`/api/overlays/${id}`, f); };
-    if (now) { clearTimeout(sendTimer); send(); return; }
-    if (!sendTimer) sendTimer = setTimeout(send, 60);
+    const send = () => { const f = pending[id]; delete pending[id]; sendTimers[id] = null; if (f) api(`/api/overlays/${id}`, f); };
+    if (now) { clearTimeout(sendTimers[id]); send(); return; }
+    if (!sendTimers[id]) sendTimers[id] = setTimeout(send, 60);
   }
 
   function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
