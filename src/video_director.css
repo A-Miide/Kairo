@@ -395,3 +395,6 @@ body.video-director #live-queue-section .cs-section-label { flex-shrink: 1; min-
 .vd-grid .svc-slide .svc-slide-preview { width: 100%; padding: 0; }
 .vd-grid .media-card { width: auto; min-width: 0; flex: none; }
 .vd-grid .vd-empty { grid-column: 1 / -1; }
+
+/* No Clear buttons on the Director screen: the displays' own controls take things down. */
+body.video-director #clear-locked-btn { display: none !important; }
