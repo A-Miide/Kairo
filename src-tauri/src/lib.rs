@@ -782,8 +782,9 @@ async fn stream_start(app: AppHandle, pipelines: Vec<stream::PipelineConfig>) ->
         .bearer_auth(&token)
         .send().await.map_err(|e| e.to_string())?
         .json().await.map_err(|e| e.to_string())?;
-    let Some(ffmpeg) = found["path"].as_str().map(std::path::PathBuf::from) else {
-        return Err("FFmpeg wasn't found, so Kairo can't stream from this computer.".into());
+    let own = found["path"].as_str().map(std::path::PathBuf::from);
+    let Some(ffmpeg) = tauri::async_runtime::spawn_blocking(move || stream::streaming_ffmpeg(own)).await.map_err(|e| e.to_string())? else {
+        return Err("No copy of FFmpeg that can stream was found on this computer.".into());
     };
     let app2 = app.clone();
     let on_status: stream::OnStatus = Arc::new(move |s| { let _ = app2.emit("stream-status", s); });

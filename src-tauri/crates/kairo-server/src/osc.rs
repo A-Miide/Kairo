@@ -38,6 +38,8 @@ pub const ACTIONS: &[&str] = &[
     "audio-fade-out",
     "overlays-off",
     "director-send",
+    "stream-start",
+    "stream-stop",
     "director-fade-to-black",
     "director-undo",
     "auto-send-on",

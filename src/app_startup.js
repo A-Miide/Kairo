@@ -157,6 +157,8 @@ const REMOTE_ACTIONS = [
   { id: 'director-send',          label: 'Director: Send Preview to the screen', run: () => directorDo('send') },
   { id: 'director-fade-to-black', label: 'Director: Fade to black',              run: () => directorDo('fadeToBlack') },
   { id: 'director-undo',          label: 'Director: Undo',                       run: () => directorDo('undo') },
+  { id: 'stream-start',           label: 'Streaming: go live',                   run: () => window.KairoStreaming?.start() },
+  { id: 'stream-stop',            label: 'Streaming: stop',                      run: () => window.KairoStreaming?.stop(false) },
   { id: 'auto-send-on',           label: 'Auto-send verses: on',                 run: () => setAutoSend(true) },
   { id: 'auto-send-off',          label: 'Auto-send verses: off',                run: () => setAutoSend(false) },
   ...Array.from({ length: 9 }, (_, i) => ({ id: `director-layout-${i + 1}`, label: `Director: Layout ${i + 1} to Preview`, run: () => directorDo('loadLayout', i + 1) })),

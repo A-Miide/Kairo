@@ -43,6 +43,7 @@ if [[ "$TARGET" == windows ]]; then
   CROSS="x86_64-w64-mingw32-"
   VPX_TARGET="--target=x86_64-win64-gcc"
   FF_PLATFORM=(--target-os=mingw32 --arch=x86_64 --cross-prefix="$CROSS" --enable-mediafoundation --enable-encoder=h264_mf
+               --enable-schannel --enable-protocol=tls,rtmps --enable-indev=dshow
                --extra-ldflags=-static)
 fi
 
@@ -68,14 +69,14 @@ tar -xJf "$WORK/ffmpeg.tar.xz" -C "$WORK/ff-src" --strip-components=1
 ( cd "$WORK/ff-build"
   export PKG_CONFIG_PATH="$PREFIX/lib/pkgconfig"
   "$WORK/ff-src/configure" \
-    --disable-everything --disable-autodetect --disable-network --disable-debug --disable-doc \
+    --disable-everything --disable-autodetect --enable-network --disable-debug --disable-doc \
     --disable-ffplay --disable-ffprobe --disable-shared --enable-static \
     --enable-zlib --enable-libvpx --pkg-config-flags=--static \
     --extra-cflags="-I$PREFIX/include" --extra-ldflags="-L$PREFIX/lib" \
-    --enable-demuxer="$DEMUXERS" --enable-decoder="$DECODERS" --enable-parser="$PARSERS" \
-    --enable-encoder=libvpx_vp9,aac,rawvideo --enable-muxer=mp4,rawvideo \
-    --enable-protocol=file,pipe \
-    --enable-filter=scale,format,null,anull,aresample,aformat,setsar,fps,crop,pad \
+    --enable-demuxer="$DEMUXERS,rawvideo" --enable-decoder="$DECODERS" --enable-parser="$PARSERS" \
+    --enable-encoder=libvpx_vp9,aac,rawvideo --enable-muxer=mp4,rawvideo,flv,tee \
+    --enable-protocol=file,pipe,tcp,rtmp --enable-indev=lavfi \
+    --enable-filter=scale,format,null,anull,aresample,aformat,setsar,fps,crop,pad,overlay,streamselect,color,anullsrc \
     --enable-bsf=aac_adtstoasc,extract_extradata \
     "${FF_PLATFORM[@]+"${FF_PLATFORM[@]}"}" >"$WORK/ff-configure.log" 2>&1 \
     || { tail -40 "$WORK/ff-configure.log" >&2; exit 1; }

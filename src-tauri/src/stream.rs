@@ -190,6 +190,27 @@ pub fn match_device<'a>(label: &str, names: &'a [String]) -> Option<&'a String> 
         .or_else(|| names.iter().find(|n| { let n = norm(n); !n.is_empty() && (n.contains(&l) || l.contains(&n)) }))
 }
 
+/// Can this FFmpeg stream at all: the flv and tee muxers, RTMP, and the filters used here?
+pub fn can_stream(ffmpeg: &Path) -> bool {
+    let out = |args: &[&str]| Command::new(ffmpeg).args(args).stdin(Stdio::null()).stderr(Stdio::null()).output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
+    let has = |listing: &str, name: &str| listing.lines().any(|l| l.split_whitespace().any(|w| w == name));
+    let muxers = out(&["-hide_banner", "-muxers"]);
+    let protocols = out(&["-hide_banner", "-protocols"]);
+    let filters = out(&["-hide_banner", "-filters"]);
+    has(&muxers, "flv") && has(&muxers, "tee") && has(&protocols, "rtmp")
+        && ["streamselect", "overlay", "crop", "scale", "color", "anullsrc"].iter().all(|f| has(&filters, f))
+}
+
+/// The FFmpeg to stream with: Kairo's own when it can, else one on this computer that can.
+pub fn streaming_ffmpeg(own: Option<PathBuf>) -> Option<PathBuf> {
+    if let Some(p) = own.as_ref().filter(|p| can_stream(p)) { return Some(p.clone()); }
+    let exe = if cfg!(windows) { "ffmpeg.exe" } else { "ffmpeg" };
+    let mut dirs: Vec<PathBuf> = std::env::split_paths(&std::env::var_os("PATH").unwrap_or_default()).collect();
+    dirs.extend(["/opt/homebrew/bin", "/usr/local/bin", "/usr/bin"].iter().map(PathBuf::from));
+    dirs.into_iter().map(|d| d.join(exe)).filter(|p| p.is_file() && Some(p) != own.as_ref()).find(|p| can_stream(p))
+}
+
 // ── The FFmpeg command ───────────────────────────────────────────────────────
 
 /// The address FFmpeg sends to: the server address and the stream key, joined.

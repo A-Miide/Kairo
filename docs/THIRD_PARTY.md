@@ -8,6 +8,14 @@ and runs it as a separate program, only to turn a video its web view can't play
 it's used. The original file is never touched; the converted copy is kept in
 the app's `media-cache` folder.
 
+It is also the encoder for **live streaming** (Settings → Streaming,
+`src-tauri/src/stream.rs`): Kairo's graphics, the Director's camera
+(AVFoundation on macOS, DirectShow on Windows) and the audio input, encoded once
+to H.264 and AAC and sent over RTMP or RTMPS to every destination (the `flv` and
+`tee` muxers; TLS by the operating system: Secure Transport on macOS, Schannel
+on Windows). The Linux build has no LGPL H.264 encoder and no TLS, so streaming
+there needs an FFmpeg with H.264 set with `KAIRO_FFMPEG`.
+
 - **Version:** 9.0.2, built from the official source
   (`ffmpeg-9.0.2.tar.xz`, SHA-256 `8c3850283eb25fa026482078a04051e0be17347b09ef81a0849bec15a96e002e`),
   unmodified. Source: <https://ffmpeg.org/releases/>.
@@ -23,7 +31,10 @@ the app's `media-cache` folder.
 - **libvpx 1.17.0** (BSD-3-Clause) is linked into the Windows and Linux builds
   for the VP9 encoder; source: <https://github.com/webmproject/libvpx>.
 - A different `ffmpeg` can be used by setting `KAIRO_FFMPEG`; with none bundled
-  the app uses one on the PATH.
+  the app uses one on the PATH. For streaming, when the bundled one cannot
+  stream (an older build without RTMP), the app looks for one on the PATH that
+  can, and uses its hardware H.264 encoder where there is one (libx264 only as a
+  last resort, from an FFmpeg the user installed, never shipped).
 
 ## NDI® runtime
 

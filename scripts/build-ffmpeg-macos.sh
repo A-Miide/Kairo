@@ -47,13 +47,14 @@ for ARCH in "${ARCHS[@]}"; do
     "$SRC/configure" \
       --arch="$ARCH" --cc="clang -arch $ARCH" \
       --extra-cflags="-mmacosx-version-min=12.0" --extra-ldflags="-mmacosx-version-min=12.0" \
-      --disable-everything --disable-autodetect --disable-network --disable-debug --disable-doc \
+      --disable-everything --disable-autodetect --disable-debug --disable-doc \
       --disable-ffplay --disable-ffprobe --disable-shared --enable-static \
-      --enable-zlib --enable-videotoolbox \
-      --enable-demuxer="$DEMUXERS" --enable-decoder="$DECODERS" --enable-parser="$PARSERS" \
-      --enable-encoder=h264_videotoolbox,aac,rawvideo --enable-muxer=mp4,rawvideo \
-      --enable-protocol=file,pipe \
-      --enable-filter=scale,format,null,anull,aresample,aformat,setsar,fps,crop,pad \
+      --enable-zlib --enable-videotoolbox --enable-avfoundation --enable-securetransport --enable-network \
+      --enable-demuxer="$DEMUXERS,rawvideo" --enable-decoder="$DECODERS" --enable-parser="$PARSERS" \
+      --enable-encoder=h264_videotoolbox,aac,rawvideo --enable-muxer=mp4,rawvideo,flv,tee \
+      --enable-protocol=file,pipe,tcp,tls,rtmp,rtmps \
+      --enable-indev=avfoundation,lavfi \
+      --enable-filter=scale,format,null,anull,aresample,aformat,setsar,fps,crop,pad,overlay,streamselect,color,anullsrc \
       --enable-bsf=aac_adtstoasc,extract_extradata \
       ${EXTRA[@]+"${EXTRA[@]}"} >"$WORK/configure-$ARCH.log" 2>&1 || { tail -30 "$WORK/configure-$ARCH.log" >&2; exit 1; }
     make -j"$(sysctl -n hw.ncpu)" ffmpeg >"$WORK/make-$ARCH.log" 2>&1 || { tail -30 "$WORK/make-$ARCH.log" >&2; exit 1; }
