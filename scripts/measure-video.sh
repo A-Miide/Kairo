@@ -7,6 +7,8 @@
 #                           the machine. Kairo's webviews run in these and macOS
 #                           does not say which app owns which, so quit Safari and
 #                           other WebKit apps (and any other Kairo copy) first.
+#                           KAIRO_HELPERS=<regex> counts other helper processes instead (for a
+#                           Chromium-based preview pane, e.g. 'Helper \\((Renderer|GPU)\\)').
 # Usage: scripts/measure-video.sh [seconds=30] [label]
 DIR=${KAIRO_DIR:-$(cd "$(dirname "$0")/.." && pwd)}
 SECS=${1:-30}
@@ -20,7 +22,7 @@ while [ $i -lt $N ]; do
     /speech-worker/ { cls="speech" ; print cls, $1, $2; next }
     /kairo-server/  { cls="server" ; print cls, $1, $2; next }
     /Kairo/         { cls="app"    ; print cls, $1, $2; next }' >> "$OUT"
-  ps -Ao pcpu=,rss=,command= | awk '/com.apple.WebKit.(WebContent|GPU|Networking)/ && !/awk/ { print "webkit", $1, $2 }' >> "$OUT"
+  ps -Ao pcpu=,rss=,command= | awk -v pat="${KAIRO_HELPERS:-com.apple.WebKit.(WebContent|GPU|Networking)}" '$0 ~ pat && !/awk/ { print "webkit", $1, $2 }' >> "$OUT"
   sleep 2
   i=$((i + 1))
 done
