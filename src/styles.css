@@ -8504,3 +8504,16 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 
 /* Every native control follows the brand colour, never the system blue. */
 input[type="checkbox"], input[type="radio"], input[type="range"], progress, meter { accent-color: var(--brand); }
+
+/* Output Control: one card per output */
+#output-control-matrix { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.oc-card { border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; background: var(--bg-card); }
+.oc-card-head { display: flex; align-items: center; gap: 8px; }
+.oc-card-name { font-weight: 600; font-size: 14px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oc-card-type { font-size: 11px; color: var(--text-3); padding: 1px 8px; border: 1px solid var(--border); border-radius: 10px; flex: none; }
+.oc-copy { margin-left: auto; width: auto; max-width: 120px; padding: 3px 6px; font-size: 11px; }
+.oc-switches { display: flex; flex-direction: column; }
+.oc-switch { display: flex; align-items: center; justify-content: space-between; padding: 7px 0; border-top: 1px solid var(--border); font-size: 13px; cursor: pointer; }
+.oc-switch:first-child { border-top: none; }
+.oc-switch.na { opacity: 0.45; cursor: default; }
+.oc-summary { margin: 0; font-size: 12px; color: var(--text-2); }
