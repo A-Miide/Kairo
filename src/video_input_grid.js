@@ -156,8 +156,10 @@
       sources.forEach((s, i) => el.appendChild(tile(s, st, i)));
       if (!sources.length) {
         // One clear way in, instead of a blank area.
-        const add = h('button', 'vg-add', '+ Add input');
+        const add = h('button', 'vg-add vg-add-first');
         add.type = 'button';
+        add.innerHTML = '<svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3z"/></svg><span>Add your first camera</span>';
+        add.setAttribute('aria-label', 'Add your first camera');
         add.title = 'Add a camera or a named placeholder';
         add.addEventListener('click', () => { if (opts.onAdd) opts.onAdd(add); });
         el.appendChild(add);
