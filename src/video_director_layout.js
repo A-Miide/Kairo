@@ -143,6 +143,32 @@
     document.addEventListener('mousedown', S.off, true);
   }
 
+  // A small popover holding one of the app's own controls, put back when it closes.
+  function closeNodePop() {
+    const np = L.np; if (!np) return;
+    if (np.home.parentNode) { np.home.after(np.node); np.home.remove(); }
+    np.pop.remove();
+    document.removeEventListener('mousedown', np.off, true); document.removeEventListener('keydown', np.esc, true);
+    L.np = null;
+  }
+  function nodePopover(anchor, node) {
+    if (!node) return;
+    if (L.np) { closeNodePop(); return; }
+    const pop = document.createElement('div');
+    pop.className = 'vd-pop';
+    const home = document.createComment('vd-home');
+    node.before(home);
+    pop.appendChild(node);
+    document.body.appendChild(pop);
+    const r = anchor.getBoundingClientRect();
+    pop.style.top = (r.bottom + 4) + 'px';
+    pop.style.left = Math.max(8, Math.min(window.innerWidth - pop.offsetWidth - 8, r.right - pop.offsetWidth)) + 'px';
+    const off = (e) => { if (!pop.contains(e.target) && !anchor.contains(e.target)) closeNodePop(); };
+    const esc = (e) => { if (e.key === 'Escape') closeNodePop(); };
+    document.addEventListener('mousedown', off, true); document.addEventListener('keydown', esc, true);
+    L.np = { pop, home, node, off, esc };
+  }
+
   function fillSends(host) {
     if (!host || L.sends) return;
     const parts = [document.querySelector('.cs-lookup'), document.getElementById('live-queue-section')].filter(Boolean);
@@ -187,6 +213,8 @@
     }
     head.appendChild(S.monBtn);
 
+    // Order: title, Auto, then on the right the Bible select, the message button and Theme together.
+    [spacer, document.getElementById('translation-select'), S.monBtn, theme].forEach(n => n && head.appendChild(n));
     host.appendChild(head);
     S.head = head;
     parts.forEach(n => host.appendChild(n));
@@ -237,10 +265,11 @@
     if (!L.on) return;
     L.on = false;
     unpinView();
+    closeNodePop();
     restoreMoved();
     unmountTopline();
     document.body.classList.remove('video-director');
   }
 
-  window.KairoVideoLayout = { start, stop, fillSends, emptySends, moveTo };
+  window.KairoVideoLayout = { start, stop, fillSends, emptySends, moveTo, nodePopover };
 })();

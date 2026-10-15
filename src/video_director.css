@@ -467,3 +467,100 @@ body.video-director #live-queue-section .cs-section-header { display: none !impo
 .vg-col.vg-list .vg-tile > * { grid-row: 1; }
 .vg-col.vg-list .vg-tile.is-empty .vg-empty-mid svg, .vg-col.vg-list .vg-tile.is-empty .vg-empty-why { grid-row: 1; }
 @container (max-width: 560px) { .vd-looks { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; max-height: none; } }
+
+/* ── Fixes from the first look at the merged build ── */
+/* Inputs: tiles keep their size and the column scrolls instead. */
+.vg.vg-col { grid-auto-rows: max-content; align-content: start; gap: 8px; }
+.vg-col .vg-tile { flex: none; width: 100%; height: auto; min-height: 0; aspect-ratio: 16 / 9; }
+.vg-col.vg-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.vg-col.vg-list { gap: 4px; }
+.vg-col.vg-list .vg-tile { aspect-ratio: auto; height: 52px; min-height: 52px; }
+.vg-state { display: none; }
+.vg-col.vg-list .vg-state { display: block; grid-column: 3; grid-row: 1; font-size: 11px; font-weight: 600; color: var(--text-3); white-space: nowrap; }
+.vg-col.vg-list .vg-tile.is-pgm .vg-state { color: var(--red); }
+.vg-col.vg-list .vg-tile.is-pvw .vg-state { color: var(--accent); }
+.vg-col.vg-list .vg-flag, .vg-col.vg-list .vg-key, .vg-col.vg-list .vg-pvw { display: none; }
+.vg-col.vg-grid .vg-tile.is-empty { flex-direction: column; gap: 2px; }
+.vg-col.vg-grid .vg-tile.is-empty .vg-name { position: static; padding: 0; background: none; color: var(--text-2); text-align: center; }
+.vg-col.vg-grid .vg-tile.is-empty .vg-state { display: block; font-size: 10px; color: var(--text-3); }
+.vg-col.vg-list .vg-tile.is-empty .vg-empty-why { display: none; }
+.vg-col.vg-list .vg-tile.is-empty .vg-empty-mid { display: contents; }
+/* Grid | List */
+.vg-seg { display: flex; padding: 2px; border-radius: 8px; background: rgba(255,255,255,0.05); }
+.vg-seg-btn { height: 22px; padding: 0 9px; border: 0; border-radius: 6px; background: transparent; color: var(--text-3); font: inherit; font-size: 10.5px; font-weight: 700; cursor: pointer; }
+.vg-seg-btn.is-on { background: var(--bg-hover); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.35); }
+/* + Add is not red: red means live. */
+.vd-add { background: transparent; border-color: var(--accent); color: var(--accent); }
+.vd-add:hover { background: var(--accent-dim); color: var(--text); }
+/* Displays: two equal panes on the same line; Looks run under both. */
+.vd-screens { align-items: flex-start; }
+.vd-band > .vd-looks { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; max-height: none; width: 100%; justify-content: center; }
+.vd-look-add { min-width: 26px; padding: 0 9px; justify-content: center; }
+.vd-seg2 .vd-bar-label { padding: 0 6px 0 8px; align-self: center; }
+.vd-tbar-label, .vd-seg2 .vd-bar-label, .vd-verse-seg .vd-bar-label { display: inline !important; }
+/* Take is the main button in the brand colour; disabled only dims it. */
+.vd-transbar .vd-take-main { background: var(--brand-gradient); border: 0; color: #fff; }
+.vd-transbar .vd-take-main:hover:not(:disabled) { background: var(--brand-gradient); filter: brightness(1.08); }
+.vd-transbar .vd-take-main:disabled { background: var(--brand-gradient); color: #fff; opacity: 0.45; cursor: default; }
+/* No line through the displays group: the splits show only when pointed at. */
+.vd-split::after { background: transparent; }
+.vd-split:hover::after, .vd-split.is-drag::after, .vd-split:focus-visible::after { background: var(--brand); }
+/* Scripture sends keeps its title, shortened when narrow. */
+@container (max-width: 300px) { .vd-sends-title { display: block !important; font-size: 0; } .vd-sends-title::after { content: 'Scripture'; font-size: 10px; } }
+.vd-sends-head > .cs-translation-select { max-width: 54px; }
+/* The message button reads as an action: brand-accent, with a clear hover and press. */
+.vd-sends-head .vd-hbtn[aria-label="Monitor message"] { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+.vd-sends-head .vd-hbtn[aria-label="Monitor message"]:hover { background: var(--accent); color: #1a0f00; }
+.vd-sends-head .vd-hbtn[aria-label="Monitor message"]:active { transform: scale(0.94); }
+.vd-sends-spacer { order: 0; }
+.vg-col.vg-list .vg-name { text-align: left; }
+
+/* ── Displays, final form: panes as large as the group allows; the cluster under them or beside them. ── */
+.vd-section-displays .vd-band { align-items: center; justify-content: center; gap: 8px; }
+.vd-screens { gap: 8px; }
+.vd-band.is-stack .vd-screens { flex-direction: column; align-items: center; }
+.vd-band.is-beside { flex-direction: row; }
+.vd-transbar { align-self: stretch; }
+.vd-band.is-beside .vd-transbar { align-self: center; width: 132px; flex: 0 0 132px; }
+.vd-cluster { display: flex; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: 8px; width: 100%; }
+.vd-cluster > * { flex: 0 0 auto; }
+.vd-transbar .vd-take, .vd-transbar .vd-take-main { height: 34px; }
+.vd-transbar .vd-seg2 .vd-take { height: 30px; }
+.vd-dur { display: inline-flex; align-items: center; gap: 5px; height: 34px; }
+.vd-dur input { width: 56px; height: 30px; }
+.vd-band.is-beside .vd-cluster { flex-direction: column; align-items: stretch; gap: 8px; }
+.vd-band.is-beside .vd-cluster > * { width: 100%; }
+.vd-band.is-beside .vd-seg2 { display: grid; grid-template-columns: 1fr 1fr; }
+.vd-band.is-beside .vd-seg2 .vd-take { min-width: 0; }
+.vd-band.is-beside .vd-dur { justify-content: space-between; }
+.vd-band.is-beside .vd-dur input { flex: 1 1 auto; width: auto; min-width: 0; }
+.vd-band.is-beside .vd-take-main { height: 40px; }
+/* Looks button text; the loaded Look beside PREVIEW; the Looks dialog. */
+.vd-look-tag { padding: 1px 7px; border-radius: 9px; border: 1px solid var(--accent); color: var(--accent); font-size: 10px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%; }
+.vd-look-tag[hidden] { display: none; }
+.vd-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; margin-top: 10px; }
+.vd-card { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px solid var(--border-md); border-radius: var(--radius); background: rgba(255,255,255,0.02); cursor: pointer; }
+.vd-card:hover { border-color: var(--selected-border); }
+.vd-card:focus-visible { outline: 2px solid var(--selected-border); outline-offset: 2px; }
+.vd-card.is-pvw { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.vd-card.is-drop { border-color: var(--brand); }
+.vd-card-top { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.vd-card-name { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vd-card-key { font-size: 10px; color: var(--text-3); }
+.vd-card-input { flex: 1 1 auto; min-width: 0; height: 26px; padding: 0 8px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text); font: inherit; font-size: 13px; }
+.vd-card-sum { display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: var(--text-2); }
+.vd-card-layers { display: flex; flex-wrap: wrap; gap: 4px; }
+.vd-layer { padding: 1px 7px; border-radius: 9px; border: 1px solid var(--border); color: var(--text-3); font-size: 10px; text-decoration: line-through; }
+.vd-layer.is-on { border-color: var(--selected-border); color: var(--text); text-decoration: none; }
+.vd-card-acts { display: flex; flex-wrap: wrap; gap: 5px; }
+.vd-danger { color: var(--red); }
+@container (max-width: 300px) { .vd-gh > .vd-sends-title { font-size: 0; } .vd-gh > .vd-sends-title::after { content: 'Scripture'; font-size: 10px; letter-spacing: 0.05em; } }
+.vd-sends-head { min-width: 0; }
+.vd-sends-head > * { min-width: 0; }
+.vd-sends-head > select, .vd-sends-head > .cs-theme-btn, .vd-sends-head > .vd-hbtn, .vd-sends-head > #cs-auto-badge { flex: 0 0 auto; }
+.vd-transbar .vd-dur { width: auto; }
+.vd-dur input { flex: 0 0 56px; }
+.vd-band.is-beside .vd-transbar { width: var(--vd-colw, 132px); flex: 0 0 var(--vd-colw, 132px); }
+/* Live Queue cards say it once: the red outline and the single LIVE pill. No second ON AIR badge, no SEND on the card that is live. */
+body.video-director #current-display-card .is-live .lvc-ref::before { content: none !important; }
+body.video-director #current-display-card .is-live .lvc-send-btn { display: none; }
