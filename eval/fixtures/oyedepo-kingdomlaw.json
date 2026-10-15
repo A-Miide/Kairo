@@ -4614,6 +4614,14 @@
       "startMs": 3058000
     },
     {
+      "book": "1 Corinthians",
+      "chapter": 9,
+      "verse": 24,
+      "kind": "quote",
+      "startMs": 3086000,
+      "note": "2026-10-15 audit: read aloud (\"know ye not that they which run in a race run all … so run that ye may obtain\"); was counted as a wrong send"
+    },
+    {
       "book": "Numbers",
       "chapter": 14,
       "verseStart": 28,
@@ -4896,6 +4904,14 @@
       "verse": 18,
       "kind": "citation",
       "startMs": 5314000
+    },
+    {
+      "book": "Genesis",
+      "chapter": 26,
+      "verse": 13,
+      "kind": "quote",
+      "startMs": 5389000,
+      "note": "2026-10-15 audit: read aloud after 26:12 (\"the man waxed great and went forward and grew until he became very great\"); was counted as a wrong send"
     },
     {
       "book": "Genesis",
