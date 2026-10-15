@@ -130,10 +130,9 @@
       const card = svc().slideCard(item, s, i);          // the playlist's own card: click sends, right-click edits
       const preview = card.querySelector('.svc-slide-preview');
       if (preview) { preview.__vdSlide = { item, s, i }; if (!s.image) thumbObserver().observe(preview); }
-      card.addEventListener('click', () => {
-        K.md.body.querySelectorAll('.svc-slide.live').forEach(c => c.classList.remove('live'));
-        card.classList.add('live');
-      });
+      card.dataset.vdItem = item.id;
+      // A click stages the slide (orange outline); a double-click sends it, and then it shows as live.
+      card.addEventListener('click', () => setTimeout(() => window.KairoVideoDirector && window.KairoVideoDirector.refresh(), 700));
       // Drag a slide onto Preview to stage it. Draggable only while pressed.
       card.draggable = false;
       card.addEventListener('mousedown', () => { card.draggable = true; });
