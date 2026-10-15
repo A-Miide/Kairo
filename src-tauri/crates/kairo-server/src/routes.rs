@@ -615,6 +615,7 @@ async fn audio_output(State(app): State<Shared>, Json(b): Json<Value>) -> Json<V
 
 async fn look_apply(State(app): State<Shared>, Json(b): Json<Value>) -> Response {
     let (look, themes, layers, keying, modes) = (&b["look"], &b["themes"], &b["layers"], &b["keying"], &b["modes"]);
+    let frames = &b["frames"];
     let layers_out = if layers.is_object() { layers.clone() } else { Value::Null };
     let count = |v: &Value| v.as_object().map_or(0, |o| o.len());
     if modes.is_object() && look.is_null() && themes.is_null() {
@@ -629,6 +630,11 @@ async fn look_apply(State(app): State<Shared>, Json(b): Json<Value>) -> Response
     if layers.is_object() && look.is_null() {
         app.hub.broadcast(json!({ "type": "look-update", "layers": layers }));
         return Json(json!({ "ok": true, "outputs": count(layers) })).into_response();
+    }
+    // A layout's frame (Director mode): the screen around the slide or verse, per output.
+    if frames.is_object() && look.is_null() && themes.is_null() {
+        app.hub.broadcast(json!({ "type": "look-update", "frames": frames }));
+        return Json(json!({ "ok": true, "outputs": count(frames) })).into_response();
     }
     if keying.is_object() && look.is_null() {
         app.hub.broadcast(json!({ "type": "look-update", "keying": keying }));
