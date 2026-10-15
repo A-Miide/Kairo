@@ -181,16 +181,16 @@
     refresh();
   }
   // ── Slides and media: a click stages them in Preview, Send puts them on the Output. ──
-  // A second click on the same thing within 450 ms (a double-click) sends it straight to the Output.
-  const DOUBLE_MS = 450;
+  // A second click on the same thing within 500 ms (a double-click) sends it straight to the Output.
+  const DOUBLE_MS = 500;
   function stageContent(key, build, make) {
     if (!D.active) return false;
     const now = Date.now();
     if (D.stageKey === key && now - D.stageAt < DOUBLE_MS) {
       // Quick cut: the real send goes straight out; Preview holds the same item (it now matches the Output).
       if (D.staged && D.staged.key === key) { D.staged.sent = true; refresh(); }
-      else D.sentKey = key;
-      D.stageKey = null;
+      else D.sentKey = key;        // the staged copy is still being made: it is marked sent when it lands
+      D.stageAt = 0;               // the next click starts staging again
       return false;
     }
     D.stageKey = key; D.stageAt = now;
@@ -202,6 +202,45 @@
       syncPreviewFrame(); refresh();
     }).catch(() => {});
     return true;
+  }
+  // Stage something and mark it as already sent (a direct send): Preview then holds it.
+  function stageSent(key, build, make) {
+    D.sentKey = key;
+    stageContent(key, build, make);
+  }
+  // The real dblclick event, as a fallback where the second-click timing above did not catch it, and for
+  // playlist rows (a double-click sends their first slide). Director mode wins over the rename dblclick.
+  function onDblClick(e) {
+    if (!D.active) return;
+    const svc = window.KairoService;
+    if (!svc || !svc.service) return;
+    const t = e.target && e.target.closest ? e.target : null;
+    if (!t) return;
+    const slideEl = t.closest('.svc-slide');
+    const mediaEl = t.closest('.media-card');
+    const rowEl = !slideEl && !mediaEl ? t.closest('.svc-item') : null;
+    const itemById = (id) => svc.service.items.find(i => i.id === id);
+    if (slideEl) {
+      const item = itemById(slideEl.dataset.vdItem || (slideEl.closest('[data-id]') || {}).dataset?.id);
+      const index = Number(slideEl.dataset.index);
+      if (!item || !Number.isFinite(index)) return;
+      const key = `slide:${item.id}:${index}`;
+      if (D.staged && D.staged.key === key) { if (!D.staged.sent) takeVerse(); return; }
+      if (D.sentKey === key) return;
+      stageSent(key, () => svc.slideSendBody ? svc.slideSendBody(item, index) : null, (b) => ({ verse: b.verse, look: b.look || null, next: b.next || null, slide: { item, index } }));
+      svc.sendSlide(item, index, { direct: true });
+    } else if (mediaEl) {
+      const url = mediaEl.dataset.url;
+      const key = `media:${url}`;
+      if (D.staged && D.staged.key === key) { if (!D.staged.sent) takeVerse(); }
+    } else if (rowEl) {
+      const item = itemById(rowEl.dataset.id);
+      if (!item || !svc.slidesFor(item).length) return;
+      e.stopImmediatePropagation(); e.preventDefault();   // not the rename
+      const key = `slide:${item.id}:0`;
+      stageSent(key, () => svc.slideSendBody ? svc.slideSendBody(item, 0) : null, (b) => ({ verse: b.verse, look: b.look || null, next: b.next || null, slide: { item, index: 0 } }));
+      svc.sendSlide(item, 0, { direct: true });
+    }
   }
   function stageSlideSend(item, index, build) {
     return stageContent(`slide:${item.id}:${index}`, build, (b) => ({ verse: b.verse, look: b.look || null, next: b.next || null, slide: { item, index } }));
@@ -228,8 +267,15 @@
     if (D.origSend || typeof sendVerseToServer !== 'function') return;
     D.origSend = sendVerseToServer;
     // eslint-disable-next-line no-global-assign
-    sendVerseToServer = function (verse, look = null) {
+    sendVerseToServer = function (verse, look = null, opts = null) {
       if (!D.active || !stageManual()) return D.origSend(verse, look);
+      // A double-click (direct) goes straight out, and Preview holds the same verse.
+      if (opts && opts.direct) {
+        if (!(D.staged && sameVerse(D.staged.verse, verse))) { D.staged = { verse, look: look || null }; D.stageKey = null; }
+        D.staged.sent = true; D.last = { ...(D.last || {}), verse: true };
+        syncPreviewFrame(); refresh();
+        return D.origSend(verse, look);
+      }
       // Sending the verse that is already staged takes it live.
       if (D.staged && sameVerse(D.staged.verse, verse)) return takeVerse();
       stage(verse, look);
@@ -976,6 +1022,7 @@
     if (!build()) return;
     D.active = true;
     document.addEventListener('keydown', onKey);
+    document.addEventListener('dblclick', onDblClick, true);
     wrapSend();
     try { migrateScreenOrig(); } catch {}
     publishTransition();
@@ -1012,6 +1059,7 @@
     if (!D.active) return;
     D.active = false;
     document.removeEventListener('keydown', onKey);
+    document.removeEventListener('dblclick', onDblClick, true);
     unwrapSend();
     D.staged = null;   // a staged verse is dropped, never sent: the screen keeps what it shows
     D.liveObserver?.disconnect();
