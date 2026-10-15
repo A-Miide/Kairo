@@ -17,6 +17,12 @@
     { name: 'Scripture over video', videoId: '@first', layers: { bible: true, slide: true, media: true, timer: true, video: true }, overlays: null },
     { name: 'Video only', videoId: '@first', layers: { bible: false, slide: false, media: false, timer: false, video: true }, overlays: null },
   ];
+  // Looks that frame the picture with a screen theme (Theme Studio, group "Screens").
+  const ALL_ON = { bible: true, slide: true, media: true, timer: true, video: true };
+  const SPLIT_STARTERS = [
+    { name: 'Split, video left', videoId: '@first', layers: ALL_ON, overlays: null, themeId: 'screen-split-left' },
+    { name: 'Split, video right', videoId: '@first', layers: ALL_ON, overlays: null, themeId: 'screen-split-right' },
+  ];
   const uid = () => 'look-' + Math.random().toString(36).slice(2, 8);
 
   function normalize(raw) {
@@ -35,6 +41,7 @@
         videoId: r.videoId === undefined ? null : (typeof r.videoId === 'string' ? r.videoId : null),
         layers,
         overlays: Array.isArray(r.overlays) ? r.overlays.filter(x => typeof x === 'string') : null,
+        themeId: typeof r.themeId === 'string' && r.themeId ? r.themeId : null,   // a screen theme, or null: the normal theme stays
       });
     }
     return out;
@@ -42,11 +49,19 @@
 
   const LAYER_LABELS = { bible: 'Bible', slide: 'Slide', media: 'Media', timer: 'Timer', video: 'Video' };
 
-  // ctx: { loadToPreview(look), capture() → Promise<{videoId, layers, overlays}>,
-  //        previewLookId(), liveLookId(), videoName(look), onChange() }
+  // ctx: { loadToPreview(look), capture() → Promise<{videoId, layers, overlays, themeId}>,
+  //        previewLookId(), liveLookId(), videoName(look), onChange(),
+  //        screenThemes() → [theme], renderThumb(el, theme), editTheme(id) }
   function create(ctx) {
     let looks = normalize(settings.directorLooks);
-    if (!looks) { looks = normalize(STARTERS); persist(); }
+    if (!looks) { looks = normalize([...STARTERS, ...SPLIT_STARTERS]); settings.directorLooksSplit = true; saveSettingsPatch && saveSettingsPatch({ directorLooksSplit: true }); persist(); }
+    // Looks saved before the split starters existed get them once.
+    else if (settings.directorLooksSplit !== true) {
+      looks.push(...normalize(SPLIT_STARTERS).filter(n => !looks.some(l => l.name === n.name)));
+      settings.directorLooksSplit = true;
+      if (typeof saveSettingsPatch === 'function') saveSettingsPatch({ directorLooksSplit: true });
+      persist();
+    }
     let modal = null, prevFocus = null, renaming = null, dragId = null, keyHandler = null;
 
     function persist() {
@@ -64,7 +79,7 @@
 
     async function saveCurrent() {
       const cap = await ctx.capture();
-      const look = { id: uid(), name: uniqueName('Look ' + (looks.length + 1)), videoId: cap.videoId, layers: cap.layers, overlays: cap.overlays };
+      const look = { id: uid(), name: uniqueName('Look ' + (looks.length + 1)), videoId: cap.videoId, layers: cap.layers, overlays: cap.overlays, themeId: cap.themeId || null };
       looks.push(look);
       persist(); renaming = look.id; render();
       const i = modal && modal.querySelector('.vd-card-input'); if (i) { i.focus(); i.select(); }
@@ -72,7 +87,7 @@
     async function updateFromCurrent(id) {
       const l = byId(id); if (!l) return;
       const cap = await ctx.capture();
-      l.videoId = cap.videoId; l.layers = cap.layers; l.overlays = cap.overlays;
+      l.videoId = cap.videoId; l.layers = cap.layers; l.overlays = cap.overlays; l.themeId = cap.themeId || null;
       persist(); render();
     }
     function duplicate(id) {
@@ -87,6 +102,35 @@
       renaming = null;
       if (l) { const v = String(value || '').replace(/\s+/g, ' ').trim().slice(0, 40); if (v) l.name = uniqueName(v, id); persist(); }
       render(); ctx.onChange();
+    }
+
+    // The Look's screen theme: a thumbnail, a choice (None keeps the normal theme) and a way to edit it.
+    function screenRow(look, isPvw) {
+      const row = el('div', 'vd-card-screen');
+      const themes = ctx.screenThemes ? ctx.screenThemes() : [];
+      const theme = look.themeId && themes.find(t => t.id === look.themeId);
+      const thumb = el('div', 'ts-theme-thumb vd-screen-thumb' + (theme ? '' : ' is-none'));
+      if (theme && ctx.renderThumb) { try { ctx.renderThumb(thumb, theme); } catch {} }
+      row.appendChild(thumb);
+      const sel = el('select', 'vd-screen-select');
+      sel.setAttribute('aria-label', `Screen for ${look.name}`);
+      sel.appendChild(new Option('Screen: normal theme', ''));
+      themes.forEach(t => sel.appendChild(new Option(t.name.replace(/^Screen\s*[—-]\s*/, 'Screen: '), t.id)));
+      sel.value = theme ? theme.id : '';
+      ['click', 'mousedown', 'keydown'].forEach(ev => sel.addEventListener(ev, (e) => e.stopPropagation()));
+      sel.addEventListener('change', () => {
+        look.themeId = sel.value || null;
+        persist(); render(); ctx.onChange();
+        if (isPvw) ctx.loadToPreview(look);   // Preview follows the change
+      });
+      row.appendChild(sel);
+      if (theme && ctx.editTheme) {
+        const edit = el('button', 'vd-mini', 'Edit'); edit.type = 'button';
+        edit.setAttribute('aria-label', `Edit ${theme.name} in Theme Studio`);
+        edit.addEventListener('click', (e) => { e.stopPropagation(); close(); ctx.editTheme(theme.id); });
+        row.appendChild(edit);
+      }
+      return row;
     }
 
     function card(look, index) {
@@ -114,6 +158,7 @@
       const lay = el('div', 'vd-card-layers');
       for (const k of LAYER_KEYS) lay.appendChild(el('span', 'vd-layer' + (look.layers[k] ? ' is-on' : ''), LAYER_LABELS[k]));
       sum.appendChild(lay);
+      sum.appendChild(screenRow(look, isPvw));
       sum.appendChild(el('div', 'vd-card-line', look.overlays == null ? 'Overlays: unchanged' : look.overlays.length ? `Overlays: ${look.overlays.length} on` : 'Overlays: none'));
       c.appendChild(sum);
       const acts = el('div', 'vd-card-acts');

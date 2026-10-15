@@ -579,3 +579,10 @@ body.video-director #cs-auto-badge.vd-auto-switch.off #cs-auto-badge-label::afte
   body.video-director #cs-auto-badge.vd-auto-switch.off #cs-auto-badge-label::after { content: 'Auto off'; }
 }
 @container (max-width: 340px) { .vd-sends-head.vd-gh > .vd-sends-title { display: none !important; } }
+
+/* ── Looks: the screen theme of a Look ── */
+.vd-card-screen { display: flex; align-items: center; gap: 6px; min-width: 0; margin: 2px 0; }
+.vd-card-screen .vd-screen-thumb { flex: 0 0 auto; }
+.vd-card-screen .vd-screen-thumb.is-none { display: none; }
+.vd-screen-select { flex: 1 1 auto; min-width: 0; height: 22px; padding: 0 6px; border: 1px solid var(--border-md); border-radius: var(--radius-sm); background: var(--bg-hover); color: var(--text-2); font: inherit; font-size: 10.5px; }
+.vd-screen-select:focus-visible { outline: 2px solid var(--selected-border); outline-offset: 1px; }
