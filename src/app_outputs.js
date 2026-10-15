@@ -1872,6 +1872,10 @@ const DEFAULT_OUTPUT_LAYERS = { bible: true, slide: true, media: true, timer: tr
 
 // Video input goes to display windows and the Monitor only (Phase 1). NDI,
 // Syphon/Spout and DeckLink render natively and don't carry it yet.
+// Video input shows in the outputs UI only while Video director mode is on.
+function visibleLayerKeys() {
+  return settings.videoDirector ? OUTPUT_LAYER_KEYS : OUTPUT_LAYER_KEYS.filter(([k]) => k !== 'video');
+}
 const VIDEO_NATIVE_NOTE = 'Video input is not sent to NDI, Syphon or DeckLink outputs yet.';
 function outputSupportsVideo(outputId) {
   return displayOutputs().some(d => d.id === outputId);
@@ -1908,7 +1912,7 @@ function buildOutputLayersSummary(outputId, map) {
   const el = document.createElement('span');
   el.className = 'outputs-layers-summary';
   el.title = 'What this output is currently showing';
-  OUTPUT_LAYER_KEYS.forEach(([key, label]) => {
+  visibleLayerKeys().forEach(([key, label]) => {
     // Video input only shows up here once it is on, so every other output's
     // summary reads as it always did.
     if (key === 'video' && !(want.video && outputSupportsVideo(outputId))) return;
@@ -1929,8 +1933,8 @@ function buildOutputLayersHint(outputId, map) {
   const want = (map || outputLayerMap())[outputId] || DEFAULT_OUTPUT_LAYERS;
   // Words only (a Monitor, or Text only): media never goes out there.
   const wordsOnly = isMonitorOutput(outputId) || !!outputTextOnlyMap()[outputId];
-  const noVideo = !outputSupportsVideo(outputId);
-  const keys = OUTPUT_LAYER_KEYS.filter(([k]) => !(wordsOnly && k === 'media') && !(noVideo && k === 'video'));
+  const noVideo = !settings.videoDirector || !outputSupportsVideo(outputId);
+  const keys = visibleLayerKeys().filter(([k]) => !(wordsOnly && k === 'media') && !(noVideo && k === 'video'));
   const on  = keys.filter(([k]) => want[k]).map(([, l]) => l);
   // Video input is off by default and optional: it is not listed as hidden.
   const off = keys.filter(([k]) => !want[k] && k !== 'video').map(([, l]) => l);
@@ -1940,7 +1944,7 @@ function buildOutputLayersHint(outputId, map) {
   else if (!on.length) hint.textContent = 'Nothing is going out on this output right now — every layer is hidden.';
   else hint.textContent = `Going out on this output: ${on.join(', ')}. Hidden: ${off.join(', ')}.`;
   if (wordsOnly && on.length) hint.textContent += isMonitorOutput(outputId) ? ' Words only.' : ' Text only — just the words: no background, shapes, pictures or media.';
-  if (noVideo) hint.textContent += ` ${VIDEO_NATIVE_NOTE}`;
+  if (settings.videoDirector && !outputSupportsVideo(outputId)) hint.textContent += ` ${VIDEO_NATIVE_NOTE}`;
   return hint;
 }
 
@@ -2007,7 +2011,7 @@ function buildLayerChecksRow(outputId, map) {
   row.className = 'output-layer-checks';
   const want = (map || outputLayerMap())[outputId];
   const monitor = isMonitorOutput(outputId);
-  OUTPUT_LAYER_KEYS.forEach(([layerKey, label]) => {
+  visibleLayerKeys().forEach(([layerKey, label]) => {
     const wrap = document.createElement('label');
     wrap.className = 'output-layer-check';
     const cb = document.createElement('input');
@@ -2093,7 +2097,7 @@ function renderOutputControlMatrix() {
   table.appendChild(thead);
 
   const tbody = document.createElement('tbody');
-  OUTPUT_LAYER_KEYS.forEach(([layerKey, label]) => {
+  visibleLayerKeys().forEach(([layerKey, label]) => {
     const tr = document.createElement('tr');
     const th = document.createElement('th');
     th.scope = 'row';

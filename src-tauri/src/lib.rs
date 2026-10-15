@@ -135,6 +135,7 @@ fn build_app_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry
     let view_menu = view_builder
         .separator()
         .text("menu-monitor-grid", "Show or Hide All Outputs in the Monitor")
+        .item(&MenuItemBuilder::with_id("menu-video-director", "Video Director Mode").accelerator("CmdOrCtrl+Shift+D").build(app)?)
         .separator()
         .fullscreen()
         .build()?;
