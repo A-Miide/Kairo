@@ -2017,7 +2017,6 @@
             } catch {}
         }
         if (e.key === 'kairo-video-sources' || e.key === 'kairo-video-live') syncVideo();
-        if (e.key === 'kairo-video-tbar') tbarSync();
         if (e.key === 'kairo-output-keying' && e.newValue) {
             try { applyOutputKeying((JSON.parse(e.newValue) || {})[OUTPUT_KEY]); } catch {}
         }
