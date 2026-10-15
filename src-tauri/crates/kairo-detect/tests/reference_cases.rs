@@ -89,6 +89,18 @@ fn unnumbered_stem_offers_both_books() {
     assert_eq!(book_mentions("read Timothy chapter three", Books::get(), Lang::En), vec![]);
 }
 
+// A near-miss book name followed by the speech-engine homophone of a number
+// ("for", "won", "too", "ate") is ordinary speech, not a citation: "the
+// reasons for which" was read as "Romans 4" and put Romans 4:12 on screen.
+#[test]
+fn near_miss_book_before_a_homophone_is_not_a_citation() {
+    for said in ["one of the reasons for which we are engaging power", "the reasons won", "reasons too many to name", "reasons ate it"] {
+        assert_eq!(book_mentions(said, Books::get(), Lang::En), vec![], "{said}");
+    }
+    // A real number after it still counts.
+    assert_eq!(book_mentions("in romans four", Books::get(), Lang::En), vec![b("Romans")]);
+}
+
 #[test]
 fn near_miss_book_names() {
     assert_eq!(all("first king nineteen and verse four"), ["1 Kings 19:4"]);

@@ -24,6 +24,12 @@ pub fn kind_for(name: &str) -> Option<&'static str> {
     }
 }
 
+/// A sound file the audio lane can play (kept apart from pictures and video).
+pub fn is_audio(name: &str) -> bool {
+    let ext = Path::new(name).extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).unwrap_or_default();
+    matches!(ext.as_str(), "mp3" | "wav" | "m4a" | "aac" | "ogg" | "oga" | "opus" | "flac" | "aif" | "aiff")
+}
+
 #[derive(Clone)]
 struct Folder {
     id: String,
@@ -33,6 +39,7 @@ struct Folder {
 
 pub struct Media {
     bin: PathBuf,
+    audio: PathBuf,
     manifest: PathBuf,
     folders: Mutex<Vec<Folder>>,
 }
@@ -81,6 +88,7 @@ impl Media {
     pub fn open(app_data: &Path, hub: Arc<Hub>) -> Arc<Media> {
         let bin = app_data.join("media").join("bin");
         let manifest = app_data.join("media").join("folders.json");
+        let audio = app_data.join("media").join("audio");
         let _ = std::fs::create_dir_all(&bin);
         let folders: Vec<Folder> = std::fs::read(&manifest)
             .ok()
@@ -89,7 +97,7 @@ impl Media {
             .into_iter()
             .filter_map(|f| Some(Folder { id: f["id"].as_str()?.into(), name: f["name"].as_str().unwrap_or("").into(), dir: PathBuf::from(f["dirPath"].as_str()?) }))
             .collect();
-        let me = Arc::new(Media { bin, manifest, folders: Mutex::new(folders) });
+        let me = Arc::new(Media { bin, audio, manifest, folders: Mutex::new(folders) });
         let watcher = me.clone();
         tokio::spawn(async move { watcher.watch(hub).await });
         me
@@ -155,6 +163,49 @@ impl Media {
 
     pub fn delete_bin_item(&self, name: &str) -> bool {
         self.bin_file(name).is_some_and(|p| std::fs::remove_file(p).is_ok())
+    }
+
+    /// The audio lane's library, oldest first so a playlist keeps the order tracks were added.
+    pub fn audio_items(&self) -> Vec<Value> {
+        let mut v: Vec<(u64, Value)> = std::fs::read_dir(&self.audio)
+            .map(|rd| rd.flatten().filter_map(|e| e.file_name().into_string().ok()).filter(|n| is_audio(n)).collect::<Vec<_>>())
+            .unwrap_or_default()
+            .into_iter()
+            .map(|n| {
+                let m = mtime_ms(&self.audio.join(&n));
+                // Saved as "<ms>-<hex>-<original>": show the original name.
+                let label = n.splitn(3, '-').nth(2).unwrap_or(&n).to_string();
+                (m, json!({ "name": n, "label": label, "mtimeMs": m, "url": format!("/api/audio/file/{}", urlencode(&n)) }))
+            })
+            .collect();
+        v.sort_by_key(|x| x.0);
+        v.into_iter().map(|x| x.1).collect()
+    }
+
+    pub fn audio_file(&self, name: &str) -> Option<PathBuf> {
+        let _ = std::fs::create_dir_all(&self.audio);
+        inside(&self.audio, name).filter(|p| p.file_name().and_then(|n| n.to_str()).is_some_and(is_audio))
+    }
+
+    pub fn write_to_audio(&self, filename: &str, data: &[u8]) -> Result<String, MediaError> {
+        let base = Path::new(filename).file_name().and_then(|n| n.to_str()).unwrap_or("file").to_string();
+        if !is_audio(&base) {
+            return Err(MediaError("BAD_TYPE", format!("\"{base}\" isn't a sound file (mp3, wav, m4a, aac, ogg, flac or aiff).")));
+        }
+        let _ = std::fs::create_dir_all(&self.audio);
+        let mut rnd = [0u8; 4];
+        getrandom::fill(&mut rnd).ok();
+        let name = format!("{}-{}-{base}", epoch_ms(), rnd.iter().map(|b| format!("{b:02x}")).collect::<String>());
+        let dest = self.audio.join(&name);
+        std::fs::write(&dest, data).map_err(|e| {
+            let _ = std::fs::remove_file(&dest);
+            MediaError("WRITE_FAILED", e.to_string())
+        })?;
+        Ok(name)
+    }
+
+    pub fn delete_audio_item(&self, name: &str) -> bool {
+        self.audio_file(name).is_some_and(|p| std::fs::remove_file(p).is_ok())
     }
 
     pub fn folders(&self) -> Vec<Value> {

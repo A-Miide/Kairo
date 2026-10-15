@@ -146,6 +146,13 @@ const REMOTE_ACTIONS = [
   { id: 'listen-stop',  label: 'Stop Listening',  run: () => { if (isListening) document.getElementById('listen-btn')?.click(); } },
   { id: 'slide-next',   label: 'Next slide',      run: () => window.KairoService?.advanceLiveSlide?.(1) },
   { id: 'slide-prev',   label: 'Previous slide',  run: () => window.KairoService?.advanceLiveSlide?.(-1) },
+  { id: 'audio-play',     label: 'Audio: play',            run: () => window.KairoAudioLane?.play() },
+  { id: 'audio-pause',    label: 'Audio: pause',           run: () => window.KairoAudioLane?.pause() },
+  { id: 'audio-stop',     label: 'Audio: stop',            run: () => window.KairoAudioLane?.stop({ fade: false }) },
+  { id: 'audio-next',     label: 'Audio: next track',      run: () => window.KairoAudioLane?.next() },
+  { id: 'audio-prev',     label: 'Audio: previous track',  run: () => window.KairoAudioLane?.prev() },
+  { id: 'overlays-off',    label: 'Overlays: turn all off', run: () => { fetch(`${SERVER}/api/overlays/clear`, { method: 'POST' }).catch(() => {}); } },
+  { id: 'audio-fade-out', label: 'Audio: fade out and stop', run: () => window.KairoAudioLane?.fadeOut() },
 ];
 
 function runRemoteAction(id) {
@@ -618,4 +625,27 @@ wireRangeSliders();
     const inv = window.__TAURI__?.core?.invoke || window.__TAURI__?.invoke;
     inv?.('signal_main_ready').catch(() => {});
   }, 50);
+})();
+
+
+// ── Audio lane strip (the small player under the Monitor; see audio_lane.js) ──
+(function wireAudioLaneStrip() {
+  const lane = window.KairoAudioLane;
+  const strip = document.getElementById('audio-lane-strip');
+  if (!lane || !strip) return;
+  const $ = (id) => document.getElementById(id);
+  const fmt = (s) => { s = Math.max(0, Math.floor(s || 0)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  lane.onChange((st) => {
+    strip.classList.toggle('hidden', !st.loaded);
+    $('al-title').textContent = st.track + (st.ducked ? ' (lowered)' : '');
+    $('al-play').innerHTML = st.playing ? '&#9208;' : '&#9654;';
+    $('al-time').textContent = `${fmt(st.time)} / ${fmt(st.duration)}`;
+    const v = $('al-volume'); if (v && document.activeElement !== v) v.value = String(st.volume);
+  });
+  $('al-play').addEventListener('click', () => lane.toggle());
+  $('al-prev').addEventListener('click', () => lane.prev());
+  $('al-next').addEventListener('click', () => lane.next());
+  $('al-fade').addEventListener('click', () => lane.fadeOut());
+  $('al-volume').addEventListener('input', (e) => lane.setVolume(Number(e.target.value)));
+  lane.init();
 })();

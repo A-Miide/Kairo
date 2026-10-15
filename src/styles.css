@@ -8352,3 +8352,149 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 /* Links inside setting hints and the NDI offer: the app's text colour, underlined. */
 .setting-hint a, .ndi-offer a { color: var(--text-2); text-decoration: underline; text-underline-offset: 2px; }
 .setting-hint a:hover, .ndi-offer a:hover { color: var(--text); }
+
+/* Audio lane strip under the Monitor */
+.rs-audio-strip { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-top: 1px solid var(--border); }
+.rs-audio-strip.hidden { display: none; }
+.rs-audio-strip .al-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; color: var(--text-secondary, inherit); }
+.rs-audio-strip #al-fade { width: auto; padding: 0 8px; font-size: 11px; }
+.al-tracks { display: flex; flex-direction: column; gap: 4px; margin: 6px 0; max-height: 220px; overflow: auto; }
+.al-track { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; }
+.al-track.current { border-color: var(--brand); background: var(--brand-dim); }
+.al-track-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.al-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 6px 0; }
+
+/* Overlays on the Monitor preview */
+.live-screen-overlays { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 4; }
+.live-screen-overlays.empty { display: none; }
+.live-screen-overlays .kairo-overlay { position: absolute; height: auto; transform: translate(-50%, -50%); }
+
+/* Settings → Overlays */
+.ov-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+.ov-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+.ov-item { display: flex; align-items: center; gap: 10px; padding: 4px 8px; border: 1px solid var(--border); border-radius: 6px; cursor: pointer; }
+.ov-item.selected { border-color: var(--brand); background: var(--brand-dim); }
+.ov-thumb { width: 44px; height: 28px; object-fit: contain; background: #000; border-radius: 3px; }
+.ov-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ov-on { display: flex; align-items: center; gap: 4px; font-size: 12px; }
+.ov-editor { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.ov-stage { position: relative; width: min(420px, 100%); aspect-ratio: 16 / 9; background: #000; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; flex: 0 0 auto; }
+.ov-stage-layer { position: absolute; inset: 0; }
+.ov-stage .kairo-overlay { position: absolute; height: auto; transform: translate(-50%, -50%); }
+.ov-stage .kairo-overlay.selected { outline: 1px dashed var(--brand); cursor: move; pointer-events: auto; touch-action: none; }
+.ov-side { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 220px; }
+.ov-row { display: flex; align-items: center; gap: 8px; }
+.ov-label { width: 100px; font-size: 12px; }
+.ov-row input[type=range] { flex: 1; }
+.ov-val { width: 40px; text-align: right; font-size: 12px; }
+
+.ov-sets { display: flex; flex-wrap: wrap; gap: 6px; }
+.ov-set { padding: 3px 10px; border: 1px solid var(--border); border-radius: 12px; background: transparent; color: inherit; cursor: pointer; font-size: 12px; }
+.ov-set.active { border-color: var(--brand); background: var(--brand-dim); }
+.ov-edit { margin-top: 12px; max-width: 460px; }
+
+/* Compact label-left rows for the audio lane settings */
+.al-row { display: grid; grid-template-columns: 150px 1fr; align-items: center; gap: 10px; margin: 4px 0; }
+.al-row .setting-input { max-width: 240px; }
+
+/* Output Control: where does it go */
+.oc-row { display: grid; grid-template-columns: 130px 1fr; gap: 10px; align-items: start; padding: 8px 0; border-top: 1px solid var(--border); }
+.oc-row:first-child { border-top: none; }
+.oc-label { font-size: 13px; padding-top: 4px; }
+.oc-chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.oc-chip { padding: 4px 12px; border: 1px solid var(--border); border-radius: 14px; background: transparent; color: var(--text-secondary, inherit); font-size: 12px; cursor: pointer; opacity: 0.7; }
+.oc-chip.on { border-color: var(--brand); background: var(--brand-dim); color: inherit; opacity: 1; }
+.oc-chip.na { cursor: default; opacity: 0.4; }
+.oc-chip.na.on { opacity: 0.7; }
+.oc-tools { display: inline-flex; gap: 4px; margin-left: 8px; flex-wrap: wrap; }
+.oc-link { padding: 2px 8px; border: none; background: transparent; color: var(--text-secondary, inherit); font-size: 11px; text-decoration: underline; cursor: pointer; }
+.oc-group.on { color: var(--brand); }
+.oc-gchip { display: inline-flex; align-items: center; gap: 6px; opacity: 1; cursor: default; }
+.oc-x { border: none; background: transparent; color: inherit; cursor: pointer; font-size: 11px; padding: 0; }
+.oc-groupform { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+
+/* ── Settings, row layout ───────────────────────────────────────────────
+   Each setting is a row: its name and one line of explanation on the left,
+   its control on the right, grouped in a card under a section title. Narrow
+   panes stack the same pieces. Help keeps its own look. */
+.settings-pane:not([data-pane="help"]):not([data-pane="outputs"]) { container-type: inline-size; }
+.settings-pane:not([data-pane="help"]):not([data-pane="outputs"]) .settings-section {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0 20px 6px;
+  gap: 0;
+}
+.settings-pane:not([data-pane="help"]):not([data-pane="outputs"]) .settings-section-label {
+  padding: 16px 0 12px;
+  margin: 0;
+}
+.settings-pane:not([data-pane="help"]):not([data-pane="outputs"]) .settings-section > .setting-group,
+.settings-pane:not([data-pane="help"]):not([data-pane="outputs"]) .settings-section > .setting-row-2col > .setting-group {
+  padding: 14px 0;
+  border-top: 1px solid var(--border);
+}
+.settings-pane:not([data-pane="help"]):not([data-pane="outputs"]) .settings-section-label + .setting-group,
+.settings-pane:not([data-pane="help"]):not([data-pane="outputs"]) .settings-section-label + .setting-row-2col > .setting-group:first-child { border-top: none; }
+.settings-pane:not([data-pane="help"]):not([data-pane="outputs"]) .setting-row-2col { display: block; }
+.settings-pane:not([data-pane="help"]):not([data-pane="outputs"]) .setting-row-2col .setting-hint { min-height: 0; }
+
+@container (min-width: 600px) {
+  .settings-pane:not([data-pane="help"]):not([data-pane="outputs"]) .setting-group[data-arranged] {
+    display: grid;
+    grid-template-columns: minmax(170px, 36%) 1fr;
+    column-gap: 28px;
+    align-items: start;
+  }
+  .settings-pane:not([data-pane="help"]):not([data-pane="outputs"]) .setting-group[data-arranged] > .setting-copy .setting-label { padding-top: 9px; }
+}
+.setting-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.setting-copy .setting-hint { margin: 0; }
+.setting-control { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+
+#audio-out-host .setting-group { padding: 14px 0; border-top: 1px solid var(--border); }
+#audio-out-host > .setting-group:first-child { border-top: none; }
+
+/* Reload buttons match the field beside them */
+.audio-refresh-btn { align-self: stretch; height: auto; min-width: 44px; padding-top: 0; padding-bottom: 0; }
+.audio-out-row { align-items: stretch; }
+
+/* Offline model install: Download, Check, Unpack, Ready */
+.model-steps { display: flex; gap: 6px; margin: 4px 0 8px; flex-wrap: wrap; }
+.model-step { font-size: 11px; padding: 3px 10px; border: 1px solid var(--border); border-radius: 12px; color: var(--text-3); }
+.model-step.active { border-color: var(--brand); color: var(--text); background: var(--brand-dim); }
+.model-step.done { color: var(--text-2); }
+.model-step.done::after { content: " \2713"; color: var(--accent); }
+.model-step.failed { border-color: #e5484d; color: #e5484d; background: transparent; }
+.model-track { position: relative; overflow: hidden; }
+.model-track.failed > div { background: #e5484d !important; }
+.model-track.sweep > div { width: 35% !important; position: absolute; animation: model-sweep 1.2s ease-in-out infinite; }
+@keyframes model-sweep { 0% { left: -35%; } 100% { left: 100%; } }
+@media (prefers-reduced-motion: reduce) { .model-track.sweep > div { animation: none; width: 100% !important; position: static; } }
+
+/* Overlays: sets and actions on top, files left, screen right */
+.ov-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 14px 0 12px; }
+.ov-actions { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ov-setswitch { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-2); }
+.ov-msg:empty { display: none; }
+.ov-body { display: grid; grid-template-columns: minmax(240px, 1fr) minmax(280px, 1.3fr); gap: 20px; align-items: start; padding-bottom: 14px; }
+.ov-left { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.ov-right { position: sticky; top: 0; min-width: 0; }
+.ov-right .ov-stage { width: 100%; }
+.ov-left .ov-list { margin-bottom: 0; }
+.ov-left .ov-edit { display: flex; flex-direction: column; gap: 8px; }
+.ov-launch { justify-content: space-between; }
+@media (max-width: 760px) { .ov-body { grid-template-columns: 1fr; } .ov-right { position: static; order: -1; } }
+
+/* Languages: pills instead of dropdowns */
+.lang-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.lang-pill { padding: 5px 14px; border: 1px solid var(--border); border-radius: 14px; background: transparent; color: var(--text-2); font-size: 12px; cursor: pointer; }
+.lang-pill:hover { border-color: var(--border-md); color: var(--text); }
+.lang-pill.active { border-color: var(--brand); background: var(--brand-dim); color: var(--text); }
+.lang-suggest { margin-top: 8px; font-size: 12px; color: var(--text-2); }
+.lang-link { border: none; background: transparent; padding: 0; color: var(--brand); text-decoration: underline; cursor: pointer; font-size: 12px; }
+.lang-sources { margin-top: 6px; font-size: 12px; color: var(--text-3); }
+.lang-sources summary { cursor: pointer; }
+
+.dl-row .dl-what { color: var(--text-3); }
+.dl-row .dl-what { flex: 1; white-space: nowrap; }
+.ov-about { margin: 0 0 12px; }

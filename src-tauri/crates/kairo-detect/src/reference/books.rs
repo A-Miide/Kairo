@@ -252,7 +252,12 @@ impl Books {
         }
         let next = words.get(i + 1).copied().unwrap_or("");
         let chapter_next = next == "chapter";
-        let number_next = is_digits(next) || super::numbers::word_value(next).is_some();
+        // A near-miss book name needs a real number after it. The speech-engine
+        // homophones ("for", "won", "too", "ate") are ordinary words here —
+        // "the reasons for…" is not "Romans 4" (live test, 2026-10-14: it put
+        // Romans 4:12 on screen mid-sentence).
+        let homophone = matches!(next, "for" | "won" | "too" | "ate");
+        let number_next = is_digits(next) || (!homophone && super::numbers::word_value(next).is_some());
         let short = len < 6;
         if !(chapter_next || (number_next && !short)) {
             return None;

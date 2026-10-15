@@ -229,6 +229,11 @@ function handleServerMessage(msg) {
       _actionHandlers.get(msg.actionId)?.(msg);
       break;
 
+    case 'overlays':
+      window.KairoOverlays?.render(document.getElementById('slide-preview-overlays'), msg.items);
+      window.KairoOverlayPanel?.setItems(msg.items);
+      break;
+
     case 'remote': // OSC remote control (server osc.rs)
       window.runRemoteAction?.(msg.action);
       break;
@@ -795,7 +800,6 @@ function renderMonitorGrid() {
   if (!host) return;
   const targets = monitorTargets();
   const existing = new Map([...host.children].map(tile => [tile.dataset.key, tile]));
-  const layersMap = typeof outputLayerMap === 'function' ? outputLayerMap() : {};
   const tiles = targets.map(t => {
     const { w, h } = monitorResolution(t);
     const key = `${t.id}|${w}x${h}`;
@@ -807,7 +811,6 @@ function renderMonitorGrid() {
     header.className = 'monitor-grid-tile-header';
     header.textContent = t.name;
     tile.appendChild(header);
-    if (t.type !== 'main' && typeof buildOutputLayersSummary === 'function') tile.appendChild(buildOutputLayersSummary(t.id, layersMap));
     tile.appendChild(buildMonitorFrame(t));
     return tile;
   });
@@ -1204,20 +1207,27 @@ function showInViewer(verses, method, topScore, correctedFrom = null, look = nul
       // (see finishedRangeRefs); the LIVE mark follows it there.
     } else {
       finishedRangeRefs = new Set();
-      // Regular sent verse — full-list dedup (not just top card)
+      // Regular sent verse — full-list dedup (not just top card). A passage
+      // keeps reading order (queue_order.js placeInQueue): a verse already in
+      // the passage at the top stays put, and the passage's next verse joins
+      // the end of it instead of stacking above it.
+      const cards = [...currentDisplayCard.querySelectorAll(':scope > [data-ref]')];
+      const place = window.KairoQueueOrder?.placeInQueue(cards.map(el => el.dataset.ref), v.reference) || { action: 'top' };
+      const anchor = place.action === 'after' ? cards[place.index].nextSibling : currentDisplayCard.firstChild;
       const existing = currentDisplayCard.querySelector(`[data-ref="${CSS.escape(v.reference)}"]`);
       if (existing) {
-        // Already the top (live) card — nothing to change; re-pulsing or
-        // re-inserting it only makes an on-screen verse flicker.
-        if (existing !== currentDisplayCard.firstChild) {
+        existing.dataset.at = String(Date.now());
+        // Already where it belongs (the top card, or in the passage) — nothing
+        // to change; re-pulsing or re-inserting it only makes an on-screen verse flicker.
+        if (place.action !== 'stay' && existing !== anchor && existing.nextSibling !== anchor) {
           existing.classList.remove('sent-pulse');
           void existing.offsetWidth;
           existing.classList.add('sent-pulse');
-          currentDisplayCard.insertBefore(existing, currentDisplayCard.firstChild);
+          currentDisplayCard.insertBefore(existing, anchor);
         }
       } else {
         const card = buildQueueRow(v, method, correctedFrom);
-        currentDisplayCard.insertBefore(card, currentDisplayCard.firstChild);
+        currentDisplayCard.insertBefore(card, anchor);
         // Trim to keep session manageable (50 entries)
         const children = currentDisplayCard.children;
         if (children.length > 50) {
@@ -1253,8 +1263,30 @@ function showInViewer(verses, method, topScore, correctedFrom = null, look = nul
   if (queueList) {
     const existing = queueList.querySelector(`[data-ref="${CSS.escape(v.reference)}"]`);
     if (existing) existing.remove();
-    updateSuggestionCount();
+    dropSuggestionsCoveredByQueue();
   }
+}
+
+// What the Live Queue holds, as { ref, at } — for keeping Possible Matches
+// from offering the same verse again (queue_order.js coveredByQueue).
+function queuedVerses() {
+  return [...(currentDisplayCard?.querySelectorAll(':scope > [data-ref]') || [])]
+    .map(el => ({ ref: el.dataset.ref, at: Number(el.dataset.at) || 0 }));
+}
+
+// A verse that's now in the Live Queue isn't a possible match any more —
+// nor, for a few minutes, is the same chapter:verse in its numbered sibling
+// book (2 Corinthians 4:16 live, 1 Corinthians 4:16 offered at 93%).
+function dropSuggestionsCoveredByQueue() {
+  if (!queueList) return;
+  const QO = window.KairoQueueOrder;
+  if (QO) {
+    const queued = queuedVerses(), now = Date.now();
+    queueList.querySelectorAll('.cand-card[data-ref]').forEach(card => {
+      if (QO.coveredByQueue(card.dataset.ref, queued, now)) card.remove();
+    });
+  }
+  updateSuggestionCount();
 }
 
 // Owner, live, looking at the real panel: "hide anything less than 80" —
@@ -1273,6 +1305,7 @@ function showInSuggestions(verses, method) {
   queueList.querySelector('.display-empty')?.remove();
 
   const frag = document.createDocumentFragment();
+  const queued = queuedVerses(), now = Date.now();
   for (const v of verses) {
     if (v.similarity != null && v.similarity < SUGGESTION_DISPLAY_MIN) continue;
     if (queueList.querySelector(`[data-ref="${CSS.escape(v.reference)}"]`)) continue;
@@ -1286,8 +1319,10 @@ function showInSuggestions(verses, method) {
     // (after the SAME_BOOK_WINDOW_MS gap) demoted straight back to
     // Candidates as "non-sequential" even though it was still the exact verse
     // on screen. Matches the owner's own framing: "if any from the candidate
-    // already live, they shouldn't remain in candidate."
+    // already live, they shouldn't remain in candidate." The same goes, for a
+    // few minutes, for its numbered-sibling look-alike (queue_order.js).
     if (currentDisplayCard?.querySelector(`[data-ref="${CSS.escape(v.reference)}"]`)) continue;
+    if (window.KairoQueueOrder?.coveredByQueue(v.reference, queued, now)) continue;
     frag.appendChild(buildCandidateCard(v, method));
   }
   if (frag.childNodes.length) queueList.insertBefore(frag, queueList.firstChild);
@@ -1396,6 +1431,7 @@ function syncRangeJumpIfNeeded(v) {
 function buildQueueRow(v, method, correctedFrom = null) {
   const card = document.createElement('div');
   card.dataset.ref = v.reference;
+  card.dataset.at = String(Date.now());
   card.className = 'locked-verse-card' + (correctedFrom ? ' corrected' : '');
   const abbr = refToBadgeAbbr(v.reference);
   const correctedChip = correctedFrom
@@ -1483,7 +1519,10 @@ function handleRangeState({ remaining, total, next }) {
       // Strip the blue range badge tint so it looks like a normal history card
       el.querySelector('.range-book-badge')?.classList.remove('range-book-badge');
     });
-    finishedRangeRefs = rangeRefs;
+    // A second "no range" (the range cleared after it had already finished)
+    // must not wipe the passage that just finished — its last verse, sent a
+    // moment later, would jump to the top.
+    if (rangeRefs.size) finishedRangeRefs = rangeRefs;
     rangeRefs = new Set();
     return;
   }
@@ -1542,6 +1581,7 @@ function handleRangeVerses({ verses, activeRef }) {
     fragment.appendChild(buildRangeCard(v, v.reference === activeRef));
   }
   currentDisplayCard.insertBefore(fragment, currentDisplayCard.firstChild);
+  dropSuggestionsCoveredByQueue();
 
   // Update live preview to the active verse
   const active = verses.find(v => v.reference === activeRef) || verses[0];
@@ -1567,6 +1607,7 @@ function handleRangeActive(activeRef) {
 function buildRangeCard(v, isActive) {
   const card = document.createElement('div');
   card.dataset.ref = v.reference;
+  card.dataset.at = String(Date.now());
   card.dataset.translatedText = v.translatedText || '';
   card.className   = 'range-verse-card locked-verse-card' + (isActive ? ' range-active' : ' range-queued');
 
@@ -2520,6 +2561,7 @@ async function loadSettings() {
     if (translationSettings && settings.translation) translationSettings.value = settings.translation;
     if (translationSelect && settings.translation)   translationSelect.value   = settings.translation;
     if (bibleTranslateToSelect) { bibleTranslateToSelect.value = settings.bibleTranslateTo || ''; renderSecondLangModel(); }
+    window.renderLangPills?.();
     if (autoSendSettings)  autoSendSettings.checked  = settings.autoSend  !== false;
     updateAutoDeployBadge();
     if (showConfSettings)  showConfSettings.checked   = settings.showConfidence !== false;
@@ -2552,6 +2594,7 @@ async function loadSettings() {
     renderLearnedTerms();
     const bibleLang = document.getElementById('bible-language');
     if (bibleLang) bibleLang.value = settings.bibleLanguage || 'en';
+    window.renderLangPills?.();
     renderLangPacks();
     // First-run: no Deepgram key → show a nudge banner so the user knows what to do.
     showFirstRunBannerIfNeeded(settings);
@@ -3477,6 +3520,48 @@ function wireOfflineModelInstaller(ids) {
   // whatever the update download actually is.
   const downloadLabel = installBtn.textContent;
 
+  // Four visible steps — Download, Check, Unpack, Ready — so a long install
+  // never looks stuck: the current step is lit, finished ones are ticked, and
+  // the bar sweeps on its own while the size isn't known (Check, Unpack).
+  const STEPS = [['download', 'Download'], ['check', 'Check'], ['unpack', 'Unpack'], ['ready', 'Ready']];
+  let stepsEl = null;
+  if (progressWrap && progressBar) {
+    progressBar.parentElement.classList.add('model-track');
+    stepsEl = document.createElement('div');
+    stepsEl.className = 'model-steps';
+    STEPS.forEach(([key, label], i) => {
+      const st = document.createElement('span');
+      st.className = 'model-step';
+      st.dataset.step = key;
+      st.textContent = `${i + 1}  ${label}`;
+      stepsEl.appendChild(st);
+    });
+    progressWrap.insertBefore(stepsEl, progressBar.parentElement);
+  }
+  // phase: 'download' | 'check' | 'unpack' | 'ready' | 'failed'
+  function showPhase(phase, pct, detail) {
+    if (!stepsEl) return;
+    const at = STEPS.findIndex(([k]) => k === phase);
+    stepsEl.querySelectorAll('.model-step').forEach((el, i) => {
+      el.classList.toggle('done', phase === 'ready' ? true : at > i);
+      el.classList.toggle('active', phase !== 'ready' && at === i);
+      el.classList.toggle('failed', phase === 'failed' && el.classList.contains('active'));
+    });
+    const track = progressBar.parentElement;
+    const sweeping = phase === 'check' || phase === 'unpack';
+    track.classList.toggle('sweep', sweeping);
+    track.classList.toggle('failed', phase === 'failed');
+    progressBar.style.width = phase === 'download' ? `${pct || 0}%` : '100%';
+    const text = {
+      download: pct == null ? 'Starting…' : `Downloading · ${pct}%${detail ? ' · ' + detail : ''}`,
+      check: 'Checking the download…',
+      unpack: 'Unpacking the files. This takes a minute.',
+      ready: 'Installed.',
+    }[phase];
+    if (text) progressText.textContent = text;
+  }
+  const megabytes = (n) => `${Math.round(n / 1048576)} MB`;
+
   let pollTimer = null;
   async function refreshStatus() {
     try {
@@ -3490,8 +3575,8 @@ function wireOfflineModelInstaller(ids) {
         statusLine.style.color = '';
         installBtn.style.display = 'none';
         if (progressWrap) progressWrap.style.display = '';
-        if (progressBar && pct != null) progressBar.style.width = `${pct}%`;
-        if (progressText) progressText.textContent = pct == null ? 'Starting…' : `${pct}%`;
+        if (pct != null && pct >= 100) { statusLine.textContent = 'Unpacking…'; showPhase('unpack'); }
+        else showPhase('download', pct);
         clearTimeout(pollTimer);
         pollTimer = setTimeout(() => { if (group.style.display !== 'none') refreshStatus(); }, 1000);
         return;
@@ -3553,7 +3638,7 @@ function wireOfflineModelInstaller(ids) {
   installBtn.addEventListener('click', async () => {
     installBtn.style.display = 'none';
     progressWrap.style.display = '';
-    progressBar.style.width = '0%';
+    showPhase('download', 0);
     progressText.textContent = 'Connecting…';
 
     let res;
@@ -3587,24 +3672,23 @@ function wireOfflineModelInstaller(ids) {
         let evt;
         try { evt = JSON.parse(line); } catch { continue; }
         if (evt.phase === 'download' && typeof evt.pct === 'number') {
-          progressBar.style.width = evt.pct + '%';
-          progressText.textContent = `Downloading… ${evt.pct}%`;
+          showPhase('download', evt.pct, evt.total ? `${megabytes(evt.received || 0)} of ${megabytes(evt.total)}` : '');
         } else if (evt.phase === 'verify') {
-          progressBar.style.width = '100%';
-          progressText.textContent = 'Checking the download…';
+          showPhase('check');
         } else if (evt.phase === 'extract') {
-          progressBar.style.width = '100%';
-          progressText.textContent = 'Extracting…';
+          showPhase('unpack');
         } else if (evt.phase === 'retry') {
           progressText.textContent = `Connection dropped — resuming (attempt ${evt.attempt + 1}/${evt.maxAttempts})…`;
         } else if (evt.phase === 'done') {
-          progressText.textContent = evt.already ? 'Already installed.' : 'Done.';
+          showPhase('ready');
         } else if (evt.phase === 'complete') {
           if (evt.ok) {
-            progressText.textContent = 'Installed.';
+            showPhase('ready');
             setTimeout(() => { progressWrap.style.display = 'none'; refreshStatus(); }, 1500);
           } else {
+            showPhase('failed');
             progressText.textContent = `Failed: ${evt.error || 'unknown error'}`;
+            installBtn.textContent = 'Try again';
             installBtn.style.display = '';
           }
         }
@@ -3741,17 +3825,24 @@ function renderMtModelList() {
   const host = document.getElementById('mt-model-list');
   if (!host) return;
   host.innerHTML = '';
-  MT_LANGUAGES.forEach(({ code, name }) => {
+  // One row per language: its Bible (already in Kairo) and, where one exists,
+  // its slide translation, with the single Download that fetches it.
+  const mtCodes = new Set(MT_LANGUAGES.map(l => l.code));
+  const langs = (typeof LANG_PACKS !== 'undefined' ? LANG_PACKS : MT_LANGUAGES).filter(l => l.code !== 'en');
+  langs.forEach(({ code, name }) => {
     const row = document.createElement('div');
     row.className = 'dl-row';
-    row.innerHTML = `<span class="dl-name">${name}</span><span class="dl-sub" id="mt-sub-${code}">Checking…</span>`;
-    const btn = document.createElement('button');
-    btn.id = `mt-btn-${code}`;
-    btn.style.display = 'none';
-    btn.addEventListener('click', () => (btn.dataset.action === 'remove' ? removeMtModel(code) : installMtModel(code)));
-    row.appendChild(btn);
+    const hasMt = mtCodes.has(code);
+    row.innerHTML = `<span class="dl-name">${name}</span><span class="dl-sub dl-what">${hasMt ? 'Bible + slide text' : 'Bible included'}</span>` + (hasMt ? `<span class="dl-sub" id="mt-sub-${code}">Checking\u2026</span>` : '');
+    if (hasMt) {
+      const btn = document.createElement('button');
+      btn.id = `mt-btn-${code}`;
+      btn.style.display = 'none';
+      btn.addEventListener('click', () => (btn.dataset.action === 'remove' ? removeMtModel(code) : installMtModel(code)));
+      row.appendChild(btn);
+    }
     host.appendChild(row);
-    refreshMtStatus(code);
+    if (hasMt) refreshMtStatus(code);
   });
 }
 

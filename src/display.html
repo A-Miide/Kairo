@@ -77,6 +77,9 @@
         #media-layer { z-index: 0; }
         #slide-layer { z-index: 1; }
         #timer-layer { z-index: 2; pointer-events: none; }
+        /* Overlays (logo, bug, lower-third picture) sit above everything. */
+        #overlay-layer { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
+        #overlay-layer .kairo-overlay { position: absolute; height: auto; transform: translate(-50%, -50%); transition: opacity 300ms ease; }
         #timer-layer:empty { display: none; }
         #media-layer video, #media-layer img {
             position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain;
@@ -283,6 +286,7 @@
         <div id="media-layer"></div>
         <div id="slide-layer"></div>
         <div id="timer-layer"></div>
+        <div id="overlay-layer"></div>
     </div>
     <div id="kairo-label">KAIRO</div>
     <div id="conn-status" class="visible reconnecting">Connecting…</div>
@@ -316,6 +320,7 @@
     }
     </script>
     <script src="client_common.js"></script>
+    <script src="overlay_layer.js"></script>
     <script src="design_space.js"></script>
     <script src="word_split.js"></script>
     <script src="color_utils.js"></script>
@@ -1188,7 +1193,7 @@
     // ever been pushed yet), matching outputLayerMap's own zero-config-safe
     // default — a fresh install/window behaves exactly like before this
     // feature existed.
-    const DEFAULT_LAYERS = { bible: true, slide: true, media: true, timer: true };
+    const DEFAULT_LAYERS = { bible: true, slide: true, media: true, timer: true, overlay: true };
     let outputLayers = DEFAULT_LAYERS;
     // Which of Bible/Slide the CURRENTLY shown slide-layer content actually
     // is — set by handleMessage whenever it renders through showVerse/
@@ -1249,6 +1254,7 @@
         // turning off Bible shouldn't blank an announcement slide.
         if ((currentSlideIsBible ? (prev.bible && !next.bible) : (prev.slide && !next.slide))) { clearDisplay(); noteConfidenceSlide(null); }
         if (prev.media && !next.media) renderMediaStage(null);
+        if (prev.overlay !== next.overlay) drawOverlays();
         if (prev.timer && !next.timer) {
             updateConfidenceTimer({ cleared: true });
             timerBadgeEl?.classList.add('hidden');
@@ -1261,6 +1267,12 @@
         }
     }
     outputLayers = loadOutputLayers();
+
+    // Overlays (Settings → Overlays) follow this output's own Overlays layer.
+    let lastOverlays = [];
+    function drawOverlays() {
+        window.KairoOverlays.render(document.getElementById('overlay-layer'), outputLayers.overlay === false ? [] : lastOverlays);
+    }
 
     // The theme configured for this output in Settings. Content-level overrides
     // (a playlist item's own theme) are temporary and revert to this.
@@ -1922,6 +1934,7 @@
             reconnectAttempts = 0;
             setConnStatus('connected', '');
             setTimeout(() => connStatus.classList.remove('visible'), 1500);
+            window.KairoOverlays.load().then(items => { lastOverlays = items; drawOverlays(); });
         };
 
         ws.onmessage = (event) => {
@@ -2122,6 +2135,12 @@
             if (msg.animation) outputAnimation = msg.animation;
             if (typeof msg.speed === 'number' && msg.speed > 0) outputAnimationSpeed = msg.speed;
             if (CAPTURE) captureTransition();
+            return;
+        }
+
+        if (msg.type === 'overlays') {
+            lastOverlays = msg.items || [];
+            drawOverlays();
             return;
         }
 

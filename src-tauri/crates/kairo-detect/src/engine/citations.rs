@@ -565,14 +565,14 @@ impl Engine {
         }
         if !is_final {
             let found = self.chapter_callout(pending.book, pending.chapter as u32, &format!("{} {text}", pending.text));
-            return found.is_some_and(|v| self.send_chapter_keyword(pending.book, pending.chapter as u32, v, now));
+            return found.is_some_and(|v| self.send_chapter_keyword(pending.book, pending.chapter as u32, v, true, now));
         }
         let accumulated = last_n_words(&format!("{} {text}", pending.text), CHAPTER_PENDING_TEXT_MAX_WORDS);
         if let Some(p) = self.chapter_pending.as_mut() {
             p.text = accumulated.clone();
         }
         match self.chapter_by_keywords(pending.book, pending.chapter as u32, &accumulated) {
-            Some(v) => self.send_chapter_keyword(pending.book, pending.chapter as u32, v, now),
+            Some((v, explicit)) => self.send_chapter_keyword(pending.book, pending.chapter as u32, v, explicit, now),
             None => false,
         }
     }
@@ -598,12 +598,12 @@ impl Engine {
         if !is_final {
             // Speech in progress: only a verse number called out on its own.
             if let Some(v) = self.chapter_callout(book, chapter, text) {
-                self.send_chapter_keyword(book, chapter, v, now);
+                self.send_chapter_keyword(book, chapter, v, true, now);
             }
             return;
         }
-        if let Some(v) = self.chapter_by_keywords(book, chapter, text) {
-            if self.send_chapter_keyword(book, chapter, v, now) {
+        if let Some((v, explicit)) = self.chapter_by_keywords(book, chapter, text) {
+            if self.send_chapter_keyword(book, chapter, v, explicit, now) {
                 return;
             }
         }
@@ -612,8 +612,14 @@ impl Engine {
         }
     }
 
-    fn send_chapter_keyword(&mut self, book: Book, chapter: u32, v: VerseId, now: u64) -> bool {
-        if self.decide(Candidate::new(vec![v], Method::ChapterKeyword, DIRECT_PARTIAL_SCORE, Target::Screen), now) != Target::Screen {
+    /// `explicit`: the verse number was called out ("…Matthew 11, say, come to me. 28, …");
+    /// otherwise the verse was picked from the words that followed — offered, not sent.
+    fn send_chapter_keyword(&mut self, book: Book, chapter: u32, v: VerseId, explicit: bool, now: u64) -> bool {
+        let mut candidate = Candidate::new(vec![v], Method::ChapterKeyword, DIRECT_PARTIAL_SCORE, Target::Screen);
+        if !explicit {
+            candidate = candidate.capped();
+        }
+        if self.decide(candidate, now) != Target::Screen {
             return false;
         }
         let ch = chapter as u16;
@@ -643,8 +649,9 @@ impl Engine {
         None
     }
 
-    pub(crate) fn chapter_by_keywords(&self, book: Book, chapter: u32, text: &str) -> Option<VerseId> {
-        self.chapter_callout(book, chapter, text).or_else(|| self.pick_chapter_verse_by_idf(book, chapter, text))
+    /// The verse, and whether its number was called out (else picked by its words).
+    pub(crate) fn chapter_by_keywords(&self, book: Book, chapter: u32, text: &str) -> Option<(VerseId, bool)> {
+        self.chapter_callout(book, chapter, text).map(|v| (v, true)).or_else(|| self.pick_chapter_verse_by_idf(book, chapter, text).map(|v| (v, false)))
     }
 
     /// The chapter's verse sharing clearly the most identifying words with `text`.
