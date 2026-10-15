@@ -1,23 +1,26 @@
-// KAIRO — Video director mode: the Preview / Program band.
+// KAIRO — Video director mode: the stage (Preview / Program) and the mode's
+// lifecycle.
 //
 // Lazy-loaded by video_director_boot.js while the mode is on, and removed
-// again when it is turned off. The band sits at the top of the centre column
-// and nothing else in the layout moves: the sidebars, Live Queue, Possible
-// Matches, the range bar, the Monitor message bar and the listen button are
-// the normal ones.
+// again when it is turned off. Three more lazy files build the rest of the
+// screen: video_director_layout.js (rails, top line, verses rail), and
+// video_dock.js (the bottom dock: inputs and media). Nothing in the normal
+// layout's own code is edited for this mode.
 //
 //   PROGRAM  what the outputs show now: a live copy of the output's own page
-//            (display.html?monitor=1&shared=1), fed by the same socket.
+//            (display.html?monitor=1&shared=1), fed by the same socket. Its
+//            frame goes red while something is live.
 //   PREVIEW  a staging screen: the same page (display.html?preview=1), fed by
 //            this window, showing the next source and a staged verse. Both
 //            screens draw scripture over video with display.html's own code.
 //
-// CUT / FADE put the Preview source on Program and swap the old Program
-// source onto Preview. A source change never touches the verse on screen.
-// Manual sends and Possible Matches are staged on Preview (sendVerseToServer
-// is wrapped while the mode is on) and TAKE sends them to Program; verses the
-// detection engine sends by itself go live exactly as they do without the
-// mode. Slide and timer sends are not staged.
+// CUT / FADE put the Preview source on Program, swap the old Program source
+// onto Preview, and become the transition a click on an input tile uses (Cut
+// to begin with). A source change never touches the verse on screen. Manual
+// sends from search and the Bible tab are staged on Preview
+// (sendVerseToServer is wrapped while the mode is on) and TAKE sends them to
+// Program; verses the detection engine sends by itself go live exactly as they
+// do without the mode. Slide, media and overlay sends are not staged.
 'use strict';
 (function () {
   const D = {
@@ -28,13 +31,12 @@
     origSend: null,
     frames: {},             // 'pvw' | 'pgm' → { box, frame, ro }
     ui: {},
-    leases: [],
-    visibleObserver: null,
-    pgmOutput: null,
+    liveObserver: null,
+    programState: { on: [], id: null, mixed: false },
   };
 
   const stageManual = () => settings.videoStageManual !== false;
-  const transitionPref = () => (settings.videoTransition === 'cut' ? 'cut' : 'fade');
+  const transitionPref = () => (settings.videoTransition === 'fade' ? 'fade' : 'cut');
 
   // ── Outputs ──────────────────────────────────────────────────────────────
   function outputsOn() {
@@ -124,16 +126,32 @@
   function setTransition(mode) {
     settings.videoTransition = mode;
     saveSettingsPatch({ videoTransition: mode });
-    try { localStorage.setItem('kairo-video-transition', JSON.stringify(mode)); } catch {}
+    publishTransition();
   }
+  function publishTransition() {
+    try { localStorage.setItem('kairo-video-transition', JSON.stringify(transitionPref())); } catch {}
+  }
+  // Preview → Program with `mode`; the old Program source is staged next.
   function take(mode) {
     const ps = programState();
     if (!ps.on.length) return;
     setTransition(mode);                       // written first: the display reads it when the source changes
     const outgoing = ps.mixed ? D.previewId : ps.id;
     setVideoLiveFor(ps.on.map(o => o.id), D.previewId);
-    D.previewId = outgoing;                    // the old Program source is staged next
+    D.previewId = outgoing;
     syncPreviewFrame();
+    refresh();
+  }
+  // One click on an input tile: straight to Program with the current transition.
+  function sendToProgram(id) {
+    let ps = programState();
+    if (!ps.on.length) {
+      // Nothing is set to carry video yet: the primary display does.
+      setOutputLayer(PRIMARY_DISPLAY, 'video', true);
+      ps = programState();
+    }
+    publishTransition();
+    setVideoLiveFor(ps.on.map(o => o.id), id || null);
     refresh();
   }
   function setPreview(id) {
@@ -142,17 +160,17 @@
     refresh();
   }
 
-  // ── Band ─────────────────────────────────────────────────────────────────
+  // ── Stage ────────────────────────────────────────────────────────────────
   function build() {
     const center = document.querySelector('main.center-stage');
     if (!center) return false;
     const band = vEl('section', 'vd-band');
     band.id = 'vd-band';
-    band.setAttribute('aria-label', 'Video director');
+    band.setAttribute('aria-label', 'Preview and Program');
 
     const screens = vEl('div', 'vd-screens');
     // Preview
-    const pvw = vEl('div', 'vd-screen');
+    const pvw = vEl('div', 'vd-screen vd-screen-pvw');
     const pvwHead = vEl('div', 'vd-screen-head');
     pvwHead.appendChild(vEl('span', 'vd-tag vd-tag-pvw', 'Preview'));
     D.ui.pvwRef = vEl('span', 'vd-ref');
@@ -166,62 +184,35 @@
     ctl.setAttribute('role', 'group');
     ctl.setAttribute('aria-label', 'Transition');
     D.ui.cut = vBtn('Cut', 'Put the Preview source on Program at once', () => take('cut'), 'vd-take');
-    D.ui.fade = vBtn('Fade', 'Fade the Preview source onto Program', () => take('fade'), 'vd-take vd-take-primary');
+    D.ui.fade = vBtn('Fade', 'Fade the Preview source onto Program', () => take('fade'), 'vd-take');
     ctl.append(D.ui.cut, D.ui.fade);
     // Program
-    const pgm = vEl('div', 'vd-screen');
+    const pgm = vEl('div', 'vd-screen vd-screen-pgm');
     const pgmHead = vEl('div', 'vd-screen-head');
     pgmHead.appendChild(vEl('span', 'vd-tag vd-tag-pgm', 'Program'));
     D.ui.pgmName = vEl('span', 'vd-ref');
     pgmHead.appendChild(D.ui.pgmName);
     pgm.append(pgmHead, buildFrame('pgm'));
+    D.ui.pgm = pgm;
     screens.append(pvw, ctl, pgm);
 
-    // Sources strip
-    D.ui.sources = vEl('div', 'vd-sources');
-    D.ui.sources.setAttribute('role', 'listbox');
-    D.ui.sources.setAttribute('aria-label', 'Sources for Preview');
-
-    // Outputs + staging
-    D.ui.outputs = vEl('div', 'vd-outputs');
-
-    band.append(screens, D.ui.sources, D.ui.outputs);
+    band.appendChild(screens);
     center.prepend(band);
     D.root = band;
     return true;
   }
 
-  function tile(id, name, status, thumbSource) {
+  // Something is on air: a live source, or a verse marked live in the queue.
+  function isOnAir() {
     const ps = D.programState;
-    const t = vEl('div', 'vd-tile'
-      + (D.previewId === id ? ' is-pvw' : '')
-      + (!ps.mixed && ps.id === id && ps.on.length ? ' is-pgm' : ''));
-    t.tabIndex = 0;
-    t.setAttribute('role', 'option');
-    t.setAttribute('aria-selected', String(D.previewId === id));
-    const thumb = vEl('div', 'vd-thumb');
-    if (thumbSource) {
-      const v = vEl('video'); v.muted = true; v.playsInline = true; v.setAttribute('aria-hidden', 'true');
-      thumb.appendChild(v);
-      const devId = previewKey(thumbSource);
-      if (devId && D.thumbsOn) {
-        D.leases.push(window.KairoVideoHub.lease(devId, 'thumb', (stream) => {
-          if (!v.isConnected) return;
-          v.srcObject = stream; v.play().catch(() => {});
-        }, () => { thumb.dataset.msg = 'Unavailable'; }));
-      } else thumb.dataset.msg = devId ? '' : 'Not connected';
-    } else thumb.classList.add('vd-thumb-none');
-    const label = vEl('div', 'vd-tile-name', name);
-    t.append(thumb, label);
-    if (status) t.appendChild(vEl('span', 'vd-flag ' + (status === 'PGM' ? 'vd-flag-pgm' : 'vd-flag-pvw'), status));
-    const choose = () => setPreview(id);
-    t.addEventListener('click', choose);
-    t.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); choose(); } });
-    return t;
+    if (ps.on.length && (ps.mixed || ps.id)) return true;
+    return !!document.querySelector('#current-display-card .is-live');
   }
 
   function refresh() {
-    if (!D.active || !D.root) return;
+    if (!D.active) return;
+    if (window.KairoVideoDock) window.KairoVideoDock.refresh();
+    if (!D.root) return;
     const sources = videoSourceList();
     if (D.previewId && !sources.some(s => s.id === D.previewId)) D.previewId = null;
     const ps = programState();
@@ -232,7 +223,8 @@
     setFrameSrc('pgm', `/display.html?output=${encodeURIComponent(pgmOut)}&monitor=1&shared=1`);
     setFrameSrc('pvw', `/display.html?output=${encodeURIComponent(PRIMARY_DISPLAY)}&preview=1`);
     const pgmSource = ps.mixed ? null : sources.find(s => s.id === ps.id);
-    D.ui.pgmName.textContent = !ps.on.length ? 'Video off on every output' : ps.mixed ? 'Mixed' : pgmSource ? pgmSource.name : 'No video';
+    D.ui.pgmName.textContent = !ps.on.length ? 'Video off' : ps.mixed ? 'Mixed' : pgmSource ? pgmSource.name : 'No video';
+    D.ui.pgm.classList.toggle('is-live', isOnAir());
 
     // Preview header
     const pvwSource = sources.find(s => s.id === D.previewId);
@@ -241,105 +233,100 @@
     D.ui.takeVerse.hidden = !D.staged;
     D.ui.clearStage.hidden = !D.staged;
     const canTake = ps.on.length > 0;
-    D.ui.cut.disabled = !canTake;
-    D.ui.fade.disabled = !canTake;
-    D.ui.cut.title = canTake ? 'Put the Preview source on Program at once' : 'Turn Video input on for an output first';
-    D.ui.fade.title = canTake ? 'Fade the Preview source onto Program' : 'Turn Video input on for an output first';
-
-    // Sources strip: thumbnails take a fresh lease before the old ones go, so
-    // the hub keeps each camera open across the redraw.
-    const oldLeases = D.leases;
-    D.leases = [];
-    const strip = D.ui.sources;
-    strip.replaceChildren();
-    strip.appendChild(tile('', 'No video', (!ps.mixed && !ps.id && ps.on.length) ? 'PGM' : (D.previewId == null ? 'PVW' : ''), null));
-    sources.forEach(s => {
-      const flag = (!ps.mixed && ps.id === s.id && ps.on.length) ? 'PGM' : (D.previewId === s.id ? 'PVW' : '');
-      strip.appendChild(tile(s.id, s.name, flag, s));
-    });
-    strip.appendChild(vBtn('Manage sources', 'Add, rename or remove sources', () => {
-      document.getElementById('settings-modal')?.classList.remove('hidden');
-      if (typeof showSettingsPane === 'function') showSettingsPane('sources');
-    }, 'vd-mini vd-manage'));
-    oldLeases.forEach(release => release());
-    if (!sources.length) strip.appendChild(vEl('p', 'vd-empty', 'No sources yet. Choose Manage sources, then Detect devices.'));
-
-    // Outputs row
-    const out = D.ui.outputs;
-    out.replaceChildren();
-    out.appendChild(vEl('span', 'vd-label', 'Video on'));
-    const layers = outputLayerMap();
-    videoOutputs().forEach(o => {
-      const on = !!(layers[o.id] && layers[o.id].video);
-      const chip = vBtn((on ? '✓ ' : '') + o.name, `${on ? 'Turn off' : 'Turn on'} video input on ${o.name}`, () => setOutputLayer(o.id, 'video', !on), 'vd-chip' + (on ? ' is-on' : ''));
-      chip.setAttribute('aria-pressed', String(on));
-      out.appendChild(chip);
-    });
-    const stageLabel = vEl('label', 'vd-stage-toggle');
-    const cb = vEl('input'); cb.type = 'checkbox'; cb.checked = stageManual();
-    cb.addEventListener('change', () => {
-      settings.videoStageManual = cb.checked;
-      saveSettingsPatch({ videoStageManual: cb.checked });
-    });
-    stageLabel.append(cb, document.createTextNode('Stage manual sends on Preview'));
-    stageLabel.title = 'Verses you send by hand wait on Preview until you take them. Detected verses always go straight to Program.';
-    out.appendChild(stageLabel);
-    out.appendChild(vEl('p', 'vd-note', 'NDI, Syphon and DeckLink outputs do not carry video input yet.'));
+    const cur = transitionPref();
+    for (const [btn, mode] of [[D.ui.cut, 'cut'], [D.ui.fade, 'fade']]) {
+      btn.disabled = !canTake;
+      btn.classList.toggle('is-current', mode === cur);
+      btn.setAttribute('aria-pressed', String(mode === cur));
+      btn.title = canTake ? (mode === 'cut' ? 'Put the Preview source on Program at once' : 'Fade the Preview source onto Program') : 'Turn on Video input for an output in Director mode settings';
+    }
   }
 
-  // Thumbnails run only while the band is on screen and the window is visible.
-  function watchVisibility() {
-    const update = (shown) => {
-      const on = shown && !document.hidden;
-      if (on === D.thumbsOn) return;
-      D.thumbsOn = on;
-      refresh();
+  // ── Settings → Director mode: rows for what the screen no longer carries ─
+  function mountSettings() {
+    const section = document.querySelector('.settings-pane[data-pane="director"] .settings-section');
+    if (!section || section.querySelector('[data-vd-rows]')) return;
+    const card = vEl('div', 'dm-card');
+    card.dataset.vdRows = '1';
+    card.style.marginTop = '12px';
+    const row = (name, hint, checked, onChange) => {
+      const r = vEl('div', 'dm-row');
+      const text = vEl('div', 'dm-text');
+      text.append(vEl('div', 'dm-name', name), vEl('p', 'setting-hint', hint));
+      const label = vEl('label', 'output-toggle');
+      const cb = vEl('input'); cb.type = 'checkbox'; cb.checked = checked;
+      cb.setAttribute('aria-label', name);
+      cb.addEventListener('change', () => onChange(cb.checked));
+      label.append(cb, vEl('span', 'output-toggle-track'));
+      r.append(text, label);
+      return r;
     };
-    D.shown = true;
-    D.visibleObserver = new IntersectionObserver((es) => { D.shown = es.some(e => e.isIntersecting); update(D.shown); });
-    D.visibleObserver.observe(D.root);
-    D.onVis = () => update(D.shown);
-    document.addEventListener('visibilitychange', D.onVis);
+    const layers = outputLayerMap();
+    videoOutputs().forEach(o => {
+      card.appendChild(row(`Video on ${o.name}`, 'Show the live input behind scripture.', !!(layers[o.id] && layers[o.id].video), (on) => setOutputLayer(o.id, 'video', on)));
+    });
+    card.appendChild(row('Stage sends on Preview', 'Verses you send by hand wait for Take.', stageManual(), (on) => {
+      settings.videoStageManual = on;
+      saveSettingsPatch({ videoStageManual: on });
+    }));
+    section.appendChild(card);
+  }
+  function unmountSettings() {
+    document.querySelector('.settings-pane[data-pane="director"] [data-vd-rows]')?.remove();
   }
 
   async function start() {
     if (D.active) return;
     if (!build()) return;
     D.active = true;
-    document.body.classList.add('video-director');
-    D.thumbsOn = !document.hidden;
     wrapSend();
+    publishTransition();
     await startVideoSources();     // the Sources pane, device list, published state
-    watchVisibility();
+    window.KairoVideoLayout?.start();
+    window.KairoVideoDock?.mount();
+    mountSettings();
+    // The Program frame follows the verse going live and clearing.
+    const queue = document.getElementById('current-display-card');
+    if (queue) {
+      D.liveObserver = new MutationObserver(() => D.ui.pgm && D.ui.pgm.classList.toggle('is-live', isOnAir()));
+      D.liveObserver.observe(queue, { attributes: true, attributeFilter: ['class'], subtree: true, childList: true });
+    }
     refresh();
     // A Preview frame needs its page up before it can be fed.
     D.frames.pvw.frame.addEventListener('load', syncPreviewFrame);
   }
 
   // Mode off: the verse on screen stays; the video goes to nothing with a
-  // fade, every capture is released and the band comes out of the layout.
+  // fade, every capture is released and the screen is the normal one again.
   function stop() {
     if (!D.active) return;
     D.active = false;
     unwrapSend();
     D.staged = null;   // a staged verse is dropped, never sent: the screen keeps what it shows
-    setTransition('fade');
+    D.liveObserver?.disconnect();
+    unmountSettings();
+    window.KairoVideoDock?.unmount();
+    window.KairoVideoLayout?.stop();
+    // Going off air fades, without changing the transition the operator chose.
+    try { localStorage.setItem('kairo-video-transition', JSON.stringify('fade')); } catch {}
     setVideoLiveFor(videoOutputs().map(o => o.id), null);
-    D.visibleObserver?.disconnect();
-    document.removeEventListener('visibilitychange', D.onVis);
-    D.leases.forEach(release => release()); D.leases = [];
+    setTimeout(() => { try { localStorage.removeItem('kairo-video-transition'); } catch {} }, 1500);
     Object.values(D.frames).forEach(f => { f.ro.disconnect(); f.frame.src = 'about:blank'; });
     D.frames = {};
     stopVideoSources();
     window.KairoVideoHub?.releaseAll();
     D.root?.remove();
     D.root = null;
-    document.body.classList.remove('video-director');
-    try { localStorage.setItem('kairo-video-live', '{}'); localStorage.removeItem('kairo-video-transition'); } catch {}
+    try { localStorage.setItem('kairo-video-live', '{}'); } catch {}
   }
 
   // Is video on air right now? (the toggle asks before taking it off)
   function isLive() { return programState().on.some(o => videoLiveMap()[o.id]); }
 
-  window.KairoVideoDirector = { start, stop, refresh, isLive };
+  window.KairoVideoDirector = {
+    start, stop, refresh, isLive,
+    // For the dock's input tiles.
+    state: () => ({ previewId: D.previewId, program: D.programState, transition: transitionPref(), active: D.active }),
+    setPreview, sendToProgram, mountSettings,
+  };
 })();
