@@ -66,6 +66,24 @@
       return t;
     }
 
+    // A tile opens its camera only while it can be seen: scrolled out of the Inputs list, or
+    // clipped, it lets go of the device (the hub closes it a moment later if nothing else holds it).
+    function liveWhileVisible(t, v, devId, profile, onError) {
+      let release = null;
+      const take = () => hub.lease(devId, profile, (stream) => {
+        if (!v.isConnected) return;
+        v.srcObject = stream; v.play().catch(() => {});
+      }, onError);
+      release = take();   // assume it is seen; the observer lets go if it is not
+      const io = new IntersectionObserver((es) => {
+        const on = es.some(e => e.isIntersecting);
+        if (on && !release) release = take();
+        else if (!on && release) { release(); release = null; v.srcObject = null; }
+      });
+      io.observe(t);
+      leases.push(() => { io.disconnect(); if (release) { release(); release = null; } });
+    }
+
     // A read-only copy of a tile: the picture, the name and the on-air or Preview frame, nothing to click.
     function mirrorTile(source, st) {
       const onAir = !st.mixed && st.hasOutputs && st.programId === source.id;
@@ -74,12 +92,7 @@
       const v = h('video'); v.muted = true; v.playsInline = true; v.setAttribute('aria-hidden', 'true');
       t.appendChild(v);
       const devId = V.resolveDevice(source, opts.getDevices());
-      if (devId && thumbsOn && shown) {
-        leases.push(hub.lease(devId, opts.profile || 'thumb', (stream) => {
-          if (!v.isConnected) return;
-          v.srcObject = stream; v.play().catch(() => {});
-        }, () => { t.dataset.msg = 'Unavailable'; }));
-      }
+      if (devId && thumbsOn && shown) liveWhileVisible(t, v, devId, opts.profile || 'thumb', () => { t.dataset.msg = 'Unavailable'; });
       t.appendChild(h('div', 'vg-name', source.name));
       if (onAir) t.appendChild(h('span', 'vg-flag vg-flag-pgm', 'On air'));
       else if (staged) t.appendChild(h('span', 'vg-flag vg-flag-pvw', 'Preview'));
@@ -101,12 +114,8 @@
       const v = h('video'); v.muted = true; v.playsInline = true; v.setAttribute('aria-hidden', 'true');
       t.appendChild(v);
       const devId = V.resolveDevice(source, opts.getDevices());
-      if (devId && thumbsOn && shown) {
-        leases.push(hub.lease(devId, 'thumb', (stream) => {
-          if (!v.isConnected) return;
-          v.srcObject = stream; v.play().catch(() => {});
-        }, () => { t.dataset.msg = 'Unavailable'; }));
-      } else t.dataset.msg = devId ? '' : 'Not connected';
+      if (devId && thumbsOn && shown) liveWhileVisible(t, v, devId, 'thumb', () => { t.dataset.msg = 'Unavailable'; });
+      else t.dataset.msg = devId ? '' : 'Not connected';
       t.appendChild(h('div', 'vg-name', source.name));
       if (index < 9) t.appendChild(h('span', 'vg-key', String(index + 1)));
       if (onAir) t.appendChild(h('span', 'vg-flag vg-flag-pgm', 'On air'));

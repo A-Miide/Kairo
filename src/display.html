@@ -345,6 +345,7 @@
         window.cancelAnimationFrame = (id) => clearTimeout(id);
     }
     </script>
+    <script src="video_sim.js"></script>
     <script src="client_common.js"></script>
     <script src="overlay_layer.js"></script>
     <script src="design_space.js"></script>
@@ -2067,6 +2068,8 @@
             if (m.type === 'vd-source') { previewSourceId = m.sourceId || null; syncVideo(); return; }
             // A Look loaded into Preview: its layers apply here only (null goes back to this output's own).
             if (m.type === 'vd-layers') { previewVideoOn = !m.layers || m.layers.video !== false; applyOutputLayers(m.layers ? { ...DEFAULT_LAYERS, ...m.layers } : loadOutputLayers()); syncVideo(); return; }
+            // A Look's screen theme loaded into Preview (null goes back to this output's own theme).
+            if (m.type === 'vd-theme') { assignedLook = m.look || loadActiveLook() || assignedLook; applyLook(assignedLook, false); return; }
             handleMessage(m);
         });
     }
