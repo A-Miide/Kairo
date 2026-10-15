@@ -7082,7 +7082,7 @@
     // already use, rather than a second implementation of clipboard import.
     quickImportClipboard,
     advanceLiveSlide,
-    paintSlideThumb,
+    paintSlideThumb, slideCard, buildMediaBinCard, loadMediaBinItems: fetchAllMediaItemsForBin,
     quickImportFile,
     // The global search overlay (global_search.js).
     prefetchForSearch, searchContent, openFound,
