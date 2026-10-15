@@ -779,6 +779,45 @@ const DEFAULT_LOOKS = [
   ...(window.KairoAnnouncements ? window.KairoAnnouncements.themes() : []),
 ];
 
+// Screen themes (Director mode): a whole screen in one theme. The live picture shows in
+// the video zone, the verse or slide fills the other side, over a background. Listed only
+// while Director mode is on (groupId 'grp-screen').
+function screenTheme(id, name, videoLeft, videoW) {
+  const gap = 40, margin = 60, top = 120, h = 840;
+  const W = window.KAIRO_DESIGN_W || 1920;
+  const textW = W - margin * 2 - videoW - gap;
+  const vx = videoLeft ? margin : W - margin - videoW;
+  const tx = videoLeft ? margin + videoW + gap : margin;
+  const inset = 60;
+  return {
+    id, name, layout: 'fullscreen', animation: 'fade',
+    groupId: 'grp-screen', groupName: 'Screens (Director mode)',
+    layers: [
+      gradientCanvas('blue-hour'),
+      { id: 'panel', type: 'background', name: 'Verse panel', visible: true, shape: 'rectangle',
+        fill: 'solid', color: '#0b0b1c', opacity: 55, color2: '#0b0b1c', angle: 135, radius: 36,
+        pos: { x: tx, y: top, w: textW, h } },
+      { id: 'zone', type: 'videozone', name: 'Video zone', visible: true, radius: 36, frameWidth: 8, frameColor: '#ffffff', opacity: 100,
+        pos: { x: vx, y: top, w: videoW, h } },
+      { id: 'verse', type: 'text', name: 'Verse', visible: true, binding: 'verse', customText: '',
+        pos: { x: tx + inset, y: top + 100, w: textW - inset * 2, h: 560 },
+        font: { family: 'Manrope', size: 56, weight: 600, italic: false, lineHeight: 1.3, letterSpacing: 0, transform: 'none' },
+        color: '#ffffff', opacity: 100, align: 'center',
+        shadow: { ...TXT_SHADOW_SOFT }, outline: { ...NO_OUTLINE } },
+      { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '', follows: 'verse',
+        pos: { x: tx + inset, y: top + h - 140, w: textW - inset * 2, h: 0 },
+        font: { family: 'Manrope', size: 30, weight: 700, italic: false, lineHeight: 1.2, letterSpacing: 3, transform: 'uppercase' },
+        color: '#ffd23f', opacity: 100, align: 'center',
+        shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
+    ],
+  };
+}
+DEFAULT_LOOKS.push(
+  screenTheme('screen-split-left', 'Screen — Video left', true, 640),
+  screenTheme('screen-split-right', 'Screen — Video right', false, 640),
+  screenTheme('screen-split-half', 'Screen — Half and half', true, 900),
+);
+
 // Load saved looks from localStorage and back-fill any NEW default-look IDs
 // the user doesn't have yet (so adding new built-in lower-third designs in
 // future releases shows up for existing users without nuking their custom themes).
@@ -1315,11 +1354,13 @@ function renderLooksList() {
   for (let n = el; n && n !== document.body; n = n.parentElement) if (n.scrollTop) scrollers.push([n, n.scrollTop]);
   el.innerHTML = '';
   const renderedGroups = new Set();
-  looks.forEach(look => {
+  // Screen themes belong to Director mode.
+  const listed = looks.filter(l => l.groupId !== 'grp-screen' || settings.videoDirector);
+  listed.forEach(look => {
     if (look.groupId) {
       if (renderedGroups.has(look.groupId)) return; // this group's block already rendered
       renderedGroups.add(look.groupId);
-      const groupLooks = looks.filter(l => l.groupId === look.groupId);
+      const groupLooks = listed.filter(l => l.groupId === look.groupId);
       el.appendChild(buildGroupHeader(look.groupId, look.groupName || 'Imported theme', groupLooks));
       if (!collapsedThemeGroups.has(look.groupId)) {
         groupLooks.forEach(gl => el.appendChild(buildLookRow(gl, true)));
@@ -1579,6 +1620,7 @@ function renderLayersList() {
                          : layer.type === 'image' ? '▣'
                          : layer.type === 'image-cycle' ? '▤'
                          : layer.type === 'motion' ? '✺'
+                         : layer.type === 'videozone' ? '▶'
                          : layer.type === 'background' ? '■'
                          : 'T';
 
@@ -2045,6 +2087,27 @@ function renderStage() {
       // theme layer, same as any image/background, and those used to have
       // no drag wiring at all in item mode because there was nowhere for
       // the change to persist to (see writeItemSlideStyleFromSynthetic).
+      tsDecorateLayerEl(div, layer, true);
+      return;
+    }
+
+    // Video zone (Director mode screen themes): a window for the live picture.
+    // Here it is a striped placeholder you can move and resize like any box.
+    if (layer.type === 'videozone') {
+      const p = layer.pos || { x: 0, y: 0, w: TS_DESIGN_W, h: TS_DESIGN_H };
+      const div = document.createElement('div');
+      div.className = 'ts-videozone';
+      div.style.cssText = `
+        position:absolute;
+        left:${(p.x / TS_DESIGN_W * 100)}%;
+        top:${(p.y / TS_DESIGN_H * 100)}%;
+        width:${(p.w / TS_DESIGN_W * 100)}%;
+        height:${(p.h / TS_DESIGN_H * 100)}%;
+        border-radius:${(layer.radius || 0) / TS_DESIGN_H * 100}vh;
+        ${layer.frameWidth > 0 ? `box-shadow:0 0 0 ${layer.frameWidth / TS_DESIGN_H * 100}vh ${layer.frameColor || '#ffffff'};` : ''}
+      `;
+      div.textContent = 'Video';
+      stage.appendChild(div);
       tsDecorateLayerEl(div, layer, true);
       return;
     }
@@ -3476,6 +3539,8 @@ function renderProps() {
     renderImageCycleProps(panel, activeLayer);
   } else if (activeLayer.type === 'motion') {
     renderMotionProps(panel, activeLayer);
+  } else if (activeLayer.type === 'videozone') {
+    renderVideoZoneProps(panel, activeLayer);
   } else {
     renderTextProps(panel, activeLayer);
   }
@@ -4977,6 +5042,34 @@ function layerNameSection(panel, layer) {
   nameInp.addEventListener('input', () => { layer.name = nameInp.value; renderLayersList(); });
   panel.appendChild(section('layout', 'Layer', prop('Name', nameInp)));
 }
+// A video zone: where the live picture shows inside a screen theme.
+function renderVideoZoneProps(panel, layer) {
+  layerNameSection(panel, layer);
+  renderLayoutProps(panel, layer);
+  panel.appendChild(section('style', 'Video zone',
+    fieldRow([numField('Corners', layer.radius || 0, { min: 0, max: 200, unit: 'px', onChange: v => { layer.radius = v ?? 0; up(); } })]),
+    fieldRow([
+      numField('Frame', layer.frameWidth || 0, { min: 0, max: 60, unit: 'px', title: 'A coloured border around the picture', onChange: v => { layer.frameWidth = v ?? 0; up(); } }),
+      swatchField('Frame colour', layer.frameColor || '#ffffff', v => { layer.frameColor = v; up(); }),
+    ], { cols: 2 })));
+  const hint = document.createElement('p');
+  hint.className = 'ts-hint';
+  hint.textContent = 'The live picture from the video input shows here when this theme is on the screen. Draw frames, logos and text around it as usual.';
+  panel.appendChild(hint);
+}
+// Adds a video zone (screen themes, Director mode). Half the screen to start with.
+function addVideoZone() {
+  if (!activeLook) return;
+  const layer = {
+    id: 'videozone-' + Date.now(), type: 'videozone', name: 'Video zone', visible: true,
+    radius: 24, frameWidth: 0, frameColor: '#ffffff', opacity: 100,
+    pos: { x: 120, y: 160, w: 760, h: 760 },
+  };
+  activeLook.layers.push(layer);
+  activeLayer = layer; multiSelectedLayerIds.clear();
+  up(); renderProps();
+}
+
 function renderImageProps(panel, layer) {
   layerNameSection(panel, layer);
   renderLayoutProps(panel, layer);
@@ -7444,6 +7537,7 @@ document.getElementById('ts-add-media-lib-btn')?.addEventListener('click', () =>
 const tsImageFile = document.getElementById('ts-image-file');
 // Image ▾ — a picture from the computer or the Media Library. (A slideshow is
 // slides — a countdown's "+ Add Slide" — each fully editable.)
+document.getElementById('ts-add-videozone-btn')?.addEventListener('click', () => addVideoZone());
 document.getElementById('ts-add-image-btn')?.addEventListener('click', (e) => {
   const r = e.currentTarget.getBoundingClientRect();
   window.KairoService.openContextMenu(r.left, r.bottom + 4, [[
