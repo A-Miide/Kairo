@@ -75,18 +75,30 @@
     // clipped, it lets go of the device (the hub closes it a moment later if nothing else holds it).
     function liveWhileVisible(t, v, devId, profile, onError) {
       let release = null;
+      let heard = false;      // the observer has spoken at least once
       const take = () => hub.lease(devId, profile, (stream) => {
         if (!v.isConnected) return;
         v.srcObject = stream; v.play().catch(() => {});
       }, onError);
-      release = take();   // assume it is seen; the observer lets go if it is not
-      const io = new IntersectionObserver((es) => {
-        const on = es.some(e => e.isIntersecting);
+      const set = (on) => {
         if (on && !release) release = take();
         else if (!on && release) { release(); release = null; v.srcObject = null; }
-      });
+      };
+      // No camera until the tile is seen: a tile scrolled out of the list never opens one.
+      const io = new IntersectionObserver((es) => { heard = true; set(es.some(e => e.isIntersecting)); });
       io.observe(t);
-      leases.push(() => { io.disconnect(); if (release) { release(); release = null; } });
+      // Where the observer stays silent (a window that is not painting), look at the geometry instead.
+      const fallback = setTimeout(() => {
+        if (heard || !t.isConnected) return;
+        const r = t.getBoundingClientRect();
+        let box = { top: 0, bottom: window.innerHeight, left: 0, right: window.innerWidth };
+        for (let p = t.parentElement; p; p = p.parentElement) {
+          const o = getComputedStyle(p).overflowY;
+          if (o === 'auto' || o === 'scroll' || o === 'hidden') { const pr = p.getBoundingClientRect(); box = { top: Math.max(box.top, pr.top), bottom: Math.min(box.bottom, pr.bottom), left: Math.max(box.left, pr.left), right: Math.min(box.right, pr.right) }; }
+        }
+        set(r.bottom > box.top && r.top < box.bottom && r.right > box.left && r.left < box.right);
+      }, 1200);
+      leases.push(() => { clearTimeout(fallback); io.disconnect(); if (release) { release(); release = null; } });
     }
 
     // A read-only copy of a tile: the picture, the name and the on-air or Preview frame, nothing to click.
