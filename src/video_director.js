@@ -37,7 +37,7 @@
     ui: {},
     liveObserver: null,
     last: null,             // one-step undo: { live, preview, layers, verse }
-    pendingLook: null, previewLookId: null, liveLookId: null, screenOrig: {},   // Looks (video_looks.js)
+    pendingLook: null, previewLookId: null, liveLookId: null,   // Looks (video_looks.js)
     programState: { on: [], id: null, mixed: false },
   };
 
@@ -231,61 +231,49 @@
     for (const o of videoOutputs()) layers[o.id] = { ...(ly[o.id] || {}) };
     D.last = { live: { ...videoLiveMap() }, preview: D.previewId, layers, screen: screenSnapshot() };
   }
-  // ── Screen themes: a Look can put a screen theme (Theme Studio, group "Screens") on the outputs. ──
-  // The theme each output had is remembered and put back by a Look with no screen, by Undo and when
-  // Director mode ends, so the saved normal theme is never left changed. It is also kept in
-  // settings.directorScreenOrig so a crash cannot strand a screen theme.
+  // ── Screen themes: a Layout's screen theme is a FRAME drawn around the output (settings.outputFrames). ──
+  // The normal theme (Bible theme, slide themes) stays assigned and untouched; the slide or verse keeps
+  // its own branding inside the frame's content zone. Leaving Director mode clears the frames.
   const themeTargets = () => videoOutputs().filter(o => !o.monitor).map(o => o.id);
   const themeList = () => (typeof looks !== 'undefined' && Array.isArray(looks) ? looks : []);
   const themeById = (id) => themeList().find(t => t.id === id) || null;
   const screenThemes = () => themeList().filter(t => t.groupId === 'grp-screen');
+  const frameMap = () => (settings.outputFrames && typeof settings.outputFrames === 'object' ? settings.outputFrames : {});
   function screenSnapshot() {
-    const map = typeof outputThemeMap === 'function' ? outputThemeMap() : {};
-    const themes = {};
-    for (const id of themeTargets()) themes[id] = map[id] || null;
-    return { orig: { ...D.screenOrig }, themes };
+    const m = frameMap();
+    const frames = {};
+    for (const id of themeTargets()) frames[id] = m[id] || null;
+    return { frames };
   }
-  function writeThemes(patch) {
-    settings.outputThemes = { ...(typeof outputThemeMap === 'function' ? outputThemeMap() : {}), ...patch };
-    saveSettingsPatch({ outputThemes: settings.outputThemes });
-    if (typeof applyOutputThemes === 'function') applyOutputThemes();
+  function writeFrames(patch) {
+    const next = { ...frameMap() };
+    for (const [id, v] of Object.entries(patch)) { if (v) next[id] = v; else delete next[id]; }
+    settings.outputFrames = next;
+    saveSettingsPatch({ outputFrames: next });
+    if (typeof applyOutputFrames === 'function') applyOutputFrames();
   }
-  function saveScreenOrig() {
-    settings.directorScreenOrig = { ...D.screenOrig };
-    saveSettingsPatch({ directorScreenOrig: settings.directorScreenOrig });
-  }
-  // themeId null puts every remembered normal theme back.
+  // themeId null clears the frame.
   function applyScreenTheme(themeId) {
+    const id = themeId && themeById(themeId) ? themeId : null;
     const patch = {};
-    const map = typeof outputThemeMap === 'function' ? outputThemeMap() : {};
-    if (themeId && themeById(themeId)) {
-      for (const id of themeTargets()) {
-        if (!(id in D.screenOrig)) D.screenOrig[id] = map[id] || null;
-        patch[id] = themeId;
-      }
-    } else {
-      for (const [id, orig] of Object.entries(D.screenOrig)) if (orig) patch[id] = orig;
-      D.screenOrig = {};
-    }
-    if (!Object.keys(patch).length && !themeId) { if (settings.directorScreenOrig && Object.keys(settings.directorScreenOrig).length) saveScreenOrig(); return; }
-    writeThemes(patch);
-    saveScreenOrig();
+    for (const o of themeTargets()) patch[o] = id;
+    writeFrames(patch);
   }
-  // Undo: the themes and the remembered originals go back as they were.
-  function restoreScreen(snap) {
-    if (!snap) return;
-    const patch = {};
-    for (const [id, t] of Object.entries(snap.themes || {})) if (t) patch[id] = t;
-    D.screenOrig = { ...(snap.orig || {}) };
-    if (Object.keys(patch).length) writeThemes(patch);
-    saveScreenOrig();
-  }
-  // After a crash a screen theme may still be assigned: put the remembered originals back.
-  function recoverScreenOrig() {
+  // Undo: the frames go back as they were.
+  function restoreScreen(snap) { if (snap && snap.frames) writeFrames(snap.frames); }
+  // An earlier build swapped the output's own theme; put the saved normal themes back once.
+  function migrateScreenOrig() {
     const saved = settings.directorScreenOrig;
     if (!saved || typeof saved !== 'object' || !Object.keys(saved).length) return;
-    D.screenOrig = { ...saved };
-    applyScreenTheme(null);
+    const patch = {};
+    for (const [id, t] of Object.entries(saved)) if (t) patch[id] = t;
+    if (Object.keys(patch).length && typeof outputThemeMap === 'function') {
+      settings.outputThemes = { ...outputThemeMap(), ...patch };
+      saveSettingsPatch({ outputThemes: settings.outputThemes });
+      if (typeof applyOutputThemes === 'function') applyOutputThemes();
+    }
+    settings.directorScreenOrig = {};
+    saveSettingsPatch({ directorScreenOrig: {} });
   }
   function undo() {
     const last = D.last;
@@ -339,7 +327,7 @@
     D.previewId = lookVideo(look) || null;
     syncPreviewFrame();
     post('pvw', { type: 'vd-layers', layers: look.layers });
-    post('pvw', { type: 'vd-theme', look: look.themeId ? themeById(look.themeId) : null });
+    post('pvw', { type: 'vd-frame', look: look.themeId ? themeById(look.themeId) : null });
     refresh();
   }
   // What the output shows now, as a Look's recipe.
@@ -351,8 +339,8 @@
     layers.video = ly.video === true;
     let overlays = null;
     if (window.KairoOverlays && window.KairoOverlays.load) { try { overlays = (await window.KairoOverlays.load()).filter(o => o.live).map(o => o.id); } catch {} }
-    // The screen theme on the primary output, only when it is a screen theme.
-    const cur = typeof outputThemeMap === 'function' ? themeById(outputThemeMap()[PRIMARY_DISPLAY]) : null;
+    // The screen theme framing the primary output, only when it is a screen theme.
+    const cur = themeById(frameMap()[PRIMARY_DISPLAY]);
     return { videoId: ps.mixed ? null : ps.id, layers, overlays, themeId: cur && cur.groupId === 'grp-screen' ? cur.id : null };
   }
   // Take: the Look's layers and overlays go onto the real outputs. Its video goes with the ordinary take.
@@ -372,7 +360,7 @@
     applyScreenTheme(look.themeId || null);
     D.pendingLook = null; D.previewLookId = null;
     post('pvw', { type: 'vd-layers', layers: null });
-    post('pvw', { type: 'vd-theme', look: null });
+    post('pvw', { type: 'vd-frame', look: null });
   }
   function setOutputLayerIf(id, key, val) {
     const cur = outputLayerMap()[id];
@@ -425,7 +413,7 @@
   }
 
   function setPreview(id) {
-    if (D.pendingLook) { D.pendingLook = null; D.previewLookId = null; post('pvw', { type: 'vd-layers', layers: null }); post('pvw', { type: 'vd-theme', look: null }); }
+    if (D.pendingLook) { D.pendingLook = null; D.previewLookId = null; post('pvw', { type: 'vd-layers', layers: null }); post('pvw', { type: 'vd-frame', look: null }); }
     D.previewId = id || null;
     syncPreviewFrame();
     refresh();
@@ -952,7 +940,7 @@
     D.active = true;
     document.addEventListener('keydown', onKey);
     wrapSend();
-    try { recoverScreenOrig(); } catch {}
+    try { migrateScreenOrig(); } catch {}
     publishTransition();
     publishFade();
     if (typeof applyOutputModes === 'function') applyOutputModes();   // a chosen multiview display switches over
