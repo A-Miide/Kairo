@@ -1257,9 +1257,37 @@
     };
   }
 
-  async function sendSlide(item, index, { auto = false, follow = false, keepBible = false } = {}) {
+  // What the output is sent for a slide: its theme, the verse-shaped content and what comes next. Shared by the
+  // real send and by Video director mode, which stages the same thing in Preview first.
+  async function slideSendBody(item, index) {
+    const slide = slidesFor(item)[index];
+    if (!slide) return null;
+    const translatedText = await awaitTranslatedText(item, slide);
+    const look = slide.isScene ? { layers: slide.layers || [] } : (slideThemeLook(slide, item) || itemLookOverride(item));
+    return {
+      look,
+      next: nextSlideInfo(item, index),
+      verse: {
+        reference: slide.reference || '',
+        label: item.type === 'song' ? (slide.label || '') : '',
+        text: slide.text || '',
+        nlt_text: slide.text || '',
+        translatedText,
+        image: slide.image || null,
+        fit: item.type === 'image' ? (item.fit || 'contain') : undefined,
+        slideStyle: item.slideStyles?.[index] || null,
+        book: 'Service', chapter: 0, verse: index + 1,
+        similarity: 1, method: 'service',
+      },
+    };
+  }
+
+  // direct: skip Video director mode's staging (an explicit send, or a quick cut).
+  async function sendSlide(item, index, { auto = false, follow = false, keepBible = false, direct = false } = {}) {
     const slide = slidesFor(item)[index];
     if (!slide) return;
+    // Video director mode: a click stages the slide in Preview; Send to screen puts it on the Output.
+    if (!auto && !follow && !direct && window.KairoVideoDirector?.stageSlide?.(item, index, () => slideSendBody(item, index))) return;
     liveSlideKey = `${item.id}:${index}`;
     // Keep the follower in step with what's actually on screen.
     if (item.type === 'song') {
@@ -1279,17 +1307,9 @@
     }
     // Resolved (not just kicked off) — this is the actual live output, so it
     // must carry the real translation rather than sending blank and letting
-    // a later re-render catch up.
-    const translatedText = await awaitTranslatedText(item, slide);
-    // A scene slide (slide.layers — a ProPresenter import preserved
-    // as-authored, see slidesFor's 'slides' case) carries its OWN complete
-    // layer set, same as Theme Studio's editor already treats it (see
-    // buildSyntheticLook in app.js) — itemLookOverride is item-level only
-    // (a single themeId for the whole deck), which can never vary per
-    // slide the way a real per-slide scene needs to. Without this, the
-    // live output would show whatever item-level theme happens to be
-    // assigned (or nothing) instead of the slide's own preserved design.
-    const look = slide.isScene ? { layers: slide.layers || [] } : (slideThemeLook(slide, item) || itemLookOverride(item));
+    // a later re-render catch up. (The same content staging shows in Preview: slideSendBody.)
+    const built = await slideSendBody(item, index);
+    const look = built.look;
     debugLog('send-slide', {
       itemId: item.id,
       itemType: item.type,
@@ -1310,25 +1330,8 @@
           auto,
           follow,
           keepBible,
-          next: nextSlideInfo(item, index),
-          verse: {
-            reference: slide.reference || '',
-            // ProPresenter-style section annotation (Verse/Chorus/Bridge/
-            // etc.) — only ever meaningful for a 'song' item (slidesFor's
-            // other cases already fold their own label into `reference`
-            // or leave it blank); the operator preview's section badge
-            // (app.js renderPreviewScreen) reads this separately from
-            // `reference`, which still carries the song's own title.
-            label: item.type === 'song' ? (slide.label || '') : '',
-            text: slide.text || '',
-            nlt_text: slide.text || '',
-            translatedText,
-            image: slide.image || null,   // fixes images never reaching the display
-            fit: item.type === 'image' ? (item.fit || 'contain') : undefined,
-            slideStyle: item.slideStyles?.[index] || null, // per-slide text-layer overrides (Full Edit)
-            book: 'Service', chapter: 0, verse: index + 1,
-            similarity: 1, method: 'service',
-          },
+          next: built.next,
+          verse: built.verse,
         }),
       });
       // fetch only rejects on network-level failure — a 4xx/5xx (e.g. an
@@ -1427,24 +1430,30 @@
   // Move the live slide forward/back within whichever item is currently on
   // air. If nothing is live yet, starts the active/expanded item at its first
   // slide instead of doing nothing.
-  function advanceLiveSlide(delta) {
+  // direct: a remote command (OSC) moves the live slide itself, never through Preview. In Video director
+  // mode a plain Next/Previous inside a SONG that is live moves the live slide directly (singing along needs
+  // speed); any other slide is staged in Preview, stepping from the one already staged.
+  function advanceLiveSlide(delta, { direct = false } = {}) {
     if (!service) return;
     if (!liveSlideKey) {
       const item = activeItem();
       const slides = item ? slidesFor(item) : [];
-      if (slides.length) sendSlide(item, 0);
+      if (slides.length) sendSlide(item, 0, { direct });
       return;
     }
-    const sep = liveSlideKey.lastIndexOf(':');
-    const itemId = liveSlideKey.slice(0, sep);
-    const idx = parseInt(liveSlideKey.slice(sep + 1), 10);
+    const staged = !direct && window.KairoVideoDirector?.stagedSlideKey?.();
+    const baseKey = staged || liveSlideKey;
+    const sep = baseKey.lastIndexOf(':');
+    const itemId = baseKey.slice(0, sep);
+    const idx = parseInt(baseKey.slice(sep + 1), 10);
     const item = service.items.find(i => i.id === itemId);
     if (!item) return;
     const slides = slidesFor(item);
     if (!slides.length) return;
     const next = Math.max(0, Math.min(slides.length - 1, idx + delta));
     if (next === idx) return;   // already at the edge
-    sendSlide(item, next); // also refreshes Flow's "live" highlight if it's open
+    // A live song steps live; so does a remote command.
+    sendSlide(item, next, { direct: direct || (item.type === 'song' && !staged && liveSlideKey.startsWith(item.id + ':')) }); // also refreshes Flow's "live" highlight if it's open
   }
 
   // ── Playlist switcher ────────────────────────────────────────────────────
@@ -3961,7 +3970,7 @@
     send.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg><span>Send</span>`;
     send.addEventListener('click', (e) => {
       e.stopPropagation();
-      sendSlide(item, i); // also refreshes Flow's "live" highlight
+      sendSlide(item, i, { direct: true }); // an explicit Send; also refreshes Flow's "live" highlight
     });
 
     const del = document.createElement('button');
@@ -5149,23 +5158,31 @@
   // Fit Mode from the right-click menu keeps using it.
   const mediaFitPrefs = new Map();
 
-  async function sendMediaItem(item, fit) {
+  // What the output is sent for a media item (a video that needs converting is made ready first).
+  async function prepareMedia(item, fit) {
     const resolvedFit = fit || mediaFitPrefs.get(item.url) || 'contain';
     if (fit) mediaFitPrefs.set(item.url, fit);
     let src = item.url;
     if (item.kind === 'video') {
-      // The card showing it says so while a video that needs converting is made ready.
       const badge = document.querySelector(`.media-card[data-url="${CSS.escape(item.url)}"] .media-card-badge`);
       const was = badge?.textContent;
       const out = await playableVideoUrl(item.url, { onProgress: p => { if (badge) badge.textContent = `Preparing ${p}%`; } });
       if (badge && was) badge.textContent = was;
-      if (!out) { if (badge) badge.textContent = 'CAN\u2019T PLAY'; return; }
+      if (!out) { if (badge) badge.textContent = 'CAN\u2019T PLAY'; return null; }
       src = out;
     }
+    return { src, kind: item.kind, fit: resolvedFit };
+  }
+
+  async function sendMediaItem(item, fit, direct = false) {
+    // Video director mode: a click stages it in Preview; Send to screen puts it on the Output.
+    if (!direct && window.KairoVideoDirector?.stageMedia?.(item, fit, () => prepareMedia(item, fit))) return;
+    const prepared = await prepareMedia(item, fit);
+    if (!prepared) return;
     try {
       await fetchWithTimeout(`${SERVER}/api/service/send-media`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ src, kind: item.kind, fit: resolvedFit }),
+        body: JSON.stringify({ src: prepared.src, kind: prepared.kind, fit: prepared.fit }),
       });
     } catch (err) {
       if (typeof toast === 'function') toast('Send failed: ' + err.message, 'error');
@@ -7072,7 +7089,7 @@
   window.KairoService = {
     segmentDefaultLook,
     get service() { return service; },
-    slidesFor, sendSlide, cycleSectionLabel, focusInStack, openFullEdit, closeStack, closeFullEdit,
+    slidesFor, sendSlide, sendMedia: sendMediaItem, liveSlideKey: () => liveSlideKey, cycleSectionLabel, focusInStack, openFullEdit, closeStack, closeFullEdit,
     effectiveTranslateTo, awaitTranslatedText,
     paintLookLayers, renderLookThumbnail, buildThemeTree, slideThemeIdOf, hasSlideThemes, mediaMuted: () => mediaMutedState, saveService, openContextMenu, openThemePopover, themeForItem,
     showMediaLibrary, onMediaStatus, onMediaFolderChanged, setMediaTransportVisible, onMediaLive,
