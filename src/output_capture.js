@@ -37,8 +37,10 @@
     } catch {}
   }
 
-  function open(id, width, height) { return serial(id, () => openNow(id, width, height)); }
-  async function openNow(id, width, height) {
+  // opts.output: the output whose screen it renders when the capture id is another name
+  // (the live stream's `stream-<output>`); opts.stream: a stream capture (see display.html).
+  function open(id, width, height, opts = {}) { return serial(id, () => openNow(id, width, height, opts)); }
+  async function openNow(id, width, height, opts = {}) {
     const W = T?.webviewWindow?.WebviewWindow;
     if (!W || !(await isSupported())) return;
     width = Math.max(16, Math.round(width || 1920));
@@ -51,7 +53,8 @@
     // 1920-pixel output on a Retina Mac is a 960-point window.
     const dpr = window.devicePixelRatio || 1;
     const win = new W(labelFor(id), {
-      url: `${location.origin}/display.html?output=${encodeURIComponent(id)}&capture=1&w=${width}&h=${height}&fs=0`,
+      url: `${location.origin}/display.html?output=${encodeURIComponent(opts.output || id)}&capture=1&w=${width}&h=${height}&fs=0`
+        + (opts.output ? `&capid=${encodeURIComponent(id)}` : '') + (opts.stream ? '&stream=1' : ''),
       title: 'KAIRO Output Capture',
       width: Math.round(width / dpr),
       height: Math.round(height / dpr),
