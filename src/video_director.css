@@ -487,7 +487,7 @@ body.video-director #live-queue-section .cs-section-header { display: none !impo
 .vg-col.vg-list .vg-tile.is-empty .vg-empty-mid { display: contents; }
 /* Grid | List */
 .vg-seg { display: flex; padding: 2px; border-radius: 8px; background: rgba(255,255,255,0.05); }
-.vg-seg-btn { height: 22px; padding: 0 9px; border: 0; border-radius: 6px; background: transparent; color: var(--text-3); font: inherit; font-size: 10.5px; font-weight: 700; cursor: pointer; }
+.vg-seg-btn { display: inline-flex; align-items: center; justify-content: center; height: 22px; width: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--text-3); font: inherit; font-size: 10.5px; font-weight: 700; cursor: pointer; }
 .vg-seg-btn.is-on { background: var(--bg-hover); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.35); }
 /* + Add is not red: red means live. */
 .vd-add { background: transparent; border-color: var(--accent); color: var(--accent); }
