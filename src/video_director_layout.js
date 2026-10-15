@@ -152,11 +152,11 @@
     document.removeEventListener('mousedown', np.off, true); document.removeEventListener('keydown', np.esc, true);
     L.np = null;
   }
-  function nodePopover(anchor, node) {
+  function nodePopover(anchor, node, cls) {
     if (!node) return;
     if (L.np) { closeNodePop(); return; }
     const pop = document.createElement('div');
-    pop.className = 'vd-pop';
+    pop.className = 'vd-pop' + (cls ? ' ' + cls : '');
     const home = document.createComment('vd-home');
     node.before(home);
     pop.appendChild(node);
@@ -250,7 +250,7 @@
 
     // Order: title, Auto, then on the right the Bible select, the message button and Theme together.
     // How verse text arrives (Fade / Slide / Cut): the app's own bar, in a small popover.
-    S.verseBtn = hb('vd-hbtn', 'Verse transition', ICONS.verse, (e) => nodePopover(e.currentTarget, document.getElementById('rs-transition-bar')));
+    S.verseBtn = hb('vd-hbtn', 'Verse transition', ICONS.verse, (e) => nodePopover(e.currentTarget, document.getElementById('rs-transition-bar'), 'vd-pop-verse'));
     [spacer, document.getElementById('translation-select'), S.monBtn, S.verseBtn, theme].forEach(n => n && head.appendChild(n));
     host.appendChild(head);
     S.head = head;

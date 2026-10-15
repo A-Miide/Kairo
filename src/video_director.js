@@ -464,11 +464,14 @@
     // The cluster is one row (left 170 + Send to screen + right 165 + gaps) or, when that does not
     // fit, Send to screen on a row of its own with the rest centred under it.
     const SIDES = 360, ROW = 46, WRAP = 88;
-    const sendFor = (stack, fw) => (stack ? Math.min(Math.max(fw, 200), 300) : fw + gap);
+    // Send to screen is as wide as the gap between the displays' centres, but gives way (down to 170px)
+    // so the whole cluster stays on one row for as long as it can.
+    const MINSEND = 170;
+    const sendFor = (stack, fw) => Math.max(MINSEND, Math.min(stack ? Math.min(Math.max(fw, 200), 300) : fw + gap, w - SIDES - 16));
     const mkUnder = (stack) => {
       const fwOf = (u) => (stack ? Math.min(w, ((h - u - head * 2 - gap) / 2) * 16 / 9) : Math.min((w - gap) / 2, (h - head - u) * 16 / 9));
       let fw = fwOf(ROW), wrap = false;
-      if (w < SIDES + sendFor(stack, fw)) { fw = fwOf(WRAP); wrap = true; }
+      if (w < SIDES + 16 + MINSEND) { fw = fwOf(WRAP); wrap = true; }
       return { stack, beside: false, ok: wide, fw, wrap };
     };
     const options = [
