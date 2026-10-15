@@ -307,34 +307,6 @@
     refresh();
   }
 
-  // ── T-bar: fade Preview onto Output by hand ──────────────────────────────
-  function writeTbar(sourceId, t) {
-    try { localStorage.setItem('kairo-video-tbar', JSON.stringify({ sourceId: sourceId || null, t, n: Date.now() })); } catch {}
-  }
-  let tbarBusy = false;
-  function tbarMove(t) {
-    if (!programState().on.length) return;
-    tbarBusy = true;
-    writeTbar(D.previewId, t);
-  }
-  // Let go past halfway and the fade completes; short of it, it goes back.
-  function tbarRelease(t) {
-    if (!tbarBusy) return;
-    tbarBusy = false;
-    const ps = programState();
-    if (t >= 0.5 && ps.on.length) {
-      snapshot();
-      writeTbar(D.previewId, 1);
-      const outgoing = ps.mixed ? D.previewId : ps.id;
-      try { localStorage.setItem('kairo-video-transition', JSON.stringify('cut')); } catch {}
-      setVideoLiveFor(ps.on.map(o => o.id), D.previewId);
-      D.previewId = outgoing;
-      setTimeout(publishTransition, 600);
-      syncPreviewFrame();
-    } else writeTbar(D.previewId, 0);
-    if (D.ui.tbar) D.ui.tbar.value = '0';
-    refresh();
-  }
   function setPreview(id) {
     if (D.pendingLook) { D.pendingLook = null; D.previewLookId = null; post('pvw', { type: 'vd-layers', layers: null }); }
     D.previewId = id || null;
@@ -345,17 +317,17 @@
   // ── Layout: three columns over a bottom half, with draggable splits ───────
   // Only widths the operator set by dragging are kept; the rest follow these defaults.
   const LAYOUT_KEY = 'kairo-vd-layout2';
-  const layoutDefaults = { c1: 0.20, c2: 0.57, bl: 0.21 };
+  const layoutDefaults = { c1: 0.26, c2: 0.50, bl: 0.21 };
   // The top half's share of the height depends on the window: short windows give it more.
   const sizeClass = () => (window.innerHeight < 700 ? 's' : window.innerHeight < 1000 ? 'm' : 'l');
-  const topDefaults = { s: 0.6, m: 0.5, l: 0.56 };
+  const topDefaults = { s: 0.64, m: 0.5, l: 0.56 };
   function readLayout() {
     let v = null;
     try { v = JSON.parse(localStorage.getItem(LAYOUT_KEY) || 'null'); } catch {}
     v = v && typeof v === 'object' ? v : {};
     const cls = sizeClass();
     return {
-      c1: clamp(v.c1, 0.12, 0.35, layoutDefaults.c1),
+      c1: clamp(v.c1, 0.14, 0.40, layoutDefaults.c1),
       c2: clamp(v.c2, 0.35, 0.75, layoutDefaults.c2),
       bl: clamp(v.bl, 0.14, 0.5, layoutDefaults.bl),
       top: clamp(v['top_' + cls], 0.25, 0.8, topDefaults[cls]),
@@ -379,7 +351,7 @@
     const tw = D.top.clientWidth || 1200;
     // Untouched, the Inputs column is its minimum in a narrow window so the displays keep the room.
     const dragged = Math.abs(D.layout.c1 - layoutDefaults.c1) > 0.002;
-    const c1px = Math.max(170, tw < 1100 && !dragged ? 0 : Math.round(D.layout.c1 * tw));
+    const c1px = Math.max(200, tw < 1100 && !dragged ? 0 : Math.round(D.layout.c1 * tw));
     const c3px = Math.max(300, Math.round(Math.max(0.12, 1 - D.layout.c1 - D.layout.c2) * tw));
     D.top.style.gridTemplateColumns = `${c1px}px 8px minmax(0, 1fr) 8px ${c3px}px`;
     D.top.style.flexGrow = String(top);
@@ -422,13 +394,25 @@
     if (!band || !D.ui.strip) return;
     const w = band.clientWidth, h = band.clientHeight;
     if (!w || !h) return;
-    const barH = D.ui.strip.offsetHeight + 8 + (D.looks ? D.looks.el.offsetHeight + 6 : 0);
-    const head = 28;                    // each screen's label line
-    const gap = 8;
-    const byWidth = (w - gap) / 2;
-    const byHeight = (h - head - barH) * 16 / 9;
-    const fw = Math.max(80, Math.floor(Math.min(byWidth, byHeight)));
-    band.style.setProperty('--vd-fw', fw + 'px');
+    // The group picks its own arrangement from the room it has: the two panes in a row or
+    // stacked, and the transition cluster under them or in a column beside them, whichever
+    // gives the biggest 16:9 panes. (It answers to the group's size, not the window's.)
+    const head = 28, gap = 8, colW = 132, under = 46;
+    const wide = w >= 520;
+    const options = [
+      { stack: false, beside: false, ok: wide, fw: Math.min((w - gap) / 2, (h - head - under) * 16 / 9) },
+      { stack: false, beside: true, ok: true, fw: Math.min((w - colW - gap * 2) / 2, (h - head) * 16 / 9) },
+      { stack: true, beside: false, ok: wide, fw: Math.min(w, ((h - under - head * 2 - gap) / 2) * 16 / 9) },
+      { stack: true, beside: true, ok: true, fw: Math.min(w - colW - gap, ((h - head * 2 - gap) / 2) * 16 / 9) },
+    ].filter(o => o.ok);
+    let best = options[0];
+    for (const o of options) if (o.fw > best.fw * 1.04) best = o;   // a clear gain, else keep the simpler one
+    band.classList.toggle('is-stack', best.stack);
+    band.classList.toggle('is-beside', best.beside);
+    band.style.setProperty('--vd-fw', Math.max(80, Math.floor(best.fw)) + 'px');
+    // Beside, the cluster column takes whatever width the panes leave (within reason).
+    const panesW = best.stack ? best.fw : best.fw * 2 + gap;
+    band.style.setProperty('--vd-colw', Math.round(Math.min(240, Math.max(colW, w - panesW - gap))) + 'px');
   }
 
   function build() {
@@ -454,7 +438,7 @@
       layout: 'column',
     });
     const ictl = vEl('div', 'vd-gh-ctl');
-    ictl.append(vBtn('+ Add', 'Add an input without leaving Director mode', (e) => openAddInputPanel(e.currentTarget), 'vd-mini vd-mini-primary'), D.grid.controls);
+    ictl.append(vBtn('+ Add', 'Add an input without leaving Director mode', (e) => openAddInputPanel(e.currentTarget), 'vd-mini vd-add'), D.grid.controls);
     ihead.appendChild(ictl);
     const ifoot = vEl('div', 'vd-section-foot');
     D.ui.noVideo = vBtn('No video', 'Send no video to Output', () => sendToProgram(null), 'vd-mini');
@@ -475,7 +459,8 @@
     const pvwHead = vEl('div', 'vd-screen-head');
     pvwHead.appendChild(vEl('span', 'vd-tag vd-tag-pvw', 'Preview'));
     D.ui.pvwRef = vEl('span', 'vd-ref');
-    pvwHead.appendChild(D.ui.pvwRef);
+    D.ui.pvwLook = vEl('span', 'vd-look-tag'); D.ui.pvwLook.hidden = true;
+    pvwHead.append(D.ui.pvwLook, D.ui.pvwRef);
     pvw.append(pvwHead, buildFrame('pvw'));
     if (window.KairoVideoLooks) {
       D.looks = window.KairoVideoLooks.create({
@@ -484,50 +469,40 @@
         capture: captureLook,
         previewLookId: () => D.previewLookId,
         liveLookId: () => D.liveLookId,
+        videoName: (look) => { const id = lookVideo(look); const x = videoSourceList().find(v => v.id === id); return x ? x.name : 'No video'; },
         onChange: () => refresh(),
       });
-      pvw.appendChild(D.looks.el);
     }
 
     // The transition bar, centred under the two screens.
     const bar = vEl('div', 'vd-transbar');
     bar.setAttribute('role', 'group');
     bar.setAttribute('aria-label', 'Transition');
-    // One primary button sends Preview to Output (the staged verse and the Preview source),
-    // with the transition chosen beside it. Cut and Fade choose; Fade to black acts.
-    D.ui.take = vBtn('Take', 'Send Preview to Output (Space)', takeStaged, 'vd-take vd-take-main');
-    D.ui.cut = vBtn('Cut', 'Take with a cut', () => { setTransition('cut'); refresh(); }, 'vd-take');
-    D.ui.fade = vBtn('Fade', 'Take with a fade', () => { setTransition('fade'); refresh(); }, 'vd-take');
+    // One row under the displays: Take (primary), how it goes (Cut | Fade), Fade to black, the
+    // fade length and Undo. No hover tooltips here: they would cover the neighbouring buttons.
+    const bare = (b, label) => { b.removeAttribute('title'); b.setAttribute('aria-label', label); return b; };
+    D.ui.take = bare(vBtn('Take', '', takeStaged, 'vd-take vd-take-main'), 'Take: send Preview to Output (Space)');
+    D.ui.cut = bare(vBtn('Cut', '', () => { setTransition('cut'); refresh(); }, 'vd-take'), 'Take with a cut');
+    D.ui.fade = bare(vBtn('Fade', '', () => { setTransition('fade'); refresh(); }, 'vd-take'), 'Take with a fade');
     const seg2 = vEl('div', 'vd-seg2');
     seg2.setAttribute('role', 'group'); seg2.setAttribute('aria-label', 'Transition');
     seg2.append(D.ui.cut, D.ui.fade);
-    D.ui.black = vBtn('Fade to black', 'Fade Output to black: no video, and the verse, slide and timer come down', fadeToBlack, 'vd-take');
+    D.ui.black = bare(vBtn('Fade to black', '', fadeToBlack, 'vd-take'), 'Fade to black: no video, and the verse, slide and timer come down');
+    D.ui.blackText = D.ui.black.firstChild;
     const dur = vEl('label', 'vd-dur');
+    dur.appendChild(vEl('span', 'vd-bar-label', 'Length'));
     const durIn = vEl('input'); durIn.type = 'number'; durIn.min = '0'; durIn.max = '5000'; durIn.step = '50'; durIn.value = String(fadeMs());
     durIn.setAttribute('aria-label', 'Fade length in milliseconds');
-    durIn.title = 'Fade length';
     durIn.addEventListener('change', () => {
       const n = Math.min(5000, Math.max(0, Math.round(Number(durIn.value) || 0)));
       durIn.value = String(n);
       settings.videoFadeMs = n; saveSettingsPatch({ videoFadeMs: n }); publishFade();
     });
-    dur.append(durIn, vEl('span', null, 'ms'));
-    const tb = vEl('div', 'vd-tbar-wrap');
-    D.ui.tbar = vEl('input', 'vd-tbar');
-    D.ui.tbar.type = 'range'; D.ui.tbar.min = '0'; D.ui.tbar.max = '1000'; D.ui.tbar.value = '0';
-    D.ui.tbar.setAttribute('aria-label', 'T-bar: fade Preview onto Output by hand');
-    D.ui.tbar.title = 'T-bar: drag to fade by hand. Let go past halfway to finish.';
-    D.ui.tbar.addEventListener('input', () => tbarMove(Number(D.ui.tbar.value) / 1000));
-    for (const ev of ['change', 'pointerup', 'keyup']) D.ui.tbar.addEventListener(ev, () => tbarRelease(Number(D.ui.tbar.value) / 1000));
-    tb.append(vEl('span', 'vd-tbar-label', 'T-bar'), D.ui.tbar);
-    D.ui.undo = vBtn('Undo', 'Undo the last take (Cmd/Ctrl+Z)', undo, 'vd-take vd-take-quiet');
-    // The one transition cluster, and under it the two quieter controls.
+    dur.append(durIn, vEl('span', 'vd-bar-label', 'ms'));
+    D.ui.undo = bare(vBtn('Undo', '', undo, 'vd-take'), 'Undo the last take (Cmd/Ctrl+Z)');
     const cluster = vEl('div', 'vd-cluster');
-    cluster.append(D.ui.take, seg2, D.ui.black, dur, tb);
-    const tuck = vEl('div', 'vd-tuck');
-    bar.append(cluster, tuck);
-    D.ui.tuck = tuck;
-    tuck.appendChild(D.ui.undo);
+    cluster.append(D.ui.take, seg2, D.ui.black, dur, D.ui.undo);
+    bar.append(cluster);
     D.ui.strip = bar;
 
     const pgm = vEl('div', 'vd-screen vd-screen-pgm');
@@ -544,12 +519,13 @@
     displays.setAttribute('aria-label', 'Displays');
     const dhead = vEl('div', 'vd-gh');
     dhead.appendChild(vEl('span', 'vd-label vd-gh-title', 'Displays'));
+    // Looks (a dialog) and the verse text transition (a small popover) sit beside the title.
+    const dctl = vEl('div', 'vd-gh-ctl');
+    const verseBtn = vBtn('Verse text', 'How verse text arrives', (e) => window.KairoVideoLayout?.nodePopover(e.currentTarget, document.getElementById('rs-transition-bar')), 'vd-mini');
+    const looksBtn = vBtn('Looks', 'Saved Preview setups', () => D.looks && D.looks.open(), 'vd-mini');
+    dctl.append(looksBtn, verseBtn);
+    dhead.appendChild(dctl);
     displays.append(dhead, band);
-    // The verse transition (how a verse arrives: Fade, Slide or Cut, and its speed), next to the video ones.
-    const seg = vEl('div', 'vd-verse-seg');
-    seg.appendChild(vEl('span', 'vd-bar-label', 'Verse'));
-    window.KairoVideoLayout?.moveTo(document.getElementById('rs-transition-bar'), seg);
-    D.ui.tuck.prepend(seg);
 
     // ── Column 3: Scripture sends ──
     const sends = vEl('section', 'vd-section vd-section-sends');
@@ -559,9 +535,9 @@
     // ── Top row with its two vertical splits ──
     const top = vEl('div', 'vd-top');
     const split1 = splitter('v', (x, y, step) => {
-      if (step) { D.layout.c1 = clamp(D.layout.c1 + step, 0.12, 0.35, D.layout.c1); return; }
+      if (step) { D.layout.c1 = clamp(D.layout.c1 + step, 0.14, 0.40, D.layout.c1); return; }
       const r = top.getBoundingClientRect();
-      D.layout.c1 = clamp((x - r.left) / r.width, 0.12, 0.35, D.layout.c1);
+      D.layout.c1 = clamp((x - r.left) / r.width, 0.14, 0.40, D.layout.c1);
     }, 'Resize Inputs');
     const split2 = splitter('v', (x, y, step) => {
       if (step) { D.layout.c2 = clamp(D.layout.c2 + step, 0.35, 0.75, D.layout.c2); return; }
@@ -692,9 +668,8 @@
     // Take is live when there is a verse or slide staged, or a Preview source that differs from Output.
     const videoDiff = canTake && (D.previewId || null) !== (ps.mixed ? undefined : (ps.id || null));
     D.ui.take.disabled = !(D.staged || videoDiff || D.pendingLook);
-    D.ui.tbar.disabled = !canTake;
-    D.ui.black.title = 'Fade Output to black: no video, and the verse, slide and timer come down';
     D.looks && D.looks.render();
+    if (D.ui.pvwLook) { D.ui.pvwLook.textContent = D.pendingLook ? 'Look: ' + D.pendingLook.name : ''; D.ui.pvwLook.hidden = !D.pendingLook; }
   }
 
   // ── Settings → Director mode: rows for what the screen no longer carries ─

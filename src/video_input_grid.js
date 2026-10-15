@@ -33,12 +33,17 @@
     let thumbsOn = true;
     let shown = true;
 
-    // Grid on / off
-    const tog = h('button', 'vg-toggle', 'Grid');
-    tog.type = 'button';
-    tog.title = 'Grid on: tiles. Grid off: a list.';
-    tog.addEventListener('click', () => { gridOn = !gridOn; try { opts.onGrid && opts.onGrid(gridOn); } catch {} render(); });
-    controls.append(tog);
+    // Grid | List: which of the two views is showing is always visible.
+    const seg = h('div', 'vg-seg');
+    seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', 'View');
+    const segBtns = [['grid', 'Grid', 'Tiles'], ['list', 'List', 'One row per input']].map(([k, label, tip]) => {
+      const b = h('button', 'vg-seg-btn', label);
+      b.type = 'button'; b.title = tip;
+      b.addEventListener('click', () => { const on = k === 'grid'; if (on === gridOn) return; gridOn = on; try { opts.onGrid && opts.onGrid(gridOn); } catch {} render(); });
+      seg.appendChild(b);
+      return [k, b];
+    });
+    controls.append(seg);
 
     const plug = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2v5M15 2v5M7 7h10v4a5 5 0 0 1-10 0V7zM12 16v6"/></svg>';
 
@@ -49,12 +54,12 @@
       t.tabIndex = 0;
       t.setAttribute('role', 'button');
       t.setAttribute('aria-label', `${source.name}. ${why}. Choose a device for this input`);
-      t.title = 'Choose a device';
       const mid = h('div', 'vg-empty-mid');
       mid.innerHTML = plug;
       mid.appendChild(h('span', 'vg-empty-why', why));
       t.appendChild(mid);
       t.appendChild(h('div', 'vg-name', source.name));
+      t.appendChild(h('span', 'vg-state', why));
       const go = () => { if (opts.onPlaceholder) opts.onPlaceholder(source, t); };
       t.addEventListener('click', go);
       t.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
@@ -106,6 +111,7 @@
       if (index < 9) t.appendChild(h('span', 'vg-key', String(index + 1)));
       if (onAir) t.appendChild(h('span', 'vg-flag vg-flag-pgm', 'On air'));
       else if (staged) t.appendChild(h('span', 'vg-flag vg-flag-pvw', 'Preview'));
+      t.appendChild(h('span', 'vg-state', onAir ? 'On air' : staged ? 'Preview' : 'Ready'));
       const pv = h('button', 'vg-pvw', 'Preview'); pv.type = 'button'; pv.title = `Stage ${source.name} on Preview`;
       pv.addEventListener('click', (e) => { e.stopPropagation(); opts.onPreview(source.id); });
       t.appendChild(pv);
@@ -143,8 +149,7 @@
         el.appendChild(add);
       }
       old.forEach(release => release());
-      tog.classList.toggle('is-on', gridOn);
-      tog.setAttribute('aria-pressed', String(gridOn));
+      segBtns.forEach(([k, b]) => { const on = (k === 'grid') === gridOn; b.classList.toggle('is-on', on); b.setAttribute('aria-pressed', String(on)); });
     }
 
     // Tiles run only while the grid is on screen and the window is visible.
