@@ -656,7 +656,7 @@
                     </div>
                 </div>
                 <!-- The audio lane: music or a stinger playing apart from the slides.
-                     Hidden until a track is loaded (Outputs → Audio Output). -->
+                     Hidden until a track is loaded (Settings → Audio). -->
                 <div class="rs-audio-strip hidden" id="audio-lane-strip">
                     <button id="al-prev" class="ls-icon-btn" title="Previous track">&#9198;</button>
                     <button id="al-play" class="ls-icon-btn" title="Play / Pause">&#9654;</button>
@@ -1593,14 +1593,36 @@
                                 </ul>
                                 <p>The <strong>Monitor</strong> (right side, under Clear Bible) shows exactly what each output is showing right now. Pick <strong>Main</strong> or any output that's on from its list, or use the grid button to see them all side by side — click a tile to watch just that one. The arrow button opens the monitor in its own window, about the size of Settings: resize or move it as you like; it stays above Kairo while you keep working.</p>
                                 <p>Each NDI/Syphon output also has its own configurable resolution and network/source name, editable any time under its detail panel.</p>
+                                <p><strong>Output Control</strong> (further down the same page) has one card per output with a switch for each kind of content: Scripture, Slides and songs, Timer, Media, Overlays, and Words only. Each card ends with one sentence saying what that output shows and what is hidden. <em>Copy from…</em> copies another output's choices. A Monitor always shows words only, so Media is dimmed there.</p>
                                 <p><strong>Output layers</strong>, bottom to top: <strong>Media</strong> (background image or video), <strong>Slide</strong>, <strong>Bible</strong>. When a scripture goes up — called by the preacher or sent by you — it covers the live slide without ending it, and your view stays where it is. Slides that follow along while listening keep the slide underneath up to date. <strong>Clear Bible</strong> (lit while a scripture covers a slide) brings that slide back; <strong>Clear Slide</strong> removes only the slide; clicking a slide yourself sends it straight out.</p>
+                            </div>
+                        </details>
+
+                        <details class="help-group">
+                            <summary>Background music and overlays</summary>
+                            <div class="help-body">
+                                <p><strong>Background music</strong> (<strong>Settings → Audio → Sound output</strong>) plays on its own while slides, scripture and video change. Add sound files with <strong>+ Add music</strong>, then play them there or from the small player that appears under the Monitor. Choose what happens after a track (stop, repeat all, repeat one), a fade length, whether the music lowers under a video with sound, and whether it starts when Kairo opens. <em>Play on</em> picks the sound device. Remote controls (OSC) can play, pause, stop, skip and fade it out.</p>
+                                <p><strong>Overlays</strong> (<strong>Settings → Overlays</strong>) are pictures and videos that sit on top of everything on the screens, like a logo, a "Live" badge or a lower-third. Add any number with <strong>+ Add overlay</strong> (png, jpg, gif, webp, svg, mp4, webm, mov). Switch each on or off, drag it in the preview or use the sliders for size, position and opacity, and choose whether it shows when Kairo opens. <strong>Sets</strong> group overlays, for example one for a special service: switch a whole set on together without touching the others. Which outputs show overlays is set under Output Control.</p>
+                            </div>
+                        </details>
+
+                        <details class="help-group">
+                            <summary>Director mode</summary>
+                            <div class="help-body">
+                                <p>Turn on <strong>Settings → Director mode</strong> to switch Kairo to a screen for cameras and inputs. The normal screen comes back when you turn it off.</p>
+                                <ul>
+                                    <li><strong>Inputs</strong> — your cameras and capture cards, as a grid of 2 or 4. Add them under <strong>Settings → Video Sources</strong>; an input can be a named placeholder before the device is connected. Click an input to put it on air; Shift-click stages it on Preview.</li>
+                                    <li><strong>Preview and Output</strong> — Preview is what is staged, Output is what is live. Under them: Take, Cut, Fade, Fade to black, the fade length and a slider to fade by hand, plus Undo.</li>
+                                    <li><strong>Scripture sends</strong> — search, the Bible, Theme and the Live Queue in one place. Detected verses go live as usual.</li>
+                                    <li><strong>Bottom half</strong> — the playlist, and the media bin with toggles for Slides, Video, Images, Music and Overlays.</li>
+                                </ul>
                             </div>
                         </details>
 
                         <details class="help-group">
                             <summary>Multi-language</summary>
                             <div class="help-body">
-                                <p>Under <strong>Settings → Language</strong>: <em>Spoken language</em> is what the preacher is actually speaking (drives transcription). <em>Scripture language</em> is what a matched verse displays in — install additional <strong>Scripture packs</strong> to add languages, downloaded once for offline use.</p>
+                                <p>Under <strong>Settings → Language</strong>: <em>Spoken language</em> is what the preacher is actually speaking (it drives transcription). <em>Scripture shows in</em> is the language a matched verse appears in, picked from the Bibles that come with Kairo, all of them working offline. If the preacher's language has a Bible and the screen isn't showing it, a line offers to switch. <em>Also show beside it</em> adds a second language next to the verse and on slides, for the Multi-Language theme. <em>Languages on this computer</em> lists each language's Bible (always included) and its slide translation, which is the one download.</p>
                                 <p>For a service preached in <strong>Spanish, Portuguese, French or German</strong>, set the spoken language and Kairo understands citations in that language ("Juan capítulo tres versículo dieciséis", "siguiente versículo") and matches verses read aloud against that language's Bible. Other spoken languages are transcribed, but detection follows English citations and readings.</p>
                                 <p><strong>Church vocabulary</strong> (same page) — names and words your services use that transcription may mishear: the pastor, the church, local places. One per line; used from the next Start Listening (English and auto-detect services).</p>
                                 <p><strong>Slide Translation Models</strong> are separate — they translate ordinary (non-scripture) slide/sermon text for the Multi-Language split theme, using a small bundled local model with no setup, API key, or internet connection required once downloaded.</p>
