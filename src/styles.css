@@ -8444,7 +8444,7 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 @container (min-width: 600px) {
   .settings-pane:not([data-pane="help"]):not([data-pane="outputs"]) .setting-group[data-arranged] {
     display: grid;
-    grid-template-columns: minmax(170px, 36%) 1fr;
+    grid-template-columns: minmax(150px, 30%) 1fr;
     column-gap: 28px;
     align-items: start;
   }
@@ -8453,6 +8453,8 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .setting-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .setting-copy .setting-hint { margin: 0; }
 .setting-control { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+/* The hint sits right under the control it explains, quiet and short. */
+.setting-control > .setting-hint { margin: -2px 0 0; font-size: 12px; line-height: 1.45; color: var(--text-3, #8b8b96); }
 
 #audio-out-host .setting-group { padding: 14px 0; border-top: 1px solid var(--border); }
 #audio-out-host > .setting-group:first-child { border-top: none; }
