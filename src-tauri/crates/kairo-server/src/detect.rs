@@ -30,6 +30,8 @@ pub struct Presentation {
     pub translation: String,
     pub language: String,
     pub auto_send: bool,
+    /// Video Director mode with Auto-send off: a detected verse is staged in Preview, never put on the Output.
+    pub hold: bool,
 }
 
 #[derive(Clone)]
@@ -194,6 +196,7 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
                 }
                 let mut list: Vec<Value> = verses.iter().map(|v| bible.verse_json(*v, score, method.wire())).collect();
                 let viewer = target == Target::Screen;
+                let held = viewer && p.hold;
                 if viewer {
                     bible.apply_translation(&mut list, &p.translation);
                     bible.apply_language(&mut list, &p.language);
@@ -203,9 +206,12 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
                     "verses": list,
                     "method": method.wire(),
                     "topScore": score,
-                    "target": if viewer { "viewer" } else { "suggestions" },
+                    "target": if viewer && !held { "viewer" } else { "suggestions" },
                     "timestamp": epoch_ms(),
                 });
+                if held {
+                    msg["staged"] = json!(true);
+                }
                 if let Some(from) = corrected_from {
                     msg["corrected"] = json!(true);
                     msg["correctedFrom"] = json!(bible.reference(from));
@@ -213,19 +219,19 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
                 eprintln!(
                     "[Detect] {} → {} ({} {score:.2}){}",
                     verses.iter().map(|v| bible.reference(*v)).collect::<Vec<_>>().join(", "),
-                    if viewer { "screen" } else { "Possible Matches" },
+                    if viewer && !held { "screen" } else if held { "staged" } else { "Possible Matches" },
                     method.wire(),
                     corrected_from.map_or(String::new(), |f| format!(", corrects {}", bible.reference(f)))
                 );
                 hub.broadcast(msg);
                 crate::routes::write_debug_global("server:detect", json!({
                     "verses": verses.iter().map(|v| bible.reference(*v)).collect::<Vec<_>>(),
-                    "target": if viewer { "screen" } else { "suggestions" },
+                    "target": if held { "staged" } else if viewer { "screen" } else { "suggestions" },
                     "method": method.wire(),
                     "score": (score * 100.0).round() / 100.0,
                     "correctsFrom": corrected_from.map(|f| bible.reference(f)),
                 }));
-                if viewer && p.auto_send {
+                if viewer && p.auto_send && !held {
                     hub.set_bible_on_top(true);
                     let how = crate::notes::How::of(method.wire());
                     let at = epoch_ms();

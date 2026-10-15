@@ -169,6 +169,40 @@
     L.np = { pop, home, node, off, esc };
   }
 
+  // The Auto badge becomes a real switch in Director mode. It reads and writes the same
+  // setting as Settings > Bible, so the two never disagree. Returns an undo function.
+  function makeAutoSwitch(badge) {
+    if (!badge) return null;
+    const isOn = () => (typeof settings !== 'undefined' ? settings.autoSend !== false : !badge.classList.contains('off'));
+    const sync = () => badge.setAttribute('aria-checked', String(isOn()));
+    const flip = () => {
+      const next = !isOn();
+      if (typeof settings !== 'undefined') settings.autoSend = next;
+      const box = document.getElementById('auto-send-settings'); if (box) box.checked = next;
+      if (typeof updateAutoDeployBadge === 'function') updateAutoDeployBadge();
+      if (typeof saveSettingsPatch === 'function') saveSettingsPatch({ autoSend: next });
+      sync();
+    };
+    const onClick = (e) => { e.preventDefault(); flip(); };
+    const onKey = (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); flip(); } };
+    badge.setAttribute('role', 'switch');
+    badge.setAttribute('tabindex', '0');
+    badge.setAttribute('aria-label', 'Auto-send verses');
+    badge.classList.add('vd-auto-switch');
+    badge.addEventListener('click', onClick);
+    badge.addEventListener('keydown', onKey);
+    const obs = new MutationObserver(sync);
+    obs.observe(badge, { attributes: true, attributeFilter: ['class'] });
+    sync();
+    return () => {
+      obs.disconnect();
+      badge.removeEventListener('click', onClick);
+      badge.removeEventListener('keydown', onKey);
+      ['role', 'tabindex', 'aria-label', 'aria-checked'].forEach(a => badge.removeAttribute(a));
+      badge.classList.remove('vd-auto-switch');
+    };
+  }
+
   function fillSends(host) {
     if (!host || L.sends) return;
     const parts = [document.querySelector('.cs-lookup'), document.getElementById('live-queue-section')].filter(Boolean);
@@ -183,8 +217,8 @@
     title.textContent = 'Scripture sends';
     head.appendChild(title);
     // Auto-deploy beside the title (the queue has no header of its own).
+    S.auto = makeAutoSwitch(document.getElementById('cs-auto-badge'));
     moveTo(document.getElementById('cs-auto-badge'), head);
-    moveTo(document.getElementById('translation-select'), head);
     const theme = document.getElementById('bible-theme-btn');
     if (theme) { S.themeTitle = theme.title; theme.title = 'Theme'; theme.setAttribute('aria-label', 'Theme'); moveTo(theme, head); }
     const spacer = document.createElement('span'); spacer.className = 'vd-sends-spacer'; head.appendChild(spacer);
@@ -234,6 +268,7 @@
     closePop();
     const { parts, queueEl, queueLabel, head, foot, themeTitle, monObs } = L.sends;
     monObs && monObs.disconnect();
+    L.sends.auto && L.sends.auto();
     if (queueEl) queueEl.textContent = queueLabel;
     const theme = document.getElementById('bible-theme-btn');
     if (theme) { theme.title = themeTitle || ''; theme.removeAttribute('aria-label'); }
