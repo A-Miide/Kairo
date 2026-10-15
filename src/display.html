@@ -86,7 +86,7 @@
         #slide-layer { z-index: 1; }
         #timer-layer { z-index: 2; pointer-events: none; }
         /* Overlays (logo, bug, lower-third picture) sit above everything. */
-        #overlay-layer { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
+        #overlay-layer { position: fixed; inset: 0; z-index: 5; pointer-events: none; overflow: hidden; }
         #overlay-layer .kairo-overlay { position: absolute; height: auto; transform: translate(-50%, -50%); transition: opacity 300ms ease; }
         #timer-layer:empty { display: none; }
         #media-layer video, #media-layer img {
@@ -198,6 +198,7 @@
         body[data-mode="text"] #media-layer { display: none; }
         body[data-mode="confidence"] { background: #000 !important; }
         body[data-mode="confidence"] #stage,
+        body[data-mode="confidence"] #overlay-layer,
         body[data-mode="confidence"] #timer-badge,
         body[data-mode="confidence"] #clock-badge,
         body[data-mode="confidence"] #kairo-label { display: none !important; }
@@ -206,7 +207,7 @@
         /* Multiview (Video director mode): the input grid full screen, read-only. */
         #multiview-view { display: none; }
         body[data-mode="multiview"] { background: #000 !important; }
-        body[data-mode="multiview"] #stage, body[data-mode="multiview"] #video-layer,
+        body[data-mode="multiview"] #stage, body[data-mode="multiview"] #video-layer, body[data-mode="multiview"] #overlay-layer,
         body[data-mode="multiview"] #timer-badge, body[data-mode="multiview"] #clock-badge,
         body[data-mode="multiview"] #kairo-label, body[data-mode="multiview"] #confidence-view { display: none !important; }
         body[data-mode="multiview"] #multiview-view { display: block; position: fixed; inset: 0; z-index: 1; padding: 2vh 2vw; background: #000; overflow: hidden; }
@@ -309,8 +310,9 @@
         <div id="media-layer"></div>
         <div id="slide-layer"></div>
         <div id="timer-layer"></div>
-        <div id="overlay-layer"></div>
     </div>
+    <!-- Overlays sit above everything, including the video zone: outside #stage, on top. -->
+    <div id="overlay-layer"></div>
     <div id="kairo-label">KAIRO</div>
     <div id="conn-status" class="visible reconnecting">Connecting…</div>
     <div id="timer-badge" class="hidden"></div>
