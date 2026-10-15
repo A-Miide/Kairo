@@ -106,7 +106,7 @@
     const head = el('div', 'st-dest-head');
     const title = el('div', 'st-dest-title');
     title.appendChild(el('span', 'st-dest-name', d.name || p.label));
-    title.appendChild(el('span', 'st-dest-kind', p.label));
+    if ((d.name || p.label) !== p.label) title.appendChild(el('span', 'st-dest-kind', p.label));
     head.appendChild(title);
     const actions = el('div', 'st-dest-actions');
     const test = el('button', 'modal-btn secondary', checking[d.id] === 'checking' ? 'Checking…' : 'Check');
@@ -250,6 +250,7 @@
     #streaming-panel { display: flex; flex-direction: column; gap: 14px; }
     .st-card { border: 1px solid var(--border); border-radius: var(--radius-lg); background: rgba(255,255,255,0.015); }
     .st-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+    .st-card-head .modal-btn { white-space: nowrap; flex: none; }
     .st-card-title { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim, var(--text)); }
     .st-card-body { padding: 4px 16px 12px; display: flex; flex-direction: column; }
     .st-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--border); }
