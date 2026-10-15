@@ -2571,6 +2571,7 @@ async function loadSettings() {
     // Outputs — one unified master-detail render (see renderOutputsPane's
     // own comment for the full list of what this replaced).
     renderOutputsPane();
+    if (typeof initVideoSources === 'function') initVideoSources();
     // Push the resolved per-output theme/layer maps to the server now, not
     // just whenever a theme/display setting is next touched —
     // applyOutputThemes() was previously only ever called as a side effect

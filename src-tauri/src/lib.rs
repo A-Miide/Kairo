@@ -135,6 +135,7 @@ fn build_app_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry
     let view_menu = view_builder
         .separator()
         .text("menu-monitor-grid", "Show or Hide All Outputs in the Monitor")
+        .item(&MenuItemBuilder::with_id("menu-video-director", "Video Director Mode").accelerator("CmdOrCtrl+Shift+D").build(app)?)
         .separator()
         .fullscreen()
         .build()?;
@@ -296,9 +297,11 @@ fn pick_free_port() -> u16 {
     // from "not running". Always use 7777 in dev; only probe/fall back to a
     // random free port in a release build, where this process's own sidecar
     // spawn (below) is what's actually claiming that port.
+    // KAIRO_SERVER_PORT (the same variable the server reads) lets a second dev
+    // copy run beside the first on another port.
     #[cfg(debug_assertions)]
     {
-        return 7777;
+        return std::env::var("KAIRO_SERVER_PORT").ok().and_then(|p| p.parse().ok()).unwrap_or(7777);
     }
     #[cfg(not(debug_assertions))]
     {
