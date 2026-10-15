@@ -459,16 +459,28 @@
     // The group picks its own arrangement from the room it has: the two panes in a row or
     // stacked, and the transition cluster under them or in a column beside them, whichever
     // gives the biggest 16:9 panes. (It answers to the group's size, not the window's.)
-    const head = 28, gap = 8, colW = 132, under = 46;
+    const head = 28, gap = 8, colW = 132;
     const wide = w >= 520;
+    // The cluster is one row (left 170 + Send to screen + right 165 + gaps) or, when that does not
+    // fit, Send to screen on a row of its own with the rest centred under it.
+    const SIDES = 360, ROW = 46, WRAP = 88;
+    const sendFor = (stack, fw) => (stack ? Math.min(Math.max(fw, 200), 300) : fw + gap);
+    const mkUnder = (stack) => {
+      const fwOf = (u) => (stack ? Math.min(w, ((h - u - head * 2 - gap) / 2) * 16 / 9) : Math.min((w - gap) / 2, (h - head - u) * 16 / 9));
+      let fw = fwOf(ROW), wrap = false;
+      if (w < SIDES + sendFor(stack, fw)) { fw = fwOf(WRAP); wrap = true; }
+      return { stack, beside: false, ok: wide, fw, wrap };
+    };
     const options = [
-      { stack: false, beside: false, ok: wide, fw: Math.min((w - gap) / 2, (h - head - under) * 16 / 9) },
+      mkUnder(false),
       { stack: false, beside: true, ok: true, fw: Math.min((w - colW - gap * 2) / 2, (h - head) * 16 / 9) },
-      { stack: true, beside: false, ok: wide, fw: Math.min(w, ((h - under - head * 2 - gap) / 2) * 16 / 9) },
+      mkUnder(true),
       { stack: true, beside: true, ok: true, fw: Math.min(w - colW - gap, ((h - head * 2 - gap) / 2) * 16 / 9) },
     ].filter(o => o.ok);
     let best = options[0];
     for (const o of options) if (o.fw > best.fw * 1.04) best = o;   // a clear gain, else keep the simpler one
+    band.classList.toggle('is-wrap', !!best.wrap);
+    band.style.setProperty('--vd-sendw', Math.round(sendFor(best.stack, best.fw)) + 'px');
     band.classList.toggle('is-stack', best.stack);
     band.classList.toggle('is-beside', best.beside);
     band.style.setProperty('--vd-fw', Math.max(80, Math.floor(best.fw)) + 'px');
@@ -543,19 +555,19 @@
     const bar = vEl('div', 'vd-transbar');
     bar.setAttribute('role', 'group');
     bar.setAttribute('aria-label', 'Transition');
-    // One row under the displays: Take (primary), how it goes (Cut | Fade), Fade to black, the
-    // fade length and Undo. No hover tooltips here: they would cover the neighbouring buttons.
+    // One centred row under the displays: how it goes (Cut | Fade, with the fade length attached to
+    // Fade) on the left, "Send to screen" in the middle, and the quiet Fade to black and Undo on the
+    // right. No hover tooltips here: they would cover the neighbouring buttons.
     const bare = (b, label) => { b.removeAttribute('title'); b.setAttribute('aria-label', label); return b; };
-    D.ui.take = bare(vBtn('Take', '', takeStaged, 'vd-take vd-take-main'), 'Take: send Preview to Output (Space)');
-    D.ui.cut = bare(vBtn('Cut', '', () => { setTransition('cut'); refresh(); }, 'vd-take'), 'Take with a cut');
-    D.ui.fade = bare(vBtn('Fade', '', () => { setTransition('fade'); refresh(); }, 'vd-take'), 'Take with a fade');
+    D.ui.take = bare(vBtn('', '', takeStaged, 'vd-take vd-send'), 'Send to screen: send Preview to the Output (Space)');
+    D.ui.take.append(vEl('span', 'vd-send-text', 'Send to screen'), vEl('span', 'vd-send-key', 'Space'));
+    D.ui.cut = bare(vBtn('Cut', '', () => { setTransition('cut'); refresh(); }, 'vd-take'), 'Send with a cut');
+    D.ui.fade = bare(vBtn('Fade', '', () => { setTransition('fade'); refresh(); }, 'vd-take'), 'Send with a fade');
     const seg2 = vEl('div', 'vd-seg2');
     seg2.setAttribute('role', 'group'); seg2.setAttribute('aria-label', 'Transition');
-    seg2.append(D.ui.cut, D.ui.fade);
-    D.ui.black = bare(vBtn('Fade to black', '', fadeToBlack, 'vd-take'), 'Fade to black: no video, and the verse, slide and timer come down');
+    D.ui.black = bare(vBtn('Fade to black', '', fadeToBlack, 'vd-take vd-quiet'), 'Fade to black: no video, and the verse, slide and timer come down');
     D.ui.blackText = D.ui.black.firstChild;
     const dur = vEl('label', 'vd-dur');
-    dur.appendChild(vEl('span', 'vd-bar-label', 'Length'));
     const durIn = vEl('input'); durIn.type = 'number'; durIn.min = '0'; durIn.max = '5000'; durIn.step = '50'; durIn.value = String(fadeMs());
     durIn.setAttribute('aria-label', 'Fade length in milliseconds');
     durIn.addEventListener('change', () => {
@@ -563,10 +575,14 @@
       durIn.value = String(n);
       settings.videoFadeMs = n; saveSettingsPatch({ videoFadeMs: n }); publishFade();
     });
-    dur.append(durIn, vEl('span', 'vd-bar-label', 'ms'));
-    D.ui.undo = bare(vBtn('Undo', '', undo, 'vd-take'), 'Undo the last take (Cmd/Ctrl+Z)');
+    dur.append(durIn, vEl('span', 'vd-dur-unit', 'ms'));
+    D.ui.dur = dur;
+    seg2.append(D.ui.cut, D.ui.fade, dur);
+    D.ui.undo = bare(vBtn('Undo', '', undo, 'vd-take vd-quiet'), 'Undo the last send (Cmd/Ctrl+Z)');
     const cluster = vEl('div', 'vd-cluster');
-    cluster.append(D.ui.take, seg2, D.ui.black, dur, D.ui.undo);
+    const left = vEl('div', 'vd-cl-left'); left.append(seg2);
+    const right = vEl('div', 'vd-cl-right'); right.append(D.ui.black, D.ui.undo);
+    cluster.append(left, D.ui.take, right);
     bar.append(cluster);
     D.ui.strip = bar;
 
@@ -584,11 +600,10 @@
     displays.setAttribute('aria-label', 'Displays');
     const dhead = vEl('div', 'vd-gh');
     dhead.appendChild(vEl('span', 'vd-label vd-gh-title', 'Displays'));
-    // Looks (a dialog) and the verse text transition (a small popover) sit beside the title.
+    // Looks (a dialog) sits beside the title.
     const dctl = vEl('div', 'vd-gh-ctl');
-    const verseBtn = vBtn('Verse text', 'How verse text arrives', (e) => window.KairoVideoLayout?.nodePopover(e.currentTarget, document.getElementById('rs-transition-bar')), 'vd-mini');
     const looksBtn = vBtn('Looks', 'Saved Preview setups', () => D.looks && D.looks.open(), 'vd-mini');
-    dctl.append(looksBtn, verseBtn);
+    dctl.append(looksBtn);
     dhead.appendChild(dctl);
     displays.append(dhead, band);
 
@@ -726,11 +741,12 @@
     if (D.frames.pvw) D.frames.pvw.name.textContent = pvwSource ? pvwSource.name : '';
     const canTake = ps.on.length > 0;
     const cur = transitionPref();
+    if (D.ui.dur) D.ui.dur.hidden = transitionPref() !== 'fade';   // the length belongs to Fade
     for (const [btn, mode] of [[D.ui.cut, 'cut'], [D.ui.fade, 'fade']]) {
       btn.classList.toggle('is-current', mode === cur);
       btn.setAttribute('aria-pressed', String(mode === cur));
     }
-    // Take is live when there is a verse or slide staged, or a Preview source that differs from Output.
+    // Send to screen is live when there is a verse or slide staged, or a Preview source that differs from Output.
     const videoDiff = canTake && (D.previewId || null) !== (ps.mixed ? undefined : (ps.id || null));
     D.ui.take.disabled = !(D.staged || videoDiff || D.pendingLook);
     D.looks && D.looks.render();
@@ -795,7 +811,7 @@
     videoOutputs().forEach(o => {
       card.appendChild(row(`Video on ${o.name}`, 'Show the live input behind scripture.', !!(layers[o.id] && layers[o.id].video), (on) => setOutputLayer(o.id, 'video', on)));
     });
-    card.appendChild(row('Stage sends on Preview', 'Verses you send by hand wait for Take.', stageManual(), (on) => {
+    card.appendChild(row('Stage sends on Preview', 'Verses you send by hand wait until you send them to the screen.', stageManual(), (on) => {
       settings.videoStageManual = on;
       saveSettingsPatch({ videoStageManual: on });
     }));
