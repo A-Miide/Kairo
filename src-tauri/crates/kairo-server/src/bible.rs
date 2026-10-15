@@ -109,6 +109,13 @@ impl Bible {
         if downloaded.is_file() { downloaded } else { self.db_dir.join("packs").join(format!("{lang}.json")) }
     }
 
+    /// One verse's text in a language's Bible (a downloaded or bundled pack), if it has it.
+    pub fn pack_verse(&self, lang: &str, book: &str, chapter: u64, verse: u64) -> Option<String> {
+        let id = self.find(book, chapter, verse)?;
+        let pack = self.pack(&self.languages, lang, self.pack_path(lang))?;
+        pack.get(&self.reference(id)).cloned()
+    }
+
     pub fn user_packs_dir(&self) -> &std::path::Path {
         &self.user_packs
     }

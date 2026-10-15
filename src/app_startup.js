@@ -153,7 +153,25 @@ const REMOTE_ACTIONS = [
   { id: 'audio-prev',     label: 'Audio: previous track',  run: () => window.KairoAudioLane?.prev() },
   { id: 'overlays-off',    label: 'Overlays: turn all off', run: () => { fetch(`${SERVER}/api/overlays/clear`, { method: 'POST' }).catch(() => {}); } },
   { id: 'audio-fade-out', label: 'Audio: fade out and stop', run: () => window.KairoAudioLane?.fadeOut() },
+  // Director mode (video_director.js). Each does nothing unless Director mode is on.
+  { id: 'director-send',          label: 'Director: Send Preview to the screen', run: () => directorDo('send') },
+  { id: 'director-fade-to-black', label: 'Director: Fade to black',              run: () => directorDo('fadeToBlack') },
+  { id: 'director-undo',          label: 'Director: Undo',                       run: () => directorDo('undo') },
+  { id: 'auto-send-on',           label: 'Auto-send verses: on',                 run: () => setAutoSend(true) },
+  { id: 'auto-send-off',          label: 'Auto-send verses: off',                run: () => setAutoSend(false) },
+  ...Array.from({ length: 9 }, (_, i) => ({ id: `director-layout-${i + 1}`, label: `Director: Layout ${i + 1} to Preview`, run: () => directorDo('loadLayout', i + 1) })),
+  ...Array.from({ length: 9 }, (_, i) => ({ id: `director-input-${i + 1}`,  label: `Director: Input ${i + 1} to the screen`, run: () => directorDo('sendInput', i + 1) })),
 ];
+function directorDo(fn, ...args) {
+  const d = window.KairoVideoDirector;
+  if (d && typeof d[fn] === 'function') d[fn](...args);
+}
+function setAutoSend(on) {
+  settings.autoSend = !!on;
+  saveSettingsPatch({ autoSend: settings.autoSend });
+  const box = document.getElementById('auto-send-settings'); if (box) box.checked = settings.autoSend;
+  if (typeof updateAutoDeployBadge === 'function') updateAutoDeployBadge();
+}
 
 function runRemoteAction(id) {
   const action = REMOTE_ACTIONS.find(a => a.id === id);
