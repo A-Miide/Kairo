@@ -24,6 +24,8 @@ pub const CORROBORATING_QUOTE_COVERAGE: f32 = 0.5;
 /// A near-complete quote is the verse being said; the on-screen comparison doesn't apply.
 const ON_SCREEN_GUARD_MAX_COVERAGE: f32 = 0.8;
 /// A chapter just named holds text matches elsewhere this long.
+/// How long a book just named, numbers still to come, holds back readings of other books.
+const CITATION_PENDING_MS: u64 = 8_000;
 const CHAPTER_NAMED_HOLD_MS: u64 = 30_000;
 const VERBATIM_AUTOSEND_MIN: f32 = 0.95;
 /// "The newest speech" is at least this many words (one Deepgram sentence;
@@ -321,8 +323,31 @@ impl Engine {
         if self.chapter_just_named_elsewhere(top, c, now) {
             return true;
         }
+        if self.citation_pending_elsewhere(top, now) {
+            return true;
+        }
         let near_complete = c.method == Method::Verbatim && c.evidence.similarity.unwrap_or(0.0) >= ON_SCREEN_GUARD_MAX_COVERAGE;
         !near_complete && self.on_screen_explains_speech_better(top, c.source.as_deref(), now)
+    }
+
+    /// The preacher has just named a book and its numbers are still coming ("…presses into
+    /// his inheritance. Luke — 16:16"): a reading of a verse in another book waits for the
+    /// citation instead of going up first (Matthew 11:12 is Luke 16:16's twin).
+    fn citation_pending_elsewhere(&self, v: VerseId, now: u64) -> bool {
+        let Some(last) = self.t.finals.back() else { return false };
+        if now.saturating_sub(last.at) > CITATION_PENDING_MS {
+            return false;
+        }
+        // The last word heard was a book's name…
+        let Some(word) = last.text.split_whitespace().last() else { return false };
+        let word: String = word.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
+        let Some(book) = self.k.books.alias(&word) else { return false };
+        // …and what is being said now starts with its numbers.
+        let first = self.t.interim.split_whitespace().next().unwrap_or("");
+        if !(first.starts_with(|c: char| c.is_ascii_digit()) || first.eq_ignore_ascii_case("chapter")) {
+            return false;
+        }
+        self.r(v).book != book
     }
 
     fn chapter_just_named_elsewhere(&self, v: VerseId, c: &Candidate, now: u64) -> bool {

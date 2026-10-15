@@ -34,7 +34,7 @@ pub(crate) struct Match {
 
 /// The newest words name a book with no number after it yet: a citation
 /// is being spoken.
-fn ends_naming_a_book(source: &str, books: &crate::reference::Books, lang: crate::reference::Lang) -> bool {
+pub(crate) fn ends_naming_a_book(source: &str, books: &crate::reference::Books, lang: crate::reference::Lang) -> bool {
     const NUMBER: &[&str] = &["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty", "hundred", "chapter", "verse"];
     let words: Vec<String> = source.split_whitespace().map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase()).filter(|w| !w.is_empty()).collect();
     let Some(last) = words.last() else { return false };
