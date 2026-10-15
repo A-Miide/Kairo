@@ -3,7 +3,9 @@
 // Playlist (left): only the playlist: its switcher and New button and the list
 // of items, the same list as the sidebar on the normal screen (moved here while
 // the mode is on). Choosing an item selects it instead of opening it.
-// Media bin (right): chips for Slides, Video, Images, Music and Overlays.
+// Media bin (right): toggles for Slides, Video, Images, Music and Overlays, each
+// switching that kind of content on or off in the bin (several at once, Slides
+// on to begin with, remembered).
 // Slides shows the selected playlist item's slides (songs and scripture too),
 // and a click sends one through the playlist's own sendSlide. Video and Images
 // reuse the Media Bin's own cards, Music plays through the audio lane, and
@@ -14,7 +16,7 @@
   const K = {
     mounted: false, root: null,
     pl: { body: null, obs: null, headHome: null, listHome: null, click: null },
-    md: { chips: null, body: null, kind: 'slides', laneOff: null },
+    md: { chips: null, body: null, kinds: new Set(['slides']), laneOff: null },
     selId: null,                // the playlist item whose slides the Slides chip shows
     binHome: null, binToggled: false,
   };
@@ -27,19 +29,33 @@
     ['overlays', 'Overlays', () => !!(window.KairoOverlays && window.KairoOverlays.load)],
   ];
 
-  function chipRow(host, list, current, onPick) {
-    host.replaceChildren();
-    list.forEach(([id, label]) => {
-      const b = vBtn(label, `Show ${label.toLowerCase()}`, () => onPick(id), 'vd-chip' + (current === id ? ' is-on' : ''));
-      b.setAttribute('aria-pressed', String(current === id));
-      host.appendChild(b);
+  const KINDS_KEY = 'kairo-vd-media-kinds';
+  function loadKinds() {
+    try {
+      const v = JSON.parse(localStorage.getItem(KINDS_KEY) || 'null');
+      if (Array.isArray(v)) return new Set(v.filter(k => MD_CHIPS.some(c => c[0] === k)));
+    } catch {}
+    return new Set(['slides']);
+  }
+  function saveKinds() { try { localStorage.setItem(KINDS_KEY, JSON.stringify([...K.md.kinds])); } catch {} }
+
+  function toggleRow() {
+    K.md.chips.replaceChildren();
+    MD_CHIPS.filter(c => c[2]()).forEach(([id, label]) => {
+      const on = K.md.kinds.has(id);
+      const b = vBtn(label, `${on ? 'Hide' : 'Show'} ${label.toLowerCase()}`, () => {
+        if (K.md.kinds.has(id)) K.md.kinds.delete(id); else K.md.kinds.add(id);
+        saveKinds(); renderMedia();
+      }, 'vd-chip' + (on ? ' is-on' : ''));
+      b.setAttribute('aria-pressed', String(on));
+      K.md.chips.appendChild(b);
     });
   }
 
-  // For the Slides and Media tabs in the top bar.
+  // For the Slides and Media tabs in the top bar: turn that kind on.
   function show(id) {
     if (!K.mounted) return;
-    if (MD_CHIPS.some(c => c[0] === id && c[2]())) { K.md.kind = id; renderMedia(); }
+    if (MD_CHIPS.some(c => c[0] === id && c[2]())) { K.md.kinds.add(id); saveKinds(); renderMedia(); }
   }
 
   // ── Playlist: selection ──────────────────────────────────────────────────
@@ -53,7 +69,7 @@
   function select(id) {
     K.selId = id;
     markSelected();
-    if (K.md.kind !== 'slides') K.md.kind = 'slides';
+    if (!K.md.kinds.has('slides')) { K.md.kinds.add('slides'); saveKinds(); }
     renderMedia();
   }
 
@@ -83,34 +99,46 @@
     if (bin && K.binHome && K.binHome.parentNode && bin.parentNode !== K.binHome.parentNode) K.binHome.after(bin);
   }
 
+  // One section per kind that is on, all in the same tile size.
+  function section(kind, label) {
+    const sec = vEl('div', 'vd-kind');
+    sec.dataset.kind = kind;
+    sec.appendChild(vEl('span', 'vd-kind-head', label));
+    const tiles = vEl('div', 'vd-kind-tiles');
+    sec.appendChild(tiles);
+    K.md.body.appendChild(sec);
+    return tiles;
+  }
+
   function renderMedia() {
-    const avail = MD_CHIPS.filter(c => c[2]());
-    if (!avail.some(c => c[0] === K.md.kind)) K.md.kind = (avail[0] || [])[0];
-    chipRow(K.md.chips, avail.map(c => [c[0], c[1]]), K.md.kind, (id) => { K.md.kind = id; renderMedia(); });
+    toggleRow();
     K.md.laneOff && K.md.laneOff(); K.md.laneOff = null;
     releaseBin();
     const body = K.md.body;
     body.replaceChildren();
-    body.dataset.kind = K.md.kind;
-    if (K.md.kind === 'slides') renderSlides(body);
-    else if (K.md.kind === 'music') renderMusic(body);
-    else if (K.md.kind === 'overlays') renderOverlays(body);
-    else if (K.md.kind) renderBin(body);
+    const on = (id) => K.md.kinds.has(id) && MD_CHIPS.some(c => c[0] === id && c[2]());
+    if (on('slides')) renderSlides(section('slides', 'Slides'));
+    if (on('video') || on('images')) renderBin(section('bin', on('video') && on('images') ? 'Video and images' : on('video') ? 'Video' : 'Images'), on('video'), on('images'));
+    if (on('music')) renderMusic(section('music', 'Music'));
+    if (on('overlays')) renderOverlays(section('overlays', 'Overlays'));
+    if (!body.children.length) body.appendChild(vEl('p', 'vd-empty', 'Switch on what you want to see.'));
   }
 
-  function renderBin(body) {
+  function renderBin(body, video, images) {
     const bin = document.getElementById('media-bin');
     if (!bin) return;
     if (!K.binHome) { K.binHome = document.createComment('media-bin'); bin.before(K.binHome); }
     // If the operator had hidden the bin, show it so it loads its items.
     if (bin.classList.contains('hidden')) { document.getElementById('media-bin-toggle-btn')?.click(); K.binToggled = true; }
+    // Which of its cards show: videos carry a badge, images do not.
+    body.parentElement.dataset.show = video && images ? 'both' : video ? 'video' : 'images';
     body.appendChild(bin);
   }
 
   function renderMusic(body) {
     const lane = window.KairoAudioLane;
     const draw = () => {
-      if (!K.mounted || K.md.kind !== 'music') return;
+      if (!K.mounted || !K.md.kinds.has('music') || !body.isConnected) return;
       body.replaceChildren();
       const st = lane.state();
       if (!lane.tracks.length) { body.appendChild(vEl('p', 'vd-empty', 'No music yet. Add some in Settings, Audio.')); return; }
@@ -133,7 +161,7 @@
     body.appendChild(vEl('p', 'vd-empty', 'Loading overlays'));
     let items = [];
     try { items = await window.KairoOverlays.load(); } catch {}
-    if (K.md.kind !== 'overlays' || !K.mounted) return;
+    if (!K.md.kinds.has('overlays') || !K.mounted || !body.isConnected) return;
     body.replaceChildren();
     if (!items.length) { body.appendChild(vEl('p', 'vd-empty', 'No overlays yet. Add some in Settings, Overlays.')); return; }
     items.forEach(o => {
@@ -193,6 +221,7 @@
     K.md.chips.setAttribute('role', 'group'); K.md.chips.setAttribute('aria-label', 'Media filter');
     mdHead.appendChild(K.md.chips);
     K.md.body = vEl('div', 'vd-media-body');
+    K.md.kinds = loadKinds();
     md.append(mdHead, K.md.body);
 
     host.append(pl, md);
@@ -200,7 +229,7 @@
     markSelected();
     renderMedia();
     // The playlist changes while the mode is on: items added or removed, slides edited.
-    if (list) { K.pl.obs = new MutationObserver(() => { markSelected(); if (K.md.kind === 'slides') renderMedia(); }); K.pl.obs.observe(list, { childList: true }); }
+    if (list) { K.pl.obs = new MutationObserver(() => { markSelected(); if (K.md.kinds.has('slides')) renderMedia(); }); K.pl.obs.observe(list, { childList: true }); }
   }
 
   function unmount() {
