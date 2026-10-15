@@ -1297,7 +1297,7 @@
                             <button class="toggle-btn active" data-engine="deepgram">Deepgram</button>
                             <button class="toggle-btn" data-engine="browser">Offline</button>
                         </div>
-                        <p class="setting-hint" id="speech-engine-hint">Higher accuracy, requires an API key. New Deepgram accounts start with $200 of free credit — about 370 hours of listening.</p>
+                        <p class="setting-hint" id="speech-engine-hint">Most accurate. Needs a Deepgram key ($200 free credit to start).</p>
                     </div>
 
                     <!-- Offline model installer — shown only when "Offline" engine is selected.
@@ -1354,7 +1354,6 @@
                                 <span class="input-level-status" id="input-level-status"></span>
                             </div>
                             <p class="setting-hint input-missing" id="audio-input-missing" hidden></p>
-                            <p class="setting-hint">The line-in or interface feed the app listens to.</p>
                         </div>
 
                     </div>
@@ -2208,8 +2207,8 @@
             var keyGrp  = document.getElementById('deepgram-key-group');
             if (!group) return;
             var HINTS = {
-                'deepgram': 'Higher accuracy, requires an API key. New Deepgram accounts start with $200 of free credit — about 370 hours of listening.',
-                'browser':  'Runs entirely on this computer — no internet, no API key. Accuracy is lower than Deepgram.',
+                'deepgram': 'Most accurate. Needs a Deepgram key ($200 free credit to start).',
+                'browser':  'Works without internet or a key. Less accurate than Deepgram.',
             };
             function apply(value) {
                 if (hint) hint.textContent = HINTS[value] || '';

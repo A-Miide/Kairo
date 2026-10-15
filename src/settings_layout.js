@@ -1,5 +1,5 @@
-// Puts each setting's name and hint together on the left and its control on
-// the right (see "Settings, row layout" in styles.css). Run once at start and
+// Puts each setting's name on the left and its control on the right, with the
+// setting's hint directly under the control it explains (see "Settings, row layout" in styles.css). Run once at start and
 // again whenever a settings pane draws new groups. Help and Outputs keep their
 // own layouts.
 (function () {
@@ -14,7 +14,7 @@
       const control = document.createElement('div');
       control.className = 'setting-control';
       Array.from(g.children).forEach((c) => {
-        if (c === label || (c.matches('.setting-hint') && !c.hidden && !c.classList.contains('input-missing'))) copy.appendChild(c);
+        if (c === label) copy.appendChild(c);
         else control.appendChild(c);
       });
       g.append(copy, control);

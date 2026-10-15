@@ -72,14 +72,16 @@
     s.addEventListener('change', () => onChange(s.value));
     return s;
   }
-  // A settings row: name and a one-line hint on the left, the control on the right.
+  // A settings row: the name on the left, the control on the right with its short hint
+  // right under it (the same as every other settings page).
   function row(name, hint, control) {
     const r = el('div', 'st-row');
     const t = el('div', 'st-text');
     t.appendChild(el('div', 'st-name', name));
-    if (hint) t.appendChild(el('p', 'setting-hint', hint));
-    r.append(t, el('div', 'st-control'));
-    r.lastChild.appendChild(control);
+    const c = el('div', 'st-control');
+    c.appendChild(control);
+    if (hint) c.appendChild(el('p', 'setting-hint st-hint', hint));
+    r.append(t, c);
     return r;
   }
 
@@ -284,8 +286,12 @@
     .st-row:last-child { border-bottom: 0; }
     .st-name { font-size: 13px; font-weight: 600; color: var(--text); }
     .st-text .setting-hint { margin: 2px 0 0; }
-    .st-control { flex: none; min-width: 200px; display: flex; justify-content: flex-end; }
+    .st-row { align-items: flex-start; }
+    .st-name { padding-top: 8px; }
+    .st-control { flex: none; width: 260px; display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
     .st-control .setting-input { width: 100%; }
+    .st-control .output-toggle { align-self: flex-end; }
+    .st-hint { margin: 0; font-size: 12px; color: var(--text-3, #8b8b96); }
     .st-dest { border: 1px solid var(--border); border-radius: var(--radius-md, 10px); padding: 12px 14px; margin: 10px 0 0; }
     .st-dest.off { opacity: 0.6; }
     .st-dest-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
