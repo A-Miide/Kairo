@@ -107,8 +107,12 @@
   }
   function syncPreviewFrame() {
     post('pvw', { type: 'vd-source', sourceId: D.previewId });
-    if (D.staged) post('pvw', { type: 'detection', target: 'viewer', verses: [D.staged.verse], look: D.staged.look || null });
-    else post('pvw', { type: 'clear' });
+    if (D.staged && D.staged.media) {
+      const m = D.staged.media;
+      post('pvw', { type: 'clear' });
+      post('pvw', { type: 'media', target: 'viewer', src: m.src, kind: m.kind, fit: m.fit });
+    } else if (D.staged) post('pvw', { type: 'detection', target: 'viewer', verses: [D.staged.verse], look: D.staged.look || null, next: D.staged.next || undefined });
+    else { post('pvw', { type: 'clear' }); post('pvw', { type: 'clear-layer', layer: 'media' }); }
   }
 
   // ── Staging ──────────────────────────────────────────────────────────────
@@ -119,19 +123,21 @@
     refresh();
   }
   function clearStage() {
-    D.staged = null;
+    D.staged = null; D.stageKey = null;
     syncPreviewFrame();
     refresh();
   }
   function takeVerse() {
     if (!D.staged) return;
-    const { verse, look, slide } = D.staged;
-    D.staged = null;
+    const { verse, look, slide, media } = D.staged;
+    D.staged = null; D.stageKey = null;
     D.last = { ...(D.last || {}), verse: true };
     syncPreviewFrame();
     refresh();
     // A staged slide goes out through the playlist's own send, a verse through the normal one.
-    if (slide && window.KairoService) return window.KairoService.sendSlide(slide.item, slide.index);
+    // A staged slide or media item goes out through the app's own send, as an explicit one (not staged again).
+    if (slide && window.KairoService) return window.KairoService.sendSlide(slide.item, slide.index, { direct: true });
+    if (media && window.KairoService) return window.KairoService.sendMedia(media.item, media.fit, true);
     return D.origSend(verse, look);
   }
   // Drag a slide onto Preview to stage it.
@@ -144,6 +150,48 @@
     syncPreviewFrame();
     refresh();
   }
+  // ── Slides and media: a click stages them in Preview, Send to screen puts them on the Output. ──
+  // A second click on the same thing within 450 ms (a double-click) sends it straight to the Output.
+  const DOUBLE_MS = 450;
+  function stageContent(key, build, make) {
+    if (!D.active) return false;
+    const now = Date.now();
+    if (D.stageKey === key && now - D.stageAt < DOUBLE_MS) {
+      // Quick cut: the staged copy gives way to the real send.
+      if (D.staged) { D.staged = null; D.stageKey = null; syncPreviewFrame(); refresh(); }
+      D.stageKey = null;
+      return false;
+    }
+    D.stageKey = key; D.stageAt = now;
+    Promise.resolve(build()).then((b) => {
+      if (!b || D.stageKey !== key) return;
+      D.staged = make(b);
+      D.staged.key = key;
+      syncPreviewFrame(); refresh();
+    }).catch(() => {});
+    return true;
+  }
+  function stageSlideSend(item, index, build) {
+    return stageContent(`slide:${item.id}:${index}`, build, (b) => ({ verse: b.verse, look: b.look || null, next: b.next || null, slide: { item, index } }));
+  }
+  function stageMediaSend(item, fit, build) {
+    return stageContent(`media:${item.url}`, build, (b) => ({ verse: { reference: item.name || 'Media' }, media: { item, fit, src: b.src, kind: b.kind || item.kind } }));
+  }
+  // The slide staged now, as "itemId:index" (what the next Next/Previous steps from).
+  const stagedSlideKey = () => (D.staged && D.staged.slide ? `${D.staged.slide.item.id}:${D.staged.slide.index}` : null);
+  // Orange outline on the tile of whatever is staged.
+  function markStaged() {
+    document.querySelectorAll('.is-staged').forEach(n => n.classList.remove('is-staged'));
+    // The dock's slide tiles show which slide is live.
+    const live = window.KairoService && window.KairoService.liveSlideKey && window.KairoService.liveSlideKey();
+    document.querySelectorAll('.vd-dock .svc-slide[data-vd-item], [data-vd-item].svc-slide').forEach(n => n.classList.toggle('live', !!live && live === `${n.dataset.vdItem}:${n.dataset.index}`));
+    if (!D.staged) return;
+    let sel = null;
+    if (D.staged.slide) sel = `.svc-card[data-id="${CSS.escape(String(D.staged.slide.item.id))}"] .svc-slide[data-index="${D.staged.slide.index}"], .svc-slide[data-vd-item="${CSS.escape(String(D.staged.slide.item.id))}"][data-index="${D.staged.slide.index}"]`;
+    else if (D.staged.media) sel = `.media-card[data-url="${CSS.escape(D.staged.media.item.url)}"]`;
+    if (sel) document.querySelectorAll(sel).forEach(n => n.classList.add('is-staged'));
+  }
+
   function wrapSend() {
     if (D.origSend || typeof sendVerseToServer !== 'function') return;
     D.origSend = sendVerseToServer;
@@ -766,6 +814,7 @@
     // Preview header
     const pvwSource = sources.find(s => s.id === D.previewId);
     const staged = D.staged ? (D.staged.verse.reference || D.staged.verse.ref || 'Verse') : '';
+    markStaged();
     D.ui.pvwRef.textContent = staged ? `${pvwSource ? pvwSource.name : 'No video'} · ${staged}` : (pvwSource ? pvwSource.name : 'No video');
     D.ui.undo.disabled = !D.last;
     if (D.frames.pvw) D.frames.pvw.name.textContent = pvwSource ? pvwSource.name : '';
@@ -965,6 +1014,7 @@
     // For the dock's input tiles.
     state: () => ({ previewId: D.previewId, program: D.programState, transition: transitionPref(), active: D.active }),
     setPreview, sendToProgram, mountSettings,
+    stageSlide: stageSlideSend, stageMedia: stageMediaSend, stagedSlideKey,
     // A detected verse held back by Auto-send off: staged in Preview, never sent.
     stageDetected: (verse, look) => { if (D.active && verse) stage(verse, look); },
   };

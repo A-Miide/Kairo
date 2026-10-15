@@ -678,3 +678,6 @@ body.video-director #cs-auto-badge.vd-auto-switch.off #cs-auto-badge-label::afte
 .vd-looks-btn.is-open { border-color: var(--accent); background: var(--accent-dim); }
 .vd-looks-chip { max-width: 140px; height: 22px; line-height: 20px; padding: 0 8px; border: 1px solid var(--accent); border-radius: 11px; font-size: 10.5px; font-weight: 600; color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; }
 .vd-looks-chip[hidden] { display: none; }
+
+/* ── Staged slide / media tile: the orange Preview outline. The live one keeps its own live look. ── */
+body.video-director .svc-slide.is-staged, body.video-director .media-card.is-staged { outline: 2px solid var(--accent); outline-offset: -1px; box-shadow: 0 0 0 1px var(--accent); border-color: var(--accent); }
