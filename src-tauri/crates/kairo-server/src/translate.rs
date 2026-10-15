@@ -11,6 +11,8 @@ use serde_json::{json, Value};
 use crate::Shared;
 
 pub const LANGUAGES: [(&str, &str); 3] = [("fr", "French"), ("es", "Spanish"), ("pt", "Portuguese")];
+/// Languages with a Bible but no translation model: scripture comes from the Bible, other text is written by hand.
+const SCRIPTURE_ONLY: [(&str, &str); 5] = [("de", "German"), ("yo", "Yoruba"), ("ig", "Igbo"), ("ha", "Hausa"), ("sw", "Swahili")];
 const CACHE_MAX: usize = 500;
 const OLLAMA_TIMEOUT: Duration = Duration::from_secs(15);
 
@@ -28,17 +30,25 @@ pub struct Failure {
 }
 
 fn lang_name(lang: &str) -> Option<&'static str> {
-    LANGUAGES.iter().find(|l| l.0 == lang).map(|l| l.1)
+    LANGUAGES.iter().chain(SCRIPTURE_ONLY.iter()).find(|l| l.0 == lang).map(|l| l.1)
+}
+
+fn scripture_only(lang: &str) -> bool {
+    SCRIPTURE_ONLY.iter().any(|l| l.0 == lang)
 }
 
 impl Translator {
     fn verse(&self, app: &Shared, lang: &str, book: &str, chapter: u64, verse: u64) -> Option<String> {
-        let mut bibles = self.bibles.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let bible = bibles.entry(lang.to_string()).or_insert_with(|| {
-            let path = app.cfg.db_dir.parent().unwrap_or(&app.cfg.db_dir).join("i18n").join(format!("{lang}.json"));
-            std::fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok())
-        });
-        bible.as_ref()?[book][chapter.checked_sub(1)? as usize][verse.checked_sub(1)? as usize].as_str().map(str::to_string)
+        let from_i18n = {
+            let mut bibles = self.bibles.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let bible = bibles.entry(lang.to_string()).or_insert_with(|| {
+                let path = app.cfg.db_dir.parent().unwrap_or(&app.cfg.db_dir).join("i18n").join(format!("{lang}.json"));
+                std::fs::read(path).ok().and_then(|b| serde_json::from_slice(&b).ok())
+            });
+            (|| bible.as_ref()?[book][chapter.checked_sub(1)? as usize][verse.checked_sub(1)? as usize].as_str().map(str::to_string))()
+        };
+        // Any other language that has a Bible pack (Yoruba, Igbo, Hausa, Swahili, German).
+        from_i18n.or_else(|| app.bible.get()?.pack_verse(lang, book, chapter, verse))
     }
 
     fn remember(&self, key: String, t: String) -> String {
@@ -83,6 +93,10 @@ impl Translator {
         let text = text.trim();
         if text.is_empty() {
             return Ok(json!({ "text": "", "source": "none" }));
+        }
+        // No model for this language: the church writes the text itself.
+        if scripture_only(lang) {
+            return Ok(json!({ "text": "", "source": "manual" }));
         }
         let key = format!("{lang}|{text}");
         if let Some(t) = self.cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(&key) {
