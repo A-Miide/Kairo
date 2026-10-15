@@ -60,25 +60,10 @@ body.video-director #songs-library-view, body.video-director #media-library-view
 body.video-director .center-stage > #media-bin { display: none !important; }
 body.video-director .vd-tab-off { opacity: 0.4; cursor: default; }
 
-/* Sidebars: thin rails that open over the stage on click. */
-body.video-director .main-layout { grid-template-columns: 34px minmax(0, 1fr) 34px; position: relative; }
-body.video-director .left-sidebar.vd-rail { grid-column: 1; grid-row: 1; }
-body.video-director .center-stage { grid-column: 2; grid-row: 1; min-width: 0; }
-body.video-director .right-sidebar.vd-rail { grid-column: 3; grid-row: 1; border-left: 1px solid var(--border); }
-body.video-director .vd-rail { padding: 0; overflow: hidden; position: relative; }
-body.video-director .vd-rail > *:not(.vd-rail-btn) { display: none; }
-.vd-rail-btn { position: absolute; inset: 0; width: 100%; display: flex; flex-direction: column; align-items: center; gap: 10px; padding-top: 12px; border: 0; background: transparent; color: var(--text-3); cursor: pointer; z-index: 2; }
-.vd-rail-btn:hover { color: var(--text); background: rgba(255,255,255,0.03); }
-.vd-rail-btn:focus-visible { outline: 2px solid var(--selected-border); outline-offset: -2px; }
-.vd-rail-label { writing-mode: vertical-rl; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }
-body.video-director .vd-rail.vd-rail-open { position: absolute; top: 0; bottom: 0; width: 330px; z-index: 40; padding: 10px; background: var(--bg); box-shadow: 0 0 28px rgba(0,0,0,0.55); overflow: auto; }
-body.video-director .vd-rail-left.vd-rail-open { left: 0; }
-body.video-director .vd-rail-right.vd-rail-open { right: 0; }
-body.video-director .vd-rail.vd-rail-open > *:not(.vd-rail-btn) { display: revert; }
-body.video-director .vd-rail.vd-rail-open > .vd-rail-btn { inset: 0 0 auto auto; width: 30px; height: 30px; padding: 0; justify-content: center; }
-body.video-director .vd-rail.vd-rail-open .vd-rail-label { display: none; }
-/* The right rail's Possible Matches card and Main preview stay out even when open. */
-body.video-director .rs-preview-card .rs-preview-output-row { display: none !important; }
+/* No sidebars: the director screen runs edge to edge. What they held lives in the groups. */
+body.video-director .left-sidebar, body.video-director .right-sidebar { display: none !important; }
+body.video-director .main-layout { grid-template-columns: minmax(0, 1fr); }
+body.video-director .center-stage { grid-column: 1; grid-row: 1; min-width: 0; border-right: 0; }
 
 /* Centre column, top to bottom: top line, stage, verses, dock. */
 body.video-director .center-stage { padding: 8px 12px 10px; gap: 8px; overflow: hidden; }
@@ -201,8 +186,6 @@ body.video-director #current-display-card .is-live .lvc-ref::before { content: '
 .vd-media-body #media-bin .media-bin-splitter, .vd-media-body #media-bin .media-bin-hint, .vd-media-body #media-bin .media-bin-size, .vd-media-body #media-bin #media-bin-hide-btn, .vd-media-body #media-bin .cs-section-label { display: none; }
 .vd-media-body #media-bin .media-bin-header { padding: 0 0 4px; min-height: 0; }
 .vd-media-body #media-bin .media-bin-strip { overflow: visible; display: flex; flex-wrap: wrap; gap: 8px; }
-.vd-media-body[data-kind="video"] .media-card:not(:has(.media-card-badge)) { display: none; }
-.vd-media-body[data-kind="images"] .media-card:has(.media-card-badge) { display: none; }
 
 /* The input grid in the narrow Inputs column: tiles fill the column's width. */
 .vg.vg-col { height: auto; justify-content: stretch; flex: 1 1 auto; min-height: 0; overflow-y: auto; align-content: start; }
@@ -218,3 +201,29 @@ body.video-director #current-display-card .is-live .lvc-ref::before { content: '
 .vd-pl-list #svc-items-list { height: auto; overflow: visible; padding: 0; }
 .vd-pl-list .svc-item { cursor: pointer; }
 .vd-pl-list .svc-item.vd-selected { background: var(--selected-dim) !important; box-shadow: inset 0 0 0 1px var(--selected-border); }
+
+/* Top line: the Clear buttons at its right end. */
+.vd-topline .rs-layer-clear-bar { flex: 0 0 auto; margin: 0; padding: 0; border: 0; background: none; }
+
+/* Scripture sends: Bible select and an icon-only Theme button on top, the search bar full width below. */
+body.video-director .vd-section-sends .cs-lookup { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 0; border: 0; background: none; box-shadow: none; }
+body.video-director .vd-section-sends .cs-translation-select { order: 0; margin-right: auto; }
+body.video-director .vd-section-sends .cs-theme-btn { order: 1; width: 28px; height: 28px; padding: 0; justify-content: center; }
+body.video-director .vd-section-sends .cs-theme-btn span { display: none; }
+body.video-director .vd-section-sends .cs-search-wrap { order: 2; flex: 1 1 100%; min-width: 0; }
+/* What the right sidebar held, under the queue. */
+.vd-sends-foot { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; }
+.vd-sends-foot:empty { display: none; }
+.vd-sends-foot > * { margin: 0; }
+
+/* Media bin toggles: several kinds at once, all tiles the same size. */
+.vd-media-body { flex-direction: column; flex-wrap: nowrap; gap: 10px; overflow-x: hidden; overflow-y: auto; align-items: stretch; }
+.vd-kind { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; }
+.vd-kind-head { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-3); }
+.vd-kind-tiles { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; --mb-thumb: 120px; }
+.vd-kind-tiles .vd-slide, .vd-kind-tiles .media-card { width: 120px; flex: 0 0 120px; }
+.vd-kind-tiles .vd-slide { height: 68px; }
+.vd-kind-bin[data-show="video"] .media-card:not(:has(.media-card-badge)), .vd-kind[data-show="video"] .media-card:not(:has(.media-card-badge)) { display: none; }
+.vd-kind[data-show="images"] .media-card:has(.media-card-badge) { display: none; }
+body.video-director .vd-section-sends .cs-theme-btn { background: transparent; border: 1px solid var(--border-md); color: var(--text-2); }
+body.video-director .vd-section-sends .cs-theme-btn:hover { color: var(--text); border-color: var(--selected-border); }
