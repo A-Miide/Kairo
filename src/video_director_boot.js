@@ -8,7 +8,7 @@
 // The setting persists as settings.videoDirector.
 'use strict';
 (function () {
-  const FILES = ['video_sources.js', 'video_hub.js', 'sources_panel.js', 'video_director.js'];
+  const FILES = ['video_sources.js', 'video_hub.js', 'sources_panel.js', 'video_input_grid.js', 'video_director_layout.js', 'video_dock.js', 'video_director.js'];
   let loading = null;
   let armedTimer = null;
   let busy = false;
