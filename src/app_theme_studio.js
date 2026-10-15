@@ -7757,13 +7757,26 @@ importLookFile?.addEventListener('change', async () => {
 
 // New theme — lands straight into rename mode on its own row, since that's
 // the only place a theme gets named now.
-newLookBtn?.addEventListener('click', () => {
-  const base = deepClone(DEFAULT_LOOKS[0]);
+newLookBtn?.addEventListener('click', (e) => {
+  // In Director mode a new theme can also be a screen theme (a video zone with the verse
+  // beside it): a copy of Screen — Video left to make your own from.
+  if (settings.videoDirector && window.KairoService?.openContextMenu) {
+    const r = newLookBtn.getBoundingClientRect();
+    window.KairoService.openContextMenu(r.left, r.bottom + 4, [[
+      { label: 'New theme', onClick: () => createNewLook(false) },
+      { label: 'New screen theme', onClick: () => createNewLook(true) },
+    ]]);
+    return;
+  }
+  createNewLook(false);
+});
+function createNewLook(screen) {
+  const base = deepClone(screen ? (DEFAULT_LOOKS.find(d => d.id === 'screen-split-left') || DEFAULT_LOOKS[0]) : DEFAULT_LOOKS[0]);
   base.id   = 'look-' + Date.now();
-  base.name = 'New Theme';
+  base.name = screen ? 'New Screen' : 'New Theme';
   // A new theme's canvas starts transparent, with nothing behind the
   // content; Background picks a picture, a colour or a gradient for it.
-  const canvasFill = base.layers.find(l => l.type === 'background' && !l.pos);
+  const canvasFill = screen ? null : base.layers.find(l => l.type === 'background' && !l.pos);
   if (canvasFill) {
     canvasFill.fillBefore = 'solid';
     Object.assign(canvasFill, { fill: 'transparent', color: '#000000', color2: '#1c1c30', angle: 160 });
@@ -7780,4 +7793,4 @@ newLookBtn?.addEventListener('click', () => {
   renderPreview();
   renderProps();
   document.querySelector('.ts-theme-item.active .ts-theme-name')?.dispatchEvent(new Event('dblclick', { bubbles: true }));
-});
+}
