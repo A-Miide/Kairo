@@ -51,6 +51,9 @@
   --brand-gradient: linear-gradient(135deg, #FF9130, #F5301A);
   /* A filled brand button under the pointer — a shade deeper, not lighter. */
   --brand-hover:    #DB2A15;
+  /* The warm end of the brand gradient: progress fills, ticks and "ready" states. */
+  --accent:         #FF9130;
+  --accent-dim:     rgba(255,145,48,0.15);
   /* Secondary/interactive accent — input focus rings, hover borders, toggle
      tracks, drag-drop indicators, primary CTA buttons (.modal-btn.primary),
      accent-color on checkboxes. Was teal, kept "near-complementary to
@@ -1284,7 +1287,7 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
   transition: filter 0.15s ease;
 }
 .live-screen-section-badge:hover { filter: brightness(1.15); }
-.live-screen-section-badge.sec-verse       { background: #3b82f6; }
+.live-screen-section-badge.sec-verse       { background: #57575f; }
 .live-screen-section-badge.sec-chorus      { background: #d97706; }
 .live-screen-section-badge.sec-refrain     { background: #f43f5e; }
 .live-screen-section-badge.sec-solo        { background: #0ea5e9; }
@@ -8498,3 +8501,6 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .dl-row .dl-what { color: var(--text-3); }
 .dl-row .dl-what { flex: 1; white-space: nowrap; }
 .ov-about { margin: 0 0 12px; }
+
+/* Every native control follows the brand colour, never the system blue. */
+input[type="checkbox"], input[type="radio"], input[type="range"], progress, meter { accent-color: var(--brand); }
