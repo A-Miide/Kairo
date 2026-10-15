@@ -681,3 +681,14 @@ body.video-director #cs-auto-badge.vd-auto-switch.off #cs-auto-badge-label::afte
 
 /* ── Staged slide / media tile: the orange Preview outline. The live one keeps its own live look. ── */
 body.video-director .svc-slide.is-staged, body.video-director .media-card.is-staged { outline: 2px solid var(--accent); outline-offset: -1px; box-shadow: 0 0 0 1px var(--accent); border-color: var(--accent); }
+
+/* ── Send: a quiet outline until something is staged, then the solid brand colour with a glow ring. ── */
+.vd-band .vd-cluster .vd-send { position: relative; overflow: hidden; background: transparent; border: 1px solid var(--border-md); color: var(--text-3); opacity: 1; filter: none; font-size: 14px; font-weight: 700; }
+.vd-band .vd-cluster .vd-send:disabled { opacity: 1; cursor: default; }
+.vd-band .vd-cluster .vd-send .vd-send-key { background: rgba(255,255,255,0.06); color: var(--text-3); }
+.vd-band .vd-cluster .vd-send.is-ready { background: linear-gradient(180deg, #FF6A22, var(--brand)); border-color: transparent; color: #fff; box-shadow: 0 0 0 2px rgba(245,48,26,0.35), 0 0 16px rgba(245,48,26,0.35); }
+.vd-band .vd-cluster .vd-send.is-ready:hover { filter: brightness(1.07); }
+.vd-band .vd-cluster .vd-send.is-ready .vd-send-key { background: rgba(255,255,255,0.22); color: #fff; }
+.vd-band .vd-cluster .vd-send::after { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: rgba(255,255,255,0.28); pointer-events: none; }
+.vd-band .vd-cluster .vd-send.is-sending::after { animation: vd-send-fill var(--vd-send-ms, 300ms) linear forwards; }
+@keyframes vd-send-fill { from { width: 0; } to { width: 100%; } }
