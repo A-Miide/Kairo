@@ -500,8 +500,8 @@
       layout: 'column',
     });
     const ictl = vEl('div', 'vd-gh-ctl');
-    ictl.append(vBtn('+ Add', 'Add an input without leaving Director mode', (e) => openAddInputPanel(e.currentTarget), 'vd-mini vd-add'), D.grid.controls);
-    ihead.appendChild(ictl);
+    ictl.append(vBtn('+ Add', 'Add an input without leaving Director mode', (e) => openAddInputPanel(e.currentTarget), 'vd-mini vd-add'));
+    ihead.append(D.grid.controls, ictl);   // Grid | List beside the title, + Add at the right end
     const ifoot = vEl('div', 'vd-section-foot');
     D.ui.noVideo = vBtn('No video', 'Send no video to Output', () => sendToProgram(null), 'vd-mini');
     D.ui.ready = vBtn('Ready check', 'List anything not ready before going live', (e) => openReadyCheck(e.currentTarget), 'vd-mini vd-ready');
