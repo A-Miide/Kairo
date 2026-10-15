@@ -36,9 +36,14 @@
     // Grid | List: which of the two views is showing is always visible.
     const seg = h('div', 'vg-seg');
     seg.setAttribute('role', 'group'); seg.setAttribute('aria-label', 'View');
-    const segBtns = [['grid', 'Grid', 'Tiles'], ['list', 'List', 'One row per input']].map(([k, label, tip]) => {
-      const b = h('button', 'vg-seg-btn', label);
-      b.type = 'button'; b.title = tip;
+    const ICON = {
+      grid: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>',
+      list: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
+    };
+    const segBtns = [['grid', 'Grid'], ['list', 'List']].map(([k, label]) => {
+      const b = h('button', 'vg-seg-btn');
+      b.type = 'button'; b.title = label; b.setAttribute('aria-label', label);
+      b.innerHTML = ICON[k];
       b.addEventListener('click', () => { const on = k === 'grid'; if (on === gridOn) return; gridOn = on; try { opts.onGrid && opts.onGrid(gridOn); } catch {} render(); });
       seg.appendChild(b);
       return [k, b];
