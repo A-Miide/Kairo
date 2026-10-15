@@ -33,6 +33,8 @@ pub struct Live {
     pub timer: Option<Value>,
     pub range_state: Option<Value>,
     pub monitor_message: String,
+    /// Who the message is for: "monitors", "screens" or "all".
+    pub monitor_message_to: String,
     pub connection_state: String,
     pub bible_on_top: bool,
     pub underneath: Option<Underneath>,
@@ -100,7 +102,10 @@ impl Hub {
                     }
                 }
                 "connection-state" => l.connection_state = data["state"].as_str().unwrap_or("").to_string(),
-                "monitor-message" => l.monitor_message = data["text"].as_str().unwrap_or("").to_string(),
+                "monitor-message" => {
+                    l.monitor_message = data["text"].as_str().unwrap_or("").to_string();
+                    l.monitor_message_to = data["to"].as_str().unwrap_or("monitors").to_string();
+                }
                 _ => {}
             }
         }
@@ -118,7 +123,7 @@ impl Hub {
         ];
         out.extend([&l.slide, &l.media, &l.timer, &l.range_state].into_iter().flatten().cloned());
         if !l.monitor_message.is_empty() {
-            out.push(json!({ "type": "monitor-message", "text": l.monitor_message }));
+            out.push(json!({ "type": "monitor-message", "text": l.monitor_message, "to": if l.monitor_message_to.is_empty() { "monitors" } else { l.monitor_message_to.as_str() } }));
         }
         out.into_iter().map(|v| v.to_string()).collect()
     }

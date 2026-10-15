@@ -8553,3 +8553,7 @@ body.video-director #ts-add-videozone-btn, body.video-director #ts-add-contentzo
 .ob-art-live i:nth-of-type(1) { left: calc(50% - 52px); } .ob-art-live i:nth-of-type(2) { left: calc(50% - 15px); } .ob-art-live i:nth-of-type(3) { left: calc(50% + 22px); }
 .ob-art-ovl i { position: absolute; left: 50%; top: 14px; width: 110px; height: 58px; margin-left: -55px; border-radius: 6px; background: linear-gradient(135deg, #0a1a45, #13266b); }
 .ob-art-ovl b { position: absolute; left: calc(50% + 30px); top: 20px; width: 18px; height: 18px; border-radius: 50%; background: linear-gradient(135deg, #FF9130, #F5301A); box-shadow: 0 0 0 2px rgba(255,255,255,.15); }
+
+/* The message's audience: a small quiet select beside the label. */
+.monitor-message-head { display: flex; align-items: center; gap: 8px; }
+.monitor-message-to { appearance: auto; margin-left: 4px; margin-right: auto; height: 22px; padding: 0 4px 0 6px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text-2, var(--text)); font: inherit; font-size: 11.5px; cursor: pointer; }

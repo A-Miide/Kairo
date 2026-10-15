@@ -268,6 +268,7 @@ function handleServerMessage(msg) {
 
     case 'monitor-message':
       if (typeof showMonitorMessageState === 'function') showMonitorMessageState(msg.text);
+      { const to = document.getElementById('monitor-message-to'); if (to && msg.to && String(msg.text || '').trim()) to.value = msg.to; }
       break;
 
     case 'transcript':
