@@ -195,7 +195,21 @@
   window.initVideoSources = async function () {
     // Simulated cameras: keep the four test inputs in step with the flag.
     try { if (window.KairoSimCameras && (window.KairoSimCameras.isOn() || (settings.videoSources || []).some(x => x && /^sim-cam-/.test(x.deviceId || '')))) syncSimSources(window.KairoSimCameras.isOn()); } catch {}
+    // An earlier build swapped an output's own theme for a screen theme: put the saved normal themes back once.
+    try {
+      const saved = settings.directorScreenOrig;
+      if (saved && typeof saved === 'object' && Object.keys(saved).length && typeof outputThemeMap === 'function') {
+        const patch = {};
+        for (const [id, t] of Object.entries(saved)) if (t) patch[id] = t;
+        if (Object.keys(patch).length) { settings.outputThemes = { ...outputThemeMap(), ...patch }; saveSettingsPatch({ outputThemes: settings.outputThemes }); if (typeof applyOutputThemes === 'function') applyOutputThemes(); }
+        settings.directorScreenOrig = {}; saveSettingsPatch({ directorScreenOrig: {} });
+      }
+    } catch {}
     if (settings.videoDirector) { await enable(false); return; }
+    // Mode off: no screen frame may be left around an output (a crash could have left one).
+    try {
+      if (settings.outputFrames && Object.keys(settings.outputFrames).length) { settings.outputFrames = {}; saveSettingsPatch({ outputFrames: {} }); if (typeof applyOutputFrames === 'function') applyOutputFrames(); }
+    } catch {}
     // Mode off: no display window may be left holding a camera for a source
     // chosen in an earlier session.
     try { if (localStorage.getItem('kairo-video-live') !== '{}') localStorage.setItem('kairo-video-live', '{}'); } catch {}
