@@ -194,9 +194,16 @@ impl Engine {
         }
         let score = if via_idf { top.score.max(0.90) } else { top.score };
         let corroborated = self.ledger.has_corroboration(self.r(top.verse));
-        let intent = if via_idf && !corroborated { Target::Suggestions } else { Target::Screen };
+        // Certain by weight alone (a partial quote) and no other method agrees:
+        // offered, never put on screen alone (03-verbatim-and-correction.md).
+        // Capped, not just "intent": `intent` is never read, so a four-word
+        // phrase like "Jesus Christ from the dead" (weight 18.3) put 1 Peter 1:3
+        // on screen on its own (live test, 2026-10-14).
+        let weak = via_idf && !corroborated;
+        let intent = if weak { Target::Suggestions } else { Target::Screen };
         let verses = screen.iter().map(|h| h.verse).collect();
-        self.decide(Candidate::new(verses, Method::Verbatim, score, intent).evidence(evidence(&top)).from_text(&found_in), now);
+        let candidate = Candidate::new(verses, Method::Verbatim, score, intent).evidence(evidence(&top)).from_text(&found_in);
+        self.decide(if weak { candidate.capped() } else { candidate }, now);
         if top.score >= READ_SIMILARITY {
             let r = self.r(top.verse);
             self.note_cited(r.book, Some(r.chapter), Some(r.verse), false, now);

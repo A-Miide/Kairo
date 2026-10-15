@@ -35,6 +35,10 @@ pub fn router() -> Router<Shared> {
         .route("/api/media/folders/{id}/items", get(folder_items))
         .route("/api/media/folders/{id}/upload", post(folder_upload))
         .route("/api/media/folders/{id}/file/{name}", get(folder_file))
+        .route("/api/audio/tracks", get(audio_tracks))
+        .route("/api/audio/upload", post(audio_upload))
+        .route("/api/audio/file/{name}", get(audio_file))
+        .route("/api/audio/{name}", delete(audio_delete))
         .route("/api/media/prepare", post(prepare_video))
         .route("/api/media/resolve", post(resolve_media))
         .route("/api/media/prepared/{file}", get(prepared_file))
@@ -239,6 +243,29 @@ async fn bin_delete(State(app): State<Shared>, Path(name): Path<String>) -> Json
 }
 async fn bin_file(State(app): State<Shared>, Path(name): Path<String>, req: Request) -> Response {
     match app.media.bin_file(&name) {
+        Some(p) => send_file(p, req).await,
+        None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+async fn audio_tracks(State(app): State<Shared>) -> Json<Value> {
+    let m = app.media.clone();
+    let items = tokio::task::spawn_blocking(move || m.audio_items()).await.unwrap_or_default();
+    Json(json!({ "ok": true, "items": items }))
+}
+async fn audio_upload(State(app): State<Shared>, b: Option<Json<Value>>) -> Response {
+    let Some((name, data)) = upload_parts(&body_or_empty(b)) else {
+        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "filename and dataBase64 required" }))).into_response();
+    };
+    match app.media.write_to_audio(&name, &data) {
+        Ok(saved) => Json(json!({ "ok": true, "name": saved })).into_response(),
+        Err(e) => (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "error": e.1, "code": e.0 }))).into_response(),
+    }
+}
+async fn audio_delete(State(app): State<Shared>, Path(name): Path<String>) -> Json<Value> {
+    Json(json!({ "ok": app.media.delete_audio_item(&name) }))
+}
+async fn audio_file(State(app): State<Shared>, Path(name): Path<String>, req: Request) -> Response {
+    match app.media.audio_file(&name) {
         Some(p) => send_file(p, req).await,
         None => StatusCode::NOT_FOUND.into_response(),
     }

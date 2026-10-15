@@ -644,22 +644,43 @@ async fn monitor_message(State(app): State<Shared>, Json(b): Json<Value>) -> Jso
     Json(json!({ "ok": true, "text": text }))
 }
 
+/// Where debug.log is, so code without the app state (the detection thread)
+/// can log too. Set once at start.
+static DEBUG_LOG_PATH: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+/// One writer at a time: concurrent appends used to interleave inside a line.
+static DEBUG_LOG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+pub(crate) fn set_debug_log_path(path: std::path::PathBuf) {
+    let _ = DEBUG_LOG_PATH.set(path);
+}
+
 /// One line in debug.log (app data). A debugging aid, not an audit log: it
 /// keeps itself small.
 pub(crate) fn write_debug_line(app: &Shared, event: &str, data: Value) {
-    let line = json!({ "t": epoch_ms(), "event": event, "data": data });
-    let path = app.cfg.app_data_dir.join("debug.log");
+    write_debug_to(app.cfg.app_data_dir.join("debug.log"), event, data);
+}
+
+/// The same, from code that has no app state (needs `set_debug_log_path` first).
+pub(crate) fn write_debug_global(event: &str, data: Value) {
+    if let Some(path) = DEBUG_LOG_PATH.get() {
+        write_debug_to(path.clone(), event, data);
+    }
+}
+
+fn write_debug_to(path: std::path::PathBuf, event: &str, data: Value) {
+    let line = format!("{}\n", json!({ "t": epoch_ms(), "event": event, "data": data }));
     // A plain thread, so any thread can log (the speech engine's supervisor
     // isn't on the async runtime).
     std::thread::spawn(move || {
         use std::io::Write;
+        let _guard = DEBUG_LOG_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
-            let _ = writeln!(f, "{line}");
+            let _ = f.write_all(line.as_bytes());
         }
         if std::fs::metadata(&path).is_ok_and(|m| m.len() > 2 * 1024 * 1024) {
             if let Ok(s) = std::fs::read_to_string(&path) {
                 let lines: Vec<&str> = s.lines().collect();
-                let _ = std::fs::write(&path, lines[lines.len() / 2..].join("\n"));
+                let _ = std::fs::write(&path, lines[lines.len() / 2..].join("\n") + "\n");
             }
         }
     });

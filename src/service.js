@@ -5251,7 +5251,8 @@
   function onMediaStatus({ currentTime, duration, paused, kind, local }) {
     // An output's own report only counts when there's no preview video to read.
     if (!local && previewVideo()) return;
-    if (kind && kind !== 'video') { setMediaTransportVisible(false); return; }
+    if (kind && kind !== 'video') { setMediaTransportVisible(false); window.KairoAudioLane?.duckFor(false); return; }
+    window.KairoAudioLane?.duckFor(!paused);
     setMediaTransportVisible(true);
     const seek = document.getElementById('media-seek');
     const time = document.getElementById('media-time');

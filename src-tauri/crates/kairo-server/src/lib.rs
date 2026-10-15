@@ -29,6 +29,7 @@ pub mod settings;
 mod video;
 mod ndi_runtime;
 mod osc;
+mod overlays;
 mod vocabulary;
 mod ws;
 
@@ -66,6 +67,7 @@ pub struct App {
     pub(crate) triggers: Arc<library::Triggers>,
     pub(crate) segments: library::Segments,
     pub(crate) media: Arc<media::Media>,
+    pub(crate) overlays: overlays::Overlays,
     pub(crate) video: Arc<video::Video>,
     pub(crate) obs: obs::Obs,
     pub(crate) translator: translate::Translator,
@@ -143,6 +145,7 @@ impl App {
 
 /// Serves until the process ends.
 pub async fn serve(cfg: Config) -> anyhow::Result<()> {
+    routes::set_debug_log_path(cfg.app_data_dir.join("debug.log"));
     let settings = Settings::load(cfg.app_data_dir.join("settings.json"));
     let hub = Arc::new(Hub::new());
     let triggers = Arc::new(library::Triggers::open(&cfg.app_data_dir, hub.clone()));
@@ -153,6 +156,7 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         segments: library::Segments::open(&cfg.app_data_dir, triggers.clone()),
         triggers,
         media: media::Media::open(&cfg.app_data_dir, hub.clone()),
+        overlays: overlays::Overlays::open(&cfg.app_data_dir),
         video: video::Video::open(&cfg.app_data_dir, &cfg.ui_dir),
         obs: obs::Obs::new(),
         translator: translate::Translator::default(),
@@ -206,7 +210,7 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         load_meaning(&starting);
     });
 
-    let router = routes::router().merge(routes_library::router()).merge(routes_misc::router())
+    let router = routes::router().merge(routes_library::router()).merge(overlays::router()).merge(routes_misc::router())
         .layer(middleware::from_fn_with_state(app.clone(), auth))
         // A request that panics answers 500 instead of dropping the
         // connection; shared state stays usable (locks recover from a

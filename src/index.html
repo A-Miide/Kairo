@@ -627,6 +627,8 @@
                          segment's themed countdown renders here on top of
                          whatever slide/media is showing, same as the output. -->
                     <div class="live-screen-timer hidden" id="slide-preview-timer"></div>
+                    <!-- Overlays (Settings → Overlays), above everything like on the output. -->
+                    <div class="live-screen-overlays empty" id="slide-preview-overlays"></div>
                     <div class="live-screen-badge">LIVE</div>
                 </div>
                 <!-- Grid mode — Main plus one live copy per output that's on
@@ -652,6 +654,17 @@
                 </button>
                 <input type="range" id="media-volume" class="media-volume" min="0" max="100" value="100" title="Volume">
                     </div>
+                </div>
+                <!-- The audio lane: music or a stinger playing apart from the slides.
+                     Hidden until a track is loaded (Outputs → Audio Output). -->
+                <div class="rs-audio-strip hidden" id="audio-lane-strip">
+                    <button id="al-prev" class="ls-icon-btn" title="Previous track">&#9198;</button>
+                    <button id="al-play" class="ls-icon-btn" title="Play / Pause">&#9654;</button>
+                    <button id="al-next" class="ls-icon-btn" title="Next track">&#9197;</button>
+                    <span class="al-title" id="al-title"></span>
+                    <span class="media-time" id="al-time">0:00 / 0:00</span>
+                    <button id="al-fade" class="ls-icon-btn" title="Fade out and stop">Fade out</button>
+                    <input type="range" id="al-volume" class="media-volume" min="0" max="100" value="80" title="Music volume">
                 </div>
                 <!-- Output transition — display-level (not per-theme, see
                      display.html's outputAnimation): part of the monitor card,
@@ -1214,6 +1227,10 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
                     <span>Outputs</span>
                 </button>
+                <button class="settings-nav-item" data-pane="overlays">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="5" rx="1"/></svg>
+                    <span>Overlays</span>
+                </button>
                 <button class="settings-nav-item" data-pane="shortcuts">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8"/></svg>
                     <span>Shortcuts</span>
@@ -1257,7 +1274,7 @@
             <section class="settings-pane active" data-pane="audio">
                 <!-- ── AUDIO ─────────────────────────────────────── -->
                 <div class="settings-section">
-                    <div class="settings-section-label">Audio</div>
+                    <div class="settings-section-label">Sound input</div>
 
                     <div class="setting-row-2col audio-cols">
                     <div class="setting-col-stack">
@@ -1330,6 +1347,11 @@
 
                     </div>
                     </div>
+                </div>
+
+                <div class="settings-section" id="audio-out-section">
+                    <div class="settings-section-label">Sound output</div>
+                    <div id="audio-out-host"></div>
                 </div>
 
             </section>
@@ -1425,6 +1447,13 @@
                         <label class="setting-label">Addresses</label>
                         <div id="osc-addresses" class="dl-list osc-addresses"></div>
                     </div>
+                </div>
+            </section>
+
+            <section class="settings-pane" data-pane="overlays">
+                <div class="settings-section">
+                    <div class="settings-section-label">Overlays</div>
+                    <div id="overlays-panel"></div>
                 </div>
             </section>
 
@@ -1670,35 +1699,35 @@
                 </div>
             </div>
 
-            <!-- Both decide what the room sees, so they share a row (2026-10-12:
-                 the scripture menu alone used the full width). -->
-            <div class="settings-section">
+            <!-- What the room sees, in three plain questions. The two selects below
+                 are kept (hidden) because the saving and download code reads them;
+                 the pills are what the person uses (app_outputs.js renderLangPills). -->
+            <div class="settings-section" id="lang-screen-section">
                 <div class="settings-section-label">On screen</div>
-                <div class="setting-row-2col">
-                    <div class="setting-group">
-                        <label class="setting-label" for="bible-language">Scripture language</label>
-                        <select id="bible-language" class="setting-input"></select>
-                        <p class="setting-hint">Which language a matched verse shows in. Every Bible listed comes with Kairo and works offline.</p>
-                        <p class="setting-hint scripture-credits" id="scripture-credits"></p>
-                    </div>
-                    <!-- The bundled translation models (mt.rs): one per language,
-                         downloaded the first time it's used — only for slide text,
-                         never scripture, which uses the Bibles beside it. -->
-                    <div class="setting-col-stack">
-                    <div class="setting-group">
-                        <label class="setting-label" for="bible-translate-to-select">Second language</label>
-                        <select id="bible-translate-to-select" class="setting-input">
-                            <option value="">Off</option>
-                        </select>
-                        <div class="dl-list" id="second-lang-model" hidden></div>
-                        <p class="setting-hint">Shown beside the verse on the Multi-Language theme. Slide text needs its model below. Leave Off otherwise.</p>
-                    </div>
-                    <div class="setting-group" id="mt-model-group">
-                        <label class="setting-label">Slide translation models</label>
-                        <div id="mt-model-list" class="dl-list"></div>
-                        <p class="setting-hint">Translates slide text that isn't scripture, for the Multi-Language theme — on this computer, no account.</p>
-                    </div>
-                    </div>
+                <select id="bible-language" hidden></select>
+                <select id="bible-translate-to-select" hidden><option value="">Off</option></select>
+
+                <div class="setting-group">
+                    <label class="setting-label">Scripture shows in</label>
+                    <div class="lang-pills" id="lang-screen-pills"></div>
+                    <p class="setting-hint">The language a matched verse appears in. All of these are inside Kairo and work offline.</p>
+                    <div class="lang-suggest" id="lang-suggest" hidden></div>
+                    <details class="lang-sources"><summary>Bible sources</summary><p class="setting-hint scripture-credits" id="scripture-credits"></p></details>
+                </div>
+
+                <div class="setting-group">
+                    <label class="setting-label">Also show beside it</label>
+                    <div class="lang-pills" id="lang-second-pills"></div>
+                    <div class="dl-list" id="second-lang-model" hidden></div>
+                    <p class="setting-hint">A second language next to the verse and on slides, on the Multi-Language theme.</p>
+                </div>
+
+                <!-- The slide-translation models (mt.rs): one per language, downloaded
+                     once, on this computer — only for slide text, never scripture. -->
+                <div class="setting-group" id="mt-model-group">
+                    <label class="setting-label">Languages on this computer</label>
+                    <div id="mt-model-list" class="dl-list"></div>
+                    <p class="setting-hint">Every language comes with its Bible. Slide translation is the download. Remove one to free the space.</p>
                 </div>
             </div>
             </section>
@@ -1751,7 +1780,6 @@
                     <div class="outputs-shell-header">
                         <div>
                             <div class="settings-section-label" style="border-bottom:none;padding-bottom:0;margin-bottom:2px;">Output Control</div>
-                            <p class="setting-hint" style="margin:0;">Every output's Bible/Slide/Media/Timer visibility, at a glance — the same setting as each output's own "Show on this output" above.</p>
                         </div>
                     </div>
                     <div id="output-control-matrix" class="output-control-matrix"></div>
@@ -2293,6 +2321,10 @@
     </script>
 
     <script src="client_common.js"></script>
+    <script src="audio_lane.js"></script>
+    <script src="overlay_layer.js"></script>
+    <script src="overlay_panel.js"></script>
+    <script src="settings_layout.js"></script>
     <script src="design_space.js"></script>
     <script src="word_split.js"></script>
     <script src="color_utils.js"></script>
@@ -2309,6 +2341,7 @@
     <script src="content_lookup.js"></script>
     <script src="service.js"></script>
     <script src="audio_level.js"></script>
+    <script src="queue_order.js"></script>
     <script src="app.js"></script>
     <script src="app_theme_studio.js"></script>
     <script src="output_capture.js"></script>

@@ -5,6 +5,11 @@
   "windows": [
     "kairo-*"
   ],
+  "remote": {
+    "urls": [
+      "http://127.0.0.1:*"
+    ]
+  },
   "permissions": [
     "core:default",
     "core:window:allow-show",

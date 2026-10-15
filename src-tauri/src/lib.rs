@@ -1068,8 +1068,13 @@ pub fn run() {
                     .build()
                     .unwrap_or_default();
 
+                // A dev run starts the server through `cargo run --release`, which
+                // rebuilds it after any code change (about 90 s) — far past 20 s, and
+                // giving up then left a white window that never recovered. Dev waits
+                // up to 5 minutes; an installed app's server starts in seconds.
+                let max_attempts = if cfg!(debug_assertions) { 600 } else { 40 };
                 let mut server_ready = false;
-                for attempt in 0..40 {
+                for attempt in 0..max_attempts {
                     std::thread::sleep(std::time::Duration::from_millis(500));
                     // `/health` answers as soon as Express binds (~500ms), but the
                     // detection worker (map load, anchor trie, fingerprints) needs a
@@ -1085,7 +1090,7 @@ pub fn run() {
                     }
                 }
                 if !server_ready {
-                    eprintln!("[KAIRO] Server/worker not ready within 20s — showing main window anyway.");
+                    eprintln!("[KAIRO] Server/worker not ready within {}s — showing main window anyway.", max_attempts / 2);
                 }
 
                 // Navigate to the real server URL, but do NOT show the window

@@ -307,26 +307,78 @@ const LANG_PACKS = [
 function renderLangPacks() {
   const bibleSel = document.getElementById('bible-language');
   if (bibleSel) {
-    const want = settings.bibleLanguage || 'en';
     bibleSel.innerHTML = '';
     LANG_PACKS.forEach(p => {
       const o = document.createElement('option');
       o.value = p.code;
-      o.textContent = p.code === 'en' ? 'English' : `${p.name} — ${p.translations.replace(/\s*\(.*\)$/, '')}`;
-      if (p.code === want) o.selected = true;
+      o.textContent = p.name;
       bibleSel.appendChild(o);
     });
+    bibleSel.value = settings.bibleLanguage || 'en';
   }
   const credits = document.getElementById('scripture-credits');
   if (credits) {
-    const licensed = LANG_PACKS.filter(p => /CC BY|GPL/.test(p.translations));
-    credits.textContent = 'Sources: ' + licensed.map(p => `${p.name} ${p.translations}`).join(' · ') + ' · the others public domain.';
+    credits.textContent = LANG_PACKS.map(p => `${p.name}: ${p.translations}`).join(' \u00b7 ');
+  }
+  renderLangPills();
+  if (typeof renderMtModelList === 'function') renderMtModelList(); // now that every language is known
+}
+
+// The two language choices as pills: one clear row each, driving the hidden
+// selects the saving code already listens to.
+function renderLangPills() {
+  const bibleSel = document.getElementById('bible-language');
+  const secondSel = document.getElementById('bible-translate-to-select');
+  const screen = document.getElementById('lang-screen-pills');
+  const second = document.getElementById('lang-second-pills');
+  if (!bibleSel || !screen) return;
+  const pill = (label, active, title, onClick) => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'lang-pill' + (active ? ' active' : ''); b.textContent = label;
+    if (title) b.title = title;
+    b.addEventListener('click', onClick);
+    return b;
+  };
+  const current = bibleSel.value || settings.bibleLanguage || 'en';
+  screen.innerHTML = '';
+  LANG_PACKS.forEach((p) => {
+    screen.appendChild(pill(p.name, p.code === current, p.translations, () => {
+      bibleSel.value = p.code;
+      bibleSel.dispatchEvent(new Event('change'));
+      renderLangPills();
+    }));
+  });
+
+  if (second && secondSel) {
+    const cur = secondSel.value || '';
+    second.innerHTML = '';
+    second.appendChild(pill('Off', cur === '', '', () => { secondSel.value = ''; secondSel.dispatchEvent(new Event('change')); renderLangPills(); }));
+    Array.from(secondSel.options).filter(o => o.value).forEach((o) => {
+      second.appendChild(pill(o.textContent, cur === o.value, '', () => { secondSel.value = o.value; secondSel.dispatchEvent(new Event('change')); renderLangPills(); }));
+    });
+  }
+
+  // If the preacher's language has a Bible here and the screen isn't showing it, say so.
+  const hint = document.getElementById('lang-suggest');
+  if (hint) {
+    const spoken = String(document.getElementById('stt-language')?.value || settings.sttLanguage || 'en-US').toLowerCase().split('-')[0];
+    const match = LANG_PACKS.find(p => p.code === spoken);
+    if (match && match.code !== current) {
+      hint.hidden = false;
+      hint.innerHTML = '';
+      hint.append(`The preacher speaks ${match.name}. `);
+      const sw = document.createElement('button');
+      sw.type = 'button'; sw.className = 'lang-link'; sw.textContent = `Show scripture in ${match.name}`;
+      sw.addEventListener('click', () => { bibleSel.value = match.code; bibleSel.dispatchEvent(new Event('change')); renderLangPills(); });
+      hint.appendChild(sw);
+    } else { hint.hidden = true; }
   }
 }
 
 document.getElementById('stt-language')?.addEventListener('change', (e) => {
   settings.sttLanguage = e.target.value;
   saveSettingsPatch({ sttLanguage: e.target.value });
+  renderLangPills();
 });
 document.getElementById('custom-keyterms')?.addEventListener('change', (e) => {
   settings.customKeyterms = e.target.value;
@@ -336,6 +388,7 @@ document.getElementById('bible-language')?.addEventListener('change', (e) => {
   settings.bibleLanguage = e.target.value;
   saveSettingsPatch({ bibleLanguage: e.target.value });
 });
+window.renderLangPills = renderLangPills;
 
 // ── Outputs master-detail ────────────────────────────────────────────────
 // Owner: "I like how ProPresenter does it better" (referencing its Screen
@@ -442,7 +495,7 @@ function renderOutputsList() {
   const host = document.getElementById('outputs-list');
   if (!host) return;
   const outputs = allConfiguredOutputs();
-  if (selectedOutputId !== AUDIO_OUTPUT_ID && !outputs.some(o => o.id === selectedOutputId)) selectedOutputId = outputs[0]?.id || null;
+  if (!outputs.some(o => o.id === selectedOutputId)) selectedOutputId = outputs[0]?.id || null;
   host.innerHTML = '';
   outputs.forEach(o => {
     // A plain <div> (not <button>) — a real on/off <input> lives inside
@@ -504,7 +557,6 @@ function renderOutputsList() {
     });
     host.appendChild(row);
   });
-  host.appendChild(buildAudioOutputRow());
   // Folded in here (not called separately at each of this function's many
   // call sites) so the Output Control matrix — which lists the exact same
   // outputs this list does — can never drift out of sync with an output
@@ -630,7 +682,6 @@ function buildOutputRowToggle(o) {
 // different device instead — a speaker, a mixer, this computer's own speakers.
 // The choice is applied in display.html via setSinkId (see /api/service/
 // audio-output); an engine that can't route sound says so here.
-const AUDIO_OUTPUT_ID = 'audio-out';
 
 function mediaOutputRoutable() {
   return typeof HTMLMediaElement !== 'undefined' && typeof HTMLMediaElement.prototype.setSinkId === 'function';
@@ -665,38 +716,89 @@ async function mediaOutputDevices() {
   } catch { return []; }
 }
 
-function buildAudioOutputRow() {
-  const row = document.createElement('div');
-  row.className = 'outputs-list-item' + (selectedOutputId === AUDIO_OUTPUT_ID ? ' active' : '');
-  row.dataset.outputId = AUDIO_OUTPUT_ID;
-  row.tabIndex = 0;
-  row.setAttribute('role', 'button');
-  const dot = document.createElement('span');
-  dot.className = 'bs-dot';
-  dot.classList.toggle('connected', !!savedMediaOutput());
-  const info = document.createElement('span');
-  info.className = 'outputs-list-item-info';
-  const name = document.createElement('span');
-  name.className = 'outputs-list-item-name';
-  name.textContent = 'Audio Output';
-  const type = document.createElement('span');
-  type.className = 'outputs-list-item-type';
-  type.textContent = savedMediaOutput() ? 'Chosen device' : 'System default';
-  info.append(name, type);
-  row.append(dot, info);
-  row.addEventListener('click', () => { selectedOutputId = AUDIO_OUTPUT_ID; renderOutputsList(); renderOutputsDetail(); });
-  row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); row.click(); } });
-  return row;
+// Background music: sound that plays on its own, apart from slides and video.
+function renderAudioLaneGroup(host) {
+  const lane = window.KairoAudioLane;
+  if (!lane) return;
+  const g = detailGroup('Background music');
+
+  const list = document.createElement('div');
+  list.className = 'al-tracks';
+  g.appendChild(list);
+
+  const add = document.createElement('button');
+  add.type = 'button'; add.className = 'modal-btn secondary'; add.textContent = '+ Add music';
+  const file = document.createElement('input');
+  file.type = 'file'; file.accept = 'audio/*,.mp3,.wav,.m4a,.aac,.ogg,.flac,.aif,.aiff'; file.multiple = true; file.style.display = 'none';
+  const msg = document.createElement('p');
+  msg.className = 'setting-hint';
+  add.addEventListener('click', () => file.click());
+  file.addEventListener('change', async () => {
+    const r = await lane.upload(file.files); file.value = '';
+    msg.textContent = r.failed.length ? r.failed.join(' \u00b7 ') : '';
+  });
+  g.append(add, file, msg);
+
+  const mk = (label, control) => { const r = document.createElement('div'); r.className = 'al-row'; const l = document.createElement('span'); l.textContent = label; r.append(l, control); return r; };
+  const pill = (onChange) => {
+    const wrap = document.createElement('label'); wrap.className = 'output-toggle';
+    const input = document.createElement('input'); input.type = 'checkbox';
+    input.addEventListener('change', () => onChange(input.checked));
+    wrap.append(input, Object.assign(document.createElement('span'), { className: 'output-toggle-track' }));
+    return { wrap, input };
+  };
+  const loop = document.createElement('select'); loop.className = 'setting-input';
+  [['off', 'Stop'], ['all', 'Repeat all'], ['one', 'Repeat one']].forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; loop.appendChild(o); });
+  loop.addEventListener('change', () => lane.setLoop(loop.value));
+  const fade = document.createElement('input'); fade.type = 'number'; fade.min = '0'; fade.max = '10'; fade.step = '0.5'; fade.className = 'setting-input'; fade.style.width = '70px';
+  fade.addEventListener('change', () => lane.setFade(fade.value));
+  const duckPill = pill((on) => lane.setDuckOn(on));
+  const autoPill = pill((on) => lane.setAutostart(on));
+  const duck = duckPill.input, auto = autoPill.input;
+  const dev = document.createElement('select'); dev.className = 'setting-input';
+  dev.addEventListener('change', () => lane.setDevice(dev.value));
+  g.append(
+    mk('After a track', loop),
+    mk('Fade (seconds)', fade),
+    mk('Lower under video', duckPill.wrap),
+    mk('Start when Kairo opens', autoPill.wrap),
+    mk('Play on', dev),
+  );
+  host.appendChild(g);
+
+  const fillDevices = async () => {
+    dev.innerHTML = '';
+    const d0 = document.createElement('option'); d0.value = ''; d0.textContent = 'Same as media output'; dev.appendChild(d0);
+    (await mediaOutputDevices()).forEach(d => { const o = document.createElement('option'); o.value = d.deviceId; o.textContent = d.label || `Output ${d.deviceId.slice(0, 6)}`; dev.appendChild(o); });
+    dev.value = lane.device();
+    dev.disabled = !mediaOutputRoutable();
+  };
+  const draw = (st) => {
+    if (!list.isConnected) { off(); return; }
+    loop.value = st.loop; fade.value = String(st.fadeSec); duck.checked = st.duckOn; auto.checked = st.autostart;
+    list.innerHTML = '';
+    if (!lane.tracks.length) { const e = document.createElement('p'); e.className = 'setting-hint'; e.textContent = 'No tracks.'; list.appendChild(e); return; }
+    lane.tracks.forEach((t, i) => {
+      const row = document.createElement('div');
+      row.className = 'al-track' + (i === st.index ? ' current' : '');
+      const play = document.createElement('button'); play.type = 'button'; play.className = 'ls-icon-btn';
+      play.textContent = i === st.index && st.playing ? '\u23F8' : '\u25B6';
+      play.addEventListener('click', () => (i === st.index ? lane.toggle() : lane.play(i)));
+      const name = document.createElement('span'); name.className = 'al-track-name'; name.textContent = t.label;
+      const del = document.createElement('button'); del.type = 'button'; del.className = 'ls-icon-btn'; del.title = 'Remove'; del.textContent = '\u2715';
+      del.addEventListener('click', () => lane.remove(t.name));
+      row.append(play, name, del);
+      list.appendChild(row);
+    });
+  };
+  const off = lane.onChange(draw);
+  lane.refresh().then(() => draw(lane.state()));
+  fillDevices();
 }
 
+// Settings → Audio holds sound in and out: the output half is drawn here.
 function renderAudioOutputDetail(host) {
-  host.appendChild(detailTitle('Audio Output', null, null));
-  const intro = document.createElement('p');
-  intro.className = 'setting-hint';
-  intro.textContent = 'Sound from video on the Media layer plays from this computer, through its sound output \u2014 or through the device you pick here: a speaker, a mixer, an HDMI display. Screens show the picture only.';
-  host.appendChild(intro);
-
-  const group = detailGroup('Play media sound on');
+  const group = detailGroup('Video sound plays on');
   const row = document.createElement('div');
   row.className = 'audio-out-row';
   const sel = document.createElement('select');
@@ -713,7 +815,7 @@ function renderAudioOutputDetail(host) {
   group.appendChild(note);
   host.appendChild(group);
 
-  const volGroup = detailGroup('Volume');
+  const volGroup = detailGroup('Video volume');
   const volRow = document.createElement('div');
   volRow.className = 'audio-out-row';
   const vol = document.createElement('input');
@@ -727,11 +829,9 @@ function renderAudioOutputDetail(host) {
   vol.addEventListener('input', () => { volVal.textContent = `${vol.value}%`; setMediaVolume(Number(vol.value)); });
   volRow.append(vol, volVal);
   volGroup.appendChild(volRow);
-  const volHint = document.createElement('p');
-  volHint.className = 'setting-hint';
-  volHint.textContent = 'How loud video on the Media layer plays. The same level as the slider on the media controls.';
-  volGroup.appendChild(volHint);
   host.appendChild(volGroup);
+
+  renderAudioLaneGroup(host);
 
   const testBtn = document.createElement('button');
   testBtn.type = 'button';
@@ -756,9 +856,7 @@ function renderAudioOutputDetail(host) {
     const routable = mediaOutputRoutable();
     sel.disabled = !routable;
     testBtn.disabled = !routable;
-    note.textContent = routable
-      ? 'Applies to the video that is playing now and to every video you send after it.'
-      : 'This computer\u2019s display engine can\u2019t pick a sound device. Set the output in your system\u2019s Sound settings instead.';
+    note.textContent = routable ? '' : 'Can\u2019t pick a device here. Use your system Sound settings.';
   };
   sel.addEventListener('change', () => { setMediaOutput(sel.value); window.applyMediaSink?.(); renderOutputsList(); });
   refresh.addEventListener('click', fill);
@@ -788,7 +886,6 @@ function renderOutputsDetail() {
   const host = document.getElementById('outputs-detail');
   if (!host) return;
   host.innerHTML = '';
-  if (selectedOutputId === AUDIO_OUTPUT_ID) { renderAudioOutputDetail(host); return; }
   const o = allConfiguredOutputs().find(x => x.id === selectedOutputId);
   if (!o) { host.textContent = 'Select an output.'; return; }
   if (o.type === 'display') renderDisplayDetail(host, o);
@@ -1864,8 +1961,8 @@ async function applyOutputThemes() {
 // necessarily want to clear my media." Order here drives every checkbox
 // row, the Output Control matrix's row order, and the layers summary —
 // one list, so all three can't drift out of sync with each other again.
-const OUTPUT_LAYER_KEYS = [['bible', 'Bible'], ['slide', 'Slide'], ['timer', 'Timer'], ['media', 'Media']];
-const DEFAULT_OUTPUT_LAYERS = { bible: true, slide: true, media: true, timer: true };
+const OUTPUT_LAYER_KEYS = [['bible', 'Bible'], ['slide', 'Slide'], ['timer', 'Timer'], ['media', 'Media'], ['overlay', 'Overlays']];
+const DEFAULT_OUTPUT_LAYERS = { bible: true, slide: true, media: true, timer: true, overlay: true };
 
 function outputLayerMap() {
   const src = settings.outputLayers && typeof settings.outputLayers === 'object' ? settings.outputLayers : {};
@@ -1877,6 +1974,7 @@ function outputLayerMap() {
       slide: entry.slide !== false,
       media: entry.media !== false,
       timer: entry.timer !== false,
+      overlay: entry.overlay !== false,
     };
   }
   return map;
@@ -1920,7 +2018,7 @@ function buildOutputLayersHint(outputId, map) {
   const off = keys.filter(([k]) => !want[k]).map(([, l]) => l);
   const hint = document.createElement('p');
   hint.className = 'setting-hint outputs-layers-hint';
-  if (!off.length) hint.textContent = wordsOnly ? `Going out on this output: ${on.join(', ')}.` : 'Everything is going out on this output: Bible, Slide, Media, and Timer.';
+  if (!off.length) hint.textContent = wordsOnly ? `Going out on this output: ${on.join(', ')}.` : 'Everything is going out on this output.';
   else if (!on.length) hint.textContent = 'Nothing is going out on this output right now — every layer is hidden.';
   else hint.textContent = `Going out on this output: ${on.join(', ')}. Hidden: ${off.join(', ')}.`;
   if (wordsOnly && on.length) hint.textContent += isMonitorOutput(outputId) ? ' Words only.' : ' Text only — just the words: no background, shapes, pictures or media.';
@@ -2046,77 +2144,137 @@ function appendOutputLayersSection(host, outputId, map) {
 // out together instead of one at a time. OBS excluded (see
 // buildLayerChecksRow's own comment — no per-layer config, single fixed
 // text-only integration).
+// Output Control: "where does it go?" One row per kind of content, one chip per
+// output (by its display name). A lit chip means that content goes there.
+// Chips that can't apply (media on a Monitor, messages on a screen) are
+// struck out. Groups are the church's own named sets of outputs ("Sanctuary
+// screens"), so a row can be switched for all of them in one click.
+const OC_ROWS = [
+  { key: 'bible', label: 'Scripture' },
+  { key: 'slide', label: 'Slides and songs' },
+  { key: 'timer', label: 'Timer' },
+  { key: 'media', label: 'Media' },
+  { key: 'overlay', label: 'Overlays' },
+  { key: 'message', label: 'Messages' },
+  { key: 'textOnly', label: 'Words only' },
+];
+
+function outputGroupList() {
+  const g = Array.isArray(settings.outputGroups) ? settings.outputGroups : [];
+  return g.filter(x => x && typeof x.name === 'string' && Array.isArray(x.ids));
+}
+function saveOutputGroups(list) {
+  settings.outputGroups = list;
+  saveSettingsPatch({ outputGroups: list });
+  renderOutputControlMatrix();
+}
+
+// What a chip does for this row and output: { on, disabled, why }.
+function ocChipState(row, o, map, textOnly) {
+  if (row.key === 'message') return { on: !!o.monitor, disabled: true, why: o.monitor ? 'Messages show on Monitors' : 'Messages show on Monitors only' };
+  if (row.key === 'textOnly') {
+    if (o.monitor) return { on: true, disabled: true, why: 'A Monitor shows words only' };
+    if (o.type !== 'display') return { on: false, disabled: true, why: `Not available for ${outputTypeLabel(o.type)}` };
+    return { on: !!textOnly[o.id], disabled: false, why: '' };
+  }
+  if (row.key === 'media' && o.monitor) return { on: false, disabled: true, why: 'A Monitor shows words only' };
+  return { on: map[o.id]?.[row.key] !== false, disabled: false, why: '' };
+}
+
+// Sets one content type on or off for several outputs with a single save.
+function setRowForOutputs(row, ids, value) {
+  if (row.key === 'textOnly') { ids.forEach(id => setOutputTextOnly(id, value)); return; }
+  const current = outputLayerMap();
+  ids.forEach(id => { current[id] = { ...current[id], [row.key]: value }; });
+  settings.outputLayers = current;
+  saveSettingsPatch({ outputLayers: current });
+  applyOutputLayers();
+  renderOutputsList();
+}
+
 function renderOutputControlMatrix() {
   const host = document.getElementById('output-control-matrix');
   if (!host) return;
   const outputs = allConfiguredOutputs().filter(o => o.type !== 'obs');
   host.innerHTML = '';
-  if (!outputs.length) {
-    host.innerHTML = '<p class="setting-hint">No outputs configured yet.</p>';
-    return;
-  }
-  // Computed once, not once per checkbox (was outputLayerMap()[o.id] inside
-  // the innermost loop — N outputs × 4 layers worth of full-map rebuilds
-  // for what should be a single read).
+  if (!outputs.length) { host.innerHTML = '<p class="setting-hint">No outputs yet.</p>'; return; }
   const map = outputLayerMap();
-  const table = document.createElement('table');
-  table.className = 'ocm-table';
-  const thead = document.createElement('thead');
-  const headRow = document.createElement('tr');
-  headRow.appendChild(document.createElement('th'));
-  outputs.forEach(o => {
-    const th = document.createElement('th');
-    th.textContent = o.name;
-    th.title = o.monitor ? 'Monitor' : outputTypeLabel(o.type);
-    headRow.appendChild(th);
-  });
-  thead.appendChild(headRow);
-  table.appendChild(thead);
-
-  const tbody = document.createElement('tbody');
-  OUTPUT_LAYER_KEYS.forEach(([layerKey, label]) => {
-    const tr = document.createElement('tr');
-    const th = document.createElement('th');
-    th.scope = 'row';
-    th.textContent = label;
-    tr.appendChild(th);
-    outputs.forEach(o => {
-      const td = document.createElement('td');
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.checked = map[o.id]?.[layerKey] !== false;
-      cb.title = `${label} on ${o.name}`;
-      if (o.monitor && layerKey === 'media') { cb.checked = false; cb.disabled = true; cb.title = 'A Monitor shows words only'; }
-      else cb.addEventListener('change', () => setOutputLayer(o.id, layerKey, cb.checked));
-      td.appendChild(cb);
-      tr.appendChild(td);
-    });
-    tbody.appendChild(tr);
-  });
-  // Text only: just the theme's words — display outputs (see setOutputTextOnly).
   const textOnly = outputTextOnlyMap();
-  const tr = document.createElement('tr');
-  const rowHead = document.createElement('th');
-  rowHead.scope = 'row';
-  rowHead.textContent = 'Text only';
-  tr.appendChild(rowHead);
-  outputs.forEach(o => {
-    const td = document.createElement('td');
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    if (o.monitor) { cb.checked = true; cb.disabled = true; cb.title = 'A Monitor shows words only'; }
-    else if (o.type !== 'display') { cb.disabled = true; cb.title = `Not available for ${outputTypeLabel(o.type)}`; }
-    else {
-      cb.checked = !!textOnly[o.id];
-      cb.title = `Text only on ${o.name}`;
-      cb.addEventListener('change', () => setOutputTextOnly(o.id, cb.checked));
+  const groups = outputGroupList().map(g => ({ ...g, ids: g.ids.filter(id => outputs.some(o => o.id === id)) })).filter(g => g.ids.length);
+  const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
+
+  OC_ROWS.forEach((row) => {
+    const line = mk('div', 'oc-row');
+    line.appendChild(mk('div', 'oc-label', row.label));
+    const chips = mk('div', 'oc-chips');
+    const states = outputs.map(o => ({ o, st: ocChipState(row, o, map, textOnly) }));
+    states.forEach(({ o, st }) => {
+      const chip = mk('button', 'oc-chip' + (st.on ? ' on' : '') + (st.disabled ? ' na' : ''), (st.disabled && !st.on ? '\u2298 ' : '') + o.name);
+      chip.type = 'button';
+      chip.setAttribute('aria-pressed', String(st.on));
+      chip.title = st.why || `${row.label} on ${o.name}`;
+      if (st.disabled) chip.disabled = true;
+      else chip.addEventListener('click', () => setRowForOutputs(row, [o.id], !st.on));
+      chips.appendChild(chip);
+    });
+    const usable = states.filter(x => !x.st.disabled).map(x => x.o.id);
+    if (usable.length > 1) {
+      const tools = mk('span', 'oc-tools');
+      const all = mk('button', 'oc-link', 'All'); all.type = 'button';
+      all.addEventListener('click', () => setRowForOutputs(row, usable, true));
+      const none = mk('button', 'oc-link', 'None'); none.type = 'button';
+      none.addEventListener('click', () => setRowForOutputs(row, usable, false));
+      tools.append(all, none);
+      groups.forEach((g) => {
+        const ids = g.ids.filter(id => usable.includes(id));
+        if (!ids.length) return;
+        const lit = ids.every(id => states.find(x => x.o.id === id).st.on);
+        const gb = mk('button', 'oc-link oc-group' + (lit ? ' on' : ''), g.name); gb.type = 'button';
+        gb.title = `${lit ? 'Turn off' : 'Turn on'} ${row.label} for ${g.name}`;
+        gb.addEventListener('click', () => setRowForOutputs(row, ids, !lit));
+        tools.appendChild(gb);
+      });
+      chips.appendChild(tools);
     }
-    td.appendChild(cb);
-    tr.appendChild(td);
+    line.appendChild(chips);
+    host.appendChild(line);
   });
-  tbody.appendChild(tr);
-  table.appendChild(tbody);
-  host.appendChild(table);
+
+  // Groups: the church's own named sets of outputs.
+  const gl = mk('div', 'oc-row oc-groups');
+  gl.appendChild(mk('div', 'oc-label', 'Groups'));
+  const gchips = mk('div', 'oc-chips');
+  outputGroupList().forEach((g, i) => {
+    const c = mk('span', 'oc-chip oc-gchip', g.name);
+    const x = mk('button', 'oc-x', '\u2715'); x.type = 'button'; x.title = `Delete ${g.name}`;
+    x.addEventListener('click', () => saveOutputGroups(outputGroupList().filter((_, j) => j !== i)));
+    c.appendChild(x);
+    gchips.appendChild(c);
+  });
+  const add = mk('button', 'oc-link', '+ New group'); add.type = 'button';
+  add.addEventListener('click', () => {
+    const form = mk('div', 'oc-groupform');
+    const name = document.createElement('input'); name.className = 'setting-input'; name.placeholder = 'Group name'; name.maxLength = 30;
+    const picked = new Set();
+    form.appendChild(name);
+    outputs.forEach((o) => {
+      const c = mk('button', 'oc-chip', o.name); c.type = 'button';
+      c.addEventListener('click', () => { picked.has(o.id) ? picked.delete(o.id) : picked.add(o.id); c.classList.toggle('on', picked.has(o.id)); });
+      form.appendChild(c);
+    });
+    const save = mk('button', 'modal-btn', 'Save'); save.type = 'button';
+    save.addEventListener('click', () => {
+      const n = name.value.trim();
+      if (!n || !picked.size) return;
+      saveOutputGroups([...outputGroupList(), { name: n, ids: [...picked] }]);
+    });
+    form.appendChild(save);
+    add.replaceWith(form);
+    name.focus();
+  });
+  gchips.appendChild(add);
+  gl.appendChild(gchips);
+  host.appendChild(gl);
 }
 
 // Persist a partial settings change without clobbering unrelated fields.
@@ -2131,3 +2289,15 @@ async function saveSettingsPatch(patch) {
     console.warn('[Settings] save failed:', err.message);
   }
 }
+
+
+// Audio pane: sound output (video sound and background music) under the microphone settings.
+function renderAudioPaneOutput() {
+  const host = document.getElementById('audio-out-host');
+  if (!host) return;
+  host.innerHTML = '';
+  renderAudioOutputDetail(host);
+}
+document.querySelector('.settings-nav-item[data-pane="audio"]')?.addEventListener('click', renderAudioPaneOutput);
+document.getElementById('settings-btn')?.addEventListener('click', () => setTimeout(renderAudioPaneOutput, 0));
+renderAudioPaneOutput();

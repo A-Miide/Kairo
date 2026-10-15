@@ -83,6 +83,10 @@ impl Detector {
         if text.trim().is_empty() {
             return;
         }
+        // Finished stretches go in debug.log, so a run can be diagnosed from the log alone.
+        if is_final {
+            crate::routes::write_debug_global("server:transcript", json!({ "text": text, "speechFinal": speech_final, "continues": continues_live }));
+        }
         self.send(Event::Speech(Segment { text: text.to_string(), is_final, speech_final, continues_live }));
     }
 }
@@ -214,6 +218,13 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
                     corrected_from.map_or(String::new(), |f| format!(", corrects {}", bible.reference(f)))
                 );
                 hub.broadcast(msg);
+                crate::routes::write_debug_global("server:detect", json!({
+                    "verses": verses.iter().map(|v| bible.reference(*v)).collect::<Vec<_>>(),
+                    "target": if viewer { "screen" } else { "suggestions" },
+                    "method": method.wire(),
+                    "score": (score * 100.0).round() / 100.0,
+                    "correctsFrom": corrected_from.map(|f| bible.reference(f)),
+                }));
                 if viewer && p.auto_send {
                     hub.set_bible_on_top(true);
                     let how = crate::notes::How::of(method.wire());

@@ -30,6 +30,13 @@ pub const ACTIONS: &[&str] = &[
     "clear-media",
     "clear-timer",
     "clear-all",
+    "audio-play",
+    "audio-pause",
+    "audio-stop",
+    "audio-next",
+    "audio-prev",
+    "audio-fade-out",
+    "overlays-off",
 ];
 const PREFIX: &str = "/kairo/";
 const SETTINGS_EVERY: Duration = Duration::from_secs(2);
