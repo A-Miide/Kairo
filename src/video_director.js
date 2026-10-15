@@ -2,15 +2,16 @@
 // lifecycle.
 //
 // Lazy-loaded by video_director_boot.js while the mode is on, and removed
-// again when it is turned off. The screen is two groups: on the left (60%)
-// Preview and Output (the Program screen), then the Inputs grid
-// (video_input_grid.js), then a playlist group and the media bin
-// (video_dock.js); on the right (40%) one Scripture sends group holding the
-// search bar, the Bible and Theme controls and the Live Queue (moved in by
-// video_director_layout.js). Nothing in the normal layout's own code is edited
-// for this mode.
+// again when it is turned off. The screen has a top half and a bottom half with
+// a draggable split between them (remembered). The top half is three columns
+// with draggable splits: Inputs (video_input_grid.js), the two displays with a
+// narrow transition strip between them (Preview | strip | Output), and one
+// Scripture sends group (the search bar, Bible and Theme controls and the Live
+// Queue, moved in by video_director_layout.js). The bottom half holds the
+// playlist group and the media bin (video_dock.js). Nothing in the normal
+// layout's own code is edited for this mode.
 //
-//   PROGRAM  what the outputs show now: a live copy of the output's own page
+//   OUTPUT   what the outputs show now: a live copy of the output's own page
 //            (display.html?monitor=1&shared=1), fed by the same socket. Its
 //            frame goes red while something is live.
 //   PREVIEW  a staging screen: the same page (display.html?preview=1), fed by
@@ -134,6 +135,10 @@
   function publishTransition() {
     try { localStorage.setItem('kairo-video-transition', JSON.stringify(transitionPref())); } catch {}
   }
+  const fadeMs = () => { const n = Number(settings.videoFadeMs); return Number.isFinite(n) && n >= 0 && n <= 5000 ? Math.round(n) : 300; };
+  function publishFade() {
+    try { localStorage.setItem('kairo-video-fade', JSON.stringify(fadeMs())); } catch {}
+  }
   // Preview → Program with `mode`; the old Program source is staged next.
   function take(mode) {
     const ps = programState();
@@ -145,16 +150,48 @@
     syncPreviewFrame();
     refresh();
   }
-  // One click on an input tile: straight to Program with the current transition.
-  function sendToProgram(id) {
+  // One click on an input tile: straight to Program with the current transition,
+  // or with `mode` for this one send (Fade to black).
+  function sendToProgram(id, mode) {
     let ps = programState();
     if (!ps.on.length) {
       // Nothing is set to carry video yet: the primary display does.
       setOutputLayer(PRIMARY_DISPLAY, 'video', true);
       ps = programState();
     }
-    publishTransition();
+    if (mode) {
+      try { localStorage.setItem('kairo-video-transition', JSON.stringify(mode)); } catch {}
+      setTimeout(publishTransition, fadeMs() + 400);
+    } else publishTransition();
     setVideoLiveFor(ps.on.map(o => o.id), id || null);
+    refresh();
+  }
+
+  // ── T-bar: fade Preview onto Output by hand ──────────────────────────────
+  function writeTbar(sourceId, t) {
+    try { localStorage.setItem('kairo-video-tbar', JSON.stringify({ sourceId: sourceId || null, t, n: Date.now() })); } catch {}
+  }
+  let tbarBusy = false;
+  function tbarMove(t) {
+    if (!programState().on.length) return;
+    tbarBusy = true;
+    writeTbar(D.previewId, t);
+  }
+  // Let go past halfway and the fade completes; short of it, it goes back.
+  function tbarRelease(t) {
+    if (!tbarBusy) return;
+    tbarBusy = false;
+    const ps = programState();
+    if (t >= 0.5 && ps.on.length) {
+      writeTbar(D.previewId, 1);
+      const outgoing = ps.mixed ? D.previewId : ps.id;
+      try { localStorage.setItem('kairo-video-transition', JSON.stringify('cut')); } catch {}
+      setVideoLiveFor(ps.on.map(o => o.id), D.previewId);
+      D.previewId = outgoing;
+      setTimeout(publishTransition, 600);
+      syncPreviewFrame();
+    } else writeTbar(D.previewId, 0);
+    if (D.ui.tbar) D.ui.tbar.value = '0';
     refresh();
   }
   function setPreview(id) {
@@ -163,33 +200,140 @@
     refresh();
   }
 
-  // ── Stage ────────────────────────────────────────────────────────────────
+  // ── Layout: three columns over a bottom half, with draggable splits ───────
+  const LAYOUT_KEY = 'kairo-vd-layout';
+  const layoutDefaults = { c1: 0.14, c2: 0.60, top: 0.5 };
+  function readLayout() {
+    try {
+      const v = JSON.parse(localStorage.getItem(LAYOUT_KEY) || 'null');
+      if (v && typeof v === 'object') return { c1: clamp(v.c1, 0.1, 0.3, layoutDefaults.c1), c2: clamp(v.c2, 0.35, 0.75, layoutDefaults.c2), top: clamp(v.top, 0.25, 0.8, layoutDefaults.top) };
+    } catch {}
+    return { ...layoutDefaults };
+  }
+  function clamp(n, lo, hi, d) { n = Number(n); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; }
+  function saveLayout() { try { localStorage.setItem(LAYOUT_KEY, JSON.stringify(D.layout)); } catch {} }
+  function applyLayout() {
+    const { c1, c2, top } = D.layout;
+    const c3 = Math.max(0.12, 1 - c1 - c2);
+    D.top.style.gridTemplateColumns = `minmax(0, ${c1}fr) 8px minmax(0, ${c2}fr) 8px minmax(0, ${c3}fr)`;
+    D.top.style.flexGrow = String(top);
+    D.bottomWrap.style.flexGrow = String(1 - top);
+    fitScreens();
+  }
+
+  // A thin separator that trades space when dragged (or moved with the arrow keys).
+  function splitter(kind, onMove, label) {
+    const el = vEl('div', 'vd-split vd-split-' + kind);
+    el.setAttribute('role', 'separator');
+    el.setAttribute('aria-orientation', kind === 'h' ? 'horizontal' : 'vertical');
+    el.setAttribute('aria-label', label);
+    el.tabIndex = 0;
+    el.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      el.setPointerCapture(e.pointerId);
+      el.classList.add('is-drag');
+      const move = (ev) => { onMove(ev.clientX, ev.clientY); applyLayout(); };
+      const up = () => { el.classList.remove('is-drag'); el.removeEventListener('pointermove', move); el.removeEventListener('pointerup', up); saveLayout(); };
+      el.addEventListener('pointermove', move);
+      el.addEventListener('pointerup', up);
+    });
+    el.addEventListener('keydown', (e) => {
+      const step = e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -0.01 : e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 0.01 : 0;
+      if (!step) return;
+      e.preventDefault();
+      onMove(null, null, step);
+      applyLayout(); saveLayout();
+    });
+    return el;
+  }
+
+  // Preview and Output as large as their area allows, always 16:9: width is
+  // what is left beside the strip, split two ways, or what the height allows.
+  function fitScreens() {
+    const band = D.root;
+    if (!band || !D.ui.strip) return;
+    const w = band.clientWidth, h = band.clientHeight;
+    if (!w || !h) return;
+    const strip = D.ui.strip.offsetWidth || 90;
+    const head = 28;                    // each screen's label line
+    const gap = 8;
+    const byWidth = (w - strip - gap * 2) / 2;
+    const byHeight = (h - head) * 16 / 9;
+    const fw = Math.max(80, Math.floor(Math.min(byWidth, byHeight)));
+    band.style.setProperty('--vd-fw', fw + 'px');
+  }
+
   function build() {
     const center = document.querySelector('main.center-stage');
     if (!center) return false;
+    D.layout = readLayout();
+
+    // ── Column 1: Inputs ──
+    const inputs = vEl('section', 'vd-section vd-section-inputs');
+    inputs.setAttribute('aria-label', 'Inputs');
+    const ihead = vEl('div', 'vd-section-head');
+    ihead.appendChild(vEl('span', 'vd-label', 'Inputs'));
+    D.grid = window.KairoVideoGrid.create({
+      getSources: () => videoSourceList(),
+      getDevices: () => videoState.devices,
+      getState: () => { const ps = D.programState; return { programId: ps.id, mixed: ps.mixed, hasOutputs: ps.on.length > 0, previewId: D.previewId }; },
+      onProgram: (id) => sendToProgram(id),
+      onPreview: setPreview,
+      mode: settings.videoGridMode === 2 ? 2 : 4,
+      onMode: (n) => { settings.videoGridMode = n; saveSettingsPatch({ videoGridMode: n }); },
+      layout: 'column',
+    });
+    ihead.appendChild(D.grid.controls);
+    const ifoot = vEl('div', 'vd-section-foot');
+    D.ui.noVideo = vBtn('No video', 'Send no video to Output', () => sendToProgram(null), 'vd-mini');
+    ifoot.append(
+      D.ui.noVideo,
+      vBtn('Add', 'Add a video source', () => openSources(), 'vd-mini'),
+      vBtn('Manage', 'Rename, reorder or remove video sources', () => openSources(), 'vd-mini'),
+    );
+    inputs.append(ihead, D.grid.el, ifoot);
+
+    // ── Column 2: Preview | strip | Output ──
     const band = vEl('section', 'vd-band');
     band.id = 'vd-band';
-    band.setAttribute('aria-label', 'Preview and Program');
-
+    band.setAttribute('aria-label', 'Preview and Output');
     const screens = vEl('div', 'vd-screens');
-    // Preview
     const pvw = vEl('div', 'vd-screen vd-screen-pvw');
     const pvwHead = vEl('div', 'vd-screen-head');
     pvwHead.appendChild(vEl('span', 'vd-tag vd-tag-pvw', 'Preview'));
     D.ui.pvwRef = vEl('span', 'vd-ref');
     pvwHead.appendChild(D.ui.pvwRef);
-    D.ui.takeVerse = vBtn('Take verse', 'Send the staged verse to Program', takeVerse, 'vd-mini vd-mini-primary');
-    D.ui.clearStage = vBtn('Clear', 'Remove the staged verse from Preview', clearStage, 'vd-mini');
-    pvwHead.append(D.ui.takeVerse, D.ui.clearStage);
     pvw.append(pvwHead, buildFrame('pvw'));
-    // Controls
-    const ctl = vEl('div', 'vd-ctl');
-    ctl.setAttribute('role', 'group');
-    ctl.setAttribute('aria-label', 'Transition');
-    D.ui.cut = vBtn('Cut', 'Put the Preview video source on Program at once', () => take('cut'), 'vd-take');
-    D.ui.fade = vBtn('Fade', 'Fade the Preview video source onto Program', () => take('fade'), 'vd-take');
-    ctl.append(D.ui.cut, D.ui.fade);
-    // Program
+
+    // The transition strip
+    const strip = vEl('div', 'vd-strip');
+    strip.setAttribute('role', 'group');
+    strip.setAttribute('aria-label', 'Transition');
+    D.ui.takeVerse = vBtn('Take verse', 'Send the staged verse to Output', takeVerse, 'vd-take vd-take-verse');
+    D.ui.clearStage = vBtn('Clear', 'Remove the staged verse from Preview', clearStage, 'vd-mini');
+    D.ui.cut = vBtn('Cut', 'Put the Preview video source on Output at once', () => take('cut'), 'vd-take');
+    D.ui.fade = vBtn('Fade', 'Fade the Preview video source onto Output', () => take('fade'), 'vd-take');
+    D.ui.black = vBtn('Fade to black', 'Fade Output to no video', () => sendToProgram(null, 'fade'), 'vd-take');
+    const dur = vEl('label', 'vd-dur');
+    const durIn = vEl('input'); durIn.type = 'number'; durIn.min = '0'; durIn.max = '5000'; durIn.step = '50'; durIn.value = String(fadeMs());
+    durIn.setAttribute('aria-label', 'Fade length in milliseconds');
+    durIn.addEventListener('change', () => {
+      const n = Math.min(5000, Math.max(0, Math.round(Number(durIn.value) || 0)));
+      durIn.value = String(n);
+      settings.videoFadeMs = n; saveSettingsPatch({ videoFadeMs: n }); publishFade();
+    });
+    dur.append(durIn, vEl('span', null, 'ms'));
+    const tb = vEl('div', 'vd-tbar-wrap');
+    D.ui.tbar = vEl('input', 'vd-tbar');
+    D.ui.tbar.type = 'range'; D.ui.tbar.min = '0'; D.ui.tbar.max = '1000'; D.ui.tbar.value = '0';
+    D.ui.tbar.setAttribute('aria-label', 'T-bar: fade Preview onto Output by hand');
+    D.ui.tbar.title = 'Drag to fade by hand. Let go past halfway to finish.';
+    D.ui.tbar.addEventListener('input', () => tbarMove(Number(D.ui.tbar.value) / 1000));
+    for (const ev of ['change', 'pointerup', 'keyup']) D.ui.tbar.addEventListener(ev, () => tbarRelease(Number(D.ui.tbar.value) / 1000));
+    tb.append(D.ui.tbar, vEl('span', 'vd-tbar-label', 'T-bar'));
+    strip.append(D.ui.takeVerse, D.ui.clearStage, D.ui.cut, D.ui.fade, D.ui.black, dur, tb);
+    D.ui.strip = strip;
+
     const pgm = vEl('div', 'vd-screen vd-screen-pgm');
     const pgmHead = vEl('div', 'vd-screen-head');
     pgmHead.appendChild(vEl('span', 'vd-tag vd-tag-pgm', 'Output'));
@@ -197,44 +341,55 @@
     pgmHead.appendChild(D.ui.pgmName);
     pgm.append(pgmHead, buildFrame('pgm'));
     D.ui.pgm = pgm;
-    screens.append(pvw, ctl, pgm);
-
+    screens.append(pvw, strip, pgm);
     band.appendChild(screens);
+    const displays = vEl('div', 'vd-col-displays');
+    displays.appendChild(band);
 
-    // Left group: stage, inputs, then the bottom area. Right group: Scripture sends.
-    const main = vEl('div', 'vd-main');
-    const left = vEl('div', 'vd-main-left');
-    const inputs = vEl('section', 'vd-section vd-section-inputs');
-    inputs.setAttribute('aria-label', 'Inputs');
-    const ihead = vEl('div', 'vd-section-head');
-    ihead.appendChild(vEl('span', 'vd-label', 'Inputs'));
-    D.ui.noVideo = vBtn('No video', 'Send no video to Program', () => sendToProgram(null), 'vd-mini');
-    ihead.appendChild(D.ui.noVideo);
-    D.grid = window.KairoVideoGrid.create({
-      getSources: () => videoSourceList(),
-      getDevices: () => videoState.devices,
-      getState: () => { const ps = D.programState; return { programId: ps.id, mixed: ps.mixed, hasOutputs: ps.on.length > 0, previewId: D.previewId }; },
-      onProgram: sendToProgram,
-      onPreview: setPreview,
-      mode: settings.videoGridMode === 2 ? 2 : 4,
-      onMode: (n) => { settings.videoGridMode = n; saveSettingsPatch({ videoGridMode: n }); },
-    });
-    ihead.appendChild(D.grid.controls);
-    ihead.appendChild(vBtn('Manage video sources', 'Add, rename or remove video sources', () => {
-      document.getElementById('settings-modal')?.classList.remove('hidden');
-      if (typeof showSettingsPane === 'function') showSettingsPane('sources');
-    }, 'vd-mini vd-manage'));
-    inputs.append(ihead, D.grid.el);
-    D.bottomHost = vEl('div', 'vd-bottom');
-    left.append(band, inputs, D.bottomHost);
+    // ── Column 3: Scripture sends ──
     const sends = vEl('section', 'vd-section vd-section-sends');
     sends.setAttribute('aria-label', 'Scripture sends');
-    main.append(left, sends);
     D.sendsHost = sends;
-    center.appendChild(main);
-    D.main = main;
+
+    // ── Top row with its two vertical splits ──
+    const top = vEl('div', 'vd-top');
+    const split1 = splitter('v', (x, y, step) => {
+      if (step) { D.layout.c1 = clamp(D.layout.c1 + step, 0.1, 0.3, D.layout.c1); return; }
+      const r = top.getBoundingClientRect();
+      D.layout.c1 = clamp((x - r.left) / r.width, 0.1, 0.3, D.layout.c1);
+    }, 'Resize Inputs');
+    const split2 = splitter('v', (x, y, step) => {
+      if (step) { D.layout.c2 = clamp(D.layout.c2 + step, 0.35, 0.75, D.layout.c2); return; }
+      const r = top.getBoundingClientRect();
+      D.layout.c2 = clamp((x - r.left) / r.width - D.layout.c1, 0.35, 0.75, D.layout.c2);
+    }, 'Resize the displays');
+    top.append(inputs, split1, displays, split2, sends);
+
+    // ── Bottom half, and the horizontal split ──
+    const bottomWrap = vEl('div', 'vd-bottom-wrap');
+    D.bottomHost = vEl('div', 'vd-bottom');
+    bottomWrap.appendChild(D.bottomHost);
+    const hsplit = splitter('h', (x, y, step) => {
+      const c = center.getBoundingClientRect();
+      if (step) { D.layout.top = clamp(D.layout.top + step, 0.25, 0.8, D.layout.top); return; }
+      const t = top.getBoundingClientRect();
+      D.layout.top = clamp((y - t.top) / Math.max(1, c.bottom - t.top - 8), 0.25, 0.8, D.layout.top);
+    }, 'Resize the top and bottom halves');
+
+    const wrap = vEl('div', 'vd-main');
+    wrap.append(top, hsplit, bottomWrap);
+    center.appendChild(wrap);
+    D.main = wrap; D.top = top; D.bottomWrap = bottomWrap;
     D.root = band;
+    D.fitObs = new ResizeObserver(() => fitScreens());
+    D.fitObs.observe(band);
+    applyLayout();
     return true;
+  }
+
+  function openSources() {
+    document.getElementById('settings-modal')?.classList.remove('hidden');
+    if (typeof showSettingsPane === 'function') showSettingsPane('sources');
   }
 
   // Something is on air: a live source, or a verse marked live in the queue.
@@ -260,13 +415,14 @@
     D.ui.pgmName.textContent = !ps.on.length ? 'Video off' : ps.mixed ? 'Mixed' : pgmSource ? pgmSource.name : 'No video';
     D.grid.render();
     D.ui.noVideo.classList.toggle('is-on', !ps.mixed && ps.on.length > 0 && !ps.id);
+    fitScreens();
     D.ui.pgm.classList.toggle('is-live', isOnAir());
 
     // Preview header
     const pvwSource = sources.find(s => s.id === D.previewId);
     const staged = D.staged ? (D.staged.verse.reference || D.staged.verse.ref || 'Verse') : '';
     D.ui.pvwRef.textContent = staged ? `${pvwSource ? pvwSource.name : 'No video'} · ${staged}` : (pvwSource ? pvwSource.name : 'No video');
-    D.ui.takeVerse.hidden = !D.staged;
+    D.ui.takeVerse.disabled = !D.staged;
     D.ui.clearStage.hidden = !D.staged;
     const canTake = ps.on.length > 0;
     const cur = transitionPref();
@@ -274,8 +430,11 @@
       btn.disabled = !canTake;
       btn.classList.toggle('is-current', mode === cur);
       btn.setAttribute('aria-pressed', String(mode === cur));
-      btn.title = canTake ? (mode === 'cut' ? 'Put the Preview video source on Program at once' : 'Fade the Preview video source onto Program') : 'Turn on Video input for an output in Director mode settings';
+      btn.title = canTake ? (mode === 'cut' ? 'Put the Preview video source on Output at once' : 'Fade the Preview video source onto Output') : 'Turn on Video input for an output in Director mode settings';
     }
+    D.ui.black.disabled = !canTake;
+    D.ui.tbar.disabled = !canTake;
+    D.ui.black.title = canTake ? 'Fade Output to no video' : 'Turn on Video input for an output in Director mode settings';
   }
 
   // ── Settings → Director mode: rows for what the screen no longer carries ─
@@ -317,6 +476,7 @@
     D.active = true;
     wrapSend();
     publishTransition();
+    publishFade();
     await startVideoSources();     // the Sources pane, device list, published state
     window.KairoVideoLayout?.start();
     window.KairoVideoLayout?.fillSends(D.sendsHost);
@@ -354,9 +514,10 @@
     D.frames = {};
     stopVideoSources();
     window.KairoVideoHub?.releaseAll();
+    D.fitObs?.disconnect(); D.fitObs = null;
     D.main?.remove();
-    D.root = null; D.main = null;
-    try { localStorage.setItem('kairo-video-live', '{}'); } catch {}
+    D.root = null; D.main = null; D.top = null; D.bottomWrap = null;
+    try { localStorage.setItem('kairo-video-live', '{}'); localStorage.removeItem('kairo-video-fade'); localStorage.removeItem('kairo-video-tbar'); } catch {}
   }
 
   // Is video on air right now? (the toggle asks before taking it off)

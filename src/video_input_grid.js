@@ -19,7 +19,8 @@
   }
 
   // opts: { getSources(), getDevices(), getState() → {programId, mixed, hasOutputs, previewId},
-  //         onProgram(id), onPreview(id), mode: 2|4, onMode(mode) }
+  //         onProgram(id), onPreview(id), mode: 2|4, onMode(mode),
+  //         layout: 'row' (default, sized by height) | 'column' (fills a narrow column's width) }
   function create(opts) {
     const V = window.KairoVideoSources;
     const hub = window.KairoVideoHub;
@@ -36,8 +37,9 @@
     sw.setAttribute('role', 'group');
     sw.setAttribute('aria-label', 'Tiles shown');
     const modeBtns = [2, 4].map(n => {
-      const b = h('button', 'vg-mode', `${n}-up`);
+      const b = h('button', 'vg-mode', String(n));
       b.type = 'button';
+      b.setAttribute('aria-label', `${n}-up`);
       b.title = n === 2 ? 'Two large tiles' : 'Four tiles, two by two';
       b.addEventListener('click', () => { mode = n; page = 0; try { opts.onMode && opts.onMode(n); } catch {} render(); });
       sw.appendChild(b);
@@ -91,7 +93,7 @@
       // New leases are taken before the old ones go, so the hub keeps each camera open across a redraw.
       const old = leases;
       leases = [];
-      el.className = 'vg vg-' + mode;
+      el.className = 'vg vg-' + mode + (opts.layout === 'column' ? ' vg-col' : '');
       el.replaceChildren();
       const visible = sources.slice(page * per, page * per + per);
       visible.forEach(s => el.appendChild(tile(s, st)));

@@ -1261,6 +1261,17 @@
         if (!videoLayer) videoLayer = createVideoLayer();
         videoLayer.sync(args);
     }
+    // The director's T-bar: a source fades in over what is showing, by hand.
+    async function tbarSync() {
+        if (CAPTURE || PREVIEW || (MONITOR && !SHARED)) return;
+        const v = readJson('kairo-video-tbar', null);
+        if (!v || typeof v.t !== 'number') return;
+        if (!outputLayers.video) return;
+        const sources = readJson('kairo-video-sources', []);
+        try { await ensureVideoModules(); } catch { return; }
+        if (!videoLayer) videoLayer = createVideoLayer();
+        videoLayer.manual({ layers: outputLayers, sources, sourceId: v.sourceId || null, t: v.t });
+    }
     function createVideoLayer() {
         return window.KairoDisplayVideo.create({
             host: document.getElementById('video-layer'),
@@ -1269,7 +1280,8 @@
             // The director's cut or fade, else this output's own transition.
             getTransition: () => ({
                 animation: PREVIEW ? 'cut' : (readJson('kairo-video-transition', null) || outputAnimation),
-                speed: outputAnimationSpeed,
+                // The director's fade length (ms), else this output's own speed.
+                speed: (() => { const ms = Number(readJson('kairo-video-fade', 0)); return ms > 0 ? ms / 300 : outputAnimationSpeed; })(),
             }),
             onActive: (on) => {
                 videoOn = on;
@@ -1978,6 +1990,7 @@
             } catch {}
         }
         if (e.key === 'kairo-video-sources' || e.key === 'kairo-video-live') syncVideo();
+        if (e.key === 'kairo-video-tbar') tbarSync();
         if (e.key === 'kairo-output-keying' && e.newValue) {
             try { applyOutputKeying((JSON.parse(e.newValue) || {})[OUTPUT_KEY]); } catch {}
         }
