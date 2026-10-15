@@ -2,11 +2,13 @@
 // lifecycle.
 //
 // Lazy-loaded by video_director_boot.js while the mode is on, and removed
-// again when it is turned off. The screen has four labelled sections: Inputs
-// (video_input_grid.js), Preview, Output (the Program screen) and Scripture
-// sends (the search bar and the Live Queue, moved in by
-// video_director_layout.js). The dock below (video_dock.js) holds slides and
-// media. Nothing in the normal layout's own code is edited for this mode.
+// again when it is turned off. The screen is two groups: on the left (60%)
+// Preview and Output (the Program screen), then the Inputs grid
+// (video_input_grid.js), then a playlist group and the media bin
+// (video_dock.js); on the right (40%) one Scripture sends group holding the
+// search bar, the Bible and Theme controls and the Live Queue (moved in by
+// video_director_layout.js). Nothing in the normal layout's own code is edited
+// for this mode.
 //
 //   PROGRAM  what the outputs show now: a live copy of the output's own page
 //            (display.html?monitor=1&shared=1), fed by the same socket. Its
@@ -199,8 +201,9 @@
 
     band.appendChild(screens);
 
-    // Second row: Inputs (left) and Scripture sends (right).
-    const row = vEl('div', 'vd-row2');
+    // Left group: stage, inputs, then the bottom area. Right group: Scripture sends.
+    const main = vEl('div', 'vd-main');
+    const left = vEl('div', 'vd-main-left');
     const inputs = vEl('section', 'vd-section vd-section-inputs');
     inputs.setAttribute('aria-label', 'Inputs');
     const ihead = vEl('div', 'vd-section-head');
@@ -222,15 +225,15 @@
       if (typeof showSettingsPane === 'function') showSettingsPane('sources');
     }, 'vd-mini vd-manage'));
     inputs.append(ihead, D.grid.el);
+    D.bottomHost = vEl('div', 'vd-bottom');
+    left.append(band, inputs, D.bottomHost);
     const sends = vEl('section', 'vd-section vd-section-sends');
     sends.setAttribute('aria-label', 'Scripture sends');
-    row.append(inputs, sends);
+    main.append(left, sends);
     D.sendsHost = sends;
-
-    center.prepend(row);
-    center.prepend(band);
+    center.appendChild(main);
+    D.main = main;
     D.root = band;
-    D.row2 = row;
     return true;
   }
 
@@ -317,7 +320,7 @@
     await startVideoSources();     // the Sources pane, device list, published state
     window.KairoVideoLayout?.start();
     window.KairoVideoLayout?.fillSends(D.sendsHost);
-    window.KairoVideoDock?.mount();
+    window.KairoVideoDock?.mount(D.bottomHost);
     mountSettings();
     // The Program frame follows the verse going live and clearing.
     const queue = document.getElementById('current-display-card');
@@ -351,8 +354,8 @@
     D.frames = {};
     stopVideoSources();
     window.KairoVideoHub?.releaseAll();
-    D.root?.remove(); D.row2?.remove();
-    D.root = null; D.row2 = null;
+    D.main?.remove();
+    D.root = null; D.main = null;
     try { localStorage.setItem('kairo-video-live', '{}'); } catch {}
   }
 

@@ -2,13 +2,13 @@
 //
 // Lazy-loaded with the mode and fully undone when it ends. Nothing in the
 // normal layout's code changes: this adds a body class (the stylesheet does the
-// rest), thin rails the sidebars collapse to, a top line (the live transcript
-// on one line, beside the Listening button), and it moves the Listening button
-// and the Media Bin out and back. Possible Matches is hidden by the stylesheet
+// rest), thin rails the sidebars collapse to, a top line (the listening state
+// and the live transcript on one line), and it moves the search bar and the
+// Live Queue into the Scripture sends group and back. Possible Matches is hidden by the stylesheet
 // while the mode is on; detection keeps running underneath.
 'use strict';
 (function () {
-  const L = { on: false, rails: [], ticker: null, topline: null, tickObs: null, tickTimer: null, listenHome: null, tabClick: null, prevView: null };
+  const L = { on: false, rails: [], ticker: null, topline: null, tickObs: null, tickTimer: null, tabClick: null, prevView: null };
 
   // ── Rails: the sidebars as thin strips that open over the stage on click ──
   function mountRail(aside, side, label) {
@@ -42,36 +42,43 @@
     L.rails = [];
   }
 
-  // ── Top line: Listening button + the transcript's last words ─────────────
+  // ── Top line: the listening state and the transcript's last words. The
+  // Start Listening button stays in the top bar where it always is. ────────
   function mountTopline() {
     const center = document.querySelector('main.center-stage');
     const listen = document.getElementById('listen-btn');
-    if (!center || !listen) return;
+    if (!center) return;
     const line = document.createElement('div');
     line.className = 'vd-topline';
-    L.listenHome = document.createComment('listen-btn');
-    listen.before(L.listenHome);
-    line.appendChild(listen);        // the same button, so its state keeps updating
+    const state = document.createElement('span');
+    state.className = 'vd-listen-state';
+    state.setAttribute('role', 'status');
+    line.appendChild(state);
     const ticker = document.createElement('div');
     ticker.className = 'vd-ticker';
-    ticker.setAttribute('role', 'status');
     ticker.setAttribute('aria-label', 'Live transcript');
-    ticker.setAttribute('aria-live', 'off');
     const text = document.createElement('span');
     text.className = 'vd-ticker-text';
     ticker.appendChild(text);
     line.appendChild(ticker);
     center.prepend(line);
-    L.topline = line; L.ticker = text;
+    L.topline = line; L.ticker = text; L.state = state;
+
+    const paintState = () => {
+      const on = !!(listen && listen.classList.contains('active'));
+      state.textContent = on ? 'Listening' : 'Not listening';
+      state.classList.toggle('is-on', on);
+    };
+    if (listen) { L.listenObs = new MutationObserver(paintState); L.listenObs.observe(listen, { attributes: true, attributeFilter: ['class'] }); }
+    paintState();
 
     const src = document.getElementById('transcript-content');
     const update = () => {
       L.tickTimer = null;
       const t = src && src.querySelector('.transcript-text');
       const words = t ? t.textContent.replace(/\s+/g, ' ').trim() : '';
-      text.textContent = words.slice(-240);
+      text.textContent = words ? words.slice(-240) : 'Transcript appears here when listening';
       text.classList.toggle('is-empty', !words);
-      if (!words) text.textContent = 'Transcript appears here when listening';
     };
     if (src) {
       // Interim words arrive several times a second: at most one redraw per 150 ms.
@@ -82,11 +89,9 @@
   }
   function unmountTopline() {
     L.tickObs?.disconnect(); L.tickObs = null;
+    L.listenObs?.disconnect(); L.listenObs = null;
     clearTimeout(L.tickTimer); L.tickTimer = null;
-    const listen = document.getElementById('listen-btn');
-    if (listen && L.listenHome && L.listenHome.parentNode) { L.listenHome.after(listen); L.listenHome.remove(); }
-    L.listenHome = null;
-    L.topline?.remove(); L.topline = null; L.ticker = null;
+    L.topline?.remove(); L.topline = null; L.ticker = null; L.state = null;
   }
 
   // ── Views: the stage, verses and dock replace the Slides, Songs, Media and
