@@ -19,7 +19,7 @@
   }
 
   // opts: { getSources(), getDevices(), getState() → {programId, mixed, hasOutputs, previewId},
-  //         onProgram(id), onPreview(id), mode: 2|4, onMode(mode),
+  //         onProgram(id), onPreview(id), onPlaceholder(source, el), mode: 2|4, onMode(mode),
   //         layout: 'row' (default, sized by height) | 'column' (fills a narrow column's width) }
   function create(opts) {
     const V = window.KairoVideoSources;
@@ -55,7 +55,31 @@
     pager.append(prev, count, next);
     controls.append(pager, sw);
 
+    const plug = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 2v5M15 2v5M7 7h10v4a5 5 0 0 1-10 0V7zM12 16v6"/></svg>';
+
+    // An input with no device yet, or whose device is not plugged in: a dashed
+    // tile that keeps its name, opens nothing, and offers a device on click.
+    function emptyTile(source, why) {
+      const t = h('div', 'vg-tile is-empty');
+      t.tabIndex = 0;
+      t.setAttribute('role', 'button');
+      t.setAttribute('aria-label', `${source.name}. ${why}. Choose a device for this input`);
+      t.title = 'Choose a device for this input';
+      const mid = h('div', 'vg-empty-mid');
+      mid.innerHTML = plug;
+      mid.appendChild(h('span', 'vg-empty-why', why));
+      t.appendChild(mid);
+      t.appendChild(h('div', 'vg-name', source.name));
+      const go = () => { if (opts.onPlaceholder) opts.onPlaceholder(source, t); };
+      t.addEventListener('click', go);
+      t.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
+      return t;
+    }
+
     function tile(source, st) {
+      const state = V.stateOf(source, opts.getDevices());
+      if (state === 'placeholder') return emptyTile(source, 'No device');
+      if (state === 'missing') return emptyTile(source, 'Not connected');
       const onAir = !st.mixed && st.hasOutputs && st.programId === source.id;
       const staged = st.previewId === source.id;
       const t = h('div', 'vg-tile' + (onAir ? ' is-pgm' : '') + (staged ? ' is-pvw' : ''));
