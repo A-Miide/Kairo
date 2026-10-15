@@ -606,6 +606,8 @@ function handleDetection(msg) {
     if (v0 && v0.book && v0.book !== 'Service' && Number(v0.chapter) > 0) window.KairoService?.noteBibleVerse?.(v0, method !== 'service');
   } else {
     showInSuggestions(verses, method);
+    // Video Director mode with Auto-send off: the server held this verse back; it waits in Preview.
+    if (msg.staged) window.KairoVideoDirector?.stageDetected?.(verses[0], look);
   }
 }
 
