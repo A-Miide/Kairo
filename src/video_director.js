@@ -196,8 +196,10 @@
   function takeStaged() {
     const ps = programState();
     const mode = transitionPref();
-    if (D.staged) takeVerse();
+    const hadVerse = !!D.staged;
+    if (hadVerse) takeVerse();
     if (ps.on.length && (D.previewId || null) !== (ps.mixed ? undefined : (ps.id || null))) take(mode);
+    if (hadVerse) D.last = { ...(D.last || {}), verse: true };   // Undo takes the verse back too
   }
   function clearStaging() {
     D.staged = null;
@@ -416,10 +418,14 @@
     const bar = vEl('div', 'vd-transbar');
     bar.setAttribute('role', 'group');
     bar.setAttribute('aria-label', 'Transition');
-    D.ui.takeVerse = vBtn('Take verse', 'Send the staged verse to Output (Space)', takeVerse, 'vd-take vd-take-verse');
-    D.ui.clearStage = vBtn('Clear', 'Clear what is staged (Esc)', clearStaging, 'vd-take');
-    D.ui.cut = vBtn('Cut', 'Preview to Output at once', () => take('cut'), 'vd-take');
-    D.ui.fade = vBtn('Fade', 'Fade Preview onto Output', () => take('fade'), 'vd-take');
+    // One primary button sends Preview to Output (the staged verse and the Preview source),
+    // with the transition chosen beside it. Cut and Fade choose; Fade to black acts.
+    D.ui.take = vBtn('Take', 'Send Preview to Output (Space)', takeStaged, 'vd-take vd-take-main');
+    D.ui.cut = vBtn('Cut', 'Take with a cut', () => { setTransition('cut'); refresh(); }, 'vd-take');
+    D.ui.fade = vBtn('Fade', 'Take with a fade', () => { setTransition('fade'); refresh(); }, 'vd-take');
+    const seg2 = vEl('div', 'vd-seg2');
+    seg2.setAttribute('role', 'group'); seg2.setAttribute('aria-label', 'Transition');
+    seg2.append(D.ui.cut, D.ui.fade);
     D.ui.black = vBtn('Fade to black', 'Fade Output to black: no video, and the verse, slide and timer come down', fadeToBlack, 'vd-take');
     const dur = vEl('label', 'vd-dur');
     const durIn = vEl('input'); durIn.type = 'number'; durIn.min = '0'; durIn.max = '5000'; durIn.step = '50'; durIn.value = String(fadeMs());
@@ -439,9 +445,14 @@
     D.ui.tbar.addEventListener('input', () => tbarMove(Number(D.ui.tbar.value) / 1000));
     for (const ev of ['change', 'pointerup', 'keyup']) D.ui.tbar.addEventListener(ev, () => tbarRelease(Number(D.ui.tbar.value) / 1000));
     tb.append(vEl('span', 'vd-tbar-label', 'T-bar'), D.ui.tbar);
-    D.ui.undo = vBtn('Undo', 'Undo the last take (Cmd/Ctrl+Z)', undo, 'vd-take');
-    const sep = () => vEl('span', 'vd-bar-sep');
-    bar.append(D.ui.takeVerse, D.ui.clearStage, sep(), D.ui.cut, D.ui.fade, D.ui.black, dur, tb, sep(), D.ui.undo);
+    D.ui.undo = vBtn('Undo', 'Undo the last take (Cmd/Ctrl+Z)', undo, 'vd-take vd-take-quiet');
+    // The one transition cluster, and under it the two quieter controls.
+    const cluster = vEl('div', 'vd-cluster');
+    cluster.append(D.ui.take, seg2, D.ui.black, dur, tb);
+    const tuck = vEl('div', 'vd-tuck');
+    bar.append(cluster, tuck);
+    D.ui.tuck = tuck;
+    tuck.appendChild(D.ui.undo);
     D.ui.strip = bar;
 
     const pgm = vEl('div', 'vd-screen vd-screen-pgm');
@@ -461,7 +472,7 @@
     const seg = vEl('div', 'vd-verse-seg');
     seg.appendChild(vEl('span', 'vd-bar-label', 'Verse'));
     window.KairoVideoLayout?.moveTo(document.getElementById('rs-transition-bar'), seg);
-    bar.appendChild(seg);
+    D.ui.tuck.prepend(seg);
 
     // ── Column 3: Scripture sends ──
     const sends = vEl('section', 'vd-section vd-section-sends');
@@ -593,18 +604,17 @@
     const pvwSource = sources.find(s => s.id === D.previewId);
     const staged = D.staged ? (D.staged.verse.reference || D.staged.verse.ref || 'Verse') : '';
     D.ui.pvwRef.textContent = staged ? `${pvwSource ? pvwSource.name : 'No video'} · ${staged}` : (pvwSource ? pvwSource.name : 'No video');
-    D.ui.takeVerse.disabled = !D.staged;
-    D.ui.clearStage.disabled = !D.staged && !D.previewId;
     D.ui.undo.disabled = !D.last;
     if (D.frames.pvw) D.frames.pvw.name.textContent = pvwSource ? pvwSource.name : '';
     const canTake = ps.on.length > 0;
     const cur = transitionPref();
     for (const [btn, mode] of [[D.ui.cut, 'cut'], [D.ui.fade, 'fade']]) {
-      btn.disabled = !canTake;
       btn.classList.toggle('is-current', mode === cur);
       btn.setAttribute('aria-pressed', String(mode === cur));
-      btn.title = canTake ? (mode === 'cut' ? 'Put the Preview video source on Output at once' : 'Fade the Preview video source onto Output') : 'Turn on Video input for an output in Director mode settings';
     }
+    // Take is live when there is a verse or slide staged, or a Preview source that differs from Output.
+    const videoDiff = canTake && (D.previewId || null) !== (ps.mixed ? undefined : (ps.id || null));
+    D.ui.take.disabled = !(D.staged || videoDiff);
     D.ui.tbar.disabled = !canTake;
     D.ui.black.title = 'Fade Output to black: no video, and the verse, slide and timer come down';
   }

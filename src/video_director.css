@@ -398,3 +398,17 @@ body.video-director #live-queue-section .cs-section-label { flex-shrink: 1; min-
 
 /* No Clear buttons on the Director screen: the displays' own controls take things down. */
 body.video-director #clear-locked-btn { display: none !important; }
+
+/* ── One transition cluster under the displays: Take first, then how it goes. ── */
+.vd-transbar { flex-direction: column; flex-wrap: nowrap; gap: 6px; }
+.vd-cluster { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 8px; max-width: 100%; }
+.vd-transbar .vd-take-main { background: var(--brand); border-color: transparent; color: #fff; min-width: 76px; height: 34px; font-size: 13px; }
+.vd-transbar .vd-take-main:hover:not(:disabled) { background: var(--brand-hover); color: #fff; }
+.vd-transbar .vd-take-main:disabled { background: var(--bg-hover); color: var(--text-3); }
+.vd-seg2 { display: flex; padding: 2px; gap: 0; border-radius: 8px; background: rgba(255,255,255,0.05); }
+.vd-seg2 .vd-take { height: 28px; min-width: 48px; border-color: transparent; background: transparent; }
+.vd-seg2 .vd-take.is-current { background: var(--bg-hover); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.35); }
+.vd-tuck { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.vd-tuck .vd-verse-seg { flex: 0 0 auto; }
+.vd-transbar .vd-take-quiet { height: 24px; min-width: 0; padding: 0 10px; font-size: 11px; background: transparent; color: var(--text-3); }
+.vd-transbar .vd-take-quiet:hover:not(:disabled) { color: var(--text); }
