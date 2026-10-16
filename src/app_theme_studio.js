@@ -1150,7 +1150,7 @@ let tsPlayBuilds = false;
 let tsMarquee = null;   // { startX, startY, stageRect, box, armed, bgLayer }
 function tsPlayAnimations() { tsPlayBuilds = true; renderPreview(); }
 let tsItemCtx = null; // { item, slideIndex, baseLook } — set only while tsMode === 'item'
-let itemUndoStack = [], itemRedoStack = [], itemPendingCheckpoint = null, itemAutosaveTimer = null;
+// (Item mode's undo history: itemHistory, with the theme editor's, under "Undo / redo".)
 
 // What each theme looked like when last saved (minus its name and group,
 // which don't change how it looks) — so the first edit after that can leave
@@ -4155,39 +4155,87 @@ function makeGroupedSelect(groups, current, onChange) {
 // (see the `pendingCheckpoint` flag), then the checkpoint is pushed once the
 // burst actually settles. That groups rapid changes (a slider drag, fast
 // typing) into one undo step, the same granularity most editors use.
-let autosaveTimer = null;
-let pendingCheckpoint = null; // snapshot taken at the start of the current burst, or null between bursts
-// The state activeLook was in as of the last committed edit (or theme
-// switch/undo/redo) — always taken BEFORE any mutation, unlike
-// pendingCheckpoint below which used to be deepClone'd lazily on first call
-// here. Every real call site mutates the layer/look in place and only THEN
-// calls up()/scheduleThemeAutosave(), so a lazy clone at that point had
-// already baked the change in — a single click (the Transparent canvas
-// toggle, a chip picker) had no earlier mutation in the same burst to
-// "recover" a pre-change state from, so its own undo was a silent no-op.
-// Kept in sync by resetThemeHistory() and restoreLookSnapshot() — the only
-// two places activeLook's *committed* identity actually changes.
-let lastThemeSnapshot = null;
-function scheduleThemeAutosave() {
-  if (!activeLook) return;
-  if (!pendingCheckpoint) pendingCheckpoint = lastThemeSnapshot || deepClone(activeLook);
-  clearTimeout(autosaveTimer);
-  autosaveTimer = setTimeout(() => {
-    if (pendingCheckpoint) {
-      themeUndoStack.push(pendingCheckpoint);
-      if (themeUndoStack.length > 50) themeUndoStack.shift();
-      themeRedoStack = [];
-      pendingCheckpoint = null;
-    }
-    lastThemeSnapshot = deepClone(activeLook); // burst settled — this is now the baseline for the next one
+// One undo history, used by the theme editor and by item mode (one slide's own look). They
+// were two copies that had drifted: item mode's undo straight after an edit undid two edits
+// and the pending autosave then cleared Redo, and switching slide or theme within the 500 ms
+// window dropped the last edit unsaved.
+//   capture()  the state now, as a snapshot
+//   restore(s) put a snapshot back
+//   flush()    write edits still held elsewhere (item mode keeps them on the canvas look)
+//   settle()   save and push out a settled burst
+// A burst's checkpoint is the baseline taken before it started (every caller mutates first and
+// only then says so), so even a single click has a real "before".
+function createHistory({ capture, restore, flush, settle, delay = 500, max = 50 }) {
+  let undo = [], redo = [], pending = null, timer = null, baseline = null;
+  const h = {
+    // Pending edits are settled first: switching away must never drop them.
+    reset() {
+      if (pending) h.settle();
+      clearTimeout(timer); timer = null;
+      undo = []; redo = []; pending = null;
+      baseline = capture();
+    },
+    edited() {
+      if (!pending) { pending = baseline || capture(); redo = []; }
+      clearTimeout(timer);
+      timer = setTimeout(() => h.settle(), delay);
+    },
+    // Only an edited burst is written: settling with nothing edited writes nothing (a slide
+    // nobody touched gets no override).
+    settle() {
+      clearTimeout(timer); timer = null;
+      const wasPending = !!pending;
+      if (flush && pending) flush();
+      if (pending) {
+        undo.push(pending);
+        if (undo.length > max) undo.shift();
+        pending = null;
+      }
+      baseline = capture();
+      if (settle && wasPending) settle();
+    },
+    undo() {
+      clearTimeout(timer); timer = null;
+      if (flush && pending) flush();
+      let prev;
+      if (pending) { prev = pending; pending = null; }
+      else { if (!undo.length) return false; prev = undo.pop(); }
+      redo.push(capture());
+      restore(prev);
+      baseline = capture();
+      return true;
+    },
+    redo() {
+      if (!redo.length) return false;
+      clearTimeout(timer); timer = null;
+      if (pending) h.settle();
+      undo.push(capture());
+      restore(redo.pop());
+      baseline = capture();
+      return true;
+    },
+  };
+  return h;
+}
+
+// The theme being edited when the current burst started (its live output is re-pushed).
+let themeEditedId = null;
+const themeHistory = createHistory({
+  capture: () => (activeLook ? deepClone(activeLook) : null),
+  restore: (snap) => restoreLookSnapshot(snap),
+  settle: () => {
     saveLooks();
     renderLooksList();
-    // Live-update the output: if the theme being edited is what's on screen
-    // right now (a playlist item's own theme, or the live timer), re-push it
-    // so the operator doesn't have to hit Send again. saveLooks() already
-    // re-broadcasts look-update for the output-default case.
-    try { window.KairoService?.resendLiveForThemeEdit?.(activeLook?.id); } catch {}
-  }, 500);
+    // Live-update the output: if the theme being edited is what's on screen right now (a
+    // playlist item's own theme, or the live timer), re-push it so the operator doesn't have to
+    // hit Send again. saveLooks() already re-broadcasts look-update for the output-default case.
+    try { window.KairoService?.resendLiveForThemeEdit?.(themeEditedId); } catch {}
+  },
+});
+function scheduleThemeAutosave() {
+  if (!activeLook) return;
+  themeEditedId = activeLook.id;
+  themeHistory.edited();
 }
 
 function up() { renderPreview(); renderLayersList(); tsSave(); }
@@ -4333,18 +4381,18 @@ function writeItemSlideStyleFromSynthetic() {
     delete item.slideStyles[slideIndex];
   }
 }
-function scheduleItemStyleAutosave() {
-  if (tsMode !== 'item' || !tsItemCtx) return;
-  if (!itemPendingCheckpoint) itemPendingCheckpoint = deepClone(tsItemCtx.item.slideStyles || {});
-  clearTimeout(itemAutosaveTimer);
-  itemAutosaveTimer = setTimeout(() => {
-    if (itemPendingCheckpoint) {
-      itemUndoStack.push(itemPendingCheckpoint);
-      if (itemUndoStack.length > 50) itemUndoStack.shift();
-      itemRedoStack = [];
-      itemPendingCheckpoint = null;
-    }
-    writeItemSlideStyleFromSynthetic();
+const itemHistory = createHistory({
+  capture: () => (tsItemCtx ? deepClone(tsItemCtx.item.slideStyles || {}) : null),
+  // The edits live on the canvas look until written into item.slideStyles.
+  flush: () => { if (tsItemCtx) writeItemSlideStyleFromSynthetic(); },
+  restore: (snap) => {
+    tsItemCtx.item.slideStyles = deepClone(snap || {});
+    window.KairoService?.saveService?.();
+    activeLook = buildSyntheticLook(tsItemCtx.item, tsItemCtx.slideIndex);
+    activeLayer = null; multiSelectedLayerIds.clear();
+    renderLayersList(); renderPreview(); renderProps();
+  },
+  settle: () => {
     window.KairoService?.saveService?.();
     // If the slide being restyled is the one live on the output, re-push it.
     try {
@@ -4355,53 +4403,28 @@ function scheduleItemStyleAutosave() {
     // but its thumbnail stayed stale until the operator switched views
     // away and back.
     window.KairoService?.refreshThumbnails?.();
-  }, 500);
+  },
+});
+function scheduleItemStyleAutosave() {
+  if (tsMode !== 'item' || !tsItemCtx) return;
+  itemHistory.edited();
 }
-function resetItemHistory() {
-  itemUndoStack = [];
-  itemRedoStack = [];
-  itemPendingCheckpoint = null;
-  clearTimeout(itemAutosaveTimer);
-}
+// Before the slide or the item changes: what was edited on this one is written to it.
+function settleItemEdits() { if (tsItemCtx) itemHistory.settle(); }
+function resetItemHistory() { itemHistory.reset(); }
 // Restores a whole item.slideStyles snapshot (not per-slide — matches how
 // themeUndo restores the whole look, since a single burst of edits can touch
 // more than one layer's override at once) then rebuilds the synthetic look
 // so the canvas reflects the restored state immediately.
-function itemUndo() {
-  if (!tsItemCtx || !itemUndoStack.length) return;
-  itemRedoStack.push(deepClone(tsItemCtx.item.slideStyles || {}));
-  const snapshot = itemUndoStack.pop();
-  tsItemCtx.item.slideStyles = snapshot;
-  window.KairoService?.saveService?.();
-  activeLook = buildSyntheticLook(tsItemCtx.item, tsItemCtx.slideIndex);
-  activeLayer = null; multiSelectedLayerIds.clear();
-  renderLayersList(); renderPreview(); renderProps();
-}
-function itemRedo() {
-  if (!tsItemCtx || !itemRedoStack.length) return;
-  itemUndoStack.push(deepClone(tsItemCtx.item.slideStyles || {}));
-  const snapshot = itemRedoStack.pop();
-  tsItemCtx.item.slideStyles = snapshot;
-  window.KairoService?.saveService?.();
-  activeLook = buildSyntheticLook(tsItemCtx.item, tsItemCtx.slideIndex);
-  activeLayer = null; multiSelectedLayerIds.clear();
-  renderLayersList(); renderPreview(); renderProps();
-}
+function itemUndo() { if (tsItemCtx) itemHistory.undo(); }
+function itemRedo() { if (tsItemCtx) itemHistory.redo(); }
 
 // ── Undo / redo ────────────────────────────────────────────────────────────
 // Scoped to whichever theme is currently open — switching themes, creating
 // one, or deleting one all reset this, since "undo" across two different
 // themes' edit histories wouldn't mean anything coherent.
-let themeUndoStack = [];
-let themeRedoStack = [];
 
-function resetThemeHistory() {
-  themeUndoStack = [];
-  themeRedoStack = [];
-  pendingCheckpoint = null;
-  lastThemeSnapshot = activeLook ? deepClone(activeLook) : null;
-  clearTimeout(autosaveTimer);
-}
+function resetThemeHistory() { themeHistory.reset(); }
 
 // Replaces activeLook's contents in place (same object reference — other
 // code holds onto `activeLook`/`looks[idx]` as that exact reference) rather
@@ -4412,37 +4435,12 @@ function restoreLookSnapshot(snapshot) {
   Object.assign(activeLook, deepClone(snapshot));
   if (idx >= 0) looks[idx] = activeLook;
   activeLayer = null; multiSelectedLayerIds.clear();
-  lastThemeSnapshot = deepClone(activeLook); // the just-restored state is the new baseline
   saveLooks();
   renderLooksList(); renderLayersList(); renderThemeCanvasSizeSelect(); renderPreview(); renderProps();
 }
 
-function themeUndo() {
-  if (!activeLook) return;
-  clearTimeout(autosaveTimer);
-  let prev;
-  if (pendingCheckpoint) {
-    // An uncommitted burst is still in flight (debounce hasn't fired) — undo
-    // reverts to just before THIS burst started, without touching or
-    // needing anything already on the committed undo stack.
-    prev = pendingCheckpoint;
-    pendingCheckpoint = null;
-  } else {
-    if (!themeUndoStack.length) return;
-    prev = themeUndoStack.pop();
-  }
-  themeRedoStack.push(deepClone(activeLook));
-  restoreLookSnapshot(prev);
-}
-
-function themeRedo() {
-  if (!themeRedoStack.length || !activeLook) return;
-  clearTimeout(autosaveTimer);
-  themeUndoStack.push(deepClone(activeLook));
-  pendingCheckpoint = null;
-  const next = themeRedoStack.pop();
-  restoreLookSnapshot(next);
-}
+function themeUndo() { if (activeLook) themeHistory.undo(); }
+function themeRedo() { if (activeLook) themeHistory.redo(); }
 
 
 // Cmd/Ctrl+Z and Cmd/Ctrl+Shift+Z (or Ctrl+Y) — only while Theme Studio is
@@ -5822,6 +5820,7 @@ function openThemeStudio() {
   // Leaving it also puts back what closeItemStyleEditor does — a theme on the
   // canvas, not the item's slide, and nothing selected.
   if (tsMode === 'item') {
+    settleItemEdits();
     tsMode = 'theme'; tsItemCtx = null; toggleItemModeChrome(false);
     activeLook = looks[0];
     activeLayer = null; multiSelectedLayerIds.clear();
@@ -6473,6 +6472,7 @@ function duplicateTimerScene(item, index) {
 function selectItemSlide(index) {
   if (!tsItemCtx) return;
   tsCommitActiveEdit(null);
+  settleItemEdits();   // the slide being left keeps its last edit
   tsItemCtx.slideIndex = index;
   resetItemHistory();
   activeLayer = null; multiSelectedLayerIds.clear();
@@ -6515,6 +6515,7 @@ function closeItemStyleEditor() {
   looksModal?.classList.add('hidden');
   toggleItemModeChrome(false);
   document.querySelector('.main-layout')?.classList.remove('hidden-el');
+  settleItemEdits();
   tsMode = 'theme';
   tsItemCtx = null;
   activeLook = looks[0];
