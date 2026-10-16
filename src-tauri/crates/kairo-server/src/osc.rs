@@ -62,6 +62,15 @@ pub const ACTIONS: &[&str] = &[
     "director-input-7",
     "director-input-8",
     "director-input-9",
+    "macro-1",
+    "macro-2",
+    "macro-3",
+    "macro-4",
+    "macro-5",
+    "macro-6",
+    "macro-7",
+    "macro-8",
+    "macro-9",
 ];
 const PREFIX: &str = "/kairo/";
 const SETTINGS_EVERY: Duration = Duration::from_secs(2);
