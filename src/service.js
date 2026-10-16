@@ -5517,10 +5517,14 @@
     document.getElementById('media-video-controls')?.classList.toggle('hidden', !visible);
   }
 
+  // Resolves true when the output took the command. On a refusal or no answer (reported by the
+  // app's request watcher, problems.js) play/pause and mute are rolled back here, so the
+  // transport doesn't show a state the output isn't in; the mute button's caller rolls itself back.
   function mediaControl(action, value) {
     // The preview is always silent (the output carries the sound), so only
     // play, pause and seek apply to it.
     const pv = previewVideo();
+    const was = { paused: pv ? pv.paused : null, muted: pv ? pv.muted : null, mutedState: mediaMutedState };
     if (pv) {
       if (action === 'play') pv.play().catch(() => {});
       else if (action === 'pause') pv.pause();
@@ -5531,10 +5535,19 @@
     }
     if (action === 'mute') mediaMutedState = true;
     if (action === 'unmute') mediaMutedState = false;
-    fetchWithTimeout(`${SERVER}/api/service/media-control`, {
+    const rollback = () => {
+      if (action === 'play' || action === 'pause') {
+        if (pv) { if (was.paused) pv.pause(); else pv.play().catch(() => {}); }   // the preview's own events repaint the icon
+      } else if (action === 'mute' || action === 'unmute') {
+        mediaMutedState = was.mutedState;
+        if (pv) pv.muted = was.muted;
+      }
+      return false;
+    };
+    return fetchWithTimeout(`${SERVER}/api/service/media-control`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, value }),
-    }).catch(() => {});
+    }).then((r) => (r.ok ? true : rollback()), rollback);
   }
 
   function formatTime(s) {
@@ -6890,9 +6903,14 @@
     });
     let mediaMutedLocal = false;
     document.getElementById('media-mute-btn')?.addEventListener('click', (e) => {
+      const btn = e.currentTarget;
       mediaMutedLocal = !mediaMutedLocal;
-      e.currentTarget.classList.toggle('active', mediaMutedLocal);
-      mediaControl(mediaMutedLocal ? 'mute' : 'unmute');
+      btn.classList.toggle('active', mediaMutedLocal);
+      const asked = mediaMutedLocal;
+      // Not taken by the output: the button goes back (unless it was pressed again meanwhile).
+      mediaControl(asked ? 'mute' : 'unmute').then((ok) => {
+        if (!ok && mediaMutedLocal === asked) { mediaMutedLocal = !asked; btn.classList.toggle('active', mediaMutedLocal); }
+      });
     });
     const mediaSeekInput = document.getElementById('media-seek');
     mediaSeekInput?.addEventListener('mousedown', () => { mediaSeeking = true; });
