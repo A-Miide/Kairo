@@ -1,0 +1,109 @@
+{
+ "source": "scn-sung-live-psalm23",
+ "kind": "scenario",
+ "lang": "en",
+ "songLive": true,
+ "cues": [
+  {
+   "text": "the Lord is my shepherd, I shall not want, the Lord is my shepherd, I shall not want",
+   "audioMs": 0
+  },
+  {
+   "text": "he maketh me to lie down in green pastures, he leadeth me beside the still waters",
+   "audioMs": 8100
+  },
+  {
+   "text": "he restoreth my soul, he restoreth my soul, hallelujah",
+   "audioMs": 15400
+  },
+  {
+   "text": "surely goodness and mercy shall follow me all the days of my life",
+   "audioMs": 19900
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "the Lord is my",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "the Lord is my shepherd, I shall not",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "the Lord is my shepherd, I shall not want, the Lord is",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "the Lord is my shepherd, I shall not want, the Lord is my shepherd, I shall",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "the Lord is my shepherd, I shall not want, the Lord is my shepherd, I shall not want",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "he maketh me to",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "he maketh me to lie down in green",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "he maketh me to lie down in green pastures, he leadeth me",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "he maketh me to lie down in green pastures, he leadeth me beside the still waters",
+   "isFinal": true
+  },
+  {
+   "cue": 2,
+   "text": "he restoreth my soul,",
+   "isFinal": false
+  },
+  {
+   "cue": 2,
+   "text": "he restoreth my soul, he restoreth my soul,",
+   "isFinal": false
+  },
+  {
+   "cue": 2,
+   "text": "he restoreth my soul, he restoreth my soul, hallelujah",
+   "isFinal": true
+  },
+  {
+   "cue": 3,
+   "text": "surely goodness and mercy",
+   "isFinal": false
+  },
+  {
+   "cue": 3,
+   "text": "surely goodness and mercy shall follow me all",
+   "isFinal": false
+  },
+  {
+   "cue": 3,
+   "text": "surely goodness and mercy shall follow me all the days of my",
+   "isFinal": false
+  },
+  {
+   "cue": 3,
+   "text": "surely goodness and mercy shall follow me all the days of my life",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

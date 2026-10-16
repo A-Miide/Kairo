@@ -2,6 +2,7 @@
  "source": "scn-num-spanish",
  "kind": "scenario",
  "lang": "es",
+ "songLive": false,
  "cues": [
   {
    "text": "Romanos ocho versículo veintiocho",

@@ -2,6 +2,7 @@
  "source": "scn-slip-judges-jude",
  "kind": "scenario",
  "lang": "en",
+ "songLive": false,
  "cues": [
   {
    "text": "look at Jude chapter six verse twelve",

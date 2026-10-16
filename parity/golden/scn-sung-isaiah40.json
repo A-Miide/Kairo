@@ -2,6 +2,7 @@
  "source": "scn-sung-isaiah40",
  "kind": "scenario",
  "lang": "en",
+ "songLive": false,
  "cues": [
   {
    "text": "they that wait upon the Lord shall renew their strength",

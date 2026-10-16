@@ -2,6 +2,7 @@
  "source": "scn-slip-corrected-aloud",
  "kind": "scenario",
  "lang": "en",
+ "songLive": false,
  "cues": [
   {
    "text": "turn with me to Romans chapter eight, sorry, Romans chapter twelve verse one",

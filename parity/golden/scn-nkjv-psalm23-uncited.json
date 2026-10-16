@@ -2,6 +2,7 @@
  "source": "scn-nkjv-psalm23-uncited",
  "kind": "scenario",
  "lang": "en",
+ "songLive": false,
  "cues": [
   {
    "text": "the Lord is my shepherd, I shall not want, he makes me to lie down in green pastures",

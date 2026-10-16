@@ -2,6 +2,7 @@
  "source": "scn-niv-romans828-cited",
  "kind": "scenario",
  "lang": "en",
+ "songLive": false,
  "cues": [
   {
    "text": "Romans eight twenty eight in the New International Version",

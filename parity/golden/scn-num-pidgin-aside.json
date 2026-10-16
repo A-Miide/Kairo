@@ -2,6 +2,7 @@
  "source": "scn-num-pidgin-aside",
  "kind": "scenario",
  "lang": "en",
+ "songLive": false,
  "cues": [
   {
    "text": "Romans chapter eight, abeg, verse twenty eight",

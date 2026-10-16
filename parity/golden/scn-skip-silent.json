@@ -2,6 +2,7 @@
  "source": "scn-skip-silent",
  "kind": "scenario",
  "lang": "en",
+ "songLive": false,
  "cues": [
   {
    "text": "Romans chapter eight verse twenty eight",

@@ -1,0 +1,24 @@
+{
+ "videoId": "scn-sung-live-psalm23",
+ "title": "Scenario: sung-live-psalm23",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "the Lord is my shepherd, I shall not want, the Lord is my shepherd, I shall not want"
+  },
+  {
+   "startMs": 8100,
+   "text": "he maketh me to lie down in green pastures, he leadeth me beside the still waters"
+  },
+  {
+   "startMs": 15400,
+   "text": "he restoreth my soul, he restoreth my soul, hallelujah"
+  },
+  {
+   "startMs": 19900,
+   "text": "surely goodness and mercy shall follow me all the days of my life"
+  }
+ ],
+ "groundTruth": [],
+ "note": "eval/scenarios/make_scenarios.py"
+}

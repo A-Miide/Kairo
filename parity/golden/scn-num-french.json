@@ -2,6 +2,7 @@
  "source": "scn-num-french",
  "kind": "scenario",
  "lang": "fr",
+ "songLive": false,
  "cues": [
   {
    "text": "Romains huit verset vingt-huit",

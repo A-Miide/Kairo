@@ -2,6 +2,7 @@
  "source": "scn-fmt-second-kings",
  "kind": "scenario",
  "lang": "en",
+ "songLive": false,
  "cues": [
   {
    "text": "second Kings chapter two verse nine",

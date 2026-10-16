@@ -2,6 +2,7 @@
  "source": "scn-recall-and-return",
  "kind": "scenario",
  "lang": "en",
+ "songLive": false,
  "cues": [
   {
    "text": "let us read John chapter three verse sixteen",

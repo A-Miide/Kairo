@@ -2,6 +2,7 @@
  "source": "scn-num-german",
  "kind": "scenario",
  "lang": "de",
+ "songLive": false,
  "cues": [
   {
    "text": "Römer acht Vers achtundzwanzig",

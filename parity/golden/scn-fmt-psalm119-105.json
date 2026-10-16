@@ -2,6 +2,7 @@
  "source": "scn-fmt-psalm119-105",
  "kind": "scenario",
  "lang": "en",
+ "songLive": false,
  "cues": [
   {
    "text": "Psalm one hundred and nineteen verse one hundred and five",
