@@ -4,7 +4,7 @@
  "lang": "en",
  "cues": [
   {
-   "text": "let us go to the twenty third Psalm, the Lord is my shepherd",
+   "text": "let us go to the twenty third Psalm, the Lord is my shepherd, I shall not want",
    "audioMs": 0
   }
  ],
@@ -26,7 +26,12 @@
   },
   {
    "cue": 0,
-   "text": "let us go to the twenty third Psalm, the Lord is my shepherd",
+   "text": "let us go to the twenty third Psalm, the Lord is my shepherd, I shall not",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "let us go to the twenty third Psalm, the Lord is my shepherd, I shall not want",
    "isFinal": true
   }
  ],

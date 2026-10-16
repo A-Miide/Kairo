@@ -68,6 +68,8 @@ fn ranges_and_lists() {
     assert!(all("someone 25 years ago I was in Lagos").is_empty());
     assert_eq!(all("genesis chapter one verse one, verse three"), ["Genesis 1:1+3"]);
     assert_eq!(all("Romans 8 verses 28, 29 and 30"), ["Romans 8:28-30"]);
+    assert_eq!(all("Romans eight from twenty eight down to thirty one"), ["Romans 8:28-31"]);
+    assert_eq!(all("Romans 8 from 28 to 31"), ["Romans 8:28-31"]);
     assert_eq!(all("Psalm 91 from verse 14 to the end"), ["Psalms 91:14-16"]);
 }
 

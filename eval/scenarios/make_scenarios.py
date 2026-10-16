@@ -87,7 +87,7 @@ S["skip-silent"] = [
     ("what shall we then say to these things? If God be for us, who can be against us", [("quote", "Romans 8:31")]),
 ]
 # ── 7. How references are said ───────────────────────────────────────────────────────
-S["fmt-twenty-third-psalm"] = [("let us go to the twenty third Psalm, the Lord is my shepherd", [("citation", "Psalm 23:1")])]
+S["fmt-twenty-third-psalm"] = [("let us go to the twenty third Psalm, the Lord is my shepherd, I shall not want", [("citation", "Psalm 23:1")])]
 S["fmt-psalm119-105"] = [("Psalm one hundred and nineteen verse one hundred and five", [("citation", "Psalm 119:105")])]
 S["fmt-from-down-to"] = [("Romans eight from twenty eight down to thirty one", [("citation", "Romans 8:28-31")])]
 S["fmt-through"] = [("first Corinthians thirteen four through seven", [("citation", "1 Corinthians 13:4-7")])]
