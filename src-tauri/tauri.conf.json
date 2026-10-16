@@ -61,7 +61,7 @@
       "../databases/bibles/reranker_model": "databases/bibles/reranker_model",
       "../databases/bibles/packs": "databases/bibles/packs",
       "../databases/bibles/translations": "databases/bibles/translations",
-      "../databases/bibles/verse_index.gemma-legacy.kvx": "databases/bibles/verse_index.gemma-legacy.kvx",
+      "../databases/bibles/verse_index.bge-small.kvx": "databases/bibles/verse_index.bge-small.kvx",
       "../databases/i18n": "databases/i18n",
       "bin": "bin",
       "../databases/vad": "databases/vad"

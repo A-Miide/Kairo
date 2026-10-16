@@ -66,3 +66,15 @@ Kairo is compatible with Blackmagic Design DeckLink. The DeckLink API headers
 are distributed under Blackmagic's permissive header licence (kept intact in
 each file). The DeckLink driver library itself is not bundled: it comes with
 Blackmagic Desktop Video, which DeckLink owners already have installed.
+
+## Meaning models
+
+Bundled for meaning-based detection, fetched at pinned revisions and checked by
+checksum (`src-tauri/crates/kairo-eval/src/bin/bundle-data.rs`):
+
+- **bge-small-en-v1.5** by BAAI (MIT), as the int8 ONNX export
+  [`Xenova/bge-small-en-v1.5`](https://huggingface.co/Xenova/bge-small-en-v1.5)
+  — the sentence embedder, and the verse index built from it.
+- **ms-marco-MiniLM-L-12-v2** (Apache 2.0), as the int8 ONNX export
+  [`Xenova/ms-marco-MiniLM-L-12-v2`](https://huggingface.co/Xenova/ms-marco-MiniLM-L-12-v2)
+  — the cross-encoder that rereads the shortlist.

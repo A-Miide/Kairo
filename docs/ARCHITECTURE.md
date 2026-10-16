@@ -236,7 +236,7 @@ webview's data is cleared. Moving them to server-side files is a sensible projec
   church's own wording, because modern four-word sequences fire on ordinary preaching. The
   near-duplicate table and each verse's identifying words also come from the KJV and the first other
   wording only.
-- **Downloaded on demand, not in git:** the semantic model (`embeddinggemma-300m`), the
+- **Downloaded on demand, not in git:** the semantic model (`bge-small-en-v1.5`, int8), the
   cross-encoder reranker, the verse vectors built from them, the offline speech model, and the local
   translation models. Each has an installer module with the same shape (an NDJSON progress stream,
   disk-space check, resumable download) and a matching panel in Settings. A release build bundles

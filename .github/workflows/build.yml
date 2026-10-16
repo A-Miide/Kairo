@@ -25,13 +25,12 @@ jobs:
           path: |
             databases/bibles/model
             databases/bibles/reranker_model
-            databases/bibles/verse_index.gemma-legacy.kvx
+            databases/bibles/verse_index.bge-small.kvx
           # Only what changes the data: the Bible text, the builder (which
-          # pins the models and the prebuilt index by checksum) and the
-          # model's settings. Not every source file of the meaning engine —
-          # a tidy-up there used to throw the cache away and spend ~10
-          # minutes compiling, only to download the same prebuilt index.
-          key: bundle-data-${{ hashFiles('databases/bibles/kjv.json', 'src-tauri/crates/kairo-eval/src/bin/bundle-data.rs', 'src-tauri/crates/kairo-semantic/bench/gemma-legacy.json') }}
+          # pins the models by checksum) and the model's settings. Not every
+          # source file of the meaning engine — a tidy-up there used to throw
+          # the cache away and spend ~10 minutes compiling and rebuilding.
+          key: bundle-data-${{ hashFiles('databases/bibles/kjv.json', 'src-tauri/crates/kairo-eval/src/bin/bundle-data.rs', 'src-tauri/crates/kairo-semantic/bench/bge-small.json') }}
 
       - name: Setup Rust
         if: steps.cache.outputs.cache-hit != 'true'
@@ -62,7 +61,7 @@ jobs:
           path: |
             databases/bibles/model
             databases/bibles/reranker_model
-            databases/bibles/verse_index.gemma-legacy.kvx
+            databases/bibles/verse_index.bge-small.kvx
           retention-days: 3
 
   # ── The ffmpeg that ships in the app ─────────────────────────────────────

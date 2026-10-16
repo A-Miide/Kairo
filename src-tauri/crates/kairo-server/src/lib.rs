@@ -269,19 +269,22 @@ fn load_meaning(app: &Shared) {
     use kairo_semantic::{Embedder, EmbedderConfig, MeaningService, Pooling, Reranker, RerankerConfig, VerseIndex};
     let t = std::time::Instant::now();
     let db = &app.cfg.db_dir;
-    let gemma = db.join("model/onnx-community/embeddinggemma-300m-ONNX");
+    // bge-small-en-v1.5 (int8, 34 MB): as good as the 207 MB EmbeddingGemma on the
+    // sermons, at half the search time (docs/HANDOVER_2026-10-16.md).
+    let bge = db.join("model/Xenova/bge-small-en-v1.5");
     let cfg = EmbedderConfig {
-        name: "gemma-legacy".into(),
-        model: gemma.join("onnx/model_q4.onnx"),
-        tokenizer: gemma.join("tokenizer.json"),
-        pooling: Pooling::Mean,
-        query_prefix: String::new(),
+        name: "bge-small".into(),
+        model: bge.join("onnx/model_quantized.onnx"),
+        tokenizer: bge.join("tokenizer.json"),
+        pooling: Pooling::Cls,
+        query_prefix: "Represent this sentence for searching relevant passages: ".into(),
         document_prefix: String::new(),
         truncate_dims: 0,
         max_tokens: 256,
         threads: 0,
     };
     let index_name = format!("verse_index.{}.kvx", cfg.name);
+    let thresholds = kairo_detect::engine::MeaningThresholds::for_embedder(&cfg.name);
     let embedder = match Embedder::load(cfg) {
         Ok(e) => e,
         Err(e) => {
@@ -321,6 +324,8 @@ fn load_meaning(app: &Shared) {
         modern.push(niv);
     }
     let m = Arc::new(MeaningService::new(embedder, index, reranker, bible.k.corpus.kjv().clone(), modern));
+    // Cosines differ between embedders: the thresholds go with the model, ahead of it.
+    detector.configure(move |c| c.meaning_thresholds = thresholds);
     detector.meaning_ready(m.clone());
     let _ = app.meaning.set(m);
     eprintln!("[Server] Meaning-based detection ready in {:.1}s.", t.elapsed().as_secs_f32());
