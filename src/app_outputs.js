@@ -2421,3 +2421,19 @@ function renderAudioPaneOutput() {
 document.querySelector('.settings-nav-item[data-pane="audio"]')?.addEventListener('click', renderAudioPaneOutput);
 document.getElementById('settings-btn')?.addEventListener('click', () => setTimeout(renderAudioPaneOutput, 0));
 renderAudioPaneOutput();
+
+// NDI / Syphon / DeckLink and stream graphics come from snapshots of a hidden output window
+// (src-tauri lib.rs run_capture). After a few failures in a row the native side says so here,
+// and says again (error null) once frames get through: otherwise those outputs just froze.
+if (window.__TAURI__?.event?.listen) {
+  window.__TAURI__.event.listen('output-capture-trouble', ({ payload }) => {
+    const id = String(payload?.id || '');
+    if (!id) return;
+    const key = `output-capture-${id}-${payload.stage || 'capture'}`;
+    if (payload.error == null) { window.kairoProblemCleared?.(key); return; }
+    const out = [...ndiOutputs(), ...syphonOutputs(), ...decklinkOutputs()].find(o => o.id === id);
+    const name = out ? `"${out.name}"` : id.startsWith('stream-') ? 'the stream and recording' : 'an output';
+    const what = payload.stage === 'syphon' ? `${nativeSenderLabel()} isn't taking new frames for ${name}` : `The graphics for ${name} can't be captured`;
+    window.kairoProblem?.(`${what}: it shows the last picture until this clears (${payload.error}).`, key);
+  });
+}
