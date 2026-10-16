@@ -1894,9 +1894,14 @@
     // the output's Transition (Fade / Slide / Cut, and its length), like the slide layer.
     // Media a theme draws as its own background is swapped with renderMediaStage directly.
     let mediaGen = 0;
+    // Media's own transition (the Media Bin's), else the words'.
+    function mediaAnimation() {
+        try { const m = JSON.parse(localStorage.getItem('kairo-media-transition') || 'null'); if (m && ['fade', 'slide-up', 'cut'].includes(m.animation)) return m.animation; } catch {}
+        return outputAnimation;
+    }
     function transitionMedia(src, kind, fit, motion) {
         const gen = ++mediaGen;
-        const animType = outputAnimation;
+        const animType = mediaAnimation();
         const ms = Math.round(300 * outputAnimationSpeed);
         const reset = () => { mediaLayer.style.transition = 'none'; mediaLayer.style.opacity = '1'; mediaLayer.style.transform = 'none'; };
         if (animType === 'cut' || MONITOR) { reset(); renderMediaStage(src, kind, fit, motion); return; }

@@ -536,6 +536,13 @@
                     <span class="cs-section-label">Media Bin</span>
                     <select id="media-bin-folder" class="media-bin-folder" title="Show one folder" aria-label="Folder"></select>
                     <span class="media-bin-hint">Click an item to send it to the display</span>
+                    <!-- How media comes on screen: its own transition, or the words' (media_transition.js). -->
+                    <select id="media-bin-transition" class="media-bin-folder" title="How pictures and videos come on screen" aria-label="Media transition">
+                        <option value="">Transition: same as words</option>
+                        <option value="fade">Transition: Fade</option>
+                        <option value="slide-up">Transition: Slide</option>
+                        <option value="cut">Transition: Cut</option>
+                    </select>
                     <label class="media-bin-size" title="Thumbnail size">
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="7" y="7" width="10" height="10" rx="1.5"/></svg>
                         <input type="range" id="media-bin-size" min="90" max="240" step="10" value="130" aria-label="Thumbnail size" />
@@ -2461,6 +2468,7 @@
     <script src="streaming_ui.js"></script>
     <script src="sound_mixer.js"></script>
     <script src="instant_replay.js"></script>
+    <script src="media_transition.js"></script>
     <script src="macros.js"></script>
     <script src="settings_layout.js"></script>
     <script src="design_space.js"></script>

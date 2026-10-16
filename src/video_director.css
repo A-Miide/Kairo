@@ -410,6 +410,8 @@ body.video-director #clear-locked-btn { display: none !important; }
 .vd-transbar .vd-take-main:hover:not(:disabled) { background: var(--brand-hover); color: #fff; }
 .vd-transbar .vd-take-main:disabled { background: var(--bg-hover); color: var(--text-3); }
 .vd-seg2 { display: flex; padding: 2px; gap: 0; border-radius: 8px; background: rgba(255,255,255,0.05); }
+.vd-seg-label { align-self: center; padding: 0 8px 0 6px; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
+.vd-band.is-beside .vd-seg2 .vd-seg-label { grid-column: 1 / -1; padding: 2px 6px; }
 .vd-seg2 .vd-take { height: 28px; min-width: 48px; border-color: transparent; background: transparent; }
 .vd-seg2 .vd-take.is-current { background: var(--bg-hover); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.35); }
 .vd-tuck { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
