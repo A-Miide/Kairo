@@ -84,7 +84,15 @@
     } catch { return ''; }
   }
 
+  // A second click while Go live (or Record) is still starting is ignored: it used to start a
+  // second FFmpeg sending to the same stream keys. (The engine also takes starts one at a time.)
+  let startingStream = false, startingRecord = false;
   async function start() {
+    if (startingStream || live) return;
+    startingStream = true;
+    try { await startNow(); } finally { startingStream = false; }
+  }
+  async function startNow() {
     if (!invoke) { alertMsg('Streaming needs the Kairo app; it does not work in a browser.'); return; }
     const c = cfg();
     const dests = (c.destinations || []).filter(ready);
@@ -169,6 +177,11 @@
   const stamp = () => { const d = new Date(), p = (n) => String(n).padStart(2, '0'); return `Kairo ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}-${p(d.getMinutes())}`; };
 
   async function startRecording() {
+    if (startingRecord || recording) return;
+    startingRecord = true;
+    try { await startRecordingNow(); } finally { startingRecord = false; }
+  }
+  async function startRecordingNow() {
     if (!invoke) { alertMsg('Recording needs the Kairo app; it does not work in a browser.'); return; }
     if (recording) return;
     const r = rcfg();

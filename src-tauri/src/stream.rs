@@ -1101,16 +1101,26 @@ fn unpremultiply_in_place(px: &mut [u8]) {
 #[derive(Default)]
 pub struct StreamState {
     pipelines: Mutex<Vec<Pipeline>>,
+    /// One start at a time: a second Go live (a double-click) waits for the first.
+    starting: Mutex<()>,
+    /// Bumped by every start and stop: a start that is no longer the newest when its wait for
+    /// the old stream ends (Stop was pressed meanwhile, or another start came) doesn't go live.
+    generation: AtomicU64,
 }
 
 impl StreamState {
     pub fn start(&self, ffmpeg: PathBuf, configs: Vec<PipelineConfig>, on_status: OnStatus) -> Result<(), String> {
+        let _one = self.starting.lock().map_err(|e| e.to_string())?;
+        let mine = self.generation.fetch_add(1, Ordering::SeqCst) + 1;
         // The previous stream is finished first, so the same stream keys are never sent to
         // twice at once.
         let old: Vec<Pipeline> = self.pipelines.lock().map_err(|e| e.to_string())?.drain(..).collect();
         for p in &old { p.stop(); }
         for p in old { p.join(Duration::from_secs(4)); }
         let mut p = self.pipelines.lock().map_err(|e| e.to_string())?;
+        if self.generation.load(Ordering::SeqCst) != mine {
+            return Err("Stopped before it went live.".into());
+        }
         for cfg in configs {
             if cfg.destinations.is_empty() && cfg.record_to.is_none() { continue; }
             p.push(Pipeline::start(ffmpeg.clone(), cfg, on_status.clone()));
@@ -1122,6 +1132,8 @@ impl StreamState {
     /// Ends every stream. Returns at once; FFmpeg is given a moment to close each stream
     /// cleanly and is killed after that.
     pub fn stop(&self) {
+        // A start still waiting for the old stream to end is cancelled too.
+        self.generation.fetch_add(1, Ordering::SeqCst);
         let old: Vec<Pipeline> = self.pipelines.lock().map(|mut p| p.drain(..).collect()).unwrap_or_default();
         for p in &old { p.stop(); }
         thread::spawn(move || { for p in old { p.join(Duration::from_secs(4)); } });
@@ -1174,6 +1186,18 @@ mod tests {
             record_to: None,
             audio_mix: Vec::new(),
         }
+    }
+
+    #[test]
+    fn a_stop_during_a_start_cancels_it() {
+        let st = StreamState::default();
+        // A start that finds the generation moved on (a Stop came while it waited) goes nowhere.
+        let before = st.generation.load(Ordering::SeqCst);
+        st.stop();
+        assert_eq!(st.generation.load(Ordering::SeqCst), before + 1);
+        // With nothing to start it answers as before, and nothing is left running.
+        assert!(st.start(PathBuf::from("ffmpeg"), vec![], Arc::new(|_| {})).is_err());
+        assert!(st.status().is_empty());
     }
 
     #[test]
