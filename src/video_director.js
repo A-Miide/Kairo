@@ -25,7 +25,8 @@
 // (sendVerseToServer is wrapped while the mode is on) and TAKE sends them to
 // Program; verses the detection engine sends by itself go live exactly as they
 // do without the mode, and a verse they held back (Auto-send off) waits on the Detected chip.
-// Slide and media clicks are staged too (a double-click sends at once); overlays are not.
+// Slide and media clicks are staged too (a double-click sends at once); overlays are not. With a
+// Slides/Songs/Media sheet open over the Director (Preview hidden), they send at once as on the normal screen.
 'use strict';
 (function () {
   const D = {
@@ -38,6 +39,7 @@
     ui: {},
     liveObserver: null,
     last: null,             // one-step undo: { live, preview, layers, verse }
+    outSeq: 0,              // verse/slide changes the Output has made (Undo's check, see markVerse)
     pendingLook: null, previewLookId: null, liveLookId: null,   // Looks (video_looks.js)
     programState: { on: [], id: null, mixed: false },
   };
@@ -138,10 +140,10 @@
   function onServerMessage(msg) {
     if (!D.active || !msg) return;
     let changed = false;
-    if (msg.type === 'detection' && msg.target === 'viewer' && msg.verses && msg.verses.length && !msg.retranslated) { D.liveMsg = msg; changed = true; }
+    if (msg.type === 'detection' && msg.target === 'viewer' && msg.verses && msg.verses.length && !msg.retranslated) { D.liveMsg = msg; D.outSeq++; changed = true; }
     else if (msg.type === 'media' && msg.target === 'viewer') { D.liveMedia = msg; changed = true; }
     else if (msg.type === 'clear-layer') {
-      if (msg.layer === 'slide' || msg.layer === 'all') { D.liveMsg = null; changed = true; }
+      if (msg.layer === 'slide' || msg.layer === 'all') { D.liveMsg = null; D.outSeq++; changed = true; }
       if (msg.layer === 'media' || msg.layer === 'all') { D.liveMedia = null; changed = true; }
     }
     if (changed && !D.staged) syncPreviewFrame();
@@ -150,7 +152,27 @@
   // ── Staging ──────────────────────────────────────────────────────────────
   // Undo of a verse-only send takes back just that verse. Inside one Send that also moves video or a Layout
   // (D.composite) the verse joins that step's snapshot, so a single Undo reverses the whole Send.
-  function markVerse() { D.last = D.composite ? { ...(D.last || {}), verse: true } : { verse: true }; }
+  //
+  // Undo takes a verse or slide back with the app's Back, which steps back the server's latest screen
+  // change, whatever made it. So each step notes what the Output showed when it was sent (D.outSeq counts
+  // the verse/slide changes the Output has made, from the server's broadcasts): Back is used only
+  // when the one change since is this send and it really changed the screen. Media never enters
+  // the server's screen history: Back would step back a verse instead.
+  // kind: 'media' for a media send; ref: the reference the send puts up, when known.
+  const screenKey = (m) => { const v = m && m.verses && m.verses[0]; return v ? `${v.reference || ''}|${v.text || ''}` : ''; };
+  const verseStep = (kind, ref) => ({ seq: D.outSeq, key: screenKey(D.liveMsg), media: kind === 'media', ref: ref || null });
+  function markVerse(kind, ref) { const verse = verseStep(kind, ref); D.last = D.composite ? { ...(D.last || {}), verse } : { verse }; }
+  // Why Undo must leave the screen's words alone, or null when Back takes exactly this send back.
+  function verseUndoBlocked(v) {
+    if (!v || typeof v !== 'object') return null;
+    if (v.media) return 'Undo can\u2019t take media back: clear it with Clear media.';
+    const n = D.outSeq - v.seq;
+    if (n === 0) return 'Undo didn\u2019t take the words back: the send hadn\u2019t reached the screen yet.';
+    const now = D.liveMsg && D.liveMsg.verses && D.liveMsg.verses[0];
+    if (n > 1 || (v.ref && now && now.reference !== v.ref)) return 'Undo didn\u2019t take the words back: something else went on screen after the Send. Use Back to step the screen back.';
+    if (screenKey(D.liveMsg) === v.key) return '';   // the send changed nothing on screen: nothing to take back
+    return null;
+  }
   const sameVerse = (a, b) => !!a && !!b && (a.reference || a.ref) === (b.reference || b.ref) && (a.text || a.verse) === (b.text || b.verse);
   // showInViewer's work for a verse being sent by hand, held until it is really on screen.
   // Held only when a hand send follows at once (the callers do showInViewer then send): a
@@ -186,7 +208,7 @@
     const { verse, look, slide, media } = D.staged;
     D.staged.sent = true;   // Preview keeps showing it: it now matches the Output
     D.detected = null;
-    markVerse();
+    markVerse(media ? 'media' : null, !slide && !media && verse ? verse.reference : null);   // a slide's send builds its own reference
     refresh();
     // A staged slide goes out through the playlist's own send, a verse through the normal one.
     // A staged slide or media item goes out through the app's own send, as an explicit one (not staged again).
@@ -218,12 +240,17 @@
   // The second-click rule is for the pointer only: a held arrow key or a quick Next must stage, never send.
   function trackClick() { D.lastClickAt = Date.now(); }
   const fromPointer = () => Date.now() - (D.lastClickAt || 0) < 150;
+  // A Slides, Songs or Media sheet covers Preview and the Director keys are off there, so a staged
+  // click would look like it did nothing. While a sheet is open its clicks, Space and arrows send
+  // straight to the screen, as on the normal screen; Undo can still take it back afterwards.
+  const sheetOpen = () => document.body.classList.contains('vd-sheet');
   function stageContent(key, build, make) {
     if (!D.active) return false;
+    if (sheetOpen()) { markVerse(key.startsWith('media:') ? 'media' : null); return false; }
     const now = Date.now();
     if (D.stageKey === key && now - D.stageAt < DOUBLE_MS && fromPointer()) {
       // Quick cut: the real send goes straight out; Preview holds the same item (it now matches the Output).
-      markVerse();   // Undo can take the slide back
+      markVerse(key.startsWith('media:') ? 'media' : null);   // Undo can take the slide back
       if (D.staged && D.staged.key === key) { D.staged.sent = true; refresh(); }
       else D.sentKey = key;        // the staged copy is still being made: it is marked sent when it lands
       D.stageAt = 0;               // the next click starts staging again
@@ -242,13 +269,13 @@
   // Stage something and mark it as already sent (a direct send): Preview then holds it.
   function stageSent(key, build, make) {
     D.sentKey = key;
-    markVerse();
+    markVerse(key.startsWith('media:') ? 'media' : null);
     stageContent(key, build, make);
   }
   // The real dblclick event, as a fallback where the second-click timing above did not catch it, and for
   // playlist rows (a double-click sends their first slide). Director mode wins over the rename dblclick.
   function onDblClick(e) {
-    if (!D.active) return;
+    if (!D.active || sheetOpen()) return;   // in a sheet each click has already sent
     const svc = window.KairoService;
     if (!svc || !svc.service) return;
     const t = e.target && e.target.closest ? e.target : null;
@@ -280,7 +307,8 @@
     return stageContent(`media:${item.url}`, build, (b) => ({ verse: { reference: item.name || 'Media' }, media: { item, fit, src: b.src, kind: b.kind || item.kind } }));
   }
   // The slide staged now, as "itemId:index" (what the next Next/Previous steps from).
-  const stagedSlideKey = () => (D.staged && D.staged.slide ? `${D.staged.slide.item.id}:${D.staged.slide.index}` : null);
+  // None while a sheet is open: its Next/Previous step from the live slide (they send, see sheetOpen).
+  const stagedSlideKey = () => (!sheetOpen() && D.staged && D.staged.slide ? `${D.staged.slide.item.id}:${D.staged.slide.index}` : null);
   // Orange outline on the tile of whatever is staged.
   function markStaged() {
     document.querySelectorAll('.is-staged').forEach(n => n.classList.remove('is-staged'));
@@ -303,7 +331,7 @@
       // A double-click (direct) goes straight out, and Preview holds the same verse.
       if (opts && opts.direct) {
         if (!(D.staged && sameVerse(D.staged.verse, verse))) { D.staged = { verse, look: look || null }; D.stageKey = null; }
-        D.staged.sent = true; markVerse();
+        D.staged.sent = true; markVerse(null, verse && verse.reference);
         syncPreviewFrame(); refresh();
         D.heldPending = false;
         releaseViewerFor(verse, false);   // a direct send is on screen at once
@@ -407,8 +435,13 @@
     }
     if (last.overlays) setOverlayLive(last.overlays);
     D.liveLookId = null;
-    // The verse goes back through the app's own "Back to the previous screen".
-    if (last.verse) document.getElementById('output-back-btn')?.click();
+    // The verse goes back through the app's own "Back to the previous screen", only when the
+    // server's latest screen change is this step's (verseUndoBlocked); otherwise it says why not.
+    if (last.verse) {
+      const why = verseUndoBlocked(last.verse);
+      if (why === null) { window.kairoProblemCleared?.('vd-undo'); document.getElementById('output-back-btn')?.click(); }
+      else if (why) window.kairoProblem?.(why, 'vd-undo');
+    }
     refresh();
   }
   // Space: send what is staged (the verse, and the Preview source when it differs).
@@ -437,8 +470,9 @@
     if (hadLook) { snapshot(); applyLook(hadLook); }
     const ps = programState();
     if (hadVerse) takeVerse();
+    const verseInfo = hadVerse && D.last && D.last.verse;   // a camera take below starts a new snapshot
     if (ps.on.length && D.previewId != null && D.previewId !== (ps.mixed ? undefined : (ps.id || null))) take(mode);
-    if (hadVerse) D.last = { ...(D.last || {}), verse: true };   // Undo takes the verse back too
+    if (hadVerse) D.last = { ...(D.last || {}), verse: verseInfo || verseStep() };   // Undo takes the verse back too
     if (hadLook) { D.last = { ...(D.last || {}), layers: D.lookSnap && D.lookSnap.layers, screen: D.lookSnap && D.lookSnap.screen }; D.liveLookId = hadLook.id; D.lookSnap = null; }
     syncPreviewFrame();
     refresh();
@@ -472,50 +506,49 @@
     return { videoId: ps.mixed ? null : ps.id, layers, overlays, themeId: cur && cur.groupId === 'grp-screen' ? cur.id : null };
   }
   // Take: the Look's layers and overlays go onto the real outputs. Its video goes with the ordinary take.
-  // What the outputs had before the first Layout of this session, put back when Director mode ends.
-  function recordBaseline() {
-    if (D.baseLayers) return;
-    const ly = outputLayerMap();
-    D.baseLayers = {};
-    for (const o of videoOutputs()) D.baseLayers[o.id] = { ...(ly[o.id] || {}) };
-  }
-  function restoreBaseline() {
-    if (D.baseLayers) {
-      const now = outputLayerMap();
-      for (const [id, ly] of Object.entries(D.baseLayers)) for (const k of Object.keys(ly)) if (now[id] && now[id][k] !== ly[k]) setOutputLayer(id, k, ly[k]);
-      D.baseLayers = null;
-    }
-    if (D.baseOverlays) { setOverlayLive(D.baseOverlays); D.baseOverlays = null; }
-  }
+  // What a Layout changed on the outputs, put back when Director mode ends (only where it still shows
+  // what Director set). Kept in settings by video_director_boot.js, so it survives a crash.
+  const recordChanges = (changes) => window.KairoDirectorBaseline?.record(changes);
+  function restoreBaseline() { window.KairoDirectorBaseline?.restore().catch((err) => console.warn('[Video] could not put the outputs back:', err.message)); }
   const setOverlayLive = (map) => {
-    for (const [id, live] of Object.entries(map)) fetch(`${SERVER}/api/overlays/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ live: !!live }) }).catch(() => {});
+    // Not caught here: a refused or unanswered change is reported by the app's request watcher (problems.js).
+    for (const [id, live] of Object.entries(map)) fetch(`${SERVER}/api/overlays/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ live: !!live }) });
   };
   function applyLook(look) {
     D.lookSnap = D.last;
     const step = D.last;   // this send's Undo step, kept for the overlays read below
-    recordBaseline();
     const targets = videoOutputs();
+    const changed = [];
     for (const o of targets) {
-      for (const k of ['bible', 'slide', 'media', 'timer']) { if (!o.monitor) setOutputLayerIf(o.id, k, look.layers[k]); }
-      setOutputLayerIf(o.id, 'video', look.layers.video);
+      for (const k of ['bible', 'slide', 'media', 'timer']) { if (!o.monitor) setOutputLayerIf(o.id, k, look.layers[k], changed); }
+      setOutputLayerIf(o.id, 'video', look.layers.video, changed);
     }
+    recordChanges({ layers: changed });
     if (Array.isArray(look.overlays) && window.KairoOverlays && window.KairoOverlays.load) {
       window.KairoOverlays.load().then(items => {
         const prev = {}; items.forEach(it => { prev[it.id] = !!it.live; });
-        if (!D.baseOverlays) D.baseOverlays = prev;          // the state before any Layout
         if (step) step.overlays = prev;                      // Undo puts the overlays back too (this step's, even if another came since)
+        return items;
+      }).then(items => {
+        // Only the overlays this Layout changes are put back when the mode ends.
+        recordChanges({ overlays: items.filter(it => !!it.live !== look.overlays.includes(it.id)).map(it => [it.id, !!it.live, look.overlays.includes(it.id)]) });
         return items;
       }).then(items => items.forEach(it => {
         const want = look.overlays.includes(it.id);
-        if (!!it.live !== want) fetch(`${SERVER}/api/overlays/${it.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ live: want }) }).catch(() => {});
-      })).catch(() => {});
+        // Not caught: the request watcher (problems.js) reports a change the server refused.
+        if (!!it.live !== want) fetch(`${SERVER}/api/overlays/${it.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ live: want }) });
+      }));
     }
     applyScreenTheme(look.themeId || null);
     D.lookSent = true;   // Preview keeps holding the layout: it now matches the Output
   }
-  function setOutputLayerIf(id, key, val) {
+  // `changed` collects [id, key, was, set] for each layer actually changed.
+  function setOutputLayerIf(id, key, val, changed) {
     const cur = outputLayerMap()[id];
-    if (cur && cur[key] !== !!val) setOutputLayer(id, key, !!val);
+    if (cur && cur[key] !== !!val) {
+      if (changed) changed.push([id, key, cur[key], !!val]);
+      setOutputLayer(id, key, !!val);
+    }
   }
   // Esc: cancel what is staged and not yet sent. Something already sent stays held in Preview.
   function clearStaging() {
@@ -545,7 +578,7 @@
   // This is what the Clear buttons did; Undo (the app's Back) brings the previous screen back.
   function fadeToBlack() {
     if (programState().on.length) sendToProgram(null, 'fade'); else snapshot();
-    D.last = { ...(D.last || {}), verse: true };
+    D.last = { ...(D.last || {}), verse: verseStep() };
     document.getElementById('clear-all-layers-btn')?.click();
     refresh();
   }
@@ -554,8 +587,10 @@
   function sendToProgram(id, mode) {
     let ps = programState();
     if (!ps.on.length) {
-      // Nothing is set to carry video yet: the primary display does.
+      // Nothing is set to carry video yet: the primary display does (put back off when the mode ends).
+      const was = !!(outputLayerMap()[PRIMARY_DISPLAY] || {}).video;
       setOutputLayer(PRIMARY_DISPLAY, 'video', true);
+      if (!was) recordChanges({ layers: [[PRIMARY_DISPLAY, 'video', false, true]] });
       ps = programState();
     }
     snapshot();
@@ -1119,7 +1154,7 @@
     if (t && (t.isContentEditable || (t.matches && t.matches('input,textarea,select')))) return;
     // Anything open over the Director (Settings, Theme Studio, the first-run tour, a menu or
     // popover) has the keys: Space, 1–9, Esc and ⌘Z must not reach the live screen from there.
-    if (document.querySelector('.modal:not(.hidden), .vd-add-panel, #looks-modal:not(.hidden), .onboarding:not(.hidden), .svc-popover, .ctx-menu, .mc-pop, .mx-pop, .rp-pop')) return;
+    if (document.querySelector('.modal:not(.hidden), .vd-add-panel, #looks-modal:not(.hidden), .onboarding:not(.hidden), .svc-popover:not(.hidden), .ctx-menu, .mc-pop, .mx-pop, .rp-pop')) return;
     if (e.defaultPrevented) return;
     if (document.body.classList.contains('vd-sheet')) return;   // a full screen is open over the Director: its keys are not ours
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'z') {

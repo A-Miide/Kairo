@@ -79,7 +79,7 @@
             </div>
             <label class="output-toggle"><input type="checkbox" id="dm-toggle" aria-labelledby="dm-name"><span class="output-toggle-track"></span></label>
           </div>
-          <p class="dm-armed" id="dm-armed" role="status" hidden>Video is live. Switch off again to go to no video and turn off.</p>
+          <p class="dm-armed" id="dm-armed" role="status" hidden></p>
           <div class="dm-row" id="dm-sim-row" hidden>
             <div class="dm-text">
               <div class="dm-name" id="dm-sim-name">Simulate 4 cameras at 30 fps</div>
@@ -129,18 +129,37 @@
     try { localStorage.setItem('kairo-video-sources', JSON.stringify(list)); } catch {}
   }
 
+  // armed: false, or the sentence saying what the next choice will do (shown under the switch and as the button's label).
   function paint(on, armed) {
     if (dmToggle) dmToggle.checked = !!on;
-    if (dmArmed) dmArmed.hidden = !armed;
+    if (dmArmed) { dmArmed.hidden = !armed; if (armed) dmArmed.textContent = armed; }
     btn.classList.toggle('active', on);
     btn.classList.toggle('vd-armed', !!armed);
     btn.setAttribute('aria-pressed', String(on));
-    const label = armed ? 'Video is live. Choose again to go to no video and turn off video director mode'
-      : on ? 'Video director mode is on. Choose to turn it off' : 'Video director mode';
+    const label = armed || (on ? 'Video director mode is on. Choose to turn it off' : 'Video director mode');
     btn.title = label;
     btn.setAttribute('aria-label', label);
   }
   paint(false, false);
+
+  // A stream or recording is built at Go live / Record with the cameras of that moment
+  // (streaming_ui.js pipelineBase): switching the mode does not change what it carries.
+  function capturing() {
+    const s = window.KairoStreaming;
+    const live = !!(s && s.isLive && s.isLive()), rec = !!(s && s.isRecording && s.isRecording());
+    if (!live && !rec) return '';
+    return live && rec ? 'The stream and the recording keep their cameras until they are restarted.'
+      : live ? 'The stream keeps its cameras until it is restarted.' : 'The recording keeps its cameras until it is restarted.';
+  }
+  // The first choice only arms (says what will happen); a second within 5 seconds does it.
+  let armedFor = null;   // 'on' | 'off' while armed
+  function arm(dir, text) {
+    armedFor = dir;
+    paint(dir === 'off', text);
+    clearTimeout(armedTimer);
+    armedTimer = setTimeout(() => { armedFor = null; paint(!!settings.videoDirector, false); }, 5000);
+  }
+  function disarm() { clearTimeout(armedTimer); armedFor = null; }
 
   function refreshOutputsUi() {
     try { if (typeof renderOutputsList === 'function') renderOutputsList(); } catch {}
@@ -152,6 +171,10 @@
 
   async function enable(persist) {
     if (busy) return;
+    // Turned on by a choice while streaming or recording: say first that it won't reach the stream.
+    const cap = persist ? capturing() : '';
+    if (cap && armedFor !== 'on') { arm('on', `${cap} Choose again to turn video director mode on.`); return; }
+    disarm();
     busy = true;
     try {
       if (persist) save(true);
@@ -175,14 +198,19 @@
   function disable() {
     if (busy) { wantOff = true; return; }   // a start is still running: off comes right after it
     const dir = window.KairoVideoDirector;
-    // Taking live video off air is deliberate: the first choice arms it.
-    if (dir && dir.isLive() && !btn.classList.contains('vd-armed')) {
-      paint(true, true);
-      clearTimeout(armedTimer);
-      armedTimer = setTimeout(() => paint(!!settings.videoDirector, false), 5000);
+    // Taking live video off air is deliberate, and so is changing the mode under a stream or
+    // recording: the first choice arms it and says what will happen.
+    const videoLive = !!(dir && dir.isLive());
+    const cap = capturing();
+    if ((videoLive || cap) && armedFor !== 'off') {
+      const parts = [];
+      if (videoLive) parts.push('Video is live.');
+      if (cap) parts.push(cap);
+      parts.push(videoLive ? 'Choose again to go to no video and turn off video director mode.' : 'Choose again to turn video director mode off.');
+      arm('off', parts.join(' '));
       return;
     }
-    clearTimeout(armedTimer);
+    disarm();
     save(false);
     paint(false, false);
     if (dir) dir.stop();
@@ -191,12 +219,68 @@
 
   function toggle() { return settings.videoDirector ? disable() : enable(true); }
   btn.addEventListener('click', toggle);
-  // The switch does what the button and the View menu item do. A refused
-  // first click (video is live) leaves it on and shows the line under it.
-  if (dmToggle) dmToggle.addEventListener('change', () => { toggle(); dmToggle.checked = !!settings.videoDirector || btn.classList.contains('vd-armed'); });
+  // The switch does what the button and the View menu item do. A first click that only
+  // armed (video is live, or a stream or recording is running) leaves it as it was and shows the line under it.
+  if (dmToggle) dmToggle.addEventListener('change', () => { toggle(); dmToggle.checked = armedFor === 'off' || (armedFor !== 'on' && !!settings.videoDirector); });
   if (window.__TAURI__ && window.__TAURI__.event) {
     window.__TAURI__.event.listen('menu-video-director', toggle);
   }
+
+  // ── What a Layout changed on the outputs during a Director session ──
+  // Kept in settings (not only in memory), so a crash or a quit with a Layout applied can't
+  // leave the normal screen with, say, the Bible layer off: it is put back when the mode
+  // ends, or at the next start with the mode off. Only what a Layout (or Director turning
+  // video on by itself) changed is listed, each with the value it had before (`was`) and the
+  // value Director set (`set`). Putting back touches a layer or overlay only while it still
+  // shows what Director set: one the operator changed by hand afterwards is theirs and stays.
+  // Shape: { layers: { outputId: { key: { was, set } } }, overlays: { overlayId: { was, set } } }.
+  const readBaseline = () => {
+    const b = settings.directorBaseline;
+    return b && typeof b === 'object' ? b : null;
+  };
+  function writeBaseline(b) {
+    settings.directorBaseline = b;
+    if (typeof saveSettingsPatch === 'function') saveSettingsPatch({ directorBaseline: b });
+  }
+  const isEntry = (e) => !!e && typeof e === 'object' && typeof e.was === 'boolean' && typeof e.set === 'boolean';
+  window.KairoDirectorBaseline = {
+    // changes: { layers: [[outputId, key, was, set]], overlays: [[overlayId, was, set]] }.
+    // The first `was` wins (the state from before any Layout); `set` follows the latest change.
+    record(changes) {
+      const L = (changes && changes.layers) || [], O = (changes && changes.overlays) || [];
+      if (!L.length && !O.length) return;
+      const b = readBaseline() || {};
+      const layers = { ...(b.layers && typeof b.layers === 'object' ? b.layers : {}) };
+      const overlays = { ...(b.overlays && typeof b.overlays === 'object' ? b.overlays : {}) };
+      for (const [id, k, was, set] of L) {
+        const ly = { ...(layers[id] && typeof layers[id] === 'object' ? layers[id] : {}) };
+        ly[k] = { was: isEntry(ly[k]) ? ly[k].was : !!was, set: !!set };
+        layers[id] = ly;
+      }
+      for (const [id, was, set] of O) overlays[id] = { was: isEntry(overlays[id]) ? overlays[id].was : !!was, set: !!set };
+      writeBaseline({ layers, overlays });
+    },
+    async restore() {
+      const b = readBaseline();
+      if (!b) return;
+      // Cleared first: a session started while the overlays load records a list of its own.
+      writeBaseline(null);
+      if (b.layers && typeof b.layers === 'object' && typeof outputLayerMap === 'function' && typeof setOutputLayer === 'function') {
+        const now = outputLayerMap();
+        for (const [id, ly] of Object.entries(b.layers)) {
+          if (!ly || typeof ly !== 'object' || !now[id]) continue;
+          for (const [k, e] of Object.entries(ly)) if (isEntry(e) && now[id][k] === e.set && e.set !== e.was) setOutputLayer(id, k, e.was);
+        }
+      }
+      const ov = b.overlays && typeof b.overlays === 'object' ? Object.entries(b.overlays).filter(([, e]) => isEntry(e) && e.set !== e.was) : [];
+      if (ov.length && window.KairoOverlays && window.KairoOverlays.load) {
+        const items = await window.KairoOverlays.load();
+        const live = new Map(items.map(it => [it.id, !!it.live]));
+        // A refused change is reported by the app's request watcher (problems.js).
+        for (const [id, e] of ov) if (live.get(id) === e.set) fetch(`${SERVER}/api/overlays/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ live: e.was }) });
+      }
+    },
+  };
 
   // Called by loadSettings (app.js) once the saved settings are in.
   window.initVideoSources = async function () {
@@ -213,6 +297,8 @@
       }
     } catch {}
     if (settings.videoDirector) { await enable(false); return; }
+    // Mode off: a Layout's layer and overlay changes left by a crash go back as they were.
+    window.KairoDirectorBaseline.restore().catch((err) => console.warn('[Video] could not restore the outputs from before a Layout:', err.message));
     // Mode off: no screen frame may be left around an output (a crash could have left one).
     try {
       if (settings.outputFrames && Object.keys(settings.outputFrames).length) { settings.outputFrames = {}; saveSettingsPatch({ outputFrames: {} }); if (typeof applyOutputFrames === 'function') applyOutputFrames(); }

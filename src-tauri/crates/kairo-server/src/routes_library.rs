@@ -282,11 +282,15 @@ async fn add_folder(State(app): State<Shared>, b: Option<Json<Value>>) -> Respon
     };
     match r {
         Ok(folder) => Json(json!({ "ok": true, "folder": folder })).into_response(),
+        Err(e) if e.0 == "SAVE_FAILED" => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.1, "code": e.0 }))).into_response(),
         Err(e) => (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "error": e.1, "code": e.0 }))).into_response(),
     }
 }
-async fn remove_folder(State(app): State<Shared>, Path(id): Path<String>) -> Json<Value> {
-    Json(json!({ "ok": app.media.remove_folder(&id) }))
+async fn remove_folder(State(app): State<Shared>, Path(id): Path<String>) -> Response {
+    match app.media.remove_folder(&id) {
+        Ok(removed) => Json(json!({ "ok": removed })).into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.1, "code": e.0 }))).into_response(),
+    }
 }
 async fn folder_items(State(app): State<Shared>, Path(id): Path<String>) -> Response {
     let m = app.media.clone();

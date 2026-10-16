@@ -103,12 +103,18 @@ impl Media {
         me
     }
 
-    fn save(&self) {
+    /// Writes the linked-folder list. A failure is logged and returned: the change works for now
+    /// but would be gone at the next start, so the route says so instead of answering ok.
+    fn save(&self) -> Result<(), MediaError> {
         let list: Vec<Value> = self.folders.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().map(|f| json!({ "id": f.id, "name": f.name, "dirPath": f.dir })).collect();
         if let Some(d) = self.manifest.parent() {
-            let _ = std::fs::create_dir_all(d);
+            let _ = std::fs::create_dir_all(d);   // the write below reports a folder that couldn't be made
         }
-        let _ = std::fs::write(&self.manifest, serde_json::to_vec_pretty(&list).unwrap_or_default());
+        std::fs::write(&self.manifest, serde_json::to_vec_pretty(&list).unwrap_or_default()).map_err(|e| {
+            crate::routes::write_debug_global("server:media-manifest-write-failed", json!({ "path": self.manifest.display().to_string(), "error": e.to_string() }));
+            eprintln!("[Media] could not save the folder list {}: {e}", self.manifest.display());
+            MediaError("SAVE_FAILED", format!("The media folder list couldn't be saved ({e}). The change is gone after a restart."))
+        })
     }
 
     /// Tells the UI when a linked folder's contents change.
@@ -212,10 +218,10 @@ impl Media {
         self.folders.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().map(|f| json!({ "id": f.id, "name": f.name, "path": f.dir })).collect()
     }
 
-    fn register(&self, name: Option<&str>, dir: PathBuf) -> Value {
+    fn register(&self, name: Option<&str>, dir: PathBuf) -> Result<Value, MediaError> {
         let mut list = self.folders.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if let Some(f) = list.iter().find(|f| f.dir == dir) {
-            return json!({ "id": f.id, "name": f.name, "dirPath": f.dir });
+            return Ok(json!({ "id": f.id, "name": f.name, "dirPath": f.dir }));
         }
         let mut b = [0u8; 16];
         getrandom::fill(&mut b).ok();
@@ -226,8 +232,8 @@ impl Media {
         let out = json!({ "id": f.id, "name": f.name, "dirPath": f.dir });
         list.push(f);
         drop(list);
-        self.save();
-        out
+        self.save()?;
+        Ok(out)
     }
 
     /// Links an existing folder.
@@ -237,7 +243,7 @@ impl Media {
         if !dir.is_dir() {
             return Err(MediaError("BAD_FOLDER", "Not a valid folder path".into()));
         }
-        Ok(self.register(name, dir))
+        self.register(name, dir)
     }
 
     /// Creates a folder under ~/Documents/Kairo Media and links it.
@@ -247,17 +253,19 @@ impl Media {
         let home = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).map(PathBuf::from).ok_or(MediaError("BAD_FOLDER", "No home folder".into()))?;
         let dir = home.join("Documents").join("Kairo Media").join(&safe);
         std::fs::create_dir_all(&dir).map_err(|e| MediaError("BAD_FOLDER", e.to_string()))?;
-        Ok(self.register(Some(name).filter(|n| !n.is_empty()), dir))
+        self.register(Some(name).filter(|n| !n.is_empty()), dir)
     }
 
-    pub fn remove_folder(&self, id: &str) -> bool {
+    pub fn remove_folder(&self, id: &str) -> Result<bool, MediaError> {
         let mut list = self.folders.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         let before = list.len();
         list.retain(|f| f.id != id);
         let removed = list.len() != before;
         drop(list);
-        self.save();
-        removed
+        if removed {
+            self.save()?;
+        }
+        Ok(removed)
     }
 
     pub fn folder_items(&self, id: &str) -> Option<(Vec<Value>, bool)> {

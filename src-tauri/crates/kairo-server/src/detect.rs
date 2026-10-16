@@ -32,6 +32,41 @@ pub struct Presentation {
     pub auto_send: bool,
     /// Video Director mode with Auto-send off: a detected verse is staged in Preview, never put on the Output.
     pub hold: bool,
+    /// Video Director mode is on: an operator's range step is staged like a manual send.
+    pub director: bool,
+}
+
+/// Where a verse for the screen goes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Route {
+    /// On the outputs now.
+    Screen,
+    /// Held back (Director mode, Auto-send off): waits on the Detected chip.
+    Staged,
+    /// Listed in Possible Matches for the operator.
+    Suggestions,
+    /// The operator's own step in Director mode: the main window sends it as it sends a hand
+    /// send (staged in Preview while "Stage sends on Preview" is on).
+    OperatorStep,
+}
+
+/// A detected verse goes on screen only with Auto-send on. An explicit one (the operator's
+/// range Next) is never held back by Auto-send: dropping it into Possible Matches would be a
+/// missed send.
+fn route(screen: bool, explicit: bool, p: &Presentation) -> Route {
+    if !screen {
+        return Route::Suggestions;
+    }
+    if explicit {
+        return if p.director { Route::OperatorStep } else { Route::Screen };
+    }
+    if p.hold {
+        Route::Staged
+    } else if p.auto_send {
+        Route::Screen
+    } else {
+        Route::Suggestions
+    }
 }
 
 #[derive(Clone)]
@@ -135,6 +170,8 @@ fn run(
 
     for cmd in rx {
         let now = started.elapsed().as_millis() as u64;
+        // The operator's Next (button, remote, OSC): the verse it puts up is an explicit send.
+        let operator_step = matches!(cmd, Command::Event(Event::RangeNext));
         let out = match cmd {
             Command::Event(Event::Reset) => {
                 *log.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = ServiceLog::default();
@@ -167,7 +204,7 @@ fn run(
             }
         };
         let p = presentation.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
-        apply(&bible, &hub, &mut range, out.clone(), &p, &log);
+        apply(&bible, &hub, &mut range, out.clone(), &p, &log, operator_step);
         for r in out.requests {
             if meaning.is_some() {
                 let _ = mtx.send(r);
@@ -208,7 +245,10 @@ fn answer(m: &MeaningService, r: &Request) -> Answer {
 }
 
 /// Decisions → what the UI and outputs are told.
-fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Presentation, log: &Log) {
+/// `operator_step`: these effects come from the operator's range Next. The verse the range
+/// moved to is then an explicit send; anything else in the same output is gated as usual.
+fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Presentation, log: &Log, operator_step: bool) {
+    let mut stepped: Option<VerseId> = None;
     for e in out.effects {
         match e {
             Effect::Show { verses, method, score, target, corrected_from } => {
@@ -219,8 +259,20 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
                 // A verse for the screen goes there only with Auto-send on. With it off it waits in
                 // Possible Matches for the operator (or, in Director mode, staged in Preview).
                 let screen = target == Target::Screen;
-                let held = screen && p.hold;
-                let viewer = screen && (p.auto_send || held);
+                let explicit = stepped.is_some_and(|s| verses.len() == 1 && verses[0] == s);
+                let to = route(screen, explicit, p);
+                if to == Route::OperatorStep {
+                    bible.apply_translation(&mut list, &p.translation);
+                    bible.apply_language(&mut list, &p.language);
+                    eprintln!("[Detect] {} → range step (Director)", bible.reference(verses[0]));
+                    crate::routes::write_debug_global("server:detect", json!({
+                        "verses": [bible.reference(verses[0])], "target": "range-step", "method": method.wire(),
+                    }));
+                    hub.broadcast(json!({ "type": "range-step", "verses": list, "timestamp": epoch_ms() }));
+                    continue;
+                }
+                let held = to == Route::Staged;
+                let viewer = to == Route::Screen || held;
                 if viewer {
                     bible.apply_translation(&mut list, &p.translation);
                     bible.apply_language(&mut list, &p.language);
@@ -255,7 +307,7 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
                     "score": (score * 100.0).round() / 100.0,
                     "correctsFrom": corrected_from.map(|f| bible.reference(f)),
                 }));
-                if viewer && p.auto_send && !held {
+                if to == Route::Screen {
                     hub.set_bible_on_top(true);
                     let how = crate::notes::How::of(method.wire());
                     let at = epoch_ms();
@@ -271,6 +323,9 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
                 hub.broadcast(json!({ "type": "range-verses", "verses": all, "activeRef": bible.reference(current) }));
             }
             Effect::RangeMoved { current, .. } => {
+                if operator_step {
+                    stepped = Some(current);
+                }
                 range.current = range.all.iter().position(|v| *v == current).unwrap_or(range.current);
                 range_state(bible, hub, range);
                 hub.broadcast(json!({ "type": "range-active", "activeRef": bible.reference(current) }));
@@ -298,4 +353,31 @@ fn range_state(bible: &Bible, hub: &Hub, range: &RangeMirror) {
     let remaining = range.all.len().saturating_sub(range.current + 1);
     let next = range.all.get(range.current + 1).map(|v| bible.verse_json(*v, 1.0, "direct"));
     hub.broadcast(json!({ "type": "range-state", "remaining": remaining, "total": range.all.len(), "next": next }));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn p(auto_send: bool, director: bool) -> Presentation {
+        Presentation { auto_send, director, hold: !auto_send && director, ..Default::default() }
+    }
+
+    #[test]
+    fn detected_verses_keep_the_auto_send_gate() {
+        assert_eq!(route(true, false, &p(true, false)), Route::Screen);
+        assert_eq!(route(true, false, &p(false, false)), Route::Suggestions);
+        assert_eq!(route(true, false, &p(false, true)), Route::Staged);
+        assert_eq!(route(true, false, &p(true, true)), Route::Screen);
+        assert_eq!(route(false, false, &p(true, false)), Route::Suggestions);
+    }
+
+    #[test]
+    fn an_operator_range_step_is_never_dropped_by_auto_send_off() {
+        assert_eq!(route(true, true, &p(false, false)), Route::Screen);
+        assert_eq!(route(true, true, &p(true, false)), Route::Screen);
+        // Director mode: staged like a hand send, whatever Auto-send says.
+        assert_eq!(route(true, true, &p(false, true)), Route::OperatorStep);
+        assert_eq!(route(true, true, &p(true, true)), Route::OperatorStep);
+    }
 }

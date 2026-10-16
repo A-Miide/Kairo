@@ -2704,6 +2704,10 @@
     if (e.key !== 'Escape') return;
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+    // Marked as used only when something was open: Director mode's Esc (clear what is staged)
+    // must not also fire for the press that just closed a menu.
+    const pop = document.getElementById('svc-popover');
+    if (pop && !pop.classList.contains('hidden')) e.preventDefault();
     closePopover();
   });
 
@@ -5140,9 +5144,12 @@
         del.addEventListener('click', async (e) => {
           e.stopPropagation();
           try {
-            await fetchWithTimeout(`${SERVER}/api/media/folders/${f.id}`, { method: 'DELETE' });
+            const r = await fetchWithTimeout(`${SERVER}/api/media/folders/${f.id}`, { method: 'DELETE' });
+            // The server answers an error when the folder list couldn't be saved (media.rs save).
+            if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || `the server answered ${r.status}`); }
           } catch (err) {
             if (typeof toast === 'function') toast('Could not unlink folder: ' + err.message, 'error');
+            loadMediaFolders();   // the rail shows what the server has
             return;
           }
           if (activeMediaFolderId === f.id) activeMediaFolderId = null;
@@ -5513,10 +5520,14 @@
     document.getElementById('media-video-controls')?.classList.toggle('hidden', !visible);
   }
 
+  // Resolves true when the output took the command. On a refusal or no answer (reported by the
+  // app's request watcher, problems.js) play/pause and mute are rolled back here, so the
+  // transport doesn't show a state the output isn't in; the mute button's caller rolls itself back.
   function mediaControl(action, value) {
     // The preview is always silent (the output carries the sound), so only
     // play, pause and seek apply to it.
     const pv = previewVideo();
+    const was = { paused: pv ? pv.paused : null, muted: pv ? pv.muted : null, mutedState: mediaMutedState };
     if (pv) {
       if (action === 'play') pv.play().catch(() => {});
       else if (action === 'pause') pv.pause();
@@ -5527,10 +5538,19 @@
     }
     if (action === 'mute') mediaMutedState = true;
     if (action === 'unmute') mediaMutedState = false;
-    fetchWithTimeout(`${SERVER}/api/service/media-control`, {
+    const rollback = () => {
+      if (action === 'play' || action === 'pause') {
+        if (pv) { if (was.paused) pv.pause(); else pv.play().catch(() => {}); }   // the preview's own events repaint the icon
+      } else if (action === 'mute' || action === 'unmute') {
+        mediaMutedState = was.mutedState;
+        if (pv) pv.muted = was.muted;
+      }
+      return false;
+    };
+    return fetchWithTimeout(`${SERVER}/api/service/media-control`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action, value }),
-    }).catch(() => {});
+    }).then((r) => (r.ok ? true : rollback()), rollback);
   }
 
   function formatTime(s) {
@@ -5718,10 +5738,11 @@
   async function toggleSegment(seg, anchorEl) {
     try {
       if (seg.status === 'live') {
-        await fetchWithTimeout(`${SERVER}/api/segments/${seg.id}/stop`, {
+        const r = await fetchWithTimeout(`${SERVER}/api/segments/${seg.id}/stop`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ markDone: true }),
         });
-        await loadSegments(); renderTimerGrid();
+        await loadSegments(); renderTimerGrid();   // the grid shows what the server has, stopped or not
+        if (!r.ok) flashCardError(seg, 'Could not stop');
         return;
       }
       const p = seg.trigger?.params || {};
@@ -6280,17 +6301,22 @@
       // Reaching zero on its own no longer counts as "cleared" — the
       // timer runs into overtime instead of ending, so only a real stop
       // reconciles status now.
+      // A refused or unanswered request is reported by the app's request watcher (problems.js);
+      // here the timer grid is drawn again from what the server really has, so a stop that didn't
+      // happen doesn't leave the card looking stopped.
+      const resync = () => loadSegments().then(renderTimerGrid);
       if (seg.status === 'live') {
         fetchWithTimeout(`${SERVER}/api/segments/${seg.id}/stop`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ markDone: true }),
-        }).then(() => loadSegments()).then(renderTimerGrid).catch(() => {});
+        }).then((r) => { if (!r.ok) flashCardError(seg, 'Could not stop'); }, () => flashCardError(seg, 'Could not reach server'))
+          .then(resync);
       }
       // Belt-and-suspenders: also tell the real output to drop the timer
       // layer, in case this 'cleared' came from the segment itself rather
       // than a Clear-Timer press (which the server already routes).
       fetchWithTimeout(`${SERVER}/api/service/send-timer`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clear: true }),
-      }).catch(() => {});
+      }).then((r) => { if (!r.ok) return resync(); }, () => resync());
       return;
     }
     const overtime = remainingMs < 0;
@@ -6880,9 +6906,14 @@
     });
     let mediaMutedLocal = false;
     document.getElementById('media-mute-btn')?.addEventListener('click', (e) => {
+      const btn = e.currentTarget;
       mediaMutedLocal = !mediaMutedLocal;
-      e.currentTarget.classList.toggle('active', mediaMutedLocal);
-      mediaControl(mediaMutedLocal ? 'mute' : 'unmute');
+      btn.classList.toggle('active', mediaMutedLocal);
+      const asked = mediaMutedLocal;
+      // Not taken by the output: the button goes back (unless it was pressed again meanwhile).
+      mediaControl(asked ? 'mute' : 'unmute').then((ok) => {
+        if (!ok && mediaMutedLocal === asked) { mediaMutedLocal = !asked; btn.classList.toggle('active', mediaMutedLocal); }
+      });
     });
     const mediaSeekInput = document.getElementById('media-seek');
     mediaSeekInput?.addEventListener('mousedown', () => { mediaSeeking = true; });
@@ -7120,6 +7151,7 @@
           selectedItemIds.clear();
         });
       } else if (e.key === 'Escape' && selectedItemIds.size) {
+        e.preventDefault();   // this Esc cleared the selection: Director mode's Esc must not also clear staging
         selectedItemIds.clear();
         renderSidebar();
       }
@@ -7168,6 +7200,7 @@
         const message = indices.length === 1 ? 'Remove this slide?' : `Remove ${indices.length} slides?`;
         confirmDeletePopover(document.getElementById('svc-items-list'), message, () => bulkDeleteSlides(item, indices));
       } else if (e.key === 'Escape' && selectedSlideIndices.size) {
+        e.preventDefault();   // this Esc cleared the selection: Director mode's Esc must not also clear staging
         clearSlideSelection();
         rerenderActiveSlideSurface(item);
       }
