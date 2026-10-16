@@ -710,6 +710,39 @@ fn ndi_update_timer(app: AppHandle, id: String, text: String) -> Result<(), Stri
 #[derive(Default)]
 struct CaptureState {
     busy: Mutex<std::collections::HashMap<String, Option<u32>>>,
+    /// Consecutive failures per output and stage ("capture" / "syphon"), and whether the window was told.
+    trouble: Mutex<std::collections::HashMap<(String, &'static str), (u32, bool)>>,
+}
+
+/// A failed capture or Syphon update used to go to stderr only, so the output's graphics froze
+/// with nothing said. After a few failures in a row the main window is told
+/// ("output-capture-trouble" { id, stage, error }), and told again with error null once it works.
+const CAPTURE_TROUBLE_AFTER: u32 = 3;
+fn note_capture(app: &AppHandle, id: &str, stage: &'static str, r: Result<(), String>) {
+    let tell = {
+        let state = app.state::<CaptureState>();
+        let Ok(mut t) = state.trouble.lock() else { return };
+        match r {
+            Ok(()) => match t.remove(&(id.to_string(), stage)) {
+                Some((_, true)) => Some(None),
+                _ => None,
+            },
+            Err(e) => {
+                eprintln!("[Capture] {id} ({stage}): {e}");
+                let entry = t.entry((id.to_string(), stage)).or_insert((0, false));
+                entry.0 += 1;
+                if entry.0 >= CAPTURE_TROUBLE_AFTER && !entry.1 {
+                    entry.1 = true;
+                    Some(Some(e))
+                } else {
+                    None
+                }
+            }
+        }
+    };
+    if let Some(error) = tell {
+        let _ = app.emit("output-capture-trouble", serde_json::json!({ "id": id, "stage": stage, "error": error }));
+    }
 }
 
 #[tauri::command]
@@ -748,6 +781,7 @@ fn run_capture(app: AppHandle, id: String, width: u32, height: u32, fade: u32) {
                     let rgba: Vec<u8> = frame.unpremultiplied().chunks_exact(4).flat_map(|p| [p[2], p[1], p[0], p[3]]).collect();
                     if let Some(img) = image::RgbaImage::from_raw(frame.width, frame.height, rgba) { let _ = img.save(&path); }
                 }
+                note_capture(&app2, &id2, "capture", Ok(()));
                 let frame = Arc::new(frame);
                 // A moving background playing under this output: the
                 // snapshot is what sits on top of it (video_bg.rs mixes).
@@ -756,7 +790,7 @@ fn run_capture(app: AppHandle, id: String, width: u32, height: u32, fade: u32) {
                     push_frame(&app2, &id2, frame, fade);
                 }
             }
-            Err(e) => eprintln!("[Capture] {id2}: {e}"),
+            Err(e) => note_capture(&app2, &id2, "capture", Err(e.to_string())),
         }
         // One more if something changed meanwhile.
         let next = app2.state::<CaptureState>().busy.lock().ok().and_then(|mut b| match b.get(&id2) {
@@ -784,7 +818,7 @@ fn push_frame(app: &AppHandle, id: &str, frame: Arc<capture::Frame>, fade: u32) 
     }
     #[cfg(target_os = "macos")]
     if let Ok(h) = app.state::<SyphonState>().handle_for(id) {
-        if let Err(e) = syphon::update_frame(frame, fade, h) { eprintln!("[Capture] Syphon: {e}"); }
+        note_capture(app, id, "syphon", syphon::update_frame(frame, fade, h).map_err(|e| e.to_string()));
     }
 }
 
