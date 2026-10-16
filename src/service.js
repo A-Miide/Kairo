@@ -271,15 +271,7 @@
   // Fire-and-forget diagnostic logging — forwards to the server's debug.log
   // so bug reports can be diagnosed by reading logs instead of re-testing on
   // the shared live server. Never throws, never blocks the caller.
-  function debugLog(event, data) {
-    try {
-      fetch(`${SERVER}/api/debug-log`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ event, data }),
-      }).catch(() => {});
-    } catch {}
-  }
+  function debugLog(event, data) { kairoLog(event, data); }   // client_common.js
 
   function todayName() {
     return new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'short', day: 'numeric' });
