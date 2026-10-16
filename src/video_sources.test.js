@@ -78,6 +78,14 @@ test('resolveDevice prefers the id, falls back to the label, else null', () => {
   assert.equal(V.resolveDevice({ deviceId: 'dev1' }, []), null);
 });
 
+test('buildConstraints asks no more than the screen shows, keeping the shape', () => {
+  const c = V.buildConstraints({ width: 3840, height: 2160, fps: 30 }, 'd', { width: 1920, height: 1200 });
+  assert.equal(c.video.width.ideal, 1920);
+  assert.equal(c.video.height.ideal, 1080);
+  const small = V.buildConstraints({ width: 1280, height: 720, fps: 30 }, 'd', { width: 1920, height: 1080 });
+  assert.equal(small.video.width.ideal, 1280, 'a smaller source is left as it is');
+});
+
 test('buildConstraints uses ideals and never asks for audio', () => {
   assert.deepEqual(V.buildConstraints({ width: 1920, height: 1080, fps: 30 }, 'd'), {
     video: { deviceId: { exact: 'd' }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } },

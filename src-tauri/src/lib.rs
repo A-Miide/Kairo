@@ -185,6 +185,50 @@ fn build_app_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry
 
     // Window: the app's other windows — the Monitor (every output, live) and
     // where outputs are set up. Close Window is under File, as on every Mac app.
+    // Live production: streaming, recording, macros. Each item runs the same action as
+    // Stream Deck and OSC ("menu-run-<action>", see app_startup.js runRemoteAction).
+    let mut macros_menu = SubmenuBuilder::new(app, "Run Macro");
+    for n in 1..=9 {
+        macros_menu = macros_menu.text(format!("menu-run-macro-{n}"), format!("Macro {n}"));
+    }
+    let macros_menu = macros_menu.build()?;
+    let production_menu = SubmenuBuilder::new(app, "Production")
+        .text("menu-run-stream-start", "Go Live")
+        .text("menu-run-stream-stop", "Stop Stream")
+        .separator()
+        .text("menu-run-record-start", "Start Recording")
+        .text("menu-run-record-stop", "Stop Recording")
+        .separator()
+        .item(&macros_menu)
+        .separator()
+        .text("menu-run-auto-send-on", "Auto-send Verses On")
+        .text("menu-run-auto-send-off", "Auto-send Verses Off")
+        .build()?;
+
+    // Director mode's switcher (nothing happens while Director mode is off).
+    let mut cams_menu = SubmenuBuilder::new(app, "Input to the Screen");
+    for n in 1..=9 {
+        let mut b = MenuItemBuilder::with_id(format!("menu-run-director-input-{n}"), format!("Input {n}"));
+        if n <= 4 { b = b.accelerator(format!("CmdOrCtrl+Alt+{n}")); }
+        cams_menu = cams_menu.item(&b.build(app)?);
+    }
+    let cams_menu = cams_menu.build()?;
+    let mut layouts_menu = SubmenuBuilder::new(app, "Layout to Preview");
+    for n in 1..=9 {
+        layouts_menu = layouts_menu.text(format!("menu-run-director-layout-{n}"), format!("Layout {n}"));
+    }
+    let layouts_menu = layouts_menu.build()?;
+    let director_menu = SubmenuBuilder::new(app, "Director")
+        .item(&MenuItemBuilder::with_id("menu-run-director-send", "Send to Screen").accelerator("CmdOrCtrl+Return").build(app)?)
+        .item(&MenuItemBuilder::with_id("menu-run-director-fade-to-black", "Fade to Black").accelerator("CmdOrCtrl+Shift+B").build(app)?)
+        .text("menu-run-director-undo", "Undo Last Send")
+        .separator()
+        .item(&cams_menu)
+        .item(&layouts_menu)
+        .separator()
+        .item(&MenuItemBuilder::with_id("menu-run-director-replay", "Instant Replay to Preview").accelerator("CmdOrCtrl+Shift+R").build(app)?)
+        .build()?;
+
     let window_menu = SubmenuBuilder::new(app, "Window")
         .minimize()
         .maximize_with_text("Zoom")
@@ -209,6 +253,8 @@ fn build_app_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry
         .item(&edit_menu)
         .item(&view_menu)
         .item(&controls_menu)
+        .item(&director_menu)
+        .item(&production_menu)
         .item(&window_menu)
         .item(&help_menu)
         .build()

@@ -179,11 +179,19 @@
 
   // getUserMedia constraints. Size and rate are ideals, never exact: a camera
   // that can't do 4K should still give a picture rather than fail.
-  function buildConstraints(source, deviceId) {
+  // `cap` ({ width, height }): the most the picture is ever shown at (the output's screen).
+  // A 4K camera on a 1080p screen is asked for 1080p: a quarter of the pixels to decode and
+  // draw, the same picture on screen. The shape of the source is kept.
+  function buildConstraints(source, deviceId, cap) {
     const video = {};
     if (deviceId) video.deviceId = { exact: deviceId };
-    if (source && source.width) video.width = { ideal: source.width };
-    if (source && source.height) video.height = { ideal: source.height };
+    let w = source && source.width, h = source && source.height;
+    if (w && h && cap && cap.width && cap.height && (w > cap.width || h > cap.height)) {
+      const k = Math.min(cap.width / w, cap.height / h);
+      w = Math.round(w * k); h = Math.round(h * k);
+    }
+    if (w) video.width = { ideal: w };
+    if (h) video.height = { ideal: h };
     if (source && source.fps) video.frameRate = { ideal: source.fps };
     return { video: Object.keys(video).length ? video : true, audio: false };
   }

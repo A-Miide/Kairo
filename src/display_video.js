@@ -20,7 +20,11 @@
       const devices = await navigator.mediaDevices.enumerateDevices();
       const deviceId = V.resolveDevice(source, devices);
       if (!deviceId) { const e = new Error('device missing'); e.name = 'NotFoundError'; throw e; }
-      const stream = await navigator.mediaDevices.getUserMedia(V.buildConstraints(source, deviceId));
+      // Never more than this window can show (a capture window's own size, else its screen's).
+      const q = new URLSearchParams(location.search);
+      const dpr = window.devicePixelRatio || 1;
+      const cap = { width: Number(q.get('w')) || Math.round((window.screen.width || 1920) * dpr), height: Number(q.get('h')) || Math.round((window.screen.height || 1080) * dpr) };
+      const stream = await navigator.mediaDevices.getUserMedia(V.buildConstraints(source, deviceId, cap));
       return { stream, deviceId, release: () => { try { stream.getTracks().forEach(t => t.stop()); } catch {} } };
     },
   };
