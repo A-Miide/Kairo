@@ -47,6 +47,9 @@ fn distinctive_wording(c: &Candidate) -> bool {
     weight.is_some_and(|w| w >= DISTINCTIVE_WORDING_IDF)
 }
 
+/// Cross-encoder score from which a paraphrase offer needs no support from the sermon's context.
+const PARAPHRASE_STANDS_ALONE: f32 = 0.995;
+
 impl Engine {
     /// Decides a candidate and applies the decision. Returns where it landed.
     pub(crate) fn decide(&mut self, mut c: Candidate, now: u64) -> Target {
@@ -281,7 +284,11 @@ impl Engine {
             Method::Verbatim => e.similarity.unwrap_or(0.0) < ON_SCREEN_GUARD_MAX_COVERAGE && e.matched_idf.unwrap_or(0.0) < scoring::VERBATIM_CERTAIN_IDF,
             Method::Stream => !e.confirmed || e.matched_idf.unwrap_or(0.0) < scoring::STREAM_IDF_FULL_CONFIDENCE,
             // A paraphrase is the preacher's own words: the sermon must point at it too.
-            Method::Fingerprint | Method::Paraphrase => true,
+            Method::Fingerprint => true,
+            // A paraphrase is the preacher's own words, so the sermon must point at it too —
+            // unless the cross-encoder is nearly certain: that rule hid more right offers than
+            // wrong ones (measured on the dev sermons: 15 of 26 dropped were right).
+            Method::Paraphrase => e.rerank.unwrap_or(0.0) < PARAPHRASE_STANDS_ALONE,
             _ => false,
         }
     }
