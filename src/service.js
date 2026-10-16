@@ -263,7 +263,8 @@
   const FETCH_TIMEOUT_MS = 15_000;
   function fetchWithTimeout(url, opts = {}, timeoutMs = FETCH_TIMEOUT_MS) {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    // A timeout is a failure (reported), not a cancel: it aborts with a TimeoutError.
+    const timer = setTimeout(() => { try { controller.abort(new DOMException('Kairo’s server didn’t answer in time', 'TimeoutError')); } catch { controller.abort(); } }, timeoutMs);
     return fetch(url, { ...opts, signal: controller.signal }).finally(() => clearTimeout(timer));
   }
 
@@ -298,7 +299,14 @@
 
   function loadAll() {
     try {
-      const raw = JSON.parse(localStorage.getItem(PLAYLISTS_KEY) || 'null');
+      const text = localStorage.getItem(PLAYLISTS_KEY);
+      let raw = null;
+      try { raw = JSON.parse(text || 'null'); } catch (err) {
+        // Damaged playlists are kept, not overwritten with an empty set on the next save.
+        try { localStorage.setItem(`${PLAYLISTS_KEY}-damaged-${Date.now()}`, text); } catch {}
+        debugLog('playlists-damaged', { error: String(err && err.message || err), length: (text || '').length });
+        window.kairoProblem?.('Your playlists couldn’t be read, so a copy was kept and Kairo started with an empty one. Your old playlists aren’t lost.');
+      }
       if (raw && Array.isArray(raw.playlists)) {
         playlists = raw.playlists;
         if (playlists.length) {
@@ -340,7 +348,15 @@
   }
 
   function saveAll() {
-    try { localStorage.setItem(PLAYLISTS_KEY, JSON.stringify({ playlists, activePlaylistId })); } catch {}
+    try {
+      localStorage.setItem(PLAYLISTS_KEY, JSON.stringify({ playlists, activePlaylistId }));
+      window.kairoProblemCleared?.('playlists-save');
+    } catch (err) {
+      // Usually the storage is full (decks with many pictures): every change from here would
+      // be lost on restart without a word.
+      debugLog('playlists-save-failed', { error: String(err && err.message || err) });
+      window.kairoProblem?.('Playlist changes aren’t being saved: this computer’s storage for Kairo is full. Remove picture-heavy decks you no longer need.', 'playlists-save');
+    }
   }
   // Alias — the bulk of this file predates multi-playlist support and just
   // wants "persist whatever changed", which is always the whole set now.
@@ -1288,6 +1304,7 @@
     if (!slide) return;
     // Video director mode: a click stages the slide in Preview; Send to screen puts it on the Output.
     if (!auto && !follow && !direct && window.KairoVideoDirector?.stageSlide?.(item, index, () => slideSendBody(item, index))) return;
+    const wasLive = liveSlideKey;
     liveSlideKey = `${item.id}:${index}`;
     // Keep the follower in step with what's actually on screen.
     if (item.type === 'song') {
@@ -1343,9 +1360,17 @@
         try { const body = await res.json(); if (body?.error) msg = body.error; } catch {}
         throw new Error(msg);
       }
+      return true;
     } catch (err) {
       debugLog('send-slide-error', { itemId: item.id, message: err.message });
-      if (typeof toast === 'function') toast('Send failed: ' + err.message, 'error');
+      // It never reached the screen: the live highlight goes back to what is really up.
+      // (The problem strip already says the send didn't work.)
+      if (liveSlideKey === `${item.id}:${index}`) {
+        liveSlideKey = wasLive;
+        renderStack();
+        if (activeItemId === item.id && !document.getElementById('svc-fullscreen')?.classList.contains('hidden')) renderFlowView(item);
+      }
+      return false;
     }
   }
 
@@ -5419,18 +5444,20 @@
     // Video director mode: a click stages it in Preview; Send to screen puts it on the Output.
     if (!direct && window.KairoVideoDirector?.stageMedia?.(item, fit, () => prepareMedia(item, fit))) return;
     const prepared = await prepareMedia(item, fit);
-    if (!prepared) return;
+    if (!prepared) return false;
     try {
-      await fetchWithTimeout(`${SERVER}/api/service/send-media`, {
+      const res = await fetchWithTimeout(`${SERVER}/api/service/send-media`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ src: prepared.src, kind: prepared.kind, fit: prepared.fit }),
       });
+      // Refused (reported by problems.js): not on screen, so not "recent" and no transport.
+      if (!res.ok) return false;
     } catch (err) {
-      if (typeof toast === 'function') toast('Send failed: ' + err.message, 'error');
-      return;
+      return false;
     }
     pushRecent('media', item.url, { name: item.name, kind: item.kind, url: item.url });
     setMediaTransportVisible(item.kind === 'video');
+    return true;
   }
 
   // ── Upload / drag-drop (both land on the same endpoint the active folder

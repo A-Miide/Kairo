@@ -171,9 +171,15 @@
     refresh();
     // A staged slide goes out through the playlist's own send, a verse through the normal one.
     // A staged slide or media item goes out through the app's own send, as an explicit one (not staged again).
-    if (slide && window.KairoService) return window.KairoService.sendSlide(slide.item, slide.index, { direct: true });
-    if (media && window.KairoService) return window.KairoService.sendMedia(media.item, media.fit, true);
-    return D.origSend(verse, look);
+    const staged = D.staged;
+    const sent = slide && window.KairoService ? window.KairoService.sendSlide(slide.item, slide.index, { direct: true })
+      : media && window.KairoService ? window.KairoService.sendMedia(media.item, media.fit, true)
+      : D.origSend(verse, look);
+    // It didn't reach the screen: Preview no longer claims to match the Output, so Send can try again.
+    Promise.resolve(sent).then((ok) => {
+      if (ok === false && D.staged === staged) { staged.sent = false; refresh(); }
+    }).catch(() => { if (D.staged === staged) { staged.sent = false; refresh(); } });
+    return sent;
   }
   // Drag a slide onto Preview to stage it.
   function stageSlide(itemId, index) {

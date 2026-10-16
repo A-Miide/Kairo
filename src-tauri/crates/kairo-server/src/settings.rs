@@ -8,12 +8,29 @@ use tokio::sync::RwLock;
 pub struct Settings {
     path: PathBuf,
     values: RwLock<Map<String, Value>>,
+    /// One save at a time, each writing the newest values: two quick saves can't land in the
+    /// wrong order and leave the older one on disk.
+    saving: tokio::sync::Mutex<()>,
 }
 
 impl Settings {
     pub fn load(path: PathBuf) -> Settings {
-        let values = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice::<Map<String, Value>>(&b).ok()).unwrap_or_default();
-        Settings { path, values: RwLock::new(values) }
+        let values = match std::fs::read(&path) {
+            Err(_) => Map::new(),
+            Ok(b) => match serde_json::from_slice::<Map<String, Value>>(&b) {
+                Ok(v) => v,
+                // A damaged file is kept beside it instead of being replaced by empty
+                // settings on the next save.
+                Err(e) => {
+                    let keep = path.with_extension(format!("damaged-{}.json", crate::detect::epoch_ms()));
+                    let _ = std::fs::copy(&path, &keep);
+                    eprintln!("[Settings] {} couldn't be read ({e}); kept as {}", path.display(), keep.display());
+                    crate::routes::write_debug_global("server:settings-damaged", serde_json::json!({ "error": e.to_string(), "kept": keep.display().to_string() }));
+                    Map::new()
+                }
+            },
+        };
+        Settings { path, values: RwLock::new(values), saving: tokio::sync::Mutex::new(()) }
     }
 
     pub async fn snapshot(&self) -> Map<String, Value> {
@@ -32,25 +49,32 @@ impl Settings {
         self.get(key).await.and_then(|v| v.as_bool())
     }
 
-    /// Merges `incoming` and writes the file.
-    pub async fn merge(&self, incoming: Map<String, Value>) -> Map<String, Value> {
-        let mut v = self.values.write().await;
-        for (k, x) in incoming {
-            v.insert(k, x);
-        }
-        let snapshot = v.clone();
-        drop(v);
-        if let Some(dir) = self.path.parent() {
-            let _ = tokio::fs::create_dir_all(dir).await;
-        }
-        match serde_json::to_vec_pretty(&snapshot) {
-            Ok(bytes) => {
-                if let Err(e) = tokio::fs::write(&self.path, bytes).await {
-                    eprintln!("[Settings] Save failed: {e}");
-                }
+    /// Merges `incoming` and writes the file: to a temporary file first, then renamed over
+    /// the old one, so a crash or full disk mid-save never leaves half a settings file.
+    /// The error, when the file couldn't be written (the values are still in use).
+    pub async fn merge(&self, incoming: Map<String, Value>) -> (Map<String, Value>, Option<String>) {
+        {
+            let mut v = self.values.write().await;
+            for (k, x) in incoming {
+                v.insert(k, x);
             }
-            Err(e) => eprintln!("[Settings] Save failed: {e}"),
         }
-        snapshot
+        let _one = self.saving.lock().await;
+        let snapshot = self.values.read().await.clone();
+        let result: Result<(), String> = async {
+            if let Some(dir) = self.path.parent() {
+                tokio::fs::create_dir_all(dir).await.map_err(|e| e.to_string())?;
+            }
+            let bytes = serde_json::to_vec_pretty(&snapshot).map_err(|e| e.to_string())?;
+            let tmp = self.path.with_extension("json.saving");
+            tokio::fs::write(&tmp, bytes).await.map_err(|e| e.to_string())?;
+            tokio::fs::rename(&tmp, &self.path).await.map_err(|e| e.to_string())
+        }.await;
+        let err = result.err();
+        if let Some(e) = &err {
+            eprintln!("[Settings] Save failed: {e}");
+            crate::routes::write_debug_global("server:settings-save-failed", serde_json::json!({ "error": e }));
+        }
+        (snapshot, err)
     }
 }

@@ -496,7 +496,15 @@ function autoResumeNativeOutputs() {
         width: o.width || 1920, height: o.height || 1080,
       })
         .then(() => { window.KairoNativeOutputs?.pushToOne?.(kind, o.id); renderOutputsList(); if (selectedOutputId === o.id) renderOutputsDetail(); })
-        .catch(err => console.warn(`[${kind}] auto-resume failed:`, err));
+        .catch(err => {
+          // It stays switched on (it is tried again next launch), but it isn't sending: say so
+          // on the output and in the problem strip, instead of looking on while vMix gets nothing.
+          console.warn(`[${kind}] auto-resume failed:`, err);
+          const msg = String(err && err.message || err || 'unknown error').replace(/^Error:\s*/, '');
+          updateNativeOutput(kind, o.id, { lastError: msg });
+          window.kairoProblem?.(`${o.name || kind.toUpperCase()} isn't sending: ${msg}`, `native-${o.id}`);
+          renderOutputsList(); if (selectedOutputId === o.id) renderOutputsDetail();
+        });
     }
   }
 }
@@ -1418,7 +1426,14 @@ function renderNativeOutputDetail(host, o) {
           id: o.id, sourceName: srcInput.value.trim() || 'KAIRO Scripture',
           width: Math.max(160, Number(wInput.value) || 1920), height: Math.max(90, Number(hInput.value) || 1080),
         });
-      } catch {}
+        updateNativeOutput(kind, o.id, { lastError: null });
+        window.kairoProblemCleared?.(`native-${o.id}`);
+      } catch (err) {
+        // The restart after a rename or size change failed: it is off now, not "on".
+        const msg = String(err && err.message || err || 'unknown error').replace(/^Error:\s*/, '');
+        updateNativeOutput(kind, o.id, { lastError: msg });
+        window.kairoProblem?.(`${srcInput.value.trim() || kind.toUpperCase()} stopped sending after the change: ${msg}`, `native-${o.id}`);
+      }
     }, 600);
   }
   srcInput.addEventListener('input', scheduleRestart);

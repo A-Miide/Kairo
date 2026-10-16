@@ -46,17 +46,21 @@
     running.add(macro.id);
     renderTop(); renderPane();
     try {
-      for (const s of macro.steps) {
+      for (const [i, s] of macro.steps.entries()) {
         if (!running.has(macro.id)) break;   // stopped
-        switch (s.kind) {
+        // One step failing is said, and the rest still run (a Send after a missing overlay
+        // should still go out).
+        try { switch (s.kind) {
           case 'action': if (typeof window.runRemoteAction === 'function' && !/^macro-/.test(s.action)) window.runRemoteAction(s.action); break;
           case 'message': if (typeof sendMonitorMessage === 'function' && String(s.text || '').trim()) await sendMonitorMessage(String(s.text).trim(), s.to || 'monitors'); break;
           case 'clear-message': if (typeof sendMonitorMessage === 'function') await sendMonitorMessage('', 'all'); break;
           case 'overlay':
-            if (s.overlay) await fetch(`${SERVER}/api/overlays/${encodeURIComponent(s.overlay)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ live: !!s.on }) }).catch(() => {});
+            if (s.overlay) await fetch(`${SERVER}/api/overlays/${encodeURIComponent(s.overlay)}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ live: !!s.on }) });
             break;
           case 'wait': await new Promise(r => setTimeout(r, Math.min(MAX_WAIT, Math.max(0, Number(s.seconds) || 0)) * 1000)); break;
           default: break;
+        } } catch (err) {
+          window.kairoProblem?.(`Macro “${macro.name || 'Macro'}”, step ${i + 1} (${describe(s)}) didn't work: ${err && err.message ? err.message : err}`);
         }
         // A beat between steps, so each lands before the next (a Layout before its Send).
         await new Promise(r => setTimeout(r, 120));

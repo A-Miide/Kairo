@@ -124,8 +124,11 @@ fn run(
         .spawn(move || {
             for r in mrx {
                 let Some(m) = models_for_thread.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone() else { continue };
-                let a = answer(&m, &r);
-                let _ = back.send(Command::Event(Event::Answer(a)));
+                // A panic answering one request costs that answer, never the meaning thread.
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| answer(&m, &r))) {
+                    Ok(a) => { let _ = back.send(Command::Event(Event::Answer(a))); }
+                    Err(p) => crate::routes::write_debug_global("server:meaning-panic", json!({ "message": panic_text(&p) })),
+                }
             }
         })
         .expect("meaning thread");
@@ -137,7 +140,21 @@ fn run(
                 *log.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = ServiceLog::default();
                 engine.handle(Event::Reset, now)
             }
-            Command::Event(e) => engine.handle(e, now),
+            Command::Event(e) => {
+                // A panic in the engine used to end detection for the rest of the service while
+                // transcripts kept scrolling. Now it costs this one stretch of speech: the engine
+                // starts again with the same settings and detection carries on.
+                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| engine.handle(e, now))) {
+                    Ok(out) => out,
+                    Err(p) => {
+                        let cfg = engine.config().clone();
+                        crate::routes::write_debug_global("server:detection-panic", json!({ "message": panic_text(&p) }));
+                        eprintln!("[Detect] the engine panicked and was restarted: {}", panic_text(&p));
+                        engine = Engine::new(bible.k.clone(), cfg);
+                        continue;
+                    }
+                }
+            }
             Command::Configure(f) => {
                 f(engine.config_mut());
                 continue;
@@ -168,6 +185,10 @@ fn run(
             }
         }
     }
+}
+
+fn panic_text(p: &Box<dyn std::any::Any + Send>) -> String {
+    p.downcast_ref::<&str>().map(|s| s.to_string()).or_else(|| p.downcast_ref::<String>().cloned()).unwrap_or_else(|| "unknown panic".into())
 }
 
 fn answer(m: &MeaningService, r: &Request) -> Answer {

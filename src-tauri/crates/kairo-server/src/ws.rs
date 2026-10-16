@@ -57,6 +57,7 @@ async fn client(app: Shared, socket: WebSocket) {
             return;
         }
     }
+    let app_out = app.clone();
     let outgoing = tokio::spawn(async move {
         loop {
             match rx.recv().await {
@@ -65,7 +66,18 @@ async fn client(app: Shared, socket: WebSocket) {
                         break;
                     }
                 }
-                Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                // This window fell behind (a busy or sleeping display) and missed messages, maybe
+                // a send or a clear: it gets what is on screen now, as a newly opened one does.
+                Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                    crate::routes::write_debug_global("server:ws-lagged", serde_json::json!({ "missed": n }));
+                    let animation = app_out.settings.get("outputAnimation").await.unwrap_or_else(|| "fade".into());
+                    let speed = app_out.settings.get("outputAnimationSpeed").await.unwrap_or_else(|| 1.into());
+                    for m in app_out.hub.catch_up(app_out.ready().is_some(), animation, speed) {
+                        if sink.send(Message::Text(m.into())).await.is_err() {
+                            return;
+                        }
+                    }
+                }
                 Err(_) => break,
             }
         }
