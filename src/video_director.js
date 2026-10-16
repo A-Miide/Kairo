@@ -1033,7 +1033,7 @@
     // What the multiview display mirrors.
     try {
       const pub = JSON.stringify({ programId: ps.id, mixed: ps.mixed, hasOutputs: ps.on.length > 0, previewId: D.previewId });
-      if (D.lastPub !== pub) { D.lastPub = pub; localStorage.setItem('kairo-video-director', pub); }
+      if (D.lastPub !== pub) { D.lastPub = pub; localStorage.setItem('kairo-video-director', pub); emitDirectorChange('program'); }
     } catch {}
     D.grid.render();
     D.ui.noVideo.classList.toggle('is-on', !ps.mixed && ps.on.length > 0 && !ps.id);

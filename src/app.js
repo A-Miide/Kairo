@@ -2896,6 +2896,7 @@ async function saveCurrentSettings() {
   });
   if (!saved) return;
   settings = { ...settings, ...updated };
+  notifySettings('saved', Object.keys(updated));   // the event from the save itself came before this
   if (updated.deepgramApiKey) settings.deepgramApiKey = maskDeepgramKey(updated.deepgramApiKey);
   resetDeepgramKeyField();
   if (translationSelect && updated.translation) translationSelect.value = updated.translation;

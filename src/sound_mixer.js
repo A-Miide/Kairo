@@ -26,7 +26,8 @@
     const s = { ...streamCfg(), mix: next };
     settings.stream = s;
     clearTimeout(saveTimer);
-    saveTimer = setTimeout(() => { if (typeof saveSettingsPatch === 'function') saveSettingsPatch({ stream: settings.stream }); }, 300);
+    saveTimer = setTimeout(() => { saveSettingsPatch({ stream: settings.stream }); }, 300);
+    renderButton();   // "Sound muted" on the top bar follows the mute at once
     pushLive();
   }
 
@@ -230,5 +231,5 @@
   window.KairoMixer = { mount, forEngine, channels, isMounted: (r) => mounted.has(r) };
   const hook = () => { if (window.KairoStreaming) window.KairoStreaming.onChange(renderButton); else setTimeout(hook, 500); };
   hook();
-  setInterval(renderButton, 1500);
+  onSettingsChange(renderButton);
 })();

@@ -19,10 +19,10 @@
     if (e.target !== sel()) return;
     const v = sel().value;
     settings.mediaTransition = v || null;
-    if (typeof saveSettingsPatch === 'function') saveSettingsPatch({ mediaTransition: v || null });
+    saveSettingsPatch({ mediaTransition: v || null });
     publish(v);
   });
   // Settings arrive after this file loads.
-  let tries = 0;
-  const wait = setInterval(() => { tries++; if ((typeof settingsLoaded !== 'undefined' && settingsLoaded) || tries > 60) { clearInterval(wait); apply(); } }, 500);
+  onSettingsChange((d) => { if (d.reason === 'loaded') apply(); });
+  if (typeof settingsLoaded !== 'undefined' && settingsLoaded) apply();
 })();
