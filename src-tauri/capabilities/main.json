@@ -52,6 +52,14 @@
     "allow-syphon-update",
     "allow-syphon-update-media",
     "allow-syphon-update-timer",
-    "allow-output-video"
+    "allow-output-video",
+    "allow-stream-start",
+    "allow-stream-stop",
+    "allow-stream-status",
+    "allow-stream-program",
+    "allow-record-start",
+    "allow-record-stop",
+    "allow-record-status",
+    "allow-record-reveal"
   ]
 }

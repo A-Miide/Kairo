@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "display-capability",
-  "description": "KAIRO's other windows (kairo-*: outputs, their hidden capture windows, Monitor, Identify) \u2014 only what their pages use: the server token, showing themselves and going full screen, reporting a change to capture (an NDI/Syphon/DeckLink output's capture window) and handing a full-frame video background to the app. Nothing else of the main window's (window creation, updates, outputs, clipboard): a slide or theme shown there can't reach those.",
+  "description": "KAIRO's other windows (kairo-*: outputs, their hidden capture windows, Monitor, Identify) — only what their pages use: the server token, showing themselves and going full screen, reporting a change to capture (an NDI/Syphon/DeckLink output's capture window) handing a full-frame video background to the app, and telling a stream or recording which camera is on air (a stream capture window). Nothing else of the main window's (window creation, updates, outputs, clipboard): a slide or theme shown there can't reach those.",
   "windows": [
     "kairo-*"
   ],
@@ -16,6 +16,7 @@
     "core:window:allow-set-fullscreen",
     "allow-get-server-token",
     "allow-output-capture",
-    "allow-output-video"
+    "allow-output-video",
+    "allow-stream-program"
   ]
 }

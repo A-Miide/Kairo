@@ -717,7 +717,8 @@ fn run_capture(app: AppHandle, id: String, width: u32, height: u32, fade: u32) {
 /// A finished frame to every sender of output `id`.
 fn push_frame(app: &AppHandle, id: &str, frame: Arc<capture::Frame>, fade: u32) {
     if id.starts_with("stream-") {
-        app.state::<stream::StreamState>().push_frame(id, frame, fade);
+        app.state::<stream::StreamState>().push_frame(id, frame.clone(), fade);
+        app.state::<RecordState>().0.push_frame(id, frame, fade);
         return;
     }
     if let Ok(h) = app.state::<NdiState>().handle_for(id) {
@@ -776,6 +777,15 @@ async fn output_video(app: AppHandle, id: String, url: Option<String>, fit: Opti
 // audio input. Status goes to every window as a 'stream-status' event.
 #[tauri::command]
 async fn stream_start(app: AppHandle, pipelines: Vec<stream::PipelineConfig>) -> Result<(), String> {
+    let ffmpeg = stream_ffmpeg(&app, &pipelines).await?;
+    let app2 = app.clone();
+    let on_status: stream::OnStatus = Arc::new(move |s| { let _ = app2.emit("stream-status", s); });
+    let app3 = app.clone();
+    tauri::async_runtime::spawn_blocking(move || app3.state::<stream::StreamState>().start(ffmpeg, pipelines, on_status)).await.map_err(|e| e.to_string())?
+}
+
+/// The FFmpeg that streams and records: Kairo's own when it can, else one on this computer.
+async fn stream_ffmpeg(app: &AppHandle, pipelines: &[stream::PipelineConfig]) -> Result<std::path::PathBuf, String> {
     let (port, token) = { let c = app.state::<ServerConfig>(); (c.port, c.token.clone()) };
     let found: serde_json::Value = reqwest::Client::new()
         .get(format!("http://127.0.0.1:{port}/api/stream/ffmpeg"))
@@ -784,13 +794,8 @@ async fn stream_start(app: AppHandle, pipelines: Vec<stream::PipelineConfig>) ->
         .json().await.map_err(|e| e.to_string())?;
     let own = found["path"].as_str().map(std::path::PathBuf::from);
     let need_tls = pipelines.iter().flat_map(|p| &p.destinations).any(|d| d.url.trim().to_lowercase().starts_with("rtmps://"));
-    let Some(ffmpeg) = tauri::async_runtime::spawn_blocking(move || stream::streaming_ffmpeg(own, need_tls)).await.map_err(|e| e.to_string())? else {
-        return Err("No copy of FFmpeg that can stream was found on this computer.".into());
-    };
-    let app2 = app.clone();
-    let on_status: stream::OnStatus = Arc::new(move |s| { let _ = app2.emit("stream-status", s); });
-    let app3 = app.clone();
-    tauri::async_runtime::spawn_blocking(move || app3.state::<stream::StreamState>().start(ffmpeg, pipelines, on_status)).await.map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || stream::streaming_ffmpeg(own, need_tls)).await.map_err(|e| e.to_string())?
+        .ok_or_else(|| "No copy of FFmpeg that can stream or record was found on this computer.".to_string())
 }
 
 #[tauri::command]
@@ -805,7 +810,70 @@ fn stream_status(app: AppHandle) -> Vec<stream::PipelineStatus> {
 
 #[tauri::command]
 fn stream_program(app: AppHandle, output: Option<String>, program: Option<String>, zone: Option<stream::Zone>) {
-    app.state::<stream::StreamState>().set_program(output.as_deref(), program, zone);
+    app.state::<stream::StreamState>().set_program(output.as_deref(), program.clone(), zone);
+    app.state::<RecordState>().0.set_program(output.as_deref(), program, zone);
+}
+
+// ── Recording (the stream engine writing a file) ─────────────────────────
+// The top bar's Record: the same picture, cameras and sound as a stream, written to an MP4
+// in the folder chosen under Settings → Streaming (Movies/Kairo by default). Separate from
+// streaming, so either starts and stops without touching the other. Status: 'record-status'.
+#[derive(Default)]
+struct RecordState(stream::StreamState);
+
+/// A file name part from the page: letters, digits, spaces and - _ only.
+fn safe_name(s: &str) -> String {
+    let t: String = s.chars().filter(|c| c.is_alphanumeric() || " -_".contains(*c)).take(80).collect();
+    let t = t.trim().to_string();
+    if t.is_empty() { "Kairo".into() } else { t }
+}
+
+#[tauri::command]
+async fn record_start(app: AppHandle, mut pipelines: Vec<stream::PipelineConfig>, folder: Option<String>, name: String) -> Result<Vec<String>, String> {
+    let dir = match folder.filter(|f| !f.trim().is_empty()) {
+        Some(f) => std::path::PathBuf::from(f),
+        None => app.path().video_dir().map_err(|e| e.to_string())?.join("Kairo"),
+    };
+    std::fs::create_dir_all(&dir).map_err(|e| format!("Can't use the recordings folder {}: {e}", dir.display()))?;
+    let several = pipelines.len() > 1;
+    let mut files = Vec::new();
+    for p in &mut pipelines {
+        p.destinations.clear();
+        let stem = if several { format!("{} {}", safe_name(&name), safe_name(&p.output)) } else { safe_name(&name) };
+        let file = dir.join(format!("{stem}.mp4")).to_string_lossy().to_string();
+        files.push(file.clone());
+        p.record_to = Some(file);
+    }
+    let ffmpeg = stream_ffmpeg(&app, &pipelines).await?;
+    let app2 = app.clone();
+    let on_status: stream::OnStatus = Arc::new(move |s| { let _ = app2.emit("record-status", s); });
+    let app3 = app.clone();
+    tauri::async_runtime::spawn_blocking(move || app3.state::<RecordState>().0.start(ffmpeg, pipelines, on_status)).await.map_err(|e| e.to_string())??;
+    Ok(files)
+}
+
+#[tauri::command]
+fn record_stop(app: AppHandle) {
+    app.state::<RecordState>().0.stop();
+}
+
+#[tauri::command]
+fn record_status(app: AppHandle) -> Vec<stream::PipelineStatus> {
+    app.state::<RecordState>().0.status()
+}
+
+/// Shows a recording in Finder / Explorer.
+#[tauri::command]
+fn record_reveal(path: String) -> Result<(), String> {
+    let p = std::path::PathBuf::from(&path);
+    if p.extension().and_then(|e| e.to_str()) != Some("mp4") || !p.is_file() { return Err("That recording isn't there any more.".into()); }
+    #[cfg(target_os = "macos")]
+    let r = std::process::Command::new("open").arg("-R").arg(&p).spawn();
+    #[cfg(target_os = "windows")]
+    let r = std::process::Command::new("explorer").arg(format!("/select,{}", p.display())).spawn();
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    let r = std::process::Command::new("xdg-open").arg(p.parent().unwrap_or(&p)).spawn();
+    r.map(|_| ()).map_err(|e| e.to_string())
 }
 
 // ── DeckLink (decklink.rs) ────────────────────────────────────────────────
@@ -1007,6 +1075,7 @@ pub fn run() {
         .manage(NdiState(Arc::new(Mutex::new(std::collections::HashMap::new()))))
         .manage(CaptureState::default())
         .manage(stream::StreamState::default())
+        .manage(RecordState::default())
         .manage(VideoBgState::default())
         // An output's capture window closing ends its video background.
         .on_window_event(|window, event| {
@@ -1045,6 +1114,10 @@ pub fn run() {
             stream_stop,
             stream_status,
             stream_program,
+            record_start,
+            record_stop,
+            record_status,
+            record_reveal,
             output_video,
             decklink_list,
             decklink_start,
@@ -1210,6 +1283,7 @@ pub fn run() {
         .run(|app, event| {
             if matches!(event, RunEvent::Exit | RunEvent::ExitRequested { .. }) {
                 app.state::<stream::StreamState>().kill_now();
+                app.state::<RecordState>().0.kill_now();
                 // Recover from a poisoned mutex instead of panicking — this is
                 // shutdown-time child-process cleanup; a panic here would
                 // skip it entirely and leak the Node sidecar.

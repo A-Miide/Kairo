@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-stream-status"
+description = "Enables the stream_status command without any pre-configured scope."
+commands.allow = ["stream_status"]
+
+[[permission]]
+identifier = "deny-stream-status"
+description = "Denies the stream_status command without any pre-configured scope."
+commands.deny = ["stream_status"]
