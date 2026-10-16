@@ -25,7 +25,8 @@
 // (sendVerseToServer is wrapped while the mode is on) and TAKE sends them to
 // Program; verses the detection engine sends by itself go live exactly as they
 // do without the mode, and a verse they held back (Auto-send off) waits on the Detected chip.
-// Slide and media clicks are staged too (a double-click sends at once); overlays are not.
+// Slide and media clicks are staged too (a double-click sends at once); overlays are not. With a
+// Slides/Songs/Media sheet open over the Director (Preview hidden), they send at once as on the normal screen.
 'use strict';
 (function () {
   const D = {
@@ -218,8 +219,13 @@
   // The second-click rule is for the pointer only: a held arrow key or a quick Next must stage, never send.
   function trackClick() { D.lastClickAt = Date.now(); }
   const fromPointer = () => Date.now() - (D.lastClickAt || 0) < 150;
+  // A Slides, Songs or Media sheet covers Preview and the Director keys are off there, so a staged
+  // click would look like it did nothing. While a sheet is open its clicks, Space and arrows send
+  // straight to the screen, as on the normal screen; Undo can still take it back afterwards.
+  const sheetOpen = () => document.body.classList.contains('vd-sheet');
   function stageContent(key, build, make) {
     if (!D.active) return false;
+    if (sheetOpen()) { markVerse(); return false; }
     const now = Date.now();
     if (D.stageKey === key && now - D.stageAt < DOUBLE_MS && fromPointer()) {
       // Quick cut: the real send goes straight out; Preview holds the same item (it now matches the Output).
@@ -248,7 +254,7 @@
   // The real dblclick event, as a fallback where the second-click timing above did not catch it, and for
   // playlist rows (a double-click sends their first slide). Director mode wins over the rename dblclick.
   function onDblClick(e) {
-    if (!D.active) return;
+    if (!D.active || sheetOpen()) return;   // in a sheet each click has already sent
     const svc = window.KairoService;
     if (!svc || !svc.service) return;
     const t = e.target && e.target.closest ? e.target : null;
@@ -280,7 +286,8 @@
     return stageContent(`media:${item.url}`, build, (b) => ({ verse: { reference: item.name || 'Media' }, media: { item, fit, src: b.src, kind: b.kind || item.kind } }));
   }
   // The slide staged now, as "itemId:index" (what the next Next/Previous steps from).
-  const stagedSlideKey = () => (D.staged && D.staged.slide ? `${D.staged.slide.item.id}:${D.staged.slide.index}` : null);
+  // None while a sheet is open: its Next/Previous step from the live slide (they send, see sheetOpen).
+  const stagedSlideKey = () => (!sheetOpen() && D.staged && D.staged.slide ? `${D.staged.slide.item.id}:${D.staged.slide.index}` : null);
   // Orange outline on the tile of whatever is staged.
   function markStaged() {
     document.querySelectorAll('.is-staged').forEach(n => n.classList.remove('is-staged'));
