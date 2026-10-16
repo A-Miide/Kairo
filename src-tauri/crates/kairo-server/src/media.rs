@@ -7,7 +7,6 @@ use std::time::{Duration, UNIX_EPOCH};
 
 use serde_json::{json, Value};
 
-use crate::detect::epoch_ms;
 use crate::hub::Hub;
 
 const MAX_FOLDER_ITEMS: usize = 600;
@@ -76,12 +75,7 @@ fn items_in(dir: &Path, url: impl Fn(&str) -> String) -> (Vec<Value>, bool) {
 }
 
 fn urlencode(s: &str) -> String {
-    s.bytes()
-        .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'!' | b'~' | b'*' | b'\'' | b'(' | b')' => (b as char).to_string(),
-            _ => format!("%{b:02X}"),
-        })
-        .collect()
+    crate::util::urlencode_keeping(s, b"!*'()")
 }
 
 impl Media {
@@ -106,7 +100,7 @@ impl Media {
     /// Writes the linked-folder list. A failure is logged and returned: the change works for now
     /// but would be gone at the next start, so the route says so instead of answering ok.
     fn save(&self) -> Result<(), MediaError> {
-        let list: Vec<Value> = self.folders.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().map(|f| json!({ "id": f.id, "name": f.name, "dirPath": f.dir })).collect();
+        let list: Vec<Value> = crate::util::lock(&self.folders).iter().map(|f| json!({ "id": f.id, "name": f.name, "dirPath": f.dir })).collect();
         if let Some(d) = self.manifest.parent() {
             let _ = std::fs::create_dir_all(d);   // the write below reports a folder that couldn't be made
         }
@@ -123,7 +117,7 @@ impl Media {
         let mut tick = tokio::time::interval(WATCH_EVERY);
         loop {
             tick.tick().await;
-            let folders = self.folders.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
+            let folders = crate::util::lock(&self.folders).clone();
             for f in folders {
                 let dir = f.dir.clone();
                 let sig = tokio::task::spawn_blocking(move || {
@@ -156,15 +150,7 @@ impl Media {
         if kind_for(&base).is_none() {
             return Err(MediaError("BAD_TYPE", format!("Unsupported file type \"{}\"", Path::new(&base).extension().and_then(|e| e.to_str()).map(|e| format!(".{e}")).unwrap_or_default())));
         }
-        let mut rnd = [0u8; 4];
-        getrandom::fill(&mut rnd).ok();
-        let name = format!("{}-{}-{base}", epoch_ms(), rnd.iter().map(|b| format!("{b:02x}")).collect::<String>());
-        let dest = self.bin.join(&name);
-        std::fs::write(&dest, data).map_err(|e| {
-            let _ = std::fs::remove_file(&dest);
-            MediaError("WRITE_FAILED", e.to_string())
-        })?;
-        Ok(name)
+        crate::util::save_unique(&self.bin, &base, data).map_err(|e| MediaError("WRITE_FAILED", e.to_string()))
     }
 
     pub fn delete_bin_item(&self, name: &str) -> bool {
@@ -198,16 +184,7 @@ impl Media {
         if !is_audio(&base) {
             return Err(MediaError("BAD_TYPE", format!("\"{base}\" isn't a sound file (mp3, wav, m4a, aac, ogg, flac or aiff).")));
         }
-        let _ = std::fs::create_dir_all(&self.audio);
-        let mut rnd = [0u8; 4];
-        getrandom::fill(&mut rnd).ok();
-        let name = format!("{}-{}-{base}", epoch_ms(), rnd.iter().map(|b| format!("{b:02x}")).collect::<String>());
-        let dest = self.audio.join(&name);
-        std::fs::write(&dest, data).map_err(|e| {
-            let _ = std::fs::remove_file(&dest);
-            MediaError("WRITE_FAILED", e.to_string())
-        })?;
-        Ok(name)
+        crate::util::save_unique(&self.audio, &base, data).map_err(|e| MediaError("WRITE_FAILED", e.to_string()))
     }
 
     pub fn delete_audio_item(&self, name: &str) -> bool {
@@ -215,18 +192,15 @@ impl Media {
     }
 
     pub fn folders(&self) -> Vec<Value> {
-        self.folders.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().map(|f| json!({ "id": f.id, "name": f.name, "path": f.dir })).collect()
+        crate::util::lock(&self.folders).iter().map(|f| json!({ "id": f.id, "name": f.name, "path": f.dir })).collect()
     }
 
     fn register(&self, name: Option<&str>, dir: PathBuf) -> Result<Value, MediaError> {
-        let mut list = self.folders.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut list = crate::util::lock(&self.folders);
         if let Some(f) = list.iter().find(|f| f.dir == dir) {
             return Ok(json!({ "id": f.id, "name": f.name, "dirPath": f.dir }));
         }
-        let mut b = [0u8; 16];
-        getrandom::fill(&mut b).ok();
-        let id = b.iter().map(|x| format!("{x:02x}")).collect::<String>();
-        let id = format!("{}-{}-{}-{}-{}", &id[0..8], &id[8..12], &id[12..16], &id[16..20], &id[20..32]);
+        let id = crate::util::uuid_v4();
         let name = name.filter(|n| !n.is_empty()).map(str::to_string).unwrap_or_else(|| dir.file_name().and_then(|n| n.to_str()).unwrap_or("Folder").to_string());
         let f = Folder { id, name, dir };
         let out = json!({ "id": f.id, "name": f.name, "dirPath": f.dir });
@@ -257,7 +231,7 @@ impl Media {
     }
 
     pub fn remove_folder(&self, id: &str) -> Result<bool, MediaError> {
-        let mut list = self.folders.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut list = crate::util::lock(&self.folders);
         let before = list.len();
         list.retain(|f| f.id != id);
         let removed = list.len() != before;
@@ -269,25 +243,22 @@ impl Media {
     }
 
     pub fn folder_items(&self, id: &str) -> Option<(Vec<Value>, bool)> {
-        let f = self.folders.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().find(|f| f.id == id).cloned()?;
+        let f = crate::util::lock(&self.folders).iter().find(|f| f.id == id).cloned()?;
         Some(items_in(&f.dir, |n| format!("/api/media/folders/{}/file/{}", f.id, urlencode(n))))
     }
 
     pub fn folder_file(&self, id: &str, name: &str) -> Option<PathBuf> {
-        let f = self.folders.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().find(|f| f.id == id).cloned()?;
+        let f = crate::util::lock(&self.folders).iter().find(|f| f.id == id).cloned()?;
         inside(&f.dir, name)
     }
 
     pub fn write_into_folder(&self, id: &str, filename: &str, data: &[u8]) -> Result<(), MediaError> {
-        let f = self.folders.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().find(|f| f.id == id).cloned().ok_or(MediaError("NOT_FOUND", "No such folder".into()))?;
+        let f = crate::util::lock(&self.folders).iter().find(|f| f.id == id).cloned().ok_or(MediaError("NOT_FOUND", "No such folder".into()))?;
         let safe = Path::new(filename).file_name().and_then(|n| n.to_str()).unwrap_or("file").to_string();
         if kind_for(&safe).is_none() {
             return Err(MediaError("BAD_TYPE", format!("Unsupported file type \"{safe}\"")));
         }
         let dest = f.dir.join(&safe);
-        std::fs::write(&dest, data).map_err(|e| {
-            let _ = std::fs::remove_file(&dest);
-            MediaError("WRITE_FAILED", e.to_string())
-        })
+        crate::util::write_clean(&dest, data).map_err(|e| MediaError("WRITE_FAILED", e.to_string()))
     }
 }

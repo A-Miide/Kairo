@@ -136,7 +136,7 @@ fn installing(lang: &str) -> bool {
 pub async fn status_route(State(app): State<Shared>, Query(q): Query<std::collections::HashMap<String, String>>) -> Response {
     let one = |m: &Model| json!({ "installed": present(&dir_of(&app, m), m), "installing": installing(m.lang), "approxMB": approx_mb(m) });
     if let Some(lang) = q.get("lang") {
-        let Some(m) = model(lang) else { return (StatusCode::BAD_REQUEST, Json(json!({ "error": format!("Unknown language \"{lang}\"") }))).into_response() };
+        let Some(m) = model(lang) else { return crate::util::bad_request(format!("Unknown language \"{lang}\"")) };
         let mut v = one(m);
         v["modelPath"] = json!(dir_of(&app, m));
         return Json(v).into_response();
@@ -147,7 +147,7 @@ pub async fn status_route(State(app): State<Shared>, Query(q): Query<std::collec
 /// POST /api/translate-model/install {lang} — progress as NDJSON.
 pub async fn install_route(State(app): State<Shared>, Json(b): Json<Value>) -> Response {
     let Some(m) = b["lang"].as_str().and_then(model) else {
-        return (StatusCode::BAD_REQUEST, Json(json!({ "error": format!("Unknown language \"{}\"", b["lang"].as_str().unwrap_or("")) }))).into_response();
+        return crate::util::bad_request(format!("Unknown language \"{}\"", b["lang"].as_str().unwrap_or("")));
     };
     {
         let mut busy = INSTALLING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
@@ -172,7 +172,7 @@ pub async fn install_route(State(app): State<Shared>, Json(b): Json<Value>) -> R
 /// language downloads again if chosen later.
 pub async fn remove_route(State(app): State<Shared>, Json(b): Json<Value>) -> Response {
     let Some(m) = b["lang"].as_str().and_then(model) else {
-        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "Unknown language" }))).into_response();
+        return crate::util::bad_request("Unknown language");
     };
     if installing(m.lang) {
         return (StatusCode::CONFLICT, Json(json!({ "error": "install in progress" }))).into_response();

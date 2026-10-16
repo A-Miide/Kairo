@@ -30,7 +30,7 @@ fn clean_lang(lang: &str) -> Option<String> {
 }
 
 fn is_installing(lang: &str) -> bool {
-    INSTALLING.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().any(|l| l == lang)
+    crate::util::lock(&INSTALLING).iter().any(|l| l == lang)
 }
 
 async fn fetch_catalog() -> Result<Value, String> {
@@ -69,10 +69,10 @@ pub async fn catalog() -> Json<Value> {
 /// POST /api/bible-packs/install?lang=xx: progress as NDJSON (download, verify, complete).
 pub async fn install(State(app): State<Shared>, Query(q): Query<std::collections::HashMap<String, String>>) -> Response {
     let Some(lang) = q.get("lang").and_then(|l| clean_lang(l)) else {
-        return (axum::http::StatusCode::BAD_REQUEST, Json(json!({ "error": "lang required" }))).into_response();
+        return crate::util::bad_request("lang required");
     };
     {
-        let mut busy = INSTALLING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut busy = crate::util::lock(&INSTALLING);
         if busy.contains(&lang) {
             return (axum::http::StatusCode::CONFLICT, Json(json!({ "error": "install already in progress" }))).into_response();
         }
@@ -85,7 +85,7 @@ pub async fn install(State(app): State<Shared>, Query(q): Query<std::collections
             Ok(()) => json!({ "phase": "complete", "ok": true }),
             Err(e) => json!({ "phase": "complete", "ok": false, "error": e }),
         });
-        INSTALLING.lock().unwrap_or_else(std::sync::PoisonError::into_inner).retain(|l| *l != lang);
+        crate::util::lock(&INSTALLING).retain(|l| *l != lang);
     });
     crate::installer::ndjson_stream(rx)
 }

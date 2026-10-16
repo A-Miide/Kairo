@@ -6,7 +6,6 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
-use base64::Engine as _;
 use serde_json::{json, Value};
 use tower::ServiceExt;
 
@@ -118,12 +117,16 @@ async fn prepared_file(State(app): State<Shared>, Path(file): Path<String>, req:
     }
 }
 
-fn not_found(msg: &str) -> Response {
-    (StatusCode::NOT_FOUND, Json(json!({ "error": msg }))).into_response()
-}
+use crate::util::{body_or_empty, not_found};
 
-fn body_or_empty(b: Option<Json<Value>>) -> Value {
-    b.map(|Json(v)| v).unwrap_or_else(|| json!({}))
+/// An upload: the file is decoded and written on the blocking pool, so a big video never
+/// holds up the async runtime (every other request waits behind a blocked worker).
+/// `Ok(None)`: the body had no usable file.
+async fn upload<T: Send + 'static>(b: Option<Json<Value>>, save: impl FnOnce(String, Vec<u8>) -> T + Send + 'static) -> Result<Option<T>, Response> {
+    let b = body_or_empty(b);
+    crate::util::blocking(move || crate::util::upload_parts(&b).map(|(name, data)| save(name, data)))
+        .await
+        .map_err(|e| crate::util::error(StatusCode::INTERNAL_SERVER_ERROR, e))
 }
 
 // ── Songs ───────────────────────────────────────────────────────────────────
@@ -218,11 +221,6 @@ async fn send_file(path: std::path::PathBuf, req: Request) -> Response {
     }
 }
 
-fn upload_parts(b: &Value) -> Option<(String, Vec<u8>)> {
-    let name = b["filename"].as_str()?.to_string();
-    let data = base64::engine::general_purpose::STANDARD.decode(b["dataBase64"].as_str()?).ok()?;
-    Some((name, data))
-}
 
 async fn bin(State(app): State<Shared>) -> Json<Value> {
     let m = app.media.clone();
@@ -230,12 +228,12 @@ async fn bin(State(app): State<Shared>) -> Json<Value> {
     Json(json!({ "ok": true, "items": items }))
 }
 async fn bin_upload(State(app): State<Shared>, b: Option<Json<Value>>) -> Response {
-    let Some((name, data)) = upload_parts(&body_or_empty(b)) else {
-        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "filename and dataBase64 required" }))).into_response();
-    };
-    match app.media.write_to_bin(&name, &data) {
-        Ok(saved) => Json(json!({ "ok": true, "name": saved })).into_response(),
-        Err(e) => (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "error": e.1, "code": e.0 }))).into_response(),
+    let m = app.media.clone();
+    match upload(b, move |name, data| m.write_to_bin(&name, &data)).await {
+        Err(r) => r,
+        Ok(None) => crate::util::bad_request("filename and dataBase64 required"),
+        Ok(Some(Ok(saved))) => Json(json!({ "ok": true, "name": saved })).into_response(),
+        Ok(Some(Err(e))) => (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "error": e.1, "code": e.0 }))).into_response(),
     }
 }
 async fn bin_delete(State(app): State<Shared>, Path(name): Path<String>) -> Json<Value> {
@@ -253,12 +251,12 @@ async fn audio_tracks(State(app): State<Shared>) -> Json<Value> {
     Json(json!({ "ok": true, "items": items }))
 }
 async fn audio_upload(State(app): State<Shared>, b: Option<Json<Value>>) -> Response {
-    let Some((name, data)) = upload_parts(&body_or_empty(b)) else {
-        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "filename and dataBase64 required" }))).into_response();
-    };
-    match app.media.write_to_audio(&name, &data) {
-        Ok(saved) => Json(json!({ "ok": true, "name": saved })).into_response(),
-        Err(e) => (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "error": e.1, "code": e.0 }))).into_response(),
+    let m = app.media.clone();
+    match upload(b, move |name, data| m.write_to_audio(&name, &data)).await {
+        Err(r) => r,
+        Ok(None) => crate::util::bad_request("filename and dataBase64 required"),
+        Ok(Some(Ok(saved))) => Json(json!({ "ok": true, "name": saved })).into_response(),
+        Ok(Some(Err(e))) => (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "error": e.1, "code": e.0 }))).into_response(),
     }
 }
 async fn audio_delete(State(app): State<Shared>, Path(name): Path<String>) -> Json<Value> {
@@ -300,12 +298,12 @@ async fn folder_items(State(app): State<Shared>, Path(id): Path<String>) -> Resp
     }
 }
 async fn folder_upload(State(app): State<Shared>, Path(id): Path<String>, b: Option<Json<Value>>) -> Response {
-    let Some((name, data)) = upload_parts(&body_or_empty(b)) else {
-        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "filename and dataBase64 required" }))).into_response();
-    };
-    match app.media.write_into_folder(&id, &name, &data) {
-        Ok(()) => Json(json!({ "ok": true })).into_response(),
-        Err(e) => (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "error": e.1, "code": e.0 }))).into_response(),
+    let m = app.media.clone();
+    match upload(b, move |name, data| m.write_into_folder(&id, &name, &data)).await {
+        Err(r) => r,
+        Ok(None) => crate::util::bad_request("filename and dataBase64 required"),
+        Ok(Some(Ok(()))) => Json(json!({ "ok": true })).into_response(),
+        Ok(Some(Err(e))) => (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "error": e.1, "code": e.0 }))).into_response(),
     }
 }
 async fn folder_file(State(app): State<Shared>, Path((id, name)): Path<(String, String)>, req: Request) -> Response {

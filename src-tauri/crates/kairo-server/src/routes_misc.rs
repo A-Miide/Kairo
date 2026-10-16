@@ -57,10 +57,7 @@ fn unprocessable(e: crate::import::ImportError) -> axum::response::Response {
     (axum::http::StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "error": e.0, "code": e.1 }))).into_response()
 }
 
-fn decode_b64(s: &str) -> Option<Vec<u8>> {
-    use base64::Engine as _;
-    base64::engine::general_purpose::STANDARD.decode(s).ok()
-}
+use crate::util::{decode_b64, safe_file_name};
 
 async fn service_import(State(app): State<Shared>, Json(b): Json<Value>) -> axum::response::Response {
     use axum::response::IntoResponse;
@@ -69,7 +66,7 @@ async fn service_import(State(app): State<Shared>, Json(b): Json<Value>) -> axum
         return Json(json!({ "ok": true, "format": "text", "blocks": from_text(t) })).into_response();
     }
     let Some(data) = b["dataBase64"].as_str().and_then(decode_b64) else {
-        return (axum::http::StatusCode::BAD_REQUEST, Json(json!({ "error": "Nothing to import" }))).into_response();
+        return crate::util::bad_request("Nothing to import");
     };
     let filename = b["filename"].as_str().unwrap_or("").to_string();
     let assets = crate::propresenter::Assets::new(&app.cfg.app_data_dir);
@@ -100,7 +97,7 @@ async fn service_import(State(app): State<Shared>, Json(b): Json<Value>) -> axum
 async fn theme_import(State(app): State<Shared>, Json(b): Json<Value>) -> axum::response::Response {
     use axum::response::IntoResponse;
     let Some(data) = b["dataBase64"].as_str().and_then(decode_b64) else {
-        return (axum::http::StatusCode::BAD_REQUEST, Json(json!({ "error": "Nothing to import" }))).into_response();
+        return crate::util::bad_request("Nothing to import");
     };
     let assets = crate::propresenter::Assets::new(&app.cfg.app_data_dir);
     match tokio::task::spawn_blocking(move || crate::import::from_pro_theme(&data, &assets)).await {
@@ -174,29 +171,6 @@ async fn translate_languages() -> Json<Value> {
     Json(json!({ "languages": crate::translate::LANGUAGES.iter().map(|(code, name)| json!({ "code": code, "name": name })).collect::<Vec<_>>() }))
 }
 
-/// A file name safe on every system: no separators or control characters, at most 80 characters.
-fn safe_file_name(t: &str) -> String {
-    let s: String = t.chars().map(|c| if "\\/:*?\"<>|".contains(c) || c.is_control() { ' ' } else { c }).collect();
-    s.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(80).collect()
-}
-
-/// `name` in `dir`, numbered if it's taken: "x (2).txt".
-fn unique_path(dir: &std::path::Path, name: &str) -> std::path::PathBuf {
-    let p = std::path::Path::new(name);
-    let (stem, ext) = (p.file_stem().and_then(|s| s.to_str()).unwrap_or("file"), p.extension().and_then(|e| e.to_str()));
-    let with = |n: Option<u32>| {
-        let base = match n { Some(n) => format!("{stem} ({n})"), None => stem.to_string() };
-        dir.join(match ext { Some(e) => format!("{base}.{e}"), None => base })
-    };
-    let mut c = with(None);
-    let mut i = 2;
-    while c.exists() {
-        c = with(Some(i));
-        i += 1;
-    }
-    c
-}
-
 /// The notes PDF: the transcript the UI captured, and the service's own
 /// record of what went on screen and how (else the UI's list of verses).
 async fn sermon_notes(app: &Shared, b: &Value, date: &str) -> Result<(String, Vec<u8>), String> {
@@ -208,7 +182,7 @@ async fn sermon_notes(app: &Shared, b: &Value, date: &str) -> Result<(String, Ve
         ..Default::default()
     };
     {
-        let log = app.log.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let log = crate::util::lock(&app.log);
         session.shown = log.shown.clone();
         session.ranges = log.ranges.clone();
     }
@@ -253,18 +227,27 @@ async fn export(axum::extract::State(app): axum::extract::State<Shared>, Json(b)
             Ok(x) => x,
             Err(e) => return (axum::http::StatusCode::SERVICE_UNAVAILABLE, Json(json!({ "error": e }))).into_response(),
         },
-        _ => return (axum::http::StatusCode::BAD_REQUEST, Json(json!({ "error": "Unknown export" }))).into_response(),
+        _ => return crate::util::bad_request("Unknown export"),
     };
     let Some(home) = std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")) else {
         return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "No home folder" }))).into_response();
     };
     let dir = std::path::PathBuf::from(home).join("Downloads");
-    let _ = std::fs::create_dir_all(&dir);
-    let file = unique_path(&dir, &safe_file_name(&filename));
-    if let Err(e) = std::fs::write(&file, data) {
-        eprintln!("[Export] failed: {e}");
-        return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() }))).into_response();
-    }
+    let name = safe_file_name(&filename);
+    let written = crate::util::blocking(move || {
+        let _ = std::fs::create_dir_all(&dir);
+        let file = crate::util::numbered_path(&dir, &name);
+        std::fs::write(&file, data).map(|()| file)
+    })
+    .await;
+    let file = match written {
+        Ok(Ok(file)) => file,
+        Ok(Err(e)) => {
+            eprintln!("[Export] failed: {e}");
+            return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() }))).into_response();
+        }
+        Err(e) => return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e }))).into_response(),
+    };
     #[cfg(target_os = "macos")]
     {
         let _ = std::process::Command::new("open").arg(&file).spawn();

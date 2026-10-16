@@ -706,9 +706,7 @@ pub fn element(wrapper: &[Field<'_>], slide_w: f64, slide_h: f64, static_text: b
 }
 
 fn uid(prefix: &str) -> String {
-    let mut b = [0u8; 6];
-    getrandom::fill(&mut b).ok();
-    format!("{prefix}-{}-{}", crate::detect::epoch_ms(), b.iter().map(|x| format!("{x:02x}")).collect::<String>())
+    crate::util::uid(prefix, 6)
 }
 
 /// A rv.data.Slide → Kairo layers (bottom first), its canvas size, and its words.
