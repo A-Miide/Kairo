@@ -55,7 +55,7 @@ S["recall-and-return"] = [
     ("remember John eleven thirty five we read last week, Jesus wept", [("citation", "John 11:35")]),
     ("he felt what you feel church, he knows your pain, he has been there, he understands", []),
     ("that is why I am telling you this morning that his love is real and his love is personal", []),
-    ("that whosoever believeth in him should not perish, but have everlasting life", [("quote", "John 3:16")]),
+    ("so I say again, for God so loved the world, that he gave his only begotten Son", [("quote", "John 3:16")]),
 ]
 # ── 5. Reading a modern translation ──────────────────────────────────────────────────
 S["niv-john316-uncited"] = [
