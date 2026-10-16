@@ -10,7 +10,7 @@
   const REPLAY = 8, SEG = 16;
   const { el } = window.KairoUI;
   const D = () => window.KairoVideoDirector;
-  const enabled = () => !!(typeof settings === 'object' && settings && settings.videoDirector && settings.videoReplay);
+  const enabled = () => !!(isDirectorOn() && typeof settings === 'object' && settings && settings.videoReplay);
 
   let stream = null, sourceId = null, slots = [], timers = [], busy = false, opening = false;
   const mime = () => {
@@ -50,6 +50,8 @@
       if (!discard && stream) begin(slot);
     };
     mr.start(1000);
+    // The button shows "armed" once this recorder holds REPLAY seconds: nothing else wakes it then.
+    setTimeout(render, REPLAY * 1000 + 100);
     clearTimeout(slot.timer);
     slot.timer = setTimeout(() => { if (slot.mr === mr && mr.state !== 'inactive') mr.stop(); }, SEG * 1000);
   }
@@ -75,7 +77,8 @@
     } finally { opening = false; render(); }
   }
 
-  // Follows the camera on air; let go of it when replay is off or nothing is on air.
+  // Follows the camera on air (called when Director mode, its program or the settings change);
+  // lets go of it when replay is off or nothing is on air.
   function follow() {
     const want = enabled() ? programSourceId() : null;
     if (!want) { if (stream) stopAll(); else render(); return; }
@@ -106,8 +109,7 @@
       // In Director mode a media item goes to Preview; Send puts it on the screens. If Director
       // mode was turned off while it saved, a media send would go straight to the screens, so
       // it stays in the Media Bin instead.
-      const st = D() && D().state ? D().state() : null;
-      if (!st || !st.active) {
+      if (!isDirectorOn()) {
         window.kairoProblem?.(`The replay was saved to the Media Bin as “${up.name}” but not sent: Director mode is off.`, 'replay');
         return false;
       }
@@ -156,7 +158,7 @@
       btn.addEventListener('click', () => (pop ? closePop() : openPop()));
       listen.parentNode.insertBefore(btn, document.getElementById('record-btn') || document.getElementById('stream-btn') || listen);
     }
-    btn.hidden = !(typeof settings === 'object' && settings && settings.videoDirector);
+    btn.hidden = !isDirectorOn();
     btn.classList.toggle('is-armed', !!stream && ready());
     btn.textContent = busy ? 'Replay…' : 'Replay';
     if (btn.hidden) closePop();
@@ -174,5 +176,9 @@
   document.head.appendChild(style);
 
   window.KairoReplay = { replay, setEnabled, isReady: () => !!stream && ready() };
-  setInterval(follow, 1000);
+  // Director mode turning on or off, the camera on air changing, and the settings arriving
+  // (Replay may be saved as on) are the only things that change what this follows.
+  onDirectorChange(follow);
+  onSettingsChange((d) => { if (d.reason === 'loaded') follow(); });
+  follow();
 })();

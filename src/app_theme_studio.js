@@ -1412,7 +1412,7 @@ function renderLooksList() {
   el.innerHTML = '';
   const renderedGroups = new Set();
   // Screen themes belong to Director mode.
-  const listed = looks.filter(l => l.groupId !== 'grp-screen' || settings.videoDirector);
+  const listed = looks.filter(l => l.groupId !== 'grp-screen' || isDirectorOn());
   listed.forEach(look => {
     if (look.groupId) {
       if (renderedGroups.has(look.groupId)) return; // this group's block already rendered
@@ -7847,7 +7847,7 @@ newLookBtn?.addEventListener('click', (e) => {
     window.KairoService.openContextMenu(r.left, r.bottom + 4, [[
       { label: 'New theme', onClick: () => createNewLook(false) },
       { label: 'New monitor layout', onClick: () => createNewLook('monitor') },
-      ...(settings.videoDirector ? [{ label: 'New screen theme', onClick: () => createNewLook(true) }] : []),
+      ...(isDirectorOn() ? [{ label: 'New screen theme', onClick: () => createNewLook(true) }] : []),
     ]]);
     return;
   }

@@ -81,3 +81,27 @@ function fetchServerSettings() {
   }
   return _settingsRead.then((s) => structuredClone(s));
 }
+
+// ── Director mode ──────────────────────────────────────────────────────────
+// The one question "is Director mode on?" is isDirectorOn(): the saved setting, which is the
+// operator's choice (and what the outputs, the Outputs pane and the buttons follow). It was
+// asked five ways (settings.videoDirector in a dozen files, KairoVideoDirector.state().active,
+// ...). The running session's own flag stays inside video_director.js.
+//
+// Anything that follows the mode listens with onDirectorChange(fn) instead of a timer. fn gets
+// { on, reason }, where reason is
+//   'flag'    the choice was changed (video_director_boot.js),
+//   'started' the Director screen finished starting,
+//   'stopped' it was taken down,
+//   'program' the camera on air (or the Preview) changed while the mode runs.
+function isDirectorOn() {
+  return !!(typeof settings === 'object' && settings && settings.videoDirector);
+}
+function emitDirectorChange(reason) {
+  try { window.dispatchEvent(new CustomEvent('kairo:director', { detail: { on: isDirectorOn(), reason } })); } catch {}
+}
+function onDirectorChange(fn) {
+  const h = (e) => { try { fn(e.detail); } catch (err) { console.warn('[Director] listener:', err); } };
+  window.addEventListener('kairo:director', h);
+  return () => window.removeEventListener('kairo:director', h);
+}

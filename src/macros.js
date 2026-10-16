@@ -269,5 +269,5 @@
   const start = () => { loadOverlays().then(() => { renderPane(); renderTop(); }); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else setTimeout(start, 0);
   // Settings load after start: show the button once macros are known.
-  setInterval(renderTop, 1500);
+  onSettingsChange(renderTop);
 })();
