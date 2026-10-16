@@ -6772,7 +6772,7 @@
     // the stale value it fetched at load, even though the persisted
     // setting itself is still correct.
     let userTouched = false;
-    fetchWithTimeout(`${SERVER}/api/settings`).then(r => r.json()).then(s => {
+    fetchServerSettings().then(s => {
       if (userTouched) return;
       setActive(s.outputAnimation || 'fade');
       if (typeof s.outputAnimationSpeed === 'number' && s.outputAnimationSpeed > 0) showDuration(s.outputAnimationSpeed);
@@ -6783,10 +6783,7 @@
       if (!btn) return;
       userTouched = true;
       setActive(btn.dataset.anim);
-      fetchWithTimeout(`${SERVER}/api/settings`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ outputAnimation: btn.dataset.anim }),
-      }).catch(() => {});
+      saveSettingsPatch({ outputAnimation: btn.dataset.anim });
     });
 
     speedInput.addEventListener('click', (e) => {
@@ -6795,10 +6792,7 @@
       userTouched = true;
       const value = parseFloat(btn.dataset.speed);
       showDuration(value);
-      fetchWithTimeout(`${SERVER}/api/settings`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ outputAnimationSpeed: value }),
-      }).catch(() => {});
+      saveSettingsPatch({ outputAnimationSpeed: value });
     });
   }
 

@@ -587,8 +587,8 @@ async function bootstrapStartup() {
     // 2) Required resources — offline model when the offline engine is chosen
     let engine = 'deepgram';
     try {
-      const r = await fetch(`${SERVER}/api/settings`);
-      if (r.ok) { const s = await r.json(); engine = (s.speechEngine || 'deepgram').toLowerCase(); }
+      const s = await fetchServerSettings();
+      engine = (s.speechEngine || 'deepgram').toLowerCase();
     } catch {}
 
     if (engine === 'offline' || engine === 'browser') {
