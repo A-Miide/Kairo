@@ -13,8 +13,8 @@
 //   slide cards (so a click sends and a right-click edits exactly as on the
 //   normal screen), painted only as they scroll into view.
 //   A folder: its images and videos, as the Media Bin's own cards.
-// Slide and media sends go straight out; only the verses you send by hand are
-// staged on Preview.
+// A click stages a slide or media item on Preview, as everywhere in Director mode;
+// a double-click sends it at once.
 'use strict';
 (function () {
   const K = {

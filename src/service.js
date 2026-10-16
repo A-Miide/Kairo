@@ -3855,8 +3855,10 @@
   // belong to no group stay as plain rows. The group holding the current
   // theme starts open; the rest start closed.
   function buildThemeTree(allLooks, buildRow, currentId, opts = {}) {
-    // Screen themes (a video zone and the verse side by side) are a Director mode feature.
-    if (!settings.videoDirector) allLooks = allLooks.filter(l => l.groupId !== 'grp-screen');
+    // Screen themes (a video zone and the verse side by side) belong to Director mode's Layouts,
+    // which pick them in their own list: as a slide's or an output's theme one stayed after
+    // Director mode was off, showing an empty video zone on the normal screen.
+    allLooks = allLooks.filter(l => l.groupId !== 'grp-screen');
     // Monitor layouts are only for Monitor outputs; everywhere else they aren't themes.
     allLooks = allLooks.filter(l => (l.groupId === 'grp-monitor') === !!opts.monitor);
     const root = document.createElement('div');

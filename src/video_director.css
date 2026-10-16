@@ -48,7 +48,7 @@
 #video-director-btn.vd-armed { color: var(--orange); }
 
 /* ── Director mode screen. Every rule is under body.video-director. ───────── */
-/* Possible Matches is not in this mode (detection still runs underneath). */
+/* Possible Matches is not in the layout here: it opens from the Scripture header (Matches). */
 body.video-director .rs-candidates,
 body.video-director #topic-chips-section,
 body.video-director .ls-status-bar,
@@ -58,6 +58,10 @@ body.video-director #outputs-monitor-grid,
 body.video-director:not(.vd-sheet) #svc-stack-view, body.video-director:not(.vd-sheet) #svc-fullscreen,
 body.video-director:not(.vd-sheet) #songs-library-view, body.video-director:not(.vd-sheet) #media-library-view, body.video-director:not(.vd-sheet) #timer-view,
 body.video-director .center-stage > #media-bin { display: none !important; }
+/* Possible Matches, opened from the Scripture header's Matches button. */
+body.video-director .vd-pop-matches .rs-candidates { display: flex !important; flex-direction: column; width: min(380px, calc(100vw - 24px)); max-height: 60vh; overflow: auto; }
+.vd-match-btn { width: auto !important; padding: 0 9px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.vd-match-btn[hidden] { display: none !important; }
 body.video-director .vd-tab-off { opacity: 0.4; cursor: default; }
 
 /* No sidebars: the director screen runs edge to edge. What they held lives in the groups. */

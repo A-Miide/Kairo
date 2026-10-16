@@ -103,9 +103,15 @@
       if (!up || !up.ok) throw new Error((up && up.error) || 'it could not be saved');
       const bin = await fetch(`${SERVER}/api/media/bin`).then(r => r.json()).catch(() => ({}));
       const item = (bin.items || []).find(i => i.name === up.name) || { name: up.name, kind: 'video', url: `/api/media/bin/file/${encodeURIComponent(up.name)}` };
-      // In Director mode a media item goes to Preview; Send puts it on the screens.
+      // In Director mode a media item goes to Preview; Send puts it on the screens. If Director
+      // mode was turned off while it saved, a media send would go straight to the screens, so
+      // it stays in the Media Bin instead.
+      const st = D() && D().state ? D().state() : null;
+      if (!st || !st.active) {
+        window.kairoProblem?.(`The replay was saved to the Media Bin as “${up.name}” but not sent: Director mode is off.`, 'replay');
+        return false;
+      }
       await window.KairoService?.sendMedia?.(item, 'cover');
-      if (typeof showToast === 'function') showToast('Replay is in Preview. Send puts it on the screens.', 'success');
       return true;
     } catch (e) {
       if (typeof showToast === 'function') showToast(`Replay failed: ${e && e.message ? e.message : e}`, 'error');
