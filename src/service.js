@@ -5144,9 +5144,12 @@
         del.addEventListener('click', async (e) => {
           e.stopPropagation();
           try {
-            await fetchWithTimeout(`${SERVER}/api/media/folders/${f.id}`, { method: 'DELETE' });
+            const r = await fetchWithTimeout(`${SERVER}/api/media/folders/${f.id}`, { method: 'DELETE' });
+            // The server answers an error when the folder list couldn't be saved (media.rs save).
+            if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || `the server answered ${r.status}`); }
           } catch (err) {
             if (typeof toast === 'function') toast('Could not unlink folder: ' + err.message, 'error');
+            loadMediaFolders();   // the rail shows what the server has
             return;
           }
           if (activeMediaFolderId === f.id) activeMediaFolderId = null;
