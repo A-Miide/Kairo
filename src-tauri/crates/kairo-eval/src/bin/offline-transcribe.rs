@@ -58,14 +58,19 @@ fn main() {
     let interp_on = std::env::var("KAIRO_INTERPRETER").map_or(true, |v| v != "off");
     let marks: RefCell<Vec<Value>> = RefCell::new(Vec::new());
     let mut record = |h: Heard, t: u64, cues: &mut Vec<Value>, inputs: &mut Vec<Value>| {
-        let cue = cues.len();
         let (text, fin, speech_final, continues) = match h {
             Heard::Interim(s) => (s, false, false, false),
             Heard::Locked(s) => (s, true, false, true),
             Heard::Final(s) => (s, true, true, false),
         };
+        // What the interpreter held back as possibly the preacher's goes through first when the turn ends on his sentence.
+        let mut batch: Vec<(String, bool, bool, bool)> = Vec::new();
         if interp_on && !text.trim().is_empty() {
-            let (verdict, change) = interp.borrow_mut().text(&text, fin);
+            let (verdict, change, released) = {
+                let mut i = interp.borrow_mut();
+                let (v, c) = i.text(&text, fin);
+                (v, c, i.take_released())
+            };
             if let Some(c) = change {
                 marks.borrow_mut().push(json!({ "audioMs": t, "active": c == Change::Started }));
             }
@@ -76,12 +81,17 @@ fn main() {
                 }
                 return;
             }
+            batch.extend(released.into_iter().map(|(x, f)| (x, f, false, false)));
         }
+        batch.push((text, fin, speech_final, continues));
+        for (text, fin, speech_final, continues) in batch {
+        let cue = cues.len();
         let start = *cue_start.get_or_insert(t);
         inputs.push(json!({ "t": t, "audioMs": t, "cue": cue, "text": text, "isFinal": fin, "speechFinal": speech_final, "continues": continues }));
         if fin {
             cues.push(json!({ "text": text, "audioMs": start }));
             cue_start = None;
+        }
         }
     };
     // --realtime: the audio arrives at live speed, as in the app, and the app's catch-up rule

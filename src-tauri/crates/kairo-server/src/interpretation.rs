@@ -67,6 +67,10 @@ pub struct Interpreter {
     sentence_at: Option<u64>,
     active: bool,
     song_live: bool,
+    /// Text heard during a turn that reads as the preacher's real words (a crowd's "Hallelujah"
+    /// is no interpreter): kept, and handed back if the turn ends on his sentence.
+    held: Vec<(String, bool)>,
+    released: Vec<(String, bool)>,
     /// The service's spoken language (settings: sttLanguage, "en-US").
     lang: String,
 }
@@ -102,6 +106,8 @@ impl Interpreter {
             sentence_at: None,
             active: false,
             song_live: false,
+            held: Vec::new(),
+            released: Vec::new(),
             lang: "en".into(),
         }
     }
@@ -200,7 +206,13 @@ impl Interpreter {
             if sentence {
                 self.last_real = if is_final { 0 } else { real };
                 self.sentence_at = Some(self.clock_ms);
-                return (Verdict::Preacher, self.end());
+                let held = std::mem::take(&mut self.held);
+                let change = self.end();
+                self.released = held;
+                return (Verdict::Preacher, change);
+            }
+            if !words.is_empty() && real as f64 >= SENTENCE_REAL * words.len() as f64 && self.held.len() < 40 {
+                self.held.push((text.to_string(), is_final));
             }
             return (Verdict::Interpretation, None);
         }
@@ -215,11 +227,17 @@ impl Interpreter {
         (Verdict::Preacher, None)
     }
 
+    /// What was kept aside during a turn that turned out to be the preacher after all (in order).
+    pub fn take_released(&mut self) -> Vec<(String, bool)> {
+        std::mem::take(&mut self.released)
+    }
+
     fn end(&mut self) -> Option<Change> {
         if !self.active {
             return None;
         }
         self.active = false;
+        self.held.clear();
         self.voiced = [0; WINDOW_S];
         self.words = [0; WINDOW_S];
         Some(Change::Ended)
