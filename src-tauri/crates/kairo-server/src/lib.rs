@@ -27,6 +27,7 @@ mod routes;
 mod routes_library;
 mod routes_misc;
 mod translate;
+mod util;
 pub mod settings;
 mod video;
 mod ndi_runtime;

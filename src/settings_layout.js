@@ -27,7 +27,6 @@
     queued = true;
     requestAnimationFrame(() => { queued = false; arrange(document); });
   }
-  window.KairoSettingsLayout = { arrange: () => arrange(document) };
   const start = () => {
     arrange(document);
     const panes = document.querySelector('.settings-panes') || document.body;

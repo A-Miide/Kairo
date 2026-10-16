@@ -65,7 +65,7 @@ impl Bible {
     }
 
     fn pack(&self, cache: &Mutex<HashMap<String, Pack>>, key: &str, path: PathBuf) -> Pack {
-        if let Some(p) = cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(key) {
+        if let Some(p) = crate::util::lock(&cache).get(key) {
             return p.clone();
         }
         let loaded = std::fs::read(&path).ok().and_then(|b| serde_json::from_slice::<Value>(&b).ok()).map(|raw| {
@@ -102,7 +102,7 @@ impl Bible {
         if loaded.is_none() {
             eprintln!("[Translation] No pack for \"{key}\"");
         }
-        cache.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(key.to_string(), loaded.clone());
+        crate::util::lock(&cache).insert(key.to_string(), loaded.clone());
         loaded
     }
 
@@ -147,7 +147,7 @@ impl Bible {
 
     /// Drops what was loaded for a language, so a pack just added or removed is read again.
     pub fn forget_language(&self, lang: &str) {
-        self.languages.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(lang);
+        crate::util::lock(&self.languages).remove(lang);
     }
 
     /// The service language's Bible in place of the English text.

@@ -221,9 +221,7 @@ fn names_in(text: &str, biblical: &dyn Fn(&str) -> bool) -> Vec<String> {
     out
 }
 
-fn now_ms() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as u64)
-}
+use crate::util::epoch_ms as now_ms;
 
 #[cfg(test)]
 mod tests {

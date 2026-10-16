@@ -10,9 +10,9 @@
 // while the Sources pane is showing, so a camera is not kept busy otherwise.
 //
 // Persistence: settings.videoSources [{id, name, deviceId, label, width,
-// height, fps, enabled}] and settings.videoLive {[outputId]: sourceId|null}, saved with
-// saveSettingsPatch, and mirrored to localStorage (kairo-video-sources /
-// kairo-video-live) for the display windows, as the layer map is.
+// height, fps, enabled}] and settings.videoLive {[outputId]: sourceId|null}, saved and
+// mirrored for the display windows by KairoCameras (settings_store.js), the one owner of
+// the camera list.
 // Lazy-loaded by video_director_boot.js only while Video director mode is on;
 // startVideoSources() builds the pane and stopVideoSources() removes it again.
 'use strict';
@@ -37,7 +37,7 @@ function videoSourceList() {
 // Outputs that can take video in Phase 1: display windows and Monitors.
 function videoOutputs() {
   // The display chosen for the multiview carries no output of its own.
-  const mv = settings.videoDirector ? settings.videoMultiview : '';
+  const mv = isDirectorOn() ? settings.videoMultiview : '';
   return displayOutputs().filter(d => d.id !== mv).map(d => ({ id: d.id, name: d.name, monitor: d.kind === 'monitor' }));
 }
 function videoLiveMap() {
@@ -46,26 +46,18 @@ function videoLiveMap() {
 
 // What display windows read: the source list and the live map.
 function publishVideoState() {
-  try {
-    localStorage.setItem('kairo-video-sources', JSON.stringify(videoSourceList()));
-    localStorage.setItem('kairo-video-live', JSON.stringify(videoLiveMap()));
-  } catch (err) {
-    console.warn('[Video] could not publish state:', err.message);
-  }
+  KairoCameras.mirror(videoSourceList(), videoLiveMap());
 }
 
 function saveVideoSources(list) {
   settings.videoSources = list;
-  settings.videoLive = videoLiveMap();   // a removed source drops out of every output
-  saveSettingsPatch({ videoSources: settings.videoSources, videoLive: settings.videoLive });
-  publishVideoState();
+  // A removed source drops out of every output.
+  KairoCameras.save(list, videoLiveMap());
   renderVideoSources();
 }
 
 function setVideoLiveFor(outputIds, sourceId) {
-  settings.videoLive = VSRC.setLive(videoLiveMap(), outputIds, sourceId);
-  saveSettingsPatch({ videoLive: settings.videoLive });
-  publishVideoState();
+  KairoCameras.saveLive(VSRC.setLive(videoLiveMap(), outputIds, sourceId));
   renderVideoSources();
 }
 
@@ -110,10 +102,6 @@ async function refreshVideoDevices(askPermission) {
 // Camera trouble goes to the debug log (databases/debug.log), so it can be looked at later.
 function logVideoProblem(what, err) {
   window.kairoLog('video-problem', { what, name: err && err.name, message: String(err && err.message || err).slice(0, 300) });
-}
-
-function previewKey(source) {
-  return VSRC.resolveDevice(source, videoState.devices);
 }
 
 // Thumbnails and the properties preview take their stream from the hub: one

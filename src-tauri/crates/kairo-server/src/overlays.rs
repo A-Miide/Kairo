@@ -15,7 +15,6 @@ use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tower::ServiceExt;
@@ -61,22 +60,13 @@ pub struct Overlays {
     items: Mutex<Vec<Overlay>>,
 }
 
-fn lock<T>(m: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
-}
+use crate::util::lock;
 
 fn clamp(v: f64, lo: f64, hi: f64) -> f64 {
     if v.is_finite() { v.clamp(lo, hi) } else { lo }
 }
 
-fn urlencode(s: &str) -> String {
-    s.bytes()
-        .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' => (b as char).to_string(),
-            _ => format!("%{b:02X}"),
-        })
-        .collect()
-}
+use crate::util::urlencode;
 
 impl Overlays {
     pub fn open(app_data: &Path) -> Overlays {
@@ -112,15 +102,10 @@ impl Overlays {
         if lock(&self.items).len() >= MAX_OVERLAYS {
             return Err(("TOO_MANY", format!("Up to {MAX_OVERLAYS} overlays.")));
         }
-        let mut rnd = [0u8; 4];
-        getrandom::fill(&mut rnd).ok();
-        let id = format!("{}{}", epoch_ms(), rnd.iter().map(|b| format!("{b:02x}")).collect::<String>());
+        let id = format!("{}{}", epoch_ms(), crate::util::random_hex(4));
         let file = format!("{id}-{base}");
         std::fs::create_dir_all(&self.dir).map_err(|e| ("WRITE_FAILED", e.to_string()))?;
-        std::fs::write(self.dir.join(&file), data).map_err(|e| {
-            let _ = std::fs::remove_file(self.dir.join(&file));
-            ("WRITE_FAILED", e.to_string())
-        })?;
+        crate::util::write_clean(&self.dir.join(&file), data).map_err(|e| ("WRITE_FAILED", e.to_string()))?;
         let name = Path::new(&base).file_stem().and_then(|s| s.to_str()).unwrap_or("Overlay").to_string();
         let o = Overlay { id, name, file, kind: kind.to_string(), x: 88.0, y: 10.0, w: 18.0, opacity: 1.0, show_on_launch: false, set: main_set(), live: false };
         let v = view(&o);
@@ -204,22 +189,23 @@ async fn list(State(app): State<Shared>) -> Json<Value> {
 }
 
 async fn upload(State(app): State<Shared>, b: Option<Json<Value>>) -> Response {
-    let b = b.map(|Json(v)| v).unwrap_or_else(|| json!({}));
-    let parsed = b["filename"].as_str().and_then(|n| base64::engine::general_purpose::STANDARD.decode(b["dataBase64"].as_str()?).ok().map(|d| (n.to_string(), d)));
-    let Some((name, data)) = parsed else {
-        return (StatusCode::BAD_REQUEST, Json(json!({ "error": "filename and dataBase64 required" }))).into_response();
-    };
-    match app.overlays.add(&name, &data) {
-        Ok(item) => {
+    let b = crate::util::body_or_empty(b);
+    // Decoding and writing a big file happens off the async runtime.
+    let a = app.clone();
+    let added = crate::util::blocking(move || crate::util::upload_parts(&b).map(|(name, data)| a.overlays.add(&name, &data))).await;
+    match added {
+        Ok(Some(Ok(item))) => {
             changed(&app);
             Json(json!({ "ok": true, "item": item })).into_response()
         }
-        Err((code, error)) => (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "error": error, "code": code }))).into_response(),
+        Ok(Some(Err((code, error)))) => (StatusCode::UNPROCESSABLE_ENTITY, Json(json!({ "error": error, "code": code }))).into_response(),
+        Ok(None) => crate::util::bad_request("filename and dataBase64 required"),
+        Err(e) => crate::util::error(StatusCode::INTERNAL_SERVER_ERROR, e),
     }
 }
 
 async fn update(State(app): State<Shared>, UrlPath(id): UrlPath<String>, b: Option<Json<Value>>) -> Response {
-    let b = b.map(|Json(v)| v).unwrap_or_else(|| json!({}));
+    let b = crate::util::body_or_empty(b);
     if !app.overlays.update(&id, &b) {
         return StatusCode::NOT_FOUND.into_response();
     }
@@ -242,7 +228,7 @@ async fn clear(State(app): State<Shared>) -> Json<Value> {
 }
 
 async fn set_live(State(app): State<Shared>, b: Option<Json<Value>>) -> Json<Value> {
-    let b = b.map(|Json(v)| v).unwrap_or_else(|| json!({}));
+    let b = crate::util::body_or_empty(b);
     if let Some(set) = b["set"].as_str() {
         app.overlays.set_live(set, b["on"].as_bool().unwrap_or(false));
         changed(&app);

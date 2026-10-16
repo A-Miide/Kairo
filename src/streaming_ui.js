@@ -50,8 +50,8 @@
     const [w, h] = SIZES[(c.video || {}).resolution] || SIZES['1080p'];
     const fps = Number((c.video || {}).fps) || 30;
     // Cameras belong to Director mode; placeholders (no device yet) can't be opened.
-    const director = !!(typeof settings === 'object' && settings && settings.videoDirector);
-    const cameras = director ? readJson('kairo-video-sources', [])
+    const director = isDirectorOn();
+    const cameras = director ? KairoCameras.list()
       .filter(s => s && s.enabled !== false && (s.deviceId || s.label) && s.label)
       .map(s => ({ id: s.id, label: s.label })) : [];
     // Every video zone the screen themes have: the engine prepares the camera for each.
@@ -246,7 +246,7 @@
       recBtn.addEventListener('click', () => (recording ? stopRecording() : startRecording()));
       listen.parentNode.insertBefore(recBtn, document.getElementById('stream-btn') || listen);
     }
-    const director = !!(typeof settings === 'object' && settings && settings.videoDirector);
+    const director = isDirectorOn();
     recBtn.hidden = !recording && !(director || rcfg().button === true);
     const o = recOverall();
     recBtn.classList.toggle('is-live', recording && o.state === 'live');
@@ -344,5 +344,6 @@
   const renderButtons = () => { renderTopButton(); renderRecordButton(); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', renderButtons); else renderButtons();
   // Destinations are added or switched on in Settings, Director mode turned on: show the buttons then.
-  setInterval(renderButtons, 1000);
+  onSettingsChange(renderButtons);
+  onDirectorChange(renderButtons);
 })();

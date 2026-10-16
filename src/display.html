@@ -1397,6 +1397,18 @@
         } catch { return null; }
     }
 
+    // A theme change reaches this window twice: the storage event and the look-update broadcast
+    // (belt and suspenders). The second, identical delivery within a moment is not repainted.
+    let lastLookSig = '', lastLookAt = 0;
+    function lookIsRepeat(look) {
+        let sig = '';
+        try { sig = JSON.stringify(look); } catch { return false; }
+        const now = Date.now();
+        const repeat = sig === lastLookSig && now - lastLookAt < 500;
+        lastLookSig = sig; lastLookAt = now;
+        return repeat;
+    }
+
     // Pick this output's theme out of a broadcast payload.
     function pickLook(payload) {
         if (payload && payload.themes && payload.themes[OUTPUT_KEY]) return payload.themes[OUTPUT_KEY];
@@ -2211,13 +2223,13 @@
         if (e.key === 'kairo-output-themes' && e.newValue) {
             try {
                 const map = JSON.parse(e.newValue);
-                if (map && map[OUTPUT_KEY]) { assignedLook = map[OUTPUT_KEY]; applyLook(frameBaseLook(), true); return; }
+                if (map && map[OUTPUT_KEY]) { assignedLook = map[OUTPUT_KEY]; if (!lookIsRepeat(assignedLook)) applyLook(frameBaseLook(), true); return; }
             } catch {}
         }
         if (e.key === 'kairo-active-look' && e.newValue) {
             try {
                 assignedLook = JSON.parse(e.newValue);
-                applyLook(frameBaseLook(), true);
+                if (!lookIsRepeat(assignedLook)) applyLook(frameBaseLook(), true);
             } catch {}
         }
         if (e.key === 'kairo-output-layers' && e.newValue) {
@@ -2518,7 +2530,7 @@
         if (msg.type === 'look-update') {
             if (msg.modes && typeof msg.modes === 'object') { try { applyOutputMode(msg.modes[OUTPUT_KEY]); } catch {} }
             const mine = pickLook(msg);
-            if (mine) { assignedLook = mine; try { applyLook(frameBaseLook(), true); } catch {} }
+            if (mine) { assignedLook = mine; if (!lookIsRepeat(mine)) { try { applyLook(frameBaseLook(), true); } catch {} } }
             const myLayers = pickLayers(msg);
             if (myLayers) { try { applyOutputLayers(myLayers); } catch {} }
             if (msg.frames && typeof msg.frames === 'object' && !PREVIEW) { try { setFrame(msg.frames[OUTPUT_KEY] || null); } catch {} }

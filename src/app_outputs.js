@@ -1822,7 +1822,7 @@ function outputModeMap() {
   const textOnly = outputTextOnlyMap();
   const map = {};
   // Video director mode can show its input grid full screen on one display.
-  const mv = settings.videoDirector ? settings.videoMultiview : '';
+  const mv = isDirectorOn() ? settings.videoMultiview : '';
   for (const d of displayOutputs()) map[d.id] = mv && d.id === mv ? 'multiview' : d.kind === 'monitor' ? 'confidence' : textOnly[d.id] ? 'text' : 'theme';
   return map;
 }
@@ -1846,7 +1846,7 @@ async function applyOutputModes() {
 function refreshMonitorMessageBar() {
   // Always there: a message can go to the audience screens too. Without a Monitor (or with
   // only the multiview one) the choice starts on the screens.
-  const mv = settings.videoDirector ? settings.videoMultiview : '';
+  const mv = isDirectorOn() ? settings.videoMultiview : '';
   const hasMonitor = monitorOutputs().some(m => m.id !== mv);
   document.getElementById('monitor-message-bar')?.classList.remove('hidden');
   const to = document.getElementById('monitor-message-to');
@@ -1955,7 +1955,7 @@ function buildKeyingSelect(outputId) {
 async function applyOutputFrames() {
   // Frames belong to Director mode: with it off, every output is unframed (also clears a
   // frame left in this machine's storage by an earlier session).
-  const src = settings.videoDirector && settings.outputFrames && typeof settings.outputFrames === 'object' ? settings.outputFrames : {};
+  const src = isDirectorOn() && settings.outputFrames && typeof settings.outputFrames === 'object' ? settings.outputFrames : {};
   const frames = {};
   for (const [key, id] of Object.entries(src)) {
     const look = looks.find(l => l.id === id);
@@ -1996,6 +1996,34 @@ async function applyMonitorLooks() {
 }
 window.applyMonitorLooks = applyMonitorLooks;
 
+// Themes and layers are nearly always changed together (adding or removing an output,
+// startup), and each used to be its own /api/look/apply request, so every display window
+// got two look-update messages and repainted twice. Pushes made in the same tick now leave
+// as ONE request: the server already sends themes, look and layers in a single look-update.
+// (Keying, modes, frames and monitors stay separate: the server takes only one of those per
+// request.) Resolves when the request is done, as the separate fetches did.
+let lookPush = null;
+function pushLook(part, what) {
+  if (!lookPush) {
+    const cur = lookPush = { body: {}, waiters: [] };
+    queueMicrotask(async () => {
+      lookPush = null;
+      try {
+        await fetch(`${SERVER}/api/look/apply`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(cur.body),
+        });
+      } catch (err) {
+        console.warn(`[Look] ${what} failed:`, err.message);
+      }
+      cur.waiters.forEach(done => done());
+    });
+  }
+  Object.assign(lookPush.body, part);
+  return new Promise(done => lookPush.waiters.push(done));
+}
+
 async function applyOutputThemes() {
   const map = outputThemeMap();
   const themes = {};
@@ -2011,15 +2039,7 @@ async function applyOutputThemes() {
   const primary = themes[displayOutputs()[0]?.id] || themes.external;
   if (primary) localStorage.setItem('kairo-active-look', JSON.stringify(primary));
 
-  try {
-    await fetch(`${SERVER}/api/look/apply`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ themes, look: primary || null }),
-    });
-  } catch (err) {
-    console.warn('[Look] per-output broadcast failed:', err.message);
-  }
+  await pushLook({ themes, look: primary || null }, 'per-output broadcast');
 
   // Whatever's already showing in the in-app preview only carries its own
   // look when the sent item had one — anything using the output-default
@@ -2072,7 +2092,7 @@ const DEFAULT_OUTPUT_LAYERS = { bible: true, slide: true, media: true, timer: tr
 // Syphon/Spout and DeckLink render natively and don't carry it yet.
 // Video input shows in the outputs UI only while Video director mode is on.
 function visibleLayerKeys() {
-  return settings.videoDirector ? OUTPUT_LAYER_KEYS : OUTPUT_LAYER_KEYS.filter(([k]) => k !== 'video');
+  return isDirectorOn() ? OUTPUT_LAYER_KEYS : OUTPUT_LAYER_KEYS.filter(([k]) => k !== 'video');
 }
 const VIDEO_NATIVE_NOTE = 'Video input is not sent to NDI, Syphon or DeckLink outputs yet.';
 function outputSupportsVideo(outputId) {
@@ -2133,7 +2153,7 @@ function buildOutputLayersHint(outputId, map) {
   const want = (map || outputLayerMap())[outputId] || DEFAULT_OUTPUT_LAYERS;
   // Words only (a Monitor, or Text only): media never goes out there.
   const wordsOnly = isMonitorOutput(outputId) || !!outputTextOnlyMap()[outputId];
-  const noVideo = !settings.videoDirector || !outputSupportsVideo(outputId);
+  const noVideo = !isDirectorOn() || !outputSupportsVideo(outputId);
   const keys = visibleLayerKeys().filter(([k]) => !(wordsOnly && k === 'media') && !(noVideo && k === 'video'));
   const on  = keys.filter(([k]) => want[k]).map(([, l]) => l);
   // Video input is off by default and optional: it is not listed as hidden.
@@ -2144,7 +2164,7 @@ function buildOutputLayersHint(outputId, map) {
   else if (!on.length) hint.textContent = 'Nothing is going out on this output right now — every layer is hidden.';
   else hint.textContent = `Going out on this output: ${on.join(', ')}. Hidden: ${off.join(', ')}.`;
   if (wordsOnly && on.length) hint.textContent += isMonitorOutput(outputId) ? ' Words only.' : ' Text only — just the words: no background, shapes, pictures or media.';
-  if (settings.videoDirector && !outputSupportsVideo(outputId)) hint.textContent += ` ${VIDEO_NATIVE_NOTE}`;
+  if (isDirectorOn() && !outputSupportsVideo(outputId)) hint.textContent += ` ${VIDEO_NATIVE_NOTE}`;
   return hint;
 }
 
@@ -2159,15 +2179,7 @@ async function applyOutputLayers() {
   const map = outputLayerMap();
   localStorage.setItem('kairo-output-layers', JSON.stringify(map));
   localStorage.setItem('kairo-active-look-ts', Date.now().toString());
-  try {
-    await fetch(`${SERVER}/api/look/apply`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ layers: map }),
-    });
-  } catch (err) {
-    console.warn('[Look] per-output layer broadcast failed:', err.message);
-  }
+  await pushLook({ layers: map }, 'per-output layer broadcast');
 }
 
 
@@ -2313,7 +2325,7 @@ function renderOutputControlMatrix() {
   if (!outputs.length) { host.innerHTML = '<p class="setting-hint">No outputs yet.</p>'; return; }
   const map = outputLayerMap();
   const textOnly = outputTextOnlyMap();
-  const rows = OC_ROWS.filter(r => r.key !== 'video' || settings.videoDirector);
+  const rows = OC_ROWS.filter(r => r.key !== 'video' || isDirectorOn());
   const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
 
   outputs.forEach((o) => {
@@ -2381,7 +2393,7 @@ function layerOrderDiagram(mk) {
     ['Timer', null],
     ['Slides and scripture', 'with their own theme'],
     ['Media', null],
-    ...(settings.videoDirector ? [['Video', 'in its own zone when the layout has one']] : []),
+    ...(isDirectorOn() ? [['Video', 'in its own zone when the layout has one']] : []),
     ['Background', 'the theme or layout backdrop'],
   ];
   steps.forEach(([name, note], i) => {
@@ -2393,20 +2405,6 @@ function layerOrderDiagram(mk) {
   });
   return box;
 }
-
-// Persist a partial settings change without clobbering unrelated fields.
-async function saveSettingsPatch(patch) {
-  try {
-    await fetch(`${SERVER}/api/settings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(patch),
-    });
-  } catch (err) {
-    console.warn('[Settings] save failed:', err.message);
-  }
-}
-
 
 // Audio pane: sound output (video sound and background music) under the microphone settings.
 function renderAudioPaneOutput() {
