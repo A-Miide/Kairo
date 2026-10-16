@@ -6,7 +6,7 @@
 
 use std::sync::mpsc;
 use std::sync::Arc;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::Instant;
 
 use kairo_bible::VerseId;
 use kairo_detect::engine::{Answer, Config, Effect, Engine, Event, MeaningHit, Output, Request, Segment, Target};
@@ -83,9 +83,7 @@ pub struct ServiceLog {
 
 pub type Log = Arc<std::sync::Mutex<ServiceLog>>;
 
-pub fn epoch_ms() -> u64 {
-    SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)
-}
+pub use crate::util::epoch_ms;
 
 impl Detector {
     pub fn start(bible: Arc<Bible>, hub: Arc<Hub>, cfg: Config, presentation: Arc<std::sync::RwLock<Presentation>>, rt: tokio::runtime::Handle, log: Log) -> Detector {
