@@ -816,6 +816,45 @@ DEFAULT_LOOKS.push(
   screenTheme('screen-split-half', 'Screen — Half and half', true, 900),
 );
 
+// Monitor layouts (groupId 'grp-monitor'): what a Monitor output shows, for whoever is up
+// front. Text layers can show what is on screen now (the verse binding), its reference, the
+// next slide, the time of day, the countdown and the message from the booth. Picked per
+// Monitor under Settings → Outputs; never offered as a theme for slides or verses.
+function monitorText(id, name, binding, pos, size, opts = {}) {
+  return { id, type: 'text', name, visible: true, binding, customText: opts.text || '',
+    pos, font: { family: 'Manrope', size, weight: opts.weight || 600, italic: false, lineHeight: opts.lineHeight || 1.22, letterSpacing: opts.spacing || 0, transform: opts.transform || 'none' },
+    color: opts.color || '#ffffff', opacity: opts.opacity || 100, align: opts.align || 'left',
+    shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } };
+}
+function monitorCanvas() {
+  return { id: 'bg', type: 'background', name: 'Canvas', visible: true, fill: 'solid', color: '#000000', color2: '#000000', opacity: 100, angle: 160 };
+}
+const MONITOR_GROUP = { groupId: 'grp-monitor', groupName: 'Monitor layouts' };
+DEFAULT_LOOKS.push(
+  { id: 'monitor-classic', name: 'Monitor — Now and next', layout: 'fullscreen', animation: 'cut', ...MONITOR_GROUP,
+    layers: [
+      monitorCanvas(),
+      monitorText('clock', 'Time', 'mon-clock', { x: 77, y: 40, w: 600, h: 100 }, 80, { weight: 800 }),
+      monitorText('timer', 'Countdown', 'timer', { x: 1243, y: 40, w: 600, h: 100 }, 80, { weight: 800, align: 'right' }),
+      monitorText('ref', 'Reference', 'reference', { x: 77, y: 190, w: 1766, h: 50 }, 36, { weight: 700, spacing: 3, transform: 'uppercase', color: '#f5b74e' }),
+      monitorText('verse', 'On screen now', 'verse', { x: 77, y: 250, w: 1766, h: 520 }, 96),
+      monitorText('message', 'Message', 'mon-message', { x: 77, y: 790, w: 1766, h: 80 }, 48, { weight: 700, color: '#f5b74e' }),
+      monitorText('next-ref', 'Next (reference)', 'mon-next-ref', { x: 77, y: 890, w: 1766, h: 40 }, 26, { weight: 700, spacing: 3, transform: 'uppercase', opacity: 55 }),
+      monitorText('next', 'Next', 'mon-next', { x: 77, y: 935, w: 1766, h: 110 }, 42, { weight: 500, opacity: 62 }),
+    ] },
+  { id: 'monitor-words', name: 'Monitor — Big words', layout: 'fullscreen', animation: 'cut', ...MONITOR_GROUP,
+    layers: [
+      monitorCanvas(),
+      monitorText('verse', 'On screen now', 'verse', { x: 77, y: 60, w: 1766, h: 820 }, 120, { align: 'center' }),
+      monitorText('message', 'Message', 'mon-message', { x: 77, y: 890, w: 1766, h: 70 }, 44, { weight: 700, color: '#f5b74e', align: 'center' }),
+      monitorText('clock', 'Time', 'mon-clock', { x: 77, y: 975, w: 600, h: 80 }, 56, { weight: 800, opacity: 70 }),
+      monitorText('timer', 'Countdown', 'timer', { x: 1243, y: 975, w: 600, h: 80 }, 56, { weight: 800, align: 'right' }),
+    ] },
+);
+// Sample words for the Monitor-only bindings, in Theme Studio and thumbnails.
+const MONITOR_SAMPLES = { 'mon-next': 'And the next slide waits here', 'mon-next-ref': 'Next · Verse 2', 'mon-clock': '10:42', 'mon-message': 'Five minutes left' };
+window.KAIRO_MONITOR_SAMPLES = MONITOR_SAMPLES;
+
 // Load saved looks from localStorage and back-fill any NEW default-look IDs
 // the user doesn't have yet (so adding new built-in lower-third designs in
 // future releases shows up for existing users without nuking their custom themes).
@@ -1179,6 +1218,7 @@ function saveLooks() {
     applyOutputThemes();
     // A layout frame follows edits to its screen theme too (and goes when the theme is deleted).
     if (typeof applyOutputFrames === 'function') applyOutputFrames();
+    if (typeof applyMonitorLooks === 'function') applyMonitorLooks();
   } catch (err) { console.warn('[KAIRO] outputs refresh after saveLooks failed:', err); }
 }
 function deepClone(o) { return JSON.parse(JSON.stringify(o)); }
@@ -1835,6 +1875,7 @@ function layerTextContent(layer) {
       return layer.customText || '[Custom Text]';
     }
   }
+  if (MONITOR_SAMPLES[layer.binding]) return MONITOR_SAMPLES[layer.binding];
   if (layer.binding === 'verse')     return PREVIEW_TEXT_SAMPLE;
   if (layer.binding === 'reference') return PREVIEW_REF_SAMPLE;
   if (layer.binding === 'timer')     return PREVIEW_TIMER_SAMPLE;
@@ -5629,6 +5670,13 @@ function renderTextProps(panel, layer) {
       { label: 'Countdown minutes', value: 'timer-m' },
       { label: 'Countdown seconds', value: 'timer-s' },
       { label: 'The verse, translated', value: 'verse_translated' },
+      // A Monitor layout's own things (see MONITOR_SAMPLES).
+      ...(activeLook && activeLook.groupId === 'grp-monitor' ? [
+        { label: 'The next slide', value: 'mon-next' },
+        { label: 'The next slide’s reference', value: 'mon-next-ref' },
+        { label: 'The time of day', value: 'mon-clock' },
+        { label: 'The message from the booth', value: 'mon-message' },
+      ] : []),
       { label: 'Text you type', value: 'custom' },
     ], layer.binding, v => { layer.binding = v; up(); renderProps(); })),
     customRow,
@@ -7788,22 +7836,25 @@ importLookFile?.addEventListener('change', async () => {
 // New theme — lands straight into rename mode on its own row, since that's
 // the only place a theme gets named now.
 newLookBtn?.addEventListener('click', (e) => {
-  // In Director mode a new theme can also be a screen theme (a video zone with the verse
-  // beside it): a copy of Screen — Video left to make your own from.
-  if (settings.videoDirector && window.KairoService?.openContextMenu) {
+  // A new theme can also be a Monitor layout, and in Director mode a screen theme (a video
+  // zone with the verse beside it): each a copy of its first starter to make your own from.
+  if (window.KairoService?.openContextMenu) {
     const r = newLookBtn.getBoundingClientRect();
     window.KairoService.openContextMenu(r.left, r.bottom + 4, [[
       { label: 'New theme', onClick: () => createNewLook(false) },
-      { label: 'New screen theme', onClick: () => createNewLook(true) },
+      { label: 'New monitor layout', onClick: () => createNewLook('monitor') },
+      ...(settings.videoDirector ? [{ label: 'New screen theme', onClick: () => createNewLook(true) }] : []),
     ]]);
     return;
   }
   createNewLook(false);
 });
 function createNewLook(screen) {
-  const base = deepClone(screen ? (DEFAULT_LOOKS.find(d => d.id === 'screen-split-left') || DEFAULT_LOOKS[0]) : DEFAULT_LOOKS[0]);
+  const monitor = screen === 'monitor';
+  const starter = monitor ? 'monitor-classic' : screen ? 'screen-split-left' : null;
+  const base = deepClone((starter && DEFAULT_LOOKS.find(d => d.id === starter)) || DEFAULT_LOOKS[0]);
   base.id   = 'look-' + Date.now();
-  base.name = screen ? 'New Screen' : 'New Theme';
+  base.name = monitor ? 'New Monitor Layout' : screen ? 'New Screen' : 'New Theme';
   // A new theme's canvas starts transparent, with nothing behind the
   // content; Background picks a picture, a colour or a gradient for it.
   const canvasFill = screen ? null : base.layers.find(l => l.type === 'background' && !l.pos);

@@ -970,7 +970,7 @@ function buildThemeSelect(outputId) {
 // `value()` returns the current theme id; `onPick(id)` applies a choice;
 // `defaultLabel` adds a first row meaning "no theme of its own" (id '').
 // The returned element's refresh() repaints after the value changes outside.
-function buildThemeDropdown({ value, onPick, defaultLabel }) {
+function buildThemeDropdown({ value, onPick, defaultLabel, monitor = false }) {
   const wrap = document.createElement('div');
   wrap.className = 'theme-pick';
   const trigger = document.createElement('button');
@@ -1061,7 +1061,7 @@ function buildThemeDropdown({ value, onPick, defaultLabel }) {
       row.addEventListener('click', () => pick(''));
       menu.appendChild(row);
     }
-    menu.appendChild(window.KairoService.buildThemeTree(looks, buildRow, current && current.id));
+    menu.appendChild(window.KairoService.buildThemeTree(looks, buildRow, current && current.id, { monitor }));
     menu.hidden = false;
     placeMenu();
     trigger.setAttribute('aria-expanded', 'true');
@@ -1153,6 +1153,21 @@ function renderDisplayDetail(host, o) {
     about.className = 'setting-hint';
     about.textContent = 'For whoever is up front: what’s on screen now with the next slide right under it, the time, the segment countdown, and any message you send from Monitor message under the preview. A single scripture called out shows on its own.';
     host.appendChild(about);
+    // Its layout: the built-in one, or a Monitor layout made in Theme Studio.
+    host.appendChild(detailInlineGroup('Layout', buildThemeDropdown({
+      value: () => (settings.monitorLooks || {})[o.id] || '',
+      onPick: (id) => {
+        settings.monitorLooks = { ...(settings.monitorLooks || {}), [o.id]: id || null };
+        saveSettingsPatch({ monitorLooks: settings.monitorLooks });
+        applyMonitorLooks();
+      },
+      defaultLabel: 'Built-in',
+      monitor: true,
+    })));
+    const how = document.createElement('p');
+    how.className = 'setting-hint';
+    how.textContent = 'Make your own in Theme Studio: New → New monitor layout.';
+    host.appendChild(how);
   } else {
     host.appendChild(detailInlineGroup('Theme', buildThemeSelect(o.id)));
     host.appendChild(detailInlineGroup('Keying', buildKeyingSelect(o.id)));
@@ -1946,6 +1961,28 @@ async function applyOutputFrames() {
   }
 }
 window.applyOutputFrames = applyOutputFrames;
+
+// Each Monitor's layout (settings.monitorLooks: output → a Monitor layout's id, or none for
+// the built-in one), sent to the Monitor windows as the layout itself.
+async function applyMonitorLooks() {
+  const src = settings.monitorLooks && typeof settings.monitorLooks === 'object' ? settings.monitorLooks : {};
+  const monitors = {};
+  for (const d of monitorOutputs()) {
+    const look = src[d.id] && looks.find(l => l.id === src[d.id] && l.groupId === 'grp-monitor');
+    monitors[d.id] = look || null;
+  }
+  localStorage.setItem('kairo-monitor-looks', JSON.stringify(monitors));
+  try {
+    await fetch(`${SERVER}/api/look/apply`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ monitors }),
+    });
+  } catch (err) {
+    console.warn('[Look] monitor layout broadcast failed:', err.message);
+  }
+}
+window.applyMonitorLooks = applyMonitorLooks;
 
 async function applyOutputThemes() {
   const map = outputThemeMap();

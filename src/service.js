@@ -3744,7 +3744,7 @@
           : isTimer ? (content.timerText || '')
           : isTimerPart ? '00'
           : hasTimerTemplate ? layer.customText.replace('{timer}', content.timerText || '0:00')
-          : (layer.customText || '');
+          : (window.KAIRO_MONITOR_SAMPLES || {})[layer.binding] || (layer.customText || '');
         // "*word*" in the accent colour — not while the text is being typed
         // into in place, where the markup must stay visible.
         if (!editable && !isTimer && !isTimerPart && !hasTimerTemplate && hasAccentMarkup(text, layer.accentColor)) d.innerHTML = accentHtml(text, layer.accentColor);
@@ -3829,9 +3829,11 @@
   // chevron that opens its themes, each with its small preview. Themes that
   // belong to no group stay as plain rows. The group holding the current
   // theme starts open; the rest start closed.
-  function buildThemeTree(allLooks, buildRow, currentId) {
+  function buildThemeTree(allLooks, buildRow, currentId, opts = {}) {
     // Screen themes (a video zone and the verse side by side) are a Director mode feature.
     if (!settings.videoDirector) allLooks = allLooks.filter(l => l.groupId !== 'grp-screen');
+    // Monitor layouts are only for Monitor outputs; everywhere else they aren't themes.
+    allLooks = allLooks.filter(l => (l.groupId === 'grp-monitor') === !!opts.monitor);
     const root = document.createElement('div');
     root.className = 'thm-tree';
     const seen = new Set();
