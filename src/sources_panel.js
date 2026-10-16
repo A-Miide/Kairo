@@ -76,22 +76,45 @@ async function refreshVideoDevices(askPermission) {
     videoState.error = 'This window cannot use cameras.';
     return;
   }
-  if (askPermission) {
-    // Labels stay empty until the camera has been allowed once.
+  const probe = async () => {
+    // Labels (and every real camera beyond one blank entry) stay hidden until camera access
+    // has been allowed once.
+    videoState.asked = true;
     try {
-      const probe = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-      probe.getTracks().forEach(t => t.stop());
+      const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      s.getTracks().forEach(t => t.stop());
     } catch (err) {
       videoState.error = VSRC.describeCaptureError(err);
+      logVideoProblem('camera-access', err);
     }
-  }
+  };
+  if (askPermission) await probe();
+  const list = async () => {
+    try {
+      const all = await navigator.mediaDevices.enumerateDevices();
+      videoState.devices = all.filter(d => d.kind === 'videoinput');
+      videoState.blind = videoState.devices.some(d => !d.label);
+    } catch (err) {
+      videoState.error = 'The device list could not be read.';
+      logVideoProblem('device-list', err);
+    }
+  };
+  await list();
+  // The first look in a session asks for access by itself: otherwise a built-in camera
+  // (FaceTime HD) only shows up after Detect devices, which nothing pointed to.
+  if (videoState.blind && !videoState.asked && !askPermission) { await probe(); await list(); }
+  // Nameless devices are WebKit's stand-in for cameras it won't name yet, not inputs.
+  if (videoState.blind && !videoState.error) videoState.devices = videoState.devices.filter(d => d.label || d.deviceId);
+}
+
+// Camera trouble goes to the debug log (databases/debug.log), so it can be looked at later.
+function logVideoProblem(what, err) {
   try {
-    const all = await navigator.mediaDevices.enumerateDevices();
-    videoState.devices = all.filter(d => d.kind === 'videoinput');
-    videoState.blind = videoState.devices.some(d => !d.label);
-  } catch (err) {
-    videoState.error = 'The device list could not be read.';
-  }
+    fetch(`${SERVER}/api/debug-log`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ event: 'client:video-problem', data: { what, name: err && err.name, message: String(err && err.message || err).slice(0, 300) } }),
+    }).catch(() => {});
+  } catch {}
 }
 
 function previewKey(source) {

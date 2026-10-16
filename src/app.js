@@ -422,6 +422,7 @@ function handleConnectionState(state, error, errorKind) {
     // forgotten is its own real failure mode). Tying it directly to the
     // same control that already gates everything else.
     window.KairoService?.setAutoFollow?.(true);
+    resumeCaptureIfNeeded();
   } else if (state === 'disconnected' || state === 'error') {
     isListening = false;
     if (listenText) listenText.textContent = 'Start Listening';
@@ -2076,16 +2077,7 @@ async function startListening() {
     // So: DSP off, unconditionally. A room-mic user loses noise
     // suppression, an acceptable trade for never silently crushing a clean
     // line feed.
-    const constraints = {
-      audio: {
-        ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
-        echoCancellation: false,
-        noiseSuppression: false,
-        autoGainControl: false,
-        sampleRate: 16000,
-      },
-    };
-    mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+    mediaStream = await navigator.mediaDevices.getUserMedia(captureConstraints(deviceId));
     if (micDisplay) micDisplay.textContent = mediaStream.getAudioTracks()[0]?.label || 'Microphone';
 
     // Start the server-side engine (Deepgram or the offline sherpa-onnx engine)
@@ -2122,19 +2114,7 @@ async function startListening() {
       return;
     }
 
-    // Stream PCM16 to server via WebSocket — same path for both engines.
-    const g = await buildCaptureGraph(null, mediaStream);
-    audioContext = g.ctx; audioProcessor = g.proc;
-    watchAudioTrackHealth();   // OS-level "track died" → immediate rebuild
-
-    lastRealAudioAt = lastNonZeroAudioAt = Date.now(); // don't warn before real audio has had a chance to arrive at all
-    lastHeardSignalAt = _silentReopenFor = 0; _silentReopenPending = null; // a new session: nothing heard yet
-    audioSilenceWarning = false;
-    clearInterval(audioSilenceWatchdog);
-    resetSleepCheck();
-    audioSilenceWatchdog = setInterval(checkAudioSilence, 5000);
-
-    showEmptyTranscript(false);
+    await openCaptureGraph();
   } catch (err) {
     // toast() is a deliberate no-op (see its own definition) — without
     // this, a mic-acquisition failure (a stale/invalid selected device,
@@ -2144,6 +2124,54 @@ async function startListening() {
     toast('Mic error: ' + err.message, 'error');
     stopAudioCapture();
   }
+}
+
+function captureConstraints(deviceId) {
+  return {
+    audio: {
+      ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+      sampleRate: 16000,
+    },
+  };
+}
+
+// Stream PCM16 to the server via WebSocket — same path for both engines.
+async function openCaptureGraph() {
+  const g = await buildCaptureGraph(null, mediaStream);
+  audioContext = g.ctx; audioProcessor = g.proc;
+  watchAudioTrackHealth();   // OS-level "track died" → immediate rebuild
+
+  lastRealAudioAt = lastNonZeroAudioAt = Date.now(); // don't warn before real audio has had a chance to arrive at all
+  lastHeardSignalAt = _silentReopenFor = 0; _silentReopenPending = null; // a new session: nothing heard yet
+  audioSilenceWarning = false;
+  clearInterval(audioSilenceWatchdog);
+  resetSleepCheck();
+  audioSilenceWatchdog = setInterval(checkAudioSilence, 5000);
+
+  showEmptyTranscript(false);
+}
+
+// The server is listening but this window isn't capturing: the window was reloaded, or
+// macOS ended its page under memory pressure and WebKit brought it back. Without this the
+// button said Stop Listening while nothing was heard. The input is picked up again here.
+let _resumingCapture = false;
+async function resumeCaptureIfNeeded() {
+  if (mediaStream || _resumingCapture) return;
+  _resumingCapture = true;
+  try {
+    stopInputPreview();
+    mediaStream = await navigator.mediaDevices.getUserMedia(captureConstraints(audioSourceSettings?.value || ''));
+    if (micDisplay) micDisplay.textContent = mediaStream.getAudioTracks()[0]?.label || 'Microphone';
+    await openCaptureGraph();
+    fetch(`${SERVER}/api/debug-log`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event: 'capture-resumed', data: { device: micDisplay?.textContent || '' } }) }).catch(() => {});
+  } catch (err) {
+    console.error('[KAIRO] Mic error on resume:', err.name, err.message);
+    stopAudioCapture();
+    showListeningProblem(`The input couldn't be opened again (${err.message}). Stop and start listening.`, 'mic');
+  } finally { _resumingCapture = false; }
 }
 
 async function stopListening() {
