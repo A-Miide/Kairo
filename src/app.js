@@ -303,6 +303,12 @@ function handleServerMessage(msg) {
       handleRangeActive(msg.activeRef);
       break;
 
+    // The operator's range Next in Director mode (server detect.rs, Route::OperatorStep): it goes
+    // the way a hand send goes, staged on Preview while "Stage sends on Preview" is on.
+    case 'range-step':
+      if (msg.verses?.[0]) sendVerseToServer(msg.verses[0]);
+      break;
+
     // Display window reporting media <video> playback state back up, and
     // a watched smart folder's contents having changed on disk — both just
     // forward into service.js, which owns the Media tab's DOM.

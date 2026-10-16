@@ -134,6 +134,7 @@ impl App {
             language: s.str("bibleLanguage").await.unwrap_or_else(|| "en".into()),
             auto_send: s.bool("autoSend").await != Some(false),
             hold: s.bool("autoSend").await == Some(false) && s.bool("videoDirector").await == Some(true),
+            director: s.bool("videoDirector").await == Some(true),
         };
         let (auto_send, auto_correct) = (p.auto_send, s.bool("autoCorrect").await != Some(false));
         *self.presentation.write().unwrap_or_else(std::sync::PoisonError::into_inner) = p;
