@@ -176,7 +176,7 @@ function directorDo(fn, ...args) {
   const d = window.KairoVideoDirector;
   // A Director action from a macro, Stream Deck or a menu while Director mode is off does
   // nothing: say so, instead of a macro silently skipping its camera cut.
-  if (!d || !settings.videoDirector) { window.kairoProblem?.('That needs Director mode, which is off.', 'director-off'); return false; }
+  if (!d || !isDirectorOn()) { window.kairoProblem?.('That needs Director mode, which is off.', 'director-off'); return false; }
   if (typeof d[fn] === 'function') return d[fn](...args);
   return false;
 }
@@ -257,10 +257,6 @@ function comboFromEvent(e) {
 }
 
 const COMBO_SYMBOLS = { cmd: '⌘', shift: '⇧', alt: '⌥', ctrl: '⌃', arrowright: '→', arrowleft: '←', arrowup: '↑', arrowdown: '↓' };
-function comboDisplay(combo) {
-  if (!combo) return 'Not set';
-  return combo.split('+').map(p => COMBO_SYMBOLS[p] || p.toUpperCase()).join('');
-}
 
 let capturingHotkeyId = null;
 
@@ -587,8 +583,8 @@ async function bootstrapStartup() {
     // 2) Required resources — offline model when the offline engine is chosen
     let engine = 'deepgram';
     try {
-      const r = await fetch(`${SERVER}/api/settings`);
-      if (r.ok) { const s = await r.json(); engine = (s.speechEngine || 'deepgram').toLowerCase(); }
+      const s = await fetchServerSettings();
+      engine = (s.speechEngine || 'deepgram').toLowerCase();
     } catch {}
 
     if (engine === 'offline' || engine === 'browser') {

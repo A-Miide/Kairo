@@ -806,9 +806,7 @@ pub fn import_slides(filename: &str, buf: &[u8], assets: &pp::Assets) -> Result<
 const BOILERPLATE_FILL_HEX: &str = "#2196f2";
 
 fn uid(prefix: &str) -> String {
-    let mut b = [0u8; 4];
-    getrandom::fill(&mut b).ok();
-    format!("{prefix}-{}-{}", crate::detect::epoch_ms(), b.iter().map(|x| format!("{x:02x}")).collect::<String>())
+    crate::util::uid(prefix, 4)
 }
 
 fn rgba(fields: &[Field<'_>]) -> (String, i64) {

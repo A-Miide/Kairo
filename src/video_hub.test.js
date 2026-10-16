@@ -44,3 +44,25 @@ test('one capture serves every holder, and the last release lets it go after the
   hub.releaseAll();
   assert.equal(opened[0].track.stopped, true);
 });
+
+test('instant replay shares the camera at 720p30 and the capture drops back when it lets go', async () => {
+  const asked = [];
+  const hub = loadHub(async (c) => { const s = fakeStream(); asked.push({ c, s }); return s; });
+  let thumb = null, replay = null;
+  hub.lease('cam1', 'thumb', (st) => { thumb = st; }, () => {});
+  await new Promise(r => setTimeout(r, 5));
+  assert.equal(asked.length, 1);
+  const release = hub.lease('cam1', 'replay', (st) => { replay = st; }, () => {});
+  await new Promise(r => setTimeout(r, 5));
+  assert.equal(asked.length, 2, 'one more open, at the bigger size');
+  const v = asked[1].c.video;
+  assert.equal(v.width.ideal, 1280); assert.equal(v.height.ideal, 720); assert.equal(v.frameRate.ideal, 30);
+  assert.equal(replay, asked[1].s);
+  assert.equal(thumb, asked[1].s, 'the thumbnail takes the same capture');
+  assert.equal(asked[0].s.track.stopped, true, 'the small one is closed, not kept beside it');
+  assert.equal(hub.openCount(), 1);
+  release();
+  await new Promise(r => setTimeout(r, 1700));
+  assert.equal(asked.length, 3, 'back to the thumbnail size once replay has let go');
+  hub.releaseAll();
+});

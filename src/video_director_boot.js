@@ -5,7 +5,8 @@
 // display window is told to open a camera. Turning the mode on loads the rest
 // (video_sources.js, video_hub.js, sources_panel.js, video_director.js and
 // the stylesheet); turning it off unloads the UI and releases every capture.
-// The setting persists as settings.videoDirector.
+// The setting persists as settings.videoDirector; everything else asks isDirectorOn() and
+// listens with onDirectorChange() (settings_store.js).
 'use strict';
 (function () {
   const FILES = ['video_sources.js', 'video_hub.js', 'sources_panel.js', 'video_input_grid.js', 'video_director_layout.js', 'video_dock.js', 'video_looks.js', 'video_director.js'];
@@ -111,7 +112,7 @@
     const sim = window.KairoSimCameras;
     if (!sim) return;
     const isSim = (x) => /^sim-cam-/.test(x.deviceId || '');
-    let list = Array.isArray(settings.videoSources) ? settings.videoSources.filter(x => x && typeof x === 'object') : [];
+    let list = KairoCameras.list();
     if (on) {
       sim.ids().forEach((id, i) => {
         if (list.some(x => x.deviceId === id)) return;
@@ -121,12 +122,9 @@
       if (!list.some(isSim)) return;
       list = list.filter(x => !isSim(x));
     }
-    settings.videoSources = list;
     const live = settings.videoLive && typeof settings.videoLive === 'object' ? { ...settings.videoLive } : {};
     for (const k of Object.keys(live)) if (!list.some(x => x.id === live[k])) live[k] = null;
-    settings.videoLive = live;
-    if (typeof saveSettingsPatch === 'function') saveSettingsPatch({ videoSources: list, videoLive: live });
-    try { localStorage.setItem('kairo-video-sources', JSON.stringify(list)); } catch {}
+    KairoCameras.save(list, live);
   }
 
   // armed: false, or the sentence saying what the next choice will do (shown under the switch and as the button's label).
@@ -157,7 +155,7 @@
     armedFor = dir;
     paint(dir === 'off', text);
     clearTimeout(armedTimer);
-    armedTimer = setTimeout(() => { armedFor = null; paint(!!settings.videoDirector, false); }, 5000);
+    armedTimer = setTimeout(() => { armedFor = null; paint(isDirectorOn(), false); }, 5000);
   }
   function disarm() { clearTimeout(armedTimer); armedFor = null; }
 
@@ -166,7 +164,8 @@
   }
   function save(on) {
     settings.videoDirector = on;
-    if (typeof saveSettingsPatch === 'function') saveSettingsPatch({ videoDirector: on });
+    saveSettingsPatch({ videoDirector: on });
+    emitDirectorChange('flag');
   }
 
   async function enable(persist) {
@@ -182,6 +181,7 @@
       await ensureLoaded();
       await window.KairoVideoDirector.start();
       refreshOutputsUi();
+      emitDirectorChange('started');
     } catch (err) {
       console.warn('[Video] director mode could not start:', err.message);
       try { window.KairoVideoDirector && window.KairoVideoDirector.stop(); } catch {}   // never leave it half started
@@ -215,13 +215,14 @@
     paint(false, false);
     if (dir) dir.stop();
     refreshOutputsUi();
+    emitDirectorChange('stopped');
   }
 
-  function toggle() { return settings.videoDirector ? disable() : enable(true); }
+  function toggle() { return isDirectorOn() ? disable() : enable(true); }
   btn.addEventListener('click', toggle);
   // The switch does what the button and the View menu item do. A first click that only
   // armed (video is live, or a stream or recording is running) leaves it as it was and shows the line under it.
-  if (dmToggle) dmToggle.addEventListener('change', () => { toggle(); dmToggle.checked = armedFor === 'off' || (armedFor !== 'on' && !!settings.videoDirector); });
+  if (dmToggle) dmToggle.addEventListener('change', () => { toggle(); dmToggle.checked = armedFor === 'off' || (armedFor !== 'on' && isDirectorOn()); });
   if (window.__TAURI__ && window.__TAURI__.event) {
     window.__TAURI__.event.listen('menu-video-director', toggle);
   }
@@ -240,7 +241,7 @@
   };
   function writeBaseline(b) {
     settings.directorBaseline = b;
-    if (typeof saveSettingsPatch === 'function') saveSettingsPatch({ directorBaseline: b });
+    saveSettingsPatch({ directorBaseline: b });
   }
   const isEntry = (e) => !!e && typeof e === 'object' && typeof e.was === 'boolean' && typeof e.set === 'boolean';
   window.KairoDirectorBaseline = {
@@ -285,7 +286,7 @@
   // Called by loadSettings (app.js) once the saved settings are in.
   window.initVideoSources = async function () {
     // Simulated cameras: keep the four test inputs in step with the flag.
-    try { if (window.KairoSimCameras && (window.KairoSimCameras.isOn() || (settings.videoSources || []).some(x => x && /^sim-cam-/.test(x.deviceId || '')))) syncSimSources(window.KairoSimCameras.isOn()); } catch {}
+    try { if (window.KairoSimCameras && (window.KairoSimCameras.isOn() || KairoCameras.list().some(x => /^sim-cam-/.test(x.deviceId || '')))) syncSimSources(window.KairoSimCameras.isOn()); } catch {}
     // An earlier build swapped an output's own theme for a screen theme: put the saved normal themes back once.
     try {
       const saved = settings.directorScreenOrig;
@@ -296,7 +297,7 @@
         settings.directorScreenOrig = {}; saveSettingsPatch({ directorScreenOrig: {} });
       }
     } catch {}
-    if (settings.videoDirector) { await enable(false); return; }
+    if (isDirectorOn()) { await enable(false); return; }
     // Mode off: a Layout's layer and overlay changes left by a crash go back as they were.
     window.KairoDirectorBaseline.restore().catch((err) => console.warn('[Video] could not restore the outputs from before a Layout:', err.message));
     // Mode off: no screen frame may be left around an output (a crash could have left one).

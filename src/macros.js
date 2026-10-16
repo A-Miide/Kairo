@@ -261,7 +261,7 @@
   `;
   document.head.appendChild(style);
 
-  window.KairoMacros = { run, runIndex, list };
+  window.KairoMacros = { runIndex };
   document.addEventListener('click', (e) => {
     const b = e.target.closest && e.target.closest('[data-pane="macros"]');
     if (b) loadOverlays().then(renderPane);
@@ -269,5 +269,5 @@
   const start = () => { loadOverlays().then(() => { renderPane(); renderTop(); }); };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else setTimeout(start, 0);
   // Settings load after start: show the button once macros are known.
-  setInterval(renderTop, 1500);
+  onSettingsChange(renderTop);
 })();

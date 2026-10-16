@@ -261,7 +261,7 @@ pub fn set_model_path(p: std::path::PathBuf) {
 pub static APP: std::sync::LazyLock<std::sync::Mutex<Interpreter>> = std::sync::LazyLock::new(|| std::sync::Mutex::new(Interpreter::load(&model_path())));
 
 pub fn with<R>(f: impl FnOnce(&mut Interpreter) -> R) -> R {
-    f(&mut APP.lock().unwrap_or_else(std::sync::PoisonError::into_inner))
+    f(&mut crate::util::lock(&APP))
 }
 
 #[cfg(test)]

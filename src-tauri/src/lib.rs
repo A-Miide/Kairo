@@ -6,6 +6,7 @@
 
 mod capture;
 mod stream;
+mod senders;
 mod video_bg;
 mod decklink;
 mod ndi;
@@ -18,6 +19,7 @@ mod fonts;
 use std::process::Child;
 use std::sync::{Arc, Mutex};
 use base64::Engine;
+use senders::{decode_media, Handles};
 use tauri::{AppHandle, Emitter, Manager, RunEvent};
 use tauri::menu::{AboutMetadataBuilder, MenuBuilder, MenuItemBuilder, SubmenuBuilder};
 use tauri_plugin_shell::ShellExt;
@@ -396,48 +398,15 @@ fn generate_auth_token() -> String {
 // first time anything touches it; ndi.rs/syphon.rs themselves are
 // completely unaware multiple instances exist, they only ever see one
 // Arc<Mutex<Handle>> at a time, same as before this change.
+// One set of handles per sender kind (senders.rs), keyed by the output's id.
 #[cfg(target_os = "macos")]
-struct SyphonState(Arc<Mutex<std::collections::HashMap<String, Arc<Mutex<syphon::SyphonHandle>>>>>);
-#[cfg(target_os = "macos")]
-impl SyphonState {
-    fn handle_for(&self, id: &str) -> Result<Arc<Mutex<syphon::SyphonHandle>>, String> {
-        let mut map = self.0.lock().map_err(|e| e.to_string())?;
-        Ok(map.entry(id.to_string()).or_insert_with(|| Arc::new(Mutex::new(syphon::SyphonHandle::default()))).clone())
-    }
-}
-
-// Windows' equivalent of SyphonState above — same keyed-collection shape,
-// same reasoning, just backed by spout.rs's handle type. The frontend's
-// syphon_* commands (see below) dispatch to whichever of these two exists
-// on the current platform; there is never a build with both.
+type SyphonState = Handles<syphon::SyphonHandle>;
+// Windows' equivalent of the macOS Syphon state: the frontend's syphon_* commands (below)
+// dispatch to whichever of the two exists on the current platform; there is never a build with both.
 #[cfg(target_os = "windows")]
-struct SyphonState(Arc<Mutex<std::collections::HashMap<String, Arc<Mutex<spout::SpoutHandle>>>>>);
-#[cfg(target_os = "windows")]
-impl SyphonState {
-    fn handle_for(&self, id: &str) -> Result<Arc<Mutex<spout::SpoutHandle>>, String> {
-        let mut map = self.0.lock().map_err(|e| e.to_string())?;
-        Ok(map.entry(id.to_string()).or_insert_with(|| Arc::new(Mutex::new(spout::SpoutHandle::default()))).clone())
-    }
-}
-
-/// Shared NDI sender state. The frontend manipulates this through the
-/// ndi_* Tauri commands; the actual sender thread for a given id runs
-/// inside the ndi module, unchanged — see the keyed-collection comment above.
-struct NdiState(Arc<Mutex<std::collections::HashMap<String, Arc<Mutex<ndi::NdiHandle>>>>>);
-impl NdiState {
-    fn handle_for(&self, id: &str) -> Result<Arc<Mutex<ndi::NdiHandle>>, String> {
-        let mut map = self.0.lock().map_err(|e| e.to_string())?;
-        Ok(map.entry(id.to_string()).or_insert_with(|| Arc::new(Mutex::new(ndi::NdiHandle::default()))).clone())
-    }
-}
-
-struct DeckLinkState(Arc<Mutex<std::collections::HashMap<String, Arc<Mutex<decklink::DeckLinkHandle>>>>>);
-impl DeckLinkState {
-    fn handle_for(&self, id: &str) -> Result<Arc<Mutex<decklink::DeckLinkHandle>>, String> {
-        let mut map = self.0.lock().map_err(|e| e.to_string())?;
-        Ok(map.entry(id.to_string()).or_insert_with(|| Arc::new(Mutex::new(decklink::DeckLinkHandle::default()))).clone())
-    }
-}
+type SyphonState = Handles<spout::SpoutHandle>;
+type NdiState = Handles<ndi::NdiHandle>;
+type DeckLinkState = Handles<decklink::DeckLinkHandle>;
 
 // ── The server ────────────────────────────────────────────────────────────
 
@@ -681,15 +650,7 @@ fn ndi_update_media(app: AppHandle, id: String, image_base64: Option<String>) ->
     let state = app.state::<NdiState>();
     let handle = state.handle_for(&id)?;
     let h = handle.lock().map_err(|e| e.to_string())?;
-    let bytes = match image_base64 {
-        Some(b64) => Some(
-            base64::engine::general_purpose::STANDARD
-                .decode(b64)
-                .map_err(|e| format!("invalid media base64: {e}"))?,
-        ),
-        None => None,
-    };
-    h.update_media(bytes);
+    h.update_media(decode_media(image_base64)?);
     Ok(())
 }
 
@@ -803,22 +764,18 @@ fn run_capture(app: AppHandle, id: String, width: u32, height: u32, fade: u32) {
     });
 }
 
-/// A finished frame to every sender of output `id`.
+/// A finished frame to every sender of output `id`: the stream and the recording for a
+/// `stream-` capture, else each native sender kind (senders.rs).
 fn push_frame(app: &AppHandle, id: &str, frame: Arc<capture::Frame>, fade: u32) {
     if id.starts_with("stream-") {
-        app.state::<stream::StreamState>().push_frame(id, frame.clone(), fade);
-        app.state::<RecordState>().0.push_frame(id, frame, fade);
+        app.state::<stream::Engines>().push_frame(id, frame, fade);
         return;
     }
-    if let Ok(h) = app.state::<NdiState>().handle_for(id) {
-        if let Ok(h) = h.lock() { h.update_frame(frame.clone(), fade); }
-    }
-    if let Ok(h) = app.state::<DeckLinkState>().handle_for(id) {
-        if let Ok(h) = h.lock() { h.update_frame(frame.clone(), fade); }
-    }
-    #[cfg(target_os = "macos")]
-    if let Ok(h) = app.state::<SyphonState>().handle_for(id) {
-        note_capture(app, id, "syphon", syphon::update_frame(frame, fade, h).map_err(|e| e.to_string()));
+    for sender in senders::all() {
+        let sent = sender.send(app, id, frame.clone(), fade);
+        if let Some(stage) = sender.stage() {
+            note_capture(app, id, stage, sent);
+        }
     }
 }
 
@@ -866,11 +823,17 @@ async fn output_video(app: AppHandle, id: String, url: Option<String>, fit: Opti
 // audio input. Status goes to every window as a 'stream-status' event.
 #[tauri::command]
 async fn stream_start(app: AppHandle, pipelines: Vec<stream::PipelineConfig>) -> Result<(), String> {
-    let ffmpeg = stream_ffmpeg(&app, &pipelines).await?;
+    launch(&app, stream::Kind::Stream, pipelines).await
+}
+
+/// Starts the engine of `kind`: finds an FFmpeg, then runs the pipelines on it with their
+/// status going out as that kind's event. Streaming and recording both start through here.
+async fn launch(app: &AppHandle, kind: stream::Kind, pipelines: Vec<stream::PipelineConfig>) -> Result<(), String> {
+    let ffmpeg = stream_ffmpeg(app, &pipelines).await?;
     let app2 = app.clone();
-    let on_status: stream::OnStatus = Arc::new(move |s| { let _ = app2.emit("stream-status", s); });
+    let on_status: stream::OnStatus = Arc::new(move |s| { let _ = app2.emit(kind.event(), s); });
     let app3 = app.clone();
-    tauri::async_runtime::spawn_blocking(move || app3.state::<stream::StreamState>().start(ffmpeg, pipelines, on_status)).await.map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(move || app3.state::<stream::Engines>().of(kind).start(ffmpeg, pipelines, on_status)).await.map_err(|e| e.to_string())?
 }
 
 /// The FFmpeg that streams and records: Kairo's own when it can, else one on this computer.
@@ -889,34 +852,29 @@ async fn stream_ffmpeg(app: &AppHandle, pipelines: &[stream::PipelineConfig]) ->
 
 #[tauri::command]
 fn stream_stop(app: AppHandle) {
-    app.state::<stream::StreamState>().stop();
+    app.state::<stream::Engines>().of(stream::Kind::Stream).stop();
 }
 
 #[tauri::command]
 fn stream_status(app: AppHandle) -> Vec<stream::PipelineStatus> {
-    app.state::<stream::StreamState>().status()
+    app.state::<stream::Engines>().of(stream::Kind::Stream).status()
 }
 
 #[tauri::command]
 fn stream_program(app: AppHandle, output: Option<String>, program: Option<String>, zone: Option<stream::Zone>) {
-    app.state::<stream::StreamState>().set_program(output.as_deref(), program.clone(), zone);
-    app.state::<RecordState>().0.set_program(output.as_deref(), program, zone);
+    app.state::<stream::Engines>().set_program(output.as_deref(), program, zone);
 }
 
 /// The sound mixer's levels and mutes changed: applied live to the stream and the recording.
 #[tauri::command]
 fn stream_mix(app: AppHandle, mix: Vec<stream::AudioIn>) {
-    app.state::<stream::StreamState>().set_mix(mix.clone());
-    app.state::<RecordState>().0.set_mix(mix);
+    app.state::<stream::Engines>().set_mix(mix);
 }
 
 // ── Recording (the stream engine writing a file) ─────────────────────────
 // The top bar's Record: the same picture, cameras and sound as a stream, written to an MP4
 // in the folder chosen under Settings → Streaming (Movies/Kairo by default). Separate from
 // streaming, so either starts and stops without touching the other. Status: 'record-status'.
-#[derive(Default)]
-struct RecordState(stream::StreamState);
-
 /// A file name part from the page: letters, digits, spaces and - _ only.
 fn safe_name(s: &str) -> String {
     let t: String = s.chars().filter(|c| c.is_alphanumeric() || " -_".contains(*c)).take(80).collect();
@@ -940,22 +898,18 @@ async fn record_start(app: AppHandle, mut pipelines: Vec<stream::PipelineConfig>
         files.push(file.clone());
         p.record_to = Some(file);
     }
-    let ffmpeg = stream_ffmpeg(&app, &pipelines).await?;
-    let app2 = app.clone();
-    let on_status: stream::OnStatus = Arc::new(move |s| { let _ = app2.emit("record-status", s); });
-    let app3 = app.clone();
-    tauri::async_runtime::spawn_blocking(move || app3.state::<RecordState>().0.start(ffmpeg, pipelines, on_status)).await.map_err(|e| e.to_string())??;
+    launch(&app, stream::Kind::Record, pipelines).await?;
     Ok(files)
 }
 
 #[tauri::command]
 fn record_stop(app: AppHandle) {
-    app.state::<RecordState>().0.stop();
+    app.state::<stream::Engines>().of(stream::Kind::Record).stop();
 }
 
 #[tauri::command]
 fn record_status(app: AppHandle) -> Vec<stream::PipelineStatus> {
-    app.state::<RecordState>().0.status()
+    app.state::<stream::Engines>().of(stream::Kind::Record).status()
 }
 
 /// Shows a recording in Finder / Explorer.
@@ -1036,14 +990,7 @@ fn syphon_update(app: AppHandle, id: String, verse: String, reference: String) -
 #[tauri::command]
 fn syphon_update_media(app: AppHandle, id: String, image_base64: Option<String>) -> Result<(), String> {
     let state = app.state::<SyphonState>();
-    let bytes = match image_base64 {
-        Some(b64) => Some(
-            base64::engine::general_purpose::STANDARD
-                .decode(b64)
-                .map_err(|e| format!("invalid media base64: {e}"))?,
-        ),
-        None => None,
-    };
+    let bytes = decode_media(image_base64)?;
     syphon::update_media(bytes, state.handle_for(&id)?)
 }
 
@@ -1093,14 +1040,7 @@ fn syphon_update(app: AppHandle, id: String, verse: String, reference: String) -
 #[tauri::command]
 fn syphon_update_media(app: AppHandle, id: String, image_base64: Option<String>) -> Result<(), String> {
     let state = app.state::<SyphonState>();
-    let bytes = match image_base64 {
-        Some(b64) => Some(
-            base64::engine::general_purpose::STANDARD
-                .decode(b64)
-                .map_err(|e| format!("invalid media base64: {e}"))?,
-        ),
-        None => None,
-    };
+    let bytes = decode_media(image_base64)?;
     spout::update_media(bytes, state.handle_for(&id)?)
 }
 
@@ -1168,10 +1108,9 @@ pub fn run() {
         )
         .manage(ServerProcess(Arc::new(Mutex::new(None))))
         .manage(server_config)
-        .manage(NdiState(Arc::new(Mutex::new(std::collections::HashMap::new()))))
+        .manage(NdiState::default())
         .manage(CaptureState::default())
-        .manage(stream::StreamState::default())
-        .manage(RecordState::default())
+        .manage(stream::Engines::default())
         .manage(VideoBgState::default())
         // An output's capture window closing ends its video background.
         .on_window_event(|window, event| {
@@ -1183,11 +1122,11 @@ pub fn run() {
                 }
             }
         })
-        .manage(DeckLinkState(Arc::new(Mutex::new(std::collections::HashMap::new()))));
+        .manage(DeckLinkState::default());
 
     #[cfg(any(target_os = "macos", target_os = "windows"))]
     {
-        builder = builder.manage(SyphonState(Arc::new(Mutex::new(std::collections::HashMap::new()))));
+        builder = builder.manage(SyphonState::default());
     }
 
     builder
@@ -1379,8 +1318,7 @@ pub fn run() {
         .expect("Error building KAIRO")
         .run(|app, event| {
             if matches!(event, RunEvent::Exit | RunEvent::ExitRequested { .. }) {
-                app.state::<stream::StreamState>().kill_now();
-                app.state::<RecordState>().0.kill_now();
+                app.state::<stream::Engines>().kill_now();
                 // Recover from a poisoned mutex instead of panicking — this is
                 // shutdown-time child-process cleanup; a panic here would
                 // skip it entirely and leak the Node sidecar.
@@ -1405,36 +1343,28 @@ pub fn run() {
                 // NDI outputs) — stop every instance that was ever touched,
                 // not just a single fixed sender.
                 {
-                    let ndi_state = app.state::<NdiState>();
-                    let ndi_map = ndi_state.0.lock().unwrap_or_else(|p| p.into_inner());
-                    for handle in ndi_map.values() {
+                    app.state::<NdiState>().each(|handle| {
                         handle.lock().unwrap_or_else(|p| p.into_inner())
                             .stop_and_join(std::time::Duration::from_millis(500));
-                    }
+                    });
                 }
                 // DeckLink: disable the card's output and keyer before exit.
                 {
-                    let dl_state = app.state::<DeckLinkState>();
-                    let dl_map = dl_state.0.lock().unwrap_or_else(|p| p.into_inner());
-                    for handle in dl_map.values() {
+                    app.state::<DeckLinkState>().each(|handle| {
                         handle.lock().unwrap_or_else(|p| p.into_inner()).stop();
-                    }
+                    });
                 }
                 #[cfg(target_os = "macos")]
                 {
-                    let syphon_state = app.state::<SyphonState>();
-                    let syphon_map = syphon_state.0.lock().unwrap_or_else(|p| p.into_inner());
-                    for handle in syphon_map.values() {
+                    app.state::<SyphonState>().each(|handle| {
                         let _ = syphon::stop(handle.clone());
-                    }
+                    });
                 }
                 #[cfg(target_os = "windows")]
                 {
-                    let spout_state = app.state::<SyphonState>();
-                    let spout_map = spout_state.0.lock().unwrap_or_else(|p| p.into_inner());
-                    for handle in spout_map.values() {
+                    app.state::<SyphonState>().each(|handle| {
                         let _ = spout::stop(handle.clone());
-                    }
+                    });
                 }
             }
         });

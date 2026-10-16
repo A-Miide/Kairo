@@ -1169,6 +1169,64 @@ impl StreamState {
     }
 }
 
+/// Which of the two ways the same engine is used: a live stream to destinations, or a
+/// recording to a file. Both run `Pipeline` (one FFmpeg command from `ffmpeg_args`, the same
+/// graphics, cameras and sound); they differ only in `record_to` / `destinations` and in which
+/// status event the page listens to.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum Kind {
+    Stream,
+    Record,
+}
+
+impl Kind {
+    /// The event this kind's status goes to every window as.
+    pub fn event(self) -> &'static str {
+        match self {
+            Kind::Stream => "stream-status",
+            Kind::Record => "record-status",
+        }
+    }
+}
+
+/// The stream and the recording, side by side: either starts and stops without touching the
+/// other, and everything that reaches the engine (a captured frame, the camera on air, the
+/// sound mix, quitting) goes to both.
+#[derive(Default)]
+pub struct Engines {
+    stream: StreamState,
+    record: StreamState,
+}
+
+impl Engines {
+    pub fn of(&self, kind: Kind) -> &StreamState {
+        match kind {
+            Kind::Stream => &self.stream,
+            Kind::Record => &self.record,
+        }
+    }
+
+    fn both(&self) -> [&StreamState; 2] {
+        [&self.stream, &self.record]
+    }
+
+    pub fn push_frame(&self, capture_id: &str, frame: Arc<Frame>, fade_ms: u32) {
+        for e in self.both() { e.push_frame(capture_id, frame.clone(), fade_ms); }
+    }
+
+    pub fn set_program(&self, output: Option<&str>, program: Option<String>, zone: Option<Zone>) {
+        for e in self.both() { e.set_program(output, program.clone(), zone); }
+    }
+
+    pub fn set_mix(&self, mix: Vec<AudioIn>) {
+        for e in self.both() { e.set_mix(mix.clone()); }
+    }
+
+    pub fn kill_now(&self) {
+        for e in self.both() { e.kill_now(); }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

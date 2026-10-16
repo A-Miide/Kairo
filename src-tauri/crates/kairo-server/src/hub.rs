@@ -74,7 +74,7 @@ impl Hub {
     /// Tells every window, and remembers what's live.
     pub fn broadcast(&self, data: Value) {
         {
-            let mut l = self.live.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut l = crate::util::lock(&self.live);
             let ty = data["type"].as_str().unwrap_or("");
             let viewer = data["target"] == "viewer";
             if ty == "detection" && viewer && data["verses"].as_array().is_some_and(|v| !v.is_empty()) {
@@ -114,7 +114,7 @@ impl Hub {
 
     /// What a window that just connected needs to catch up.
     pub fn catch_up(&self, worker_ready: bool, animation: Value, speed: Value) -> Vec<String> {
-        let l = self.live.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let l = crate::util::lock(&self.live);
         let mut out = vec![
             json!({ "type": "worker-status", "ready": worker_ready }),
             json!({ "type": "connection-state", "state": l.connection_state }),
@@ -130,7 +130,7 @@ impl Hub {
 
     pub fn layer_state(&self) {
         let (on_top, under) = {
-            let l = self.live.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let l = crate::util::lock(&self.live);
             (l.bible_on_top, l.underneath.is_some())
         };
         self.broadcast(json!({ "type": "layer-state", "bibleOnTop": on_top, "slideUnderneath": under }));
@@ -138,7 +138,7 @@ impl Hub {
 
     pub fn set_bible_on_top(&self, on: bool) {
         let changed = {
-            let mut l = self.live.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut l = crate::util::lock(&self.live);
             let changed = l.bible_on_top != on;
             l.bible_on_top = on;
             changed

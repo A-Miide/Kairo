@@ -93,7 +93,7 @@ impl Video {
         if let Some((_, ext)) = self.prepared(&key) {
             return json!({ "state": "ready", "url": Self::prepared_url(&key, ext) });
         }
-        match self.jobs.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(&key) {
+        match crate::util::lock(&self.jobs).get(&key) {
             Some(Job::Running(p)) => json!({ "state": "converting", "progress": p }),
             Some(Job::Failed(e)) => json!({ "state": "failed", "error": e }),
             None if self.ffmpeg.is_none() => json!({ "state": "unavailable" }),
@@ -108,11 +108,11 @@ impl Video {
             return st;
         }
         let Some(key) = Self::key(&src) else { return st };
-        self.jobs.lock().unwrap_or_else(std::sync::PoisonError::into_inner).insert(key.clone(), Job::Running(0));
+        crate::util::lock(&self.jobs).insert(key.clone(), Job::Running(0));
         let me = self.clone();
         std::thread::spawn(move || {
             let result = me.convert(&src, &key);
-            let mut jobs = me.jobs.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let mut jobs = crate::util::lock(&me.jobs);
             match result {
                 Ok(()) => { jobs.remove(&key); }
                 Err(e) => { jobs.insert(key, Job::Failed(e)); }
@@ -135,7 +135,7 @@ impl Video {
     }
 
     fn set_progress(&self, key: &str, pct: u8) {
-        if let Some(Job::Running(p)) = self.jobs.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get_mut(key) {
+        if let Some(Job::Running(p)) = crate::util::lock(&self.jobs).get_mut(key) {
             *p = pct.min(99);
         }
     }
@@ -172,11 +172,11 @@ impl Video {
                 for line in BufReader::new(e).lines().map_while(Result::ok) {
                     if let Some(i) = line.find("Duration: ") {
                         if let Some(us) = parse_clock(&line[i + 10..]) {
-                            let mut d = d2.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                            let mut d = crate::util::lock(&d2);
                             if *d == 0 { *d = us; }
                         }
                     }
-                    let mut t = t2.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                    let mut t = crate::util::lock(&t2);
                     t.push_str(&line);
                     t.push('\n');
                     if t.len() > 4000 { let cut = t.len() - 3000; *t = t[cut..].to_string(); }
@@ -186,7 +186,7 @@ impl Video {
         if let Some(o) = child.stdout.take() {
             for line in BufReader::new(o).lines().map_while(Result::ok) {
                 if let Some(v) = line.strip_prefix("out_time_us=") {
-                    let total = *duration_us.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                    let total = *crate::util::lock(&duration_us);
                     if let (Ok(done), true) = (v.trim().parse::<u64>(), total > 0) {
                         self.set_progress(key, ((done * 100) / total) as u8);
                     }
@@ -197,7 +197,7 @@ impl Video {
         let _ = reader.join();
         if !status.success() || !partial.is_file() {
             let _ = std::fs::remove_file(&partial);
-            let t = tail.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let t = crate::util::lock(&tail);
             let last = t.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("conversion failed");
             return Err(format!("This video couldn't be converted ({last})."));
         }

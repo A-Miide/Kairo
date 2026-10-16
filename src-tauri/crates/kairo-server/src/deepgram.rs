@@ -131,17 +131,8 @@ async fn listen_url(app: &Shared) -> String {
     for term in crate::vocabulary::terms(app, &lang).await {
         q.push(("keyterm".into(), term));
     }
-    let query: Vec<String> = q.into_iter().map(|(k, v)| format!("{k}={}", urlencode(&v))).collect();
+    let query: Vec<String> = q.into_iter().map(|(k, v)| format!("{k}={}", crate::util::urlencode(&v))).collect();
     format!("wss://api.deepgram.com/v1/listen?{}", query.join("&"))
-}
-
-fn urlencode(s: &str) -> String {
-    s.bytes()
-        .map(|b| match b {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
-            _ => format!("%{b:02X}"),
-        })
-        .collect()
 }
 
 fn state(app: &Shared, state: &str, error: Option<(String, Failure)>) {

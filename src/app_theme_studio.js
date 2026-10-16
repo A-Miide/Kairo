@@ -1412,7 +1412,7 @@ function renderLooksList() {
   el.innerHTML = '';
   const renderedGroups = new Set();
   // Screen themes belong to Director mode.
-  const listed = looks.filter(l => l.groupId !== 'grp-screen' || settings.videoDirector);
+  const listed = looks.filter(l => l.groupId !== 'grp-screen' || isDirectorOn());
   listed.forEach(look => {
     if (look.groupId) {
       if (renderedGroups.has(look.groupId)) return; // this group's block already rendered
@@ -3678,14 +3678,6 @@ function makeToggle(checked, onChange) {
   label.appendChild(cb);
   label.appendChild(track);
   return label;
-}
-
-function makeNumber(val, min, max, step, onChange) {
-  const inp = document.createElement('input');
-  inp.type = 'number'; inp.className = 'ts-prop-number';
-  inp.value = val; inp.min = min; inp.max = max; inp.step = step || 1;
-  inp.addEventListener('input', () => onChange(parseFloat(inp.value) || 0));
-  return inp;
 }
 
 function makeColor(val, onChange) {
@@ -7847,7 +7839,7 @@ newLookBtn?.addEventListener('click', (e) => {
     window.KairoService.openContextMenu(r.left, r.bottom + 4, [[
       { label: 'New theme', onClick: () => createNewLook(false) },
       { label: 'New monitor layout', onClick: () => createNewLook('monitor') },
-      ...(settings.videoDirector ? [{ label: 'New screen theme', onClick: () => createNewLook(true) }] : []),
+      ...(isDirectorOn() ? [{ label: 'New screen theme', onClick: () => createNewLook(true) }] : []),
     ]]);
     return;
   }
