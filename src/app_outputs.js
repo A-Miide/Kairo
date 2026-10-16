@@ -172,10 +172,7 @@ function logDisplayLifecycleFallback(where, detail) {
   // /api/debug-log only reads {event, data} off the body (see kairo-server routes.rs) —
   // anything else silently gets dropped, which would have been a fittingly
   // ironic way for this exact hardening to go silent itself.
-  fetch(`${SERVER}/api/debug-log`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ event: 'display-lifecycle-fallback', data: { where, ...detail } }),
-  }).catch(() => {});
+  kairoLog('display-lifecycle-fallback', { where, ...detail });
 }
 
 function buildScreenSelect(outputId) {

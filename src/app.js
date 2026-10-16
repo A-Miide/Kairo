@@ -1987,10 +1987,7 @@ function logAudioPipeline(peak, bufferLength, gain, clipped) {
   };
   pipeline.frames = 0; pipeline.noInput = 0;
   try { _captureWorker?.postMessage({ type: 'status' }); } catch {}
-  fetch(`${SERVER}/api/debug-log`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ event: 'audio-pipeline', data }),
-  }).catch(() => {});
+  kairoLog('audio-pipeline', data);
 }
 
 // The gain the level control settled on, per input, so the next session — or
@@ -2038,10 +2035,7 @@ function noteInputSummary(peak, clipped, gain) {
     gainDb: sorted.length ? Math.round(s.gainDbSum / sorted.length) : 0,
   };
   Object.assign(s, { since: now, reports: 0, silent: 0, clipped: 0, peaks: [], gainDbSum: 0 });
-  fetch(`${SERVER}/api/debug-log`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ event: 'audio-input', data }),
-  }).catch(() => {});
+  kairoLog('audio-input', data);
 }
 
 // One sender worker for the session (audio_sender_worker.js): its own
@@ -2189,7 +2183,7 @@ async function resumeCaptureIfNeeded() {
     mediaStream = await navigator.mediaDevices.getUserMedia(captureConstraints(audioSourceSettings?.value || ''));
     if (micDisplay) micDisplay.textContent = mediaStream.getAudioTracks()[0]?.label || 'Microphone';
     await openCaptureGraph();
-    fetch(`${SERVER}/api/debug-log`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event: 'capture-resumed', data: { device: micDisplay?.textContent || '' } }) }).catch(() => {});
+    kairoLog('capture-resumed', { device: micDisplay?.textContent || '' });
   } catch (err) {
     console.error('[KAIRO] Mic error on resume:', err.name, err.message);
     stopAudioCapture();
@@ -2280,10 +2274,7 @@ let capturingFallbackDevice = false;
 let _fallbackRetryAt = 0;
 function _healLog(msg, extra) {
   console.warn('[KAIRO]', msg);
-  fetch(`${SERVER}/api/debug-log`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ event: 'audio-heal', data: { msg, ...(extra || {}) } }),
-  }).catch(() => {});
+  kairoLog('audio-heal', { msg, ...(extra || {}) });
 }
 
 let _lastSilenceCheckAt = 0;

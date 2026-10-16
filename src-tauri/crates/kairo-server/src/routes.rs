@@ -692,8 +692,31 @@ async fn monitor_message(State(app): State<Shared>, Json(b): Json<Value>) -> Jso
 /// Where debug.log is, so code without the app state (the detection thread)
 /// can log too. Set once at start.
 static DEBUG_LOG_PATH: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
-/// One writer at a time: concurrent appends used to interleave inside a line.
-static DEBUG_LOG_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+/// The one thread that writes debug.log, fed in order: lines land in the order they were
+/// logged, and logging costs a queue push, not a thread per line (which reordered lines and
+/// piled threads up under load). Any thread can log, async or not.
+static DEBUG_LOG_TX: std::sync::OnceLock<std::sync::Mutex<std::sync::mpsc::Sender<(std::path::PathBuf, String)>>> = std::sync::OnceLock::new();
+fn debug_log_sender() -> &'static std::sync::Mutex<std::sync::mpsc::Sender<(std::path::PathBuf, String)>> {
+    DEBUG_LOG_TX.get_or_init(|| {
+        let (tx, rx) = std::sync::mpsc::channel::<(std::path::PathBuf, String)>();
+        let _ = std::thread::Builder::new().name("debug-log".into()).spawn(move || {
+            use std::io::Write;
+            for (path, line) in rx {
+                if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+                    let _ = f.write_all(line.as_bytes());
+                }
+                // It keeps itself small: past 2 MB the older half goes.
+                if std::fs::metadata(&path).is_ok_and(|m| m.len() > 2 * 1024 * 1024) {
+                    if let Ok(s) = std::fs::read_to_string(&path) {
+                        let lines: Vec<&str> = s.lines().collect();
+                        let _ = std::fs::write(&path, lines[lines.len() / 2..].join("\n") + "\n");
+                    }
+                }
+            }
+        });
+        std::sync::Mutex::new(tx)
+    })
+}
 
 pub(crate) fn set_debug_log_path(path: std::path::PathBuf) {
     let _ = DEBUG_LOG_PATH.set(path);
@@ -714,21 +737,8 @@ pub(crate) fn write_debug_global(event: &str, data: Value) {
 
 fn write_debug_to(path: std::path::PathBuf, event: &str, data: Value) {
     let line = format!("{}\n", json!({ "t": epoch_ms(), "event": event, "data": data }));
-    // A plain thread, so any thread can log (the speech engine's supervisor
-    // isn't on the async runtime).
-    std::thread::spawn(move || {
-        use std::io::Write;
-        let _guard = DEBUG_LOG_LOCK.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
-            let _ = f.write_all(line.as_bytes());
-        }
-        if std::fs::metadata(&path).is_ok_and(|m| m.len() > 2 * 1024 * 1024) {
-            if let Ok(s) = std::fs::read_to_string(&path) {
-                let lines: Vec<&str> = s.lines().collect();
-                let _ = std::fs::write(&path, lines[lines.len() / 2..].join("\n") + "\n");
-            }
-        }
-    });
+    let tx = debug_log_sender().lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
+    let _ = tx.send((path, line));
 }
 
 async fn debug_log(State(app): State<Shared>, Json(b): Json<Value>) -> Json<Value> {
