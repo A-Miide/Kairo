@@ -112,6 +112,15 @@ impl Detector {
 
     /// One recognised stretch of speech, from any engine.
     pub fn speech(&self, hub: &Hub, text: &str, is_final: bool, confidence: f32, speech_final: bool, words: Option<Value>, continues_live: bool) {
+        // An interpreter's turn is not transcribed and never reaches the detectors.
+        let (verdict, change) = crate::interpretation::with(|i| i.text(text, is_final));
+        if let Some(c) = change {
+            announce_interpretation(hub, c);
+        }
+        if verdict == crate::interpretation::Verdict::Interpretation && !text.trim().is_empty() {
+            hub.broadcast(json!({ "type": "transcript", "text": "(interpretation)", "isFinal": is_final, "confidence": confidence, "interpretation": true }));
+            return;
+        }
         let mut msg = json!({ "type": "transcript", "text": text, "isFinal": is_final, "confidence": confidence });
         if let Some(w) = words {
             msg["words"] = w;
@@ -126,6 +135,14 @@ impl Detector {
         }
         self.send(Event::Speech(Segment { text: text.to_string(), is_final, speech_final, continues_live }));
     }
+}
+
+/// The interpreter began or finished a turn: the transcript marks it, and the screen may offer the
+/// Multi-Language theme.
+pub fn announce_interpretation(hub: &Hub, change: crate::interpretation::Change) {
+    let active = change == crate::interpretation::Change::Started;
+    crate::routes::write_debug_global("server:interpretation", json!({ "active": active }));
+    hub.broadcast(json!({ "type": "interpretation", "active": active }));
 }
 
 /// The range as the UI is told about it.

@@ -279,6 +279,10 @@ function handleServerMessage(msg) {
       handleTranscript(msg);
       break;
 
+    case 'interpretation':
+      window.KairoInterpreter?.onMessage(msg);
+      break;
+
     case 'detection':
       handleDetection(msg);
       break;
@@ -553,6 +557,18 @@ function scheduleTranscriptScroll() {
 }
 
 function handleTranscript(msg) {
+  // The interpreter's turn: marked once, never transcribed (interpreter.js).
+  const interpreted = window.KairoInterpreter ? window.KairoInterpreter.transcript(msg) : 0;
+  if (interpreted) {
+    if (interpreted === 1) {
+      if (!transcriptDiv) showEmptyTranscript(false);
+      const mark = document.createElement('span');
+      mark.className = 'transcript-final transcript-interp';
+      mark.textContent = '(interpretation) ';
+      if (interimSpan) transcriptDiv.insertBefore(mark, interimSpan); else transcriptDiv.appendChild(mark);
+    }
+    return;
+  }
   if (!transcriptDiv) showEmptyTranscript(false);
   // Checked BEFORE any DOM mutation below — appending content grows
   // scrollHeight regardless of where the operator's scrolled to, so this
@@ -2108,6 +2124,7 @@ async function startListening() {
     if (micDisplay) micDisplay.textContent = mediaStream.getAudioTracks()[0]?.label || 'Microphone';
 
     // Start the server-side engine (Deepgram or the offline sherpa-onnx engine)
+    window.KairoInterpreter?.reset();
     const r = await fetch(`${SERVER}/api/start-listening`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
