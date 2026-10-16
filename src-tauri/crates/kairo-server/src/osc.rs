@@ -40,6 +40,7 @@ pub const ACTIONS: &[&str] = &[
     "director-send",
     "stream-start",
     "stream-stop",
+    "director-replay",
     "record-start",
     "record-stop",
     "director-fade-to-black",
