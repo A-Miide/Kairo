@@ -6,13 +6,16 @@
 // apart, so one of them always holds between REPLAY and SEG seconds of the latest picture
 // as a complete file. Replay finishes that one, saves it to the Media Bin ("Replay …") and
 // stages it. Off by default: it keeps the camera open and encoding while on.
+//
+// The camera is not opened here: it is a 'replay' lease on KairoVideoHub, the same capture
+// the Director's thumbnails, Preview and Program already share, so the device is open once.
 (function () {
   const REPLAY = 8, SEG = 16;
   const { el } = window.KairoUI;
   const D = () => window.KairoVideoDirector;
   const enabled = () => !!(isDirectorOn() && typeof settings === 'object' && settings && settings.videoReplay);
 
-  let stream = null, sourceId = null, slots = [], timers = [], busy = false, opening = false;
+  let stream = null, sourceId = null, slots = [], timers = [], busy = false, opening = false, recheck = false, lease = null;
   const mime = () => {
     const MR = window.MediaRecorder;
     if (!MR) return null;
@@ -23,11 +26,16 @@
     try { const st = D() && D().state(); const p = st && st.active && st.program; return p && !p.mixed && p.id ? p.id : null; } catch { return null; }
   }
 
-  function stopAll() {
+  // Both recorders stop and are thrown away (the stream itself is the hub's, not ours).
+  function endRecorders() {
     timers.forEach(clearTimeout); timers = [];
     slots.forEach(s => { s.discard = true; clearTimeout(s.timer); try { if (s.mr && s.mr.state !== 'inactive') s.mr.stop(); } catch {} });
     slots = [];
-    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  }
+  function stopAll() {
+    endRecorders();
+    if (lease) { lease(); lease = null; }
+    stream = null;
     sourceId = null;
     render();
   }
@@ -44,7 +52,7 @@
       const take = slot.take, chunks = slot.chunks, discard = slot.discard;
       if (take && chunks.length) take(new Blob(chunks, { type: mr.mimeType || type || 'video/webm' }));
       else if (take) take(null);
-      if (!discard && stream) begin(slot);
+      if (!discard && stream && stream.active !== false) begin(slot);
     };
     mr.start(1000);
     // The button shows "armed" once this recorder holds REPLAY seconds: nothing else wakes it then.
@@ -53,32 +61,45 @@
     slot.timer = setTimeout(() => { if (slot.mr === mr && mr.state !== 'inactive') mr.stop(); }, SEG * 1000);
   }
 
+  // The hub hands a stream to us when the hub has the camera at the replay size, and again if it
+  // swaps it. A swap ends the recorders of the old picture and starts two on the new one.
+  function onStream(id, s) {
+    if (sourceId !== id) return;
+    if (!enabled() || programSourceId() !== id) { stopAll(); return; }
+    endRecorders();
+    stream = s;
+    slots = [{}, {}];
+    begin(slots[0]);
+    timers.push(setTimeout(() => begin(slots[1]), (SEG / 2) * 1000));
+    render();
+  }
+
   async function open(id) {
-    if (opening) return;
+    if (opening) { recheck = true; return; }   // what is on air may have changed meanwhile: looked at again after
     opening = true;
     try {
-      const src = KairoCameras.find(id);
-      const V = window.KairoVideoSources;
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const deviceId = src && V && V.resolveDevice ? V.resolveDevice(src, devices) : null;
-      if (!deviceId) return;
-      const s = await navigator.mediaDevices.getUserMedia({ audio: false, video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30, max: 30 } } });
-      if (!enabled() || programSourceId() !== id) { s.getTracks().forEach(t => t.stop()); return; }
+      const hub = window.KairoVideoHub, src = KairoCameras.find(id);
+      const deviceId = src && hub ? await hub.resolve(src) : null;
+      if (!deviceId || !enabled() || programSourceId() !== id) return;
       stopAll();
-      stream = s; sourceId = id;
-      slots = [{}, {}];
-      begin(slots[0]);
-      timers.push(setTimeout(() => begin(slots[1]), (SEG / 2) * 1000));
+      sourceId = id;
+      lease = hub.lease(deviceId, 'replay', (s) => onStream(id, s), (e) => {
+        console.warn('[Replay] camera:', e && e.message);
+        if (sourceId === id) stopAll();
+      });
     } catch (e) {
       console.warn('[Replay] camera:', e && e.message);
-    } finally { opening = false; render(); }
+    } finally {
+      opening = false; render();
+      if (recheck) { recheck = false; follow(); }
+    }
   }
 
   // Follows the camera on air (called when Director mode, its program or the settings change);
   // lets go of it when replay is off or nothing is on air.
   function follow() {
     const want = enabled() ? programSourceId() : null;
-    if (!want) { if (stream) stopAll(); else render(); return; }
+    if (!want) { if (stream || lease) stopAll(); else render(); return; }
     if (want !== sourceId) open(want);
     else render();
   }
