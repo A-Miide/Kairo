@@ -1671,6 +1671,13 @@
                         </details>
 
                         <details class="help-group">
+                            <summary>Instant replay</summary>
+                            <div class="help-body">
+                                <p>In Director mode, <strong>Replay</strong> in the top bar plays back the last few seconds of the camera on air. Switch on <strong>Keep the camera on air recording for replays</strong> there first (it is off by default, because it keeps the camera recording in the background). Then <strong>Replay to Preview</strong> saves about the last 8 to 16 seconds to the Media Bin as "Replay …" and puts it in Preview; <strong>Send</strong> puts it on the screens, like any video. Stream Deck and OSC can do it too (<code>/kairo/director-replay</code>).</p>
+                            </div>
+                        </details>
+
+                        <details class="help-group">
                             <summary>Streaming</summary>
                             <div class="help-body">
                                 <p><strong>Settings → Streaming</strong> is where the destinations for a live stream are kept: YouTube, Facebook, Twitch or any RTMP or RTMPS address, each with its own switch, so one stream can go to several places. Pick the video size, frame rate and quality your internet upload can carry, and the audio quality. Audio always comes from the input chosen under <strong>Settings → Audio</strong>.</p>
@@ -2451,6 +2458,7 @@
     <script src="streaming_panel.js"></script>
     <script src="streaming_ui.js"></script>
     <script src="sound_mixer.js"></script>
+    <script src="instant_replay.js"></script>
     <script src="macros.js"></script>
     <script src="settings_layout.js"></script>
     <script src="design_space.js"></script>
