@@ -359,11 +359,11 @@
     publishTransition();
   }
   function publishTransition() {
-    try { localStorage.setItem('kairo-video-transition', JSON.stringify(transitionPref())); } catch {}
+    KairoTransitions.video(transitionPref());
   }
   const fadeMs = () => { const n = Number(settings.videoFadeMs); return Number.isFinite(n) && n >= 0 && n <= 5000 ? Math.round(n) : 300; };
   function publishFade() {
-    try { localStorage.setItem('kairo-video-fade', JSON.stringify(fadeMs())); } catch {}
+    KairoTransitions.videoFade(fadeMs());
   }
   // The state a one-step Undo goes back to.
   function snapshot() {
@@ -596,7 +596,7 @@
     snapshot();
     D.liveLookId = null;
     if (mode) {
-      try { localStorage.setItem('kairo-video-transition', JSON.stringify(mode)); } catch {}
+      KairoTransitions.video(mode);
       clearTimeout(D.transTimer); D.transTimer = setTimeout(publishTransition, fadeMs() + 400);
     } else publishTransition();
     setVideoLiveFor(ps.on.map(o => o.id), id || null);
@@ -1248,11 +1248,11 @@
     D.grid?.destroy(); D.grid = null;
     window.KairoVideoLayout?.stop();
     // Going off air fades, without changing the transition the operator chose.
-    try { localStorage.setItem('kairo-video-transition', JSON.stringify('fade')); } catch {}
+    KairoTransitions.video('fade');
     setVideoLiveFor(videoOutputs().map(o => o.id), null);
     // Kept, so turning the mode back on within the moment cancels it (it would wipe the new one).
     clearTimeout(D.transTimer); D.transTimer = null;
-    clearTimeout(D.offTimer); D.offTimer = setTimeout(() => { D.offTimer = null; try { localStorage.removeItem('kairo-video-transition'); } catch {} }, 1500);
+    clearTimeout(D.offTimer); D.offTimer = setTimeout(() => { D.offTimer = null; KairoTransitions.video(null); }, 1500);
     Object.values(D.frames).forEach(f => { f.ro.disconnect(); f.frame.src = 'about:blank'; });
     D.frames = {};
     stopVideoSources();
@@ -1270,7 +1270,8 @@
     if (D.onResize) { window.removeEventListener('resize', D.onResize); D.onResize = null; }
     D.main?.remove();
     D.root = null; D.main = null; D.top = null; D.bottomWrap = null;
-    try { localStorage.setItem('kairo-video-live', '{}'); localStorage.removeItem('kairo-video-fade'); localStorage.removeItem('kairo-video-tbar'); localStorage.removeItem('kairo-video-director'); } catch {}
+    try { localStorage.setItem('kairo-video-live', '{}'); localStorage.removeItem('kairo-video-tbar'); localStorage.removeItem('kairo-video-director'); } catch {}
+    KairoTransitions.videoFade(null);
     D.lastPub = null;
     // The display chosen for the multiview goes back to its normal mode (the Monitor gets its confidence view back).
     if (typeof applyOutputModes === 'function') applyOutputModes();
