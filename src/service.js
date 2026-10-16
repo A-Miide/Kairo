@@ -1963,9 +1963,10 @@
   // a separate copy per this file's own fetch helpers/no cross-file import.
   async function fetchAllMediaItemsForBin() {
     const items = [];
-    const binP = fetchWithTimeout(`${SERVER}/api/media/bin`).then(r => r.json())
-      .then(bin => (bin.items || []).forEach(it => items.push({ ...it, binSource: 'bin' })))
-      .catch(() => {});
+    // The bin itself failing to load looked like an empty bin (files "gone"): it is said.
+    const binP = fetchWithTimeout(`${SERVER}/api/media/bin`).then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
+      .then(bin => { (bin.items || []).forEach(it => items.push({ ...it, binSource: 'bin' })); window.kairoProblemCleared?.('media-bin'); })
+      .catch((err) => window.kairoProblem?.(`The Media Bin couldn't be loaded (${err.message}); your files are still on disk. It tries again when you open it.`, 'media-bin'));
     // Smart folders are fetched in parallel, not one round-trip per folder
     // in sequence — the Media Bin's first paint used to wait on N serial
     // requests for N watched folders.
