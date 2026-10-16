@@ -3530,7 +3530,12 @@ populateAudioOutputDevices();
 function applyMediaSink(v) {
   const id = localStorage.getItem(MEDIA_OUTPUT_KEY) || '';
   const target = v || document.querySelector('#slide-preview-media video');
-  if (target && typeof target.setSinkId === 'function') target.setSinkId(id).catch(() => {});
+  if (target && typeof target.setSinkId === 'function') target.setSinkId(id).then(
+    () => window.kairoProblemCleared?.('media-sink'),
+    // The chosen output (the desk) isn't there: the sound plays on this computer's default
+    // output instead, which may be the laptop speakers. Said, not silent.
+    (err) => window.kairoProblem?.(`Video sound isn't going to the chosen sound output (${err && err.message ? err.message : 'not available'}), so it plays on this computer's default output. Check Settings → Outputs → Audio Output.`, 'media-sink'),
+  );
 }
 window.applyMediaSink = applyMediaSink;
 (function reapplySavedMediaVolume() {
