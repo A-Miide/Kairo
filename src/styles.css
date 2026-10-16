@@ -1984,6 +1984,56 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
   padding: 3px 6px;
 }
 
+/* Quick edit: Slides | Text */
+.svc-mode {
+  display: inline-flex;
+  margin-left: var(--space-4);
+  border: 1px solid var(--border-md);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  flex: none;
+}
+.svc-mode button {
+  padding: 4px 10px;
+  border: 0;
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+.svc-mode button + button { border-left: 1px solid var(--border-md); }
+.svc-mode button.is-on { background: var(--bg-input); color: var(--text); }
+.svc-mode button:disabled { opacity: .4; cursor: default; }
+.svc-text-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(160px, 240px);
+  gap: var(--space-4);
+  min-height: 60vh;
+}
+.svc-text-editor {
+  width: 100%;
+  min-height: 60vh;
+  resize: vertical;
+  padding: 14px 16px;
+  background: var(--bg-input);
+  border: 1px solid var(--border-md);
+  border-radius: var(--radius-md, 8px);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 15px;
+  line-height: 1.6;
+}
+.svc-text-editor:focus { outline: none; border-color: var(--accent); }
+.svc-text-side { display: flex; flex-direction: column; gap: 2px; max-height: 70vh; overflow: auto; }
+.svc-text-count { font-size: var(--fs-xs); letter-spacing: .1em; text-transform: uppercase; color: var(--text-3); font-weight: 700; padding: 2px 0 6px; }
+.svc-text-slide { display: flex; gap: 8px; font-size: 12px; padding: 4px 6px; border-radius: 5px; min-width: 0; }
+.svc-text-slide.live { background: rgba(255,106,61,0.12); }
+.svc-text-n { color: var(--text-3); flex: none; max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.svc-text-first { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+@media (max-width: 900px) { .svc-text-wrap { grid-template-columns: 1fr; } .svc-text-side { max-height: 30vh; } }
+
 .svc-delim {
   display: flex;
   align-items: center;

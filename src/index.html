@@ -411,6 +411,13 @@
                     </button>
                     <input type="text" id="svc-fs-title" class="ts-name-input svc-fs-title" placeholder="Section title…">
 
+                    <!-- Slides: a field per slide. Text: the whole section as one document
+                         (a blank line starts a slide, [Chorus] starts a group). -->
+                    <div class="svc-mode" id="svc-flow-mode" role="group" aria-label="Edit as">
+                        <button type="button" data-mode="slides" class="is-on" aria-pressed="true">Slides</button>
+                        <button type="button" data-mode="text" aria-pressed="false">Text</button>
+                    </div>
+
                     <div class="svc-delim" id="svc-delim-group">
                         <span class="svc-delim-label">Lines</span>
                         <input type="number" id="svc-delim-input" class="svc-delim-input" min="0" value="2" title="Lines per slide — 0 keeps each slide/stanza as-is">
@@ -1590,6 +1597,7 @@
                                 </ul>
                                 <p>Use <strong>+ New</strong> in the sidebar to create additional named playlists (e.g. one per service) — Default is just the one that's there from the start.</p>
                                 <p>Click any slide in an item to send it live; the currently-live slide is highlighted. Right-click a slide for more options (duplicate, delete, split, etc.).</p>
+                                <p><strong>Quick edit</strong> (right-click a song or deck) has two ways to edit. <strong>Slides</strong> gives a text field per slide: Shift+Enter splits a slide at the caret, and Backspace at the very start joins it onto the one before. <strong>Text</strong> shows the whole song or deck as one piece of writing, the easiest way to paste in or rework lyrics: a blank line starts a new slide, and a line like <code>[Chorus]</code> or <code>[Verse 2]</code> starts a part (in a deck, it names the next slide). The slides it makes are listed beside the text as you type, and each slide keeps its own theme.</p>
                                 <p>While Kairo is listening, slides follow along by themselves: a live song or sermon deck advances as it's sung or preached (the bar under the playlist shows <strong>Following</strong> and where it is), and a slide deck in the playlist comes up on its own when its first slide is said. When the slides move on while a scripture is on screen, the slide takes the screen back — the preacher has moved on. A slide that is itself scripture (the sermon's verses put on slides) is left to Bible detection, which puts the verse up as it's read. Click any slide to take over — following carries on from there. Stop listening and it stops.</p>
                             </div>
                         </details>
