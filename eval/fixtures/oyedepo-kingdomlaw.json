@@ -4336,6 +4336,14 @@
     {
       "book": "1 Corinthians",
       "chapter": 2,
+      "verse": 10,
+      "kind": "paraphrase",
+      "startMs": 1362000,
+      "addedBy": "read against the transcript (2026-10-16): \"spirit of god seares all things\""
+    },
+    {
+      "book": "1 Corinthians",
+      "chapter": 2,
       "verse": 11,
       "kind": "quote",
       "startMs": 1371000,
@@ -4357,12 +4365,36 @@
       "startMs": 1423000
     },
     {
+      "book": "Acts",
+      "chapter": 13,
+      "verse": 22,
+      "kind": "paraphrase",
+      "startMs": 1423000,
+      "addedBy": "read against the transcript (2026-10-16): \"i have found david my servant\"; Psalm 89:20 and 1 Samuel 13:14 share the wording"
+    },
+    {
       "book": "1 Samuel",
       "chapter": 16,
       "verse": 22,
       "kind": "citation",
       "startMs": 1467000,
       "bootstrapped": true
+    },
+    {
+      "book": "1 Samuel",
+      "chapter": 19,
+      "verse": 5,
+      "kind": "paraphrase",
+      "startMs": 1483000,
+      "addedBy": "read against the transcript (2026-10-16): \"took his life in his hand\""
+    },
+    {
+      "book": "2 Chronicles",
+      "chapter": 9,
+      "verse": 23,
+      "kind": "paraphrase",
+      "startMs": 1512000,
+      "addedBy": "read against the transcript (2026-10-16): \"kings of the earth came to hear\""
     },
     {
       "book": "1 Kings",
@@ -4397,11 +4429,27 @@
       "startMs": 1570000
     },
     {
+      "book": "John",
+      "chapter": 3,
+      "verse": 16,
+      "kind": "paraphrase",
+      "startMs": 1614000,
+      "addedBy": "read against the transcript (2026-10-16): \"his only beg son\""
+    },
+    {
       "book": "Psalms",
       "chapter": 119,
       "verse": null,
       "kind": "citation",
       "startMs": 1662000
+    },
+    {
+      "book": "Psalms",
+      "chapter": 119,
+      "verse": 97,
+      "kind": "paraphrase",
+      "startMs": 1662000,
+      "addedBy": "read against the transcript (2026-10-16): \"oh how love i thy\""
     },
     {
       "book": "Isaiah",
@@ -4614,6 +4662,14 @@
       "startMs": 3058000
     },
     {
+      "book": "Habakkuk",
+      "chapter": 2,
+      "verse": 4,
+      "kind": "paraphrase",
+      "startMs": 3058000,
+      "addedBy": "read against the transcript (2026-10-16): \"the just shall live by his faith\"; Romans 1:17 and Galatians 3:11 say it \"by faith\""
+    },
+    {
       "book": "1 Corinthians",
       "chapter": 9,
       "verse": 24,
@@ -4669,6 +4725,14 @@
       "kind": "citation",
       "startMs": 3520000,
       "bootstrapped": true
+    },
+    {
+      "book": "Genesis",
+      "chapter": 49,
+      "verse": 3,
+      "kind": "paraphrase",
+      "startMs": 3537000,
+      "addedBy": "read against the transcript (2026-10-16): \"you are my firstborn the beginning of my strength\""
     },
     {
       "book": "Genesis",
@@ -4875,6 +4939,14 @@
     {
       "book": "Genesis",
       "chapter": 26,
+      "verse": 2,
+      "kind": "paraphrase",
+      "startMs": 5178000,
+      "addedBy": "read against the transcript (2026-10-16): \"thou shall not go down to egypt\"; after \"Genesis 26 and 1 to 3\", labelled only as 26:1"
+    },
+    {
+      "book": "Genesis",
+      "chapter": 26,
       "verse": 12,
       "kind": "citation",
       "startMs": 5219000,
@@ -5051,6 +5123,14 @@
       "similarity": 0.6672472528360568
     },
     {
+      "book": "Genesis",
+      "chapter": 13,
+      "verse": 2,
+      "kind": "paraphrase",
+      "startMs": 6621000,
+      "addedBy": "read against the transcript (2026-10-16): \"very rich in cattle\""
+    },
+    {
       "book": "Jude",
       "chapter": 1,
       "verse": 13,
@@ -5152,6 +5232,14 @@
       "kind": "quote",
       "startMs": 7561000,
       "note": "2026-09-27 audit round 4: \"Communion this is my blood which is shed for the remission of the sins of the\" — paraphrase offer checked against the transcript and KJV by hand"
+    },
+    {
+      "book": "Exodus",
+      "chapter": 11,
+      "verse": 1,
+      "kind": "paraphrase",
+      "startMs": 7623000,
+      "addedBy": "read against the transcript (2026-10-16): \"i will bring one plague more\""
     },
     {
       "book": "Hebrews",
@@ -5282,6 +5370,14 @@
       "note": "2026-09-26 audit: bootstrapped entry checked by hand against the transcript and KJV text — was \"1 Corinthians 3:7\""
     },
     {
+      "book": "1 Corinthians",
+      "chapter": 6,
+      "verse": 19,
+      "kind": "paraphrase",
+      "startMs": 7907000,
+      "addedBy": "read against the transcript (2026-10-16): \"temples of the holy ghost\"; said beside 1 Corinthians 3:16-17"
+    },
+    {
       "book": "Revelation",
       "chapter": 1,
       "verse": 18,
@@ -5346,6 +5442,14 @@
     },
     {
       "book": "Exodus",
+      "chapter": 14,
+      "verse": 13,
+      "kind": "paraphrase",
+      "startMs": 8227000,
+      "addedBy": "read against the transcript (2026-10-16): \"you see them no more again\""
+    },
+    {
+      "book": "Exodus",
       "chapter": 15,
       "verse": 26,
       "kind": "citation",
@@ -5360,12 +5464,36 @@
       "bootstrapped": true
     },
     {
+      "book": "Exodus",
+      "chapter": 12,
+      "verse": 42,
+      "kind": "paraphrase",
+      "startMs": 8335000,
+      "addedBy": "read against the transcript (2026-10-16): \"a night to be much\""
+    },
+    {
       "book": "Romans",
       "chapter": 1,
       "verse": 16,
       "kind": "quote",
       "startMs": 8365000,
       "bootstrapped": true
+    },
+    {
+      "book": "1 Corinthians",
+      "chapter": 5,
+      "verse": 7,
+      "kind": "paraphrase",
+      "startMs": 8403000,
+      "addedBy": "read against the transcript (2026-10-16): \"passover lamb is sacrifice for us\""
+    },
+    {
+      "book": "Revelation",
+      "chapter": 12,
+      "verse": 11,
+      "kind": "paraphrase",
+      "startMs": 8559000,
+      "addedBy": "read against the transcript (2026-10-16): \"overcame him by the blood of the lamb\""
     }
   ]
 }

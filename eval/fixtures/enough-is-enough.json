@@ -4245,6 +4245,30 @@
   ],
   "groundTruth": [
     {
+      "book": "Exodus",
+      "chapter": 3,
+      "verse": 14,
+      "kind": "paraphrase",
+      "startMs": 269135,
+      "addedBy": "read against the transcript (2026-10-16): \"i am that i am\""
+    },
+    {
+      "book": "Acts",
+      "chapter": 10,
+      "verse": 34,
+      "kind": "paraphrase",
+      "startMs": 458530,
+      "addedBy": "read against the transcript (2026-10-16): \"no respecter of persons\"; Romans 2:11 has the phrase too"
+    },
+    {
+      "book": "Exodus",
+      "chapter": 23,
+      "verse": 25,
+      "kind": "paraphrase",
+      "startMs": 729255,
+      "addedBy": "read against the transcript (2026-10-16): \"thou shall serve the lord and he shall bless\""
+    },
+    {
       "book": "Mark",
       "chapter": 9,
       "verse": 23,
@@ -4253,6 +4277,14 @@
       "unverified": true,
       "matchedIdf": 22.83073557009129,
       "similarity": 0.7091032928385221
+    },
+    {
+      "book": "Jude",
+      "chapter": 1,
+      "verse": 20,
+      "kind": "paraphrase",
+      "startMs": 925705,
+      "addedBy": "read against the transcript (2026-10-16): \"upon your most holy faith\""
     },
     {
       "book": "John",
@@ -4296,6 +4328,14 @@
       "kind": "quote",
       "startMs": 1586190,
       "bootstrapped": true
+    },
+    {
+      "book": "John",
+      "chapter": 11,
+      "verse": 39,
+      "kind": "paraphrase",
+      "startMs": 1616160,
+      "addedBy": "read against the transcript (2026-10-16): \"dead four days\"; a phrase of the verse in passing"
     },
     {
       "book": "Romans",

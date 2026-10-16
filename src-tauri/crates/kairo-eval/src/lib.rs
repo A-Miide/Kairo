@@ -75,8 +75,9 @@ pub fn answer(m: &MeaningService, r: &Request) -> Answer {
     match r {
         Request::Paraphrase { id, windows, limit } => Answer::Paraphrase {
             id: *id,
+            // `MEANING_LIMIT=<n>`: a longer shortlist for the cross-encoder than the engine asks for.
             candidates: m
-                .paraphrase(windows, *limit)
+                .paraphrase(windows, std::env::var("MEANING_LIMIT").ok().and_then(|n| n.parse().ok()).unwrap_or(*limit))
                 .unwrap_or_default()
                 .into_iter()
                 .map(|f| MeaningHit { verse: f.verse, cos: f.cos, window: f.window, rerank: f.rerank, rerank_modern: f.rerank_modern })
