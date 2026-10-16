@@ -1,14 +1,11 @@
 // How pictures and videos come on screen (the Media Bin's Transition): Fade, Slide, Cut, or
 // the same as the words (the Bible/slides transition, the default). Kept in
-// settings.mediaTransition and handed to the output windows through shared storage
-// ('kairo-media-transition'), as the Director's camera transition is.
+// settings.mediaTransition and handed to the output windows through KairoTransitions
+// (output_transitions.js), as the Director's camera transition is.
 'use strict';
 (function () {
-  const KEY = 'kairo-media-transition';
   const sel = () => document.getElementById('media-bin-transition');
-  function publish(v) {
-    try { if (v) localStorage.setItem(KEY, JSON.stringify({ animation: v })); else localStorage.removeItem(KEY); } catch {}
-  }
+  const publish = (v) => KairoTransitions.media(v);
   function apply() {
     const v = (typeof settings === 'object' && settings && settings.mediaTransition) || '';
     const s = sel();

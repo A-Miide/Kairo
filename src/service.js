@@ -6783,7 +6783,7 @@
       if (!btn) return;
       userTouched = true;
       setActive(btn.dataset.anim);
-      saveSettingsPatch({ outputAnimation: btn.dataset.anim });
+      KairoTransitions.words({ animation: btn.dataset.anim });
     });
 
     speedInput.addEventListener('click', (e) => {
@@ -6792,7 +6792,7 @@
       userTouched = true;
       const value = parseFloat(btn.dataset.speed);
       showDuration(value);
-      saveSettingsPatch({ outputAnimationSpeed: value });
+      KairoTransitions.words({ speed: value });
     });
   }
 
