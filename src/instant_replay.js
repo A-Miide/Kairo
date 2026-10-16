@@ -193,7 +193,7 @@
   `;
   document.head.appendChild(style);
 
-  window.KairoReplay = { replay, setEnabled, isReady: () => !!stream && ready() };
+  window.KairoReplay = { replay };
   // Director mode turning on or off, the camera on air changing, and the settings arriving
   // (Replay may be saved as on) are the only things that change what this follows.
   onDirectorChange(follow);

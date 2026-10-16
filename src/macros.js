@@ -261,7 +261,7 @@
   `;
   document.head.appendChild(style);
 
-  window.KairoMacros = { run, runIndex, list };
+  window.KairoMacros = { runIndex };
   document.addEventListener('click', (e) => {
     const b = e.target.closest && e.target.closest('[data-pane="macros"]');
     if (b) loadOverlays().then(renderPane);

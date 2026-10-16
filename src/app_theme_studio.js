@@ -3680,14 +3680,6 @@ function makeToggle(checked, onChange) {
   return label;
 }
 
-function makeNumber(val, min, max, step, onChange) {
-  const inp = document.createElement('input');
-  inp.type = 'number'; inp.className = 'ts-prop-number';
-  inp.value = val; inp.min = min; inp.max = max; inp.step = step || 1;
-  inp.addEventListener('input', () => onChange(parseFloat(inp.value) || 0));
-  return inp;
-}
-
 function makeColor(val, onChange) {
   const inp = document.createElement('input');
   inp.type = 'color'; inp.className = 'ts-prop-color';
