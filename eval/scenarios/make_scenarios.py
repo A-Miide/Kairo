@@ -61,6 +61,14 @@ S["recall-and-return"] = [
     ("that is why I am telling you this morning that his love is real and his love is personal", []),
     ("so I say again, for God so loved the world, that he gave his only begotten Son", [("quote", "John 3:16")]),
 ]
+# ── 4b. A partial quote of a long verse beside a short verse sharing its words ───────
+S["rank-john-3-16-tail"] = [
+    ("let us read John chapter three verse sixteen", [("citation", "John 3:16")]),
+    ("that whosoever believeth in him should not perish, but have everlasting life", [("quote", "John 3:16")]),
+]
+S["rank-john-3-16-tail-uncited"] = [
+    ("that whosoever believeth in him should not perish, but have everlasting life", [("quote", "John 3:16")]),
+]
 # ── 5. Reading a modern translation ──────────────────────────────────────────────────
 S["niv-john316-uncited"] = [
     ("for God so loved the world that he gave his one and only Son", []),

@@ -134,16 +134,23 @@ impl Engine {
     /// The best verbatim results over several texts (stopping at a near-complete quote).
     /// The best results over several texts, and the text they came from.
     fn verbatim_batch(&self, texts: &[String], min_words: usize) -> (Vec<VerbatimHit>, String) {
+        // Another verse carries the same weight of what was said: this much of the speech can't
+        // tell them apart yet (John 3:15 and 3:16 share "should not perish, but have").
+        let ambiguous = |r: &[VerbatimHit]| {
+            r.get(1).is_some_and(|b| matches!((r[0].matched_idf, b.matched_idf), (Some(x), Some(y)) if y >= x * 0.98))
+        };
         let mut best: (Vec<VerbatimHit>, String) = (Vec::new(), String::new());
         for t in texts {
             let r = verbatim(&self.k.lexicon, t, min_words, VERBATIM_LIMIT);
             if r.is_empty() {
                 continue;
             }
-            if best.0.is_empty() || r[0].score > best.0[0].score {
+            // A clear result beats an ambiguous one: the longer text that follows tells them apart.
+            if best.0.is_empty() || r[0].score > best.0[0].score || (ambiguous(&best.0) && !ambiguous(&r)) {
                 best = (r, t.clone());
             }
-            if best.0[0].score >= READ_SIMILARITY {
+            // A near-complete, unambiguous quote ends the search.
+            if best.0[0].score >= READ_SIMILARITY && !ambiguous(&best.0) {
                 break;
             }
         }
