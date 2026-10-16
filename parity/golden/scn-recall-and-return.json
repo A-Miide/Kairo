@@ -24,7 +24,7 @@
    "audioMs": 22800
   },
   {
-   "text": "that whosoever believeth in him should not perish, but have everlasting life",
+   "text": "so I say again, for God so loved the world, that he gave his only begotten Son",
    "audioMs": 31300
   }
  ],
@@ -121,17 +121,27 @@
   },
   {
    "cue": 5,
-   "text": "that whosoever believeth in",
+   "text": "so I say again,",
    "isFinal": false
   },
   {
    "cue": 5,
-   "text": "that whosoever believeth in him should not perish,",
+   "text": "so I say again, for God so loved",
    "isFinal": false
   },
   {
    "cue": 5,
-   "text": "that whosoever believeth in him should not perish, but have everlasting life",
+   "text": "so I say again, for God so loved the world, that he",
+   "isFinal": false
+  },
+  {
+   "cue": 5,
+   "text": "so I say again, for God so loved the world, that he gave his only begotten",
+   "isFinal": false
+  },
+  {
+   "cue": 5,
+   "text": "so I say again, for God so loved the world, that he gave his only begotten Son",
    "isFinal": true
   }
  ],
