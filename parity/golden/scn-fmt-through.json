@@ -2,6 +2,7 @@
  "source": "scn-fmt-through",
  "kind": "scenario",
  "lang": "en",
+ "songLive": false,
  "cues": [
   {
    "text": "first Corinthians thirteen four through seven",

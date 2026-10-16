@@ -2,6 +2,7 @@
  "source": "scn-sung-psalm23",
  "kind": "scenario",
  "lang": "en",
+ "songLive": false,
  "cues": [
   {
    "text": "the Lord is my shepherd, I shall not want, the Lord is my shepherd, I shall not want",

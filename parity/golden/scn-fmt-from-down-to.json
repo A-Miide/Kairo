@@ -2,6 +2,7 @@
  "source": "scn-fmt-from-down-to",
  "kind": "scenario",
  "lang": "en",
+ "songLive": false,
  "cues": [
   {
    "text": "Romans eight from twenty eight down to thirty one",

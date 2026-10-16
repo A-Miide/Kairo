@@ -2,6 +2,7 @@
  "source": "scn-niv-philippians4-uncited",
  "kind": "scenario",
  "lang": "en",
+ "songLive": false,
  "cues": [
   {
    "text": "do not be anxious about anything, but in every situation, by prayer and petition, with thanksgiving, present your requests to God",

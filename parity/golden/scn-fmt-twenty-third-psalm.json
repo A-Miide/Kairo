@@ -2,6 +2,7 @@
  "source": "scn-fmt-twenty-third-psalm",
  "kind": "scenario",
  "lang": "en",
+ "songLive": false,
  "cues": [
   {
    "text": "let us go to the twenty third Psalm, the Lord is my shepherd, I shall not want",

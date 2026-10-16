@@ -27,6 +27,10 @@ S["sung-isaiah40"] = [
     ("they shall mount up with wings as eagles, they shall run and not be weary", []),
     ("they shall walk and not faint, teach me Lord, teach me Lord to wait", []),
 ]
+# The same songs with the lyrics slide up (the operator's normal flow): scripture heard is only ever offered.
+for _n in ("psalm23", "isaiah40"):
+    S["sung-live-" + _n] = S["sung-" + _n]
+S_SONG = {"sung-live-psalm23", "sung-live-isaiah40"}
 # ── 2. Misspoken citations: the words read settle it ─────────────────────────────────
 S["slip-jonah-john"] = [
     ("open your Bible to John chapter one verse seventeen", []),
@@ -131,7 +135,7 @@ def build(name, lines):
                 continue
             truth.append(a)
         t += len(words) * MS_PER_WORD + GAP_MS
-    golden = {"source": f"scn-{name}", "kind": "scenario", "lang": S_LANG.get(name, "en"), "cues": cues, "inputs": inputs, "stable": [], "unstable": [], "runs": []}
+    golden = {"source": f"scn-{name}", "kind": "scenario", "lang": S_LANG.get(name, "en"), "songLive": name in S_SONG, "cues": cues, "inputs": inputs, "stable": [], "unstable": [], "runs": []}
     fixture = {"videoId": f"scn-{name}", "title": f"Scenario: {name}", "transcript": [{"startMs": c["audioMs"], "text": c["text"]} for c in cues], "groundTruth": truth, "note": "eval/scenarios/make_scenarios.py"}
     json.dump(golden, open(os.path.join(ROOT, "parity/golden", f"scn-{name}.json"), "w"), indent=1, ensure_ascii=False)
     json.dump(fixture, open(os.path.join(ROOT, "eval/fixtures", f"scn-{name}.json"), "w"), indent=1, ensure_ascii=False)

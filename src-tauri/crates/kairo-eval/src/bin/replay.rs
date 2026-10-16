@@ -262,6 +262,10 @@ fn replay(k: &Arc<Knowledge>, golden: &Value, audio: bool, m: Option<&MeaningSer
     // A recording can say which language the service was in ("lang": "es"), as Settings does.
     let lang = golden["lang"].as_str().map(kairo_detect::reference::Lang::from_code).unwrap_or_default();
     let mut engine = Engine::new(k.clone(), Config { explain: trace.is_some(), meaning: m.is_some(), meaning_thresholds: thresholds, offline: golden["offline"].as_bool().unwrap_or(false), lang, ..Config::default() });
+    // A scenario can start with a song slide live ("songLive"): the operator sent lyrics, not scripture.
+    if golden["songLive"].as_bool().unwrap_or(false) {
+        engine.handle(Event::NonScriptureLive, 0);
+    }
     let cue_at = cue_ms(golden);
     let mut out = Vec::new();
     let mut wakes: Vec<(u64, Event)> = Vec::new();
