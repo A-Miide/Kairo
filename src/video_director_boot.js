@@ -112,7 +112,7 @@
     const sim = window.KairoSimCameras;
     if (!sim) return;
     const isSim = (x) => /^sim-cam-/.test(x.deviceId || '');
-    let list = Array.isArray(settings.videoSources) ? settings.videoSources.filter(x => x && typeof x === 'object') : [];
+    let list = KairoCameras.list();
     if (on) {
       sim.ids().forEach((id, i) => {
         if (list.some(x => x.deviceId === id)) return;
@@ -122,12 +122,9 @@
       if (!list.some(isSim)) return;
       list = list.filter(x => !isSim(x));
     }
-    settings.videoSources = list;
     const live = settings.videoLive && typeof settings.videoLive === 'object' ? { ...settings.videoLive } : {};
     for (const k of Object.keys(live)) if (!list.some(x => x.id === live[k])) live[k] = null;
-    settings.videoLive = live;
-    saveSettingsPatch({ videoSources: list, videoLive: live });
-    try { localStorage.setItem('kairo-video-sources', JSON.stringify(list)); } catch {}
+    KairoCameras.save(list, live);
   }
 
   // armed: false, or the sentence saying what the next choice will do (shown under the switch and as the button's label).
@@ -289,7 +286,7 @@
   // Called by loadSettings (app.js) once the saved settings are in.
   window.initVideoSources = async function () {
     // Simulated cameras: keep the four test inputs in step with the flag.
-    try { if (window.KairoSimCameras && (window.KairoSimCameras.isOn() || (settings.videoSources || []).some(x => x && /^sim-cam-/.test(x.deviceId || '')))) syncSimSources(window.KairoSimCameras.isOn()); } catch {}
+    try { if (window.KairoSimCameras && (window.KairoSimCameras.isOn() || KairoCameras.list().some(x => /^sim-cam-/.test(x.deviceId || '')))) syncSimSources(window.KairoSimCameras.isOn()); } catch {}
     // An earlier build swapped an output's own theme for a screen theme: put the saved normal themes back once.
     try {
       const saved = settings.directorScreenOrig;

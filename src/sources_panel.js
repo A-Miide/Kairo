@@ -10,9 +10,9 @@
 // while the Sources pane is showing, so a camera is not kept busy otherwise.
 //
 // Persistence: settings.videoSources [{id, name, deviceId, label, width,
-// height, fps, enabled}] and settings.videoLive {[outputId]: sourceId|null}, saved with
-// saveSettingsPatch, and mirrored to localStorage (kairo-video-sources /
-// kairo-video-live) for the display windows, as the layer map is.
+// height, fps, enabled}] and settings.videoLive {[outputId]: sourceId|null}, saved and
+// mirrored for the display windows by KairoCameras (settings_store.js), the one owner of
+// the camera list.
 // Lazy-loaded by video_director_boot.js only while Video director mode is on;
 // startVideoSources() builds the pane and stopVideoSources() removes it again.
 'use strict';
@@ -46,26 +46,18 @@ function videoLiveMap() {
 
 // What display windows read: the source list and the live map.
 function publishVideoState() {
-  try {
-    localStorage.setItem('kairo-video-sources', JSON.stringify(videoSourceList()));
-    localStorage.setItem('kairo-video-live', JSON.stringify(videoLiveMap()));
-  } catch (err) {
-    console.warn('[Video] could not publish state:', err.message);
-  }
+  KairoCameras.mirror(videoSourceList(), videoLiveMap());
 }
 
 function saveVideoSources(list) {
   settings.videoSources = list;
-  settings.videoLive = videoLiveMap();   // a removed source drops out of every output
-  saveSettingsPatch({ videoSources: settings.videoSources, videoLive: settings.videoLive });
-  publishVideoState();
+  // A removed source drops out of every output.
+  KairoCameras.save(list, videoLiveMap());
   renderVideoSources();
 }
 
 function setVideoLiveFor(outputIds, sourceId) {
-  settings.videoLive = VSRC.setLive(videoLiveMap(), outputIds, sourceId);
-  saveSettingsPatch({ videoLive: settings.videoLive });
-  publishVideoState();
+  KairoCameras.saveLive(VSRC.setLive(videoLiveMap(), outputIds, sourceId));
   renderVideoSources();
 }
 
