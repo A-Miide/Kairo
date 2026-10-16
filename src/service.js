@@ -3192,8 +3192,178 @@
     const item = activeItem();
     if (!item) return;
     renderFullEditHeader();
-    renderFlowView(item);
+    if (flowMode === 'text' && textEditable(item)) renderTextView(item);
+    else renderFlowView(item);
   }
+
+  // ── Quick edit's Text view (reflow) ──
+  // The whole song or deck as one document: a blank line starts a new slide, and a line
+  // like [Chorus] starts a group (a song's stanza; a deck's slide label). Typing re-flows
+  // the slides as you go; Slides goes back to a field per slide.
+  let flowMode = 'slides';
+  // Text-only songs and decks: a picture or imported scene slide has no text to edit here.
+  function textEditable(item) {
+    if (!item) return false;
+    if (item.type === 'song') return true;
+    if (item.type === 'slides') return !(item.blocks || []).some(b => b.image || b.layers);
+    return false;
+  }
+  const GROUP_LINE = /^\s*\[([^\]\n]{1,40})\]\s*$/;
+  function itemToText(item) {
+    const out = [];
+    if (item.type === 'song') {
+      (item.blocks || []).forEach((b, bi) => {
+        const lines = (b.lines || []).map(l => String(l ?? '').trim());
+        if (!lines.some(Boolean) && !b.label) return;
+        if (out.length) out.push('');
+        const realLabel = b.label && b.label.trim().toLowerCase() !== String(item.title || '').trim().toLowerCase();
+        if (realLabel || bi > 0) out.push(`[${(b.label || `Part ${bi + 1}`).trim()}]`);
+        const brk = new Set(b.breaks || []);
+        lines.forEach((l, i) => { if (brk.has(i) && i > 0) out.push(''); if (l) out.push(l); });
+      });
+    } else {
+      (item.blocks || []).forEach((b, i) => {
+        if (out.length) out.push('');
+        const auto = !b.label || /^slide \d+$/i.test(b.label.trim());
+        if (!auto) out.push(`[${b.label.trim()}]`);
+        const lines = String(b.text || '').split('\n').map(l => l.trim()).filter(Boolean);
+        // A slide that is empty on purpose keeps its place.
+        out.push(...(lines.length ? lines : ['-']));
+      });
+    }
+    return out.join('\n');
+  }
+  // Text → the item's blocks. Songs: [Label] starts a stanza, a blank line inside one is a
+  // forced slide break. Decks: a blank line ends a slide; [Label] names the next slide; a
+  // lone "-" is a slide left empty on purpose. Each slide keeps its own theme by position.
+  function textToBlocks(item, text) {
+    const rows = String(text || '').replace(/\r/g, '').split('\n').map(l => l.trim());
+    if (item.type === 'song') {
+      const blocks = [];
+      let cur = null, gap = false;
+      const start = (label) => { cur = { label, lines: [], breaks: [] }; blocks.push(cur); gap = false; };
+      rows.forEach(l => {
+        const g = l.match(GROUP_LINE);
+        if (g) { start(g[1].trim()); return; }
+        if (!l) { gap = true; return; }
+        if (!cur) start(blocks.length ? `Part ${blocks.length + 1}` : (item.blocks?.[0]?.label || ''));
+        if (gap && cur.lines.length) cur.breaks.push(cur.lines.length);
+        gap = false;
+        cur.lines.push(l);
+      });
+      // Each part keeps whatever else it had: only its words and breaks change.
+      const kept = keepOldBlocks(item.blocks || [], blocks.filter(b => b.lines.length).map(b => b.lines.join('\n')), b => (b.lines || []).join('\n'));
+      return blocks.filter(b => b.lines.length).map((b, i) => {
+        const next = { ...kept[i], label: b.label, lines: b.lines };
+        if (b.breaks.length) next.breaks = b.breaks; else delete next.breaks;
+        return next;
+      });
+    }
+    const old = item.blocks || [];
+    const slides = [];
+    let cur = null, label = null;
+    const flush = () => { if (cur) { slides.push(cur); cur = null; } };
+    rows.forEach(l => {
+      const g = l.match(GROUP_LINE);
+      if (g) { flush(); label = g[1].trim(); return; }
+      if (!l) { flush(); return; }
+      if (!cur) { cur = { label: label || '', lines: [] }; label = null; }
+      cur.lines.push(l === '-' ? '' : l);
+    });
+    flush();
+    const kept = keepOldBlocks(old, slides.map(sl => sl.lines.join('\n').trim()), b => String(b.text || '').trim());
+    return slides.map((sl, i) => ({ ...kept[i], label: sl.label || `Slide ${i + 1}`, text: sl.lines.join('\n').trim() }));
+  }
+  // What each new slide keeps of the old ones (its theme and the like): the old slide with
+  // the same words, else the one in its place if that wasn't kept elsewhere, else nothing.
+  // So adding or removing a slide never moves the others' settings onto their neighbours.
+  function keepOldBlocks(old, texts, textOf) {
+    const used = new Set();
+    const out = texts.map((t) => {
+      const j = old.findIndex((b, k) => !used.has(k) && textOf(b) === t);
+      if (j < 0) return null;
+      used.add(j);
+      return { ...old[j] };
+    });
+    return out.map((o, i) => {
+      if (o) return o;
+      if (old[i] && !used.has(i)) { used.add(i); return { ...old[i] }; }
+      return {};
+    });
+  }
+  function renderTextView(item) {
+    const host = document.getElementById('svc-flow');
+    if (!host) return;
+    // Typing here re-flows the slides; the editor itself is kept, never rebuilt under the caret.
+    const existing = host.querySelector('.svc-text-editor');
+    if (existing && existing.dataset.item === item.id) { updateTextCount(host, item); return; }
+    host.innerHTML = '';
+    const wrap = document.createElement('div');
+    wrap.className = 'svc-text-wrap';
+    const ta = document.createElement('textarea');
+    ta.className = 'svc-text-editor';
+    ta.dataset.item = item.id;
+    ta.spellcheck = true;
+    ta.value = itemToText(item);
+    ta.setAttribute('aria-label', 'All the slides as text');
+    let t = null, typed = false;
+    const apply = () => {
+      // Only what was typed changes anything: opening and leaving the text never does.
+      if (!typed) return;
+      const blocks = textToBlocks(item, ta.value);
+      if (!blocks.length) return;   // never leave a section with no slides
+      if (JSON.stringify(blocks) === JSON.stringify(item.blocks)) return;
+      item.blocks = blocks;
+      saveService(); renderSidebar();
+      updateTextCount(host, item);
+    };
+    ta.addEventListener('input', () => { typed = true; clearTimeout(t); t = setTimeout(apply, 350); });
+    ta.addEventListener('blur', () => { clearTimeout(t); apply(); });
+    // Tab inserts nothing odd: it moves focus as everywhere else.
+    wrap.appendChild(ta);
+    const side = document.createElement('div');
+    side.className = 'svc-text-side';
+    wrap.appendChild(side);
+    host.appendChild(wrap);
+    const hint = document.createElement('div');
+    hint.className = 'svc-flow-hint';
+    hint.textContent = item.type === 'song'
+      ? 'A blank line starts a new slide · [Verse 2] or [Chorus] on its own line starts a part · long parts still split by Lines'
+      : 'A blank line starts a new slide · [Name] on its own line names the next slide · a lone - keeps an empty slide';
+    host.appendChild(hint);
+    updateTextCount(host, item);
+  }
+  // Beside the text: the slides it makes, as the screen will get them.
+  function updateTextCount(host, item) {
+    const side = host.querySelector('.svc-text-side');
+    if (!side) return;
+    const slides = slidesFor(item);
+    side.innerHTML = '';
+    const head = document.createElement('div');
+    head.className = 'svc-text-count';
+    head.textContent = `${slides.length} slide${slides.length === 1 ? '' : 's'}`;
+    side.appendChild(head);
+    slides.forEach((sl, i) => {
+      const row = document.createElement('div');
+      row.className = 'svc-text-slide' + (liveSlideKey === `${item.id}:${i}` ? ' live' : '');
+      const n = document.createElement('span'); n.className = 'svc-text-n'; n.textContent = sl.label || String(i + 1);
+      const tx = document.createElement('span'); tx.className = 'svc-text-first'; tx.textContent = (sl.text || '').split('\n')[0] || '(empty)';
+      row.append(n, tx);
+      side.appendChild(row);
+    });
+  }
+  function setFlowMode(mode) {
+    flowMode = mode === 'text' ? 'text' : 'slides';
+    try { localStorage.setItem('kairo-quick-edit-mode', flowMode); } catch {}
+    const host = document.getElementById('svc-flow');
+    if (host) host.innerHTML = '';
+    renderFullEdit();
+  }
+  try { if (localStorage.getItem('kairo-quick-edit-mode') === 'text') flowMode = 'text'; } catch {}
+  document.getElementById('svc-flow-mode')?.addEventListener('click', (e) => {
+    const b = e.target.closest('button[data-mode]');
+    if (b) setFlowMode(b.dataset.mode);
+  });
 
   function renderFullEditHeader() {
     const item = activeItem();
@@ -3201,6 +3371,15 @@
     const delim = document.getElementById('svc-delim-group');
     if (titleInp) titleInp.value = item?.title || '';
     if (delim) delim.style.display = item && (item.type === 'song' || item.type === 'slides') ? '' : 'none';
+    const mode = document.getElementById('svc-flow-mode');
+    if (mode) {
+      const can = textEditable(item);
+      mode.style.display = item && (item.type === 'song' || item.type === 'slides') ? '' : 'none';
+      const textBtn = mode.querySelector('[data-mode="text"]');
+      if (textBtn) { textBtn.disabled = !can; textBtn.title = can ? 'Edit every slide as one piece of text' : 'Not for a deck with picture or imported slides'; }
+      const on = can && flowMode === 'text' ? 'text' : 'slides';
+      mode.querySelectorAll('button[data-mode]').forEach(b => { b.classList.toggle('is-on', b.dataset.mode === on); b.setAttribute('aria-pressed', b.dataset.mode === on ? 'true' : 'false'); });
+    }
     syncFullEditDelim();
   }
   function syncFullEditDelim() {
@@ -3818,9 +3997,9 @@
     const hint = document.createElement('div');
     hint.className = 'svc-flow-hint';
     hint.textContent = item.type === 'slides'
-      ? 'Drag the grip to reorder · Shift+Enter or right-click at the caret splits into a new slide'
+      ? 'Drag the grip to reorder · Shift+Enter splits at the caret · Backspace at the start joins onto the slide before · Text edits it all at once'
       : item.type === 'song'
-      ? 'Shift+Enter or right-click at the caret splits into a new slide'
+      ? 'Shift+Enter splits at the caret · Backspace at the start joins onto the slide before · Text edits it all at once'
       : 'Click text to edit';
     host.appendChild(hint);
   }
@@ -3930,6 +4109,11 @@
           e.preventDefault();
           if (item.type === 'slides') splitFlowSlideAtCaret(item, i, text);
           else splitSlideAtCaret(item, slide, text);
+          return;
+        }
+        // Backspace at the very start joins this slide onto the one before (Shift+Enter's undo).
+        if (e.key === 'Backspace' && canSplit && i > 0 && caretAtStart(text)) {
+          if (joinSlideWithPrevious(item, i, slide, text.innerText)) e.preventDefault();
         }
       });
       content = text;
@@ -4061,6 +4245,48 @@
   // where one block chunks across several slides via linesPerSlide), each
   // block here already *is* one slide — so "splitting" means inserting a
   // whole new block right after, carrying everything past the caret.
+  function caretAtStart(el) {
+    const sel = window.getSelection();
+    if (!sel.rangeCount || !sel.isCollapsed) return false;
+    const r = sel.getRangeAt(0).cloneRange();
+    r.selectNodeContents(el);
+    r.setEnd(sel.anchorNode, sel.anchorOffset);
+    return r.toString() === '';
+  }
+  // Joins slide `index` onto the one before it; false when they can't be joined (a picture
+  // slide, or two slides of a song part split only by the Lines count).
+  function joinSlideWithPrevious(item, index, slide, typed) {
+    if (item.type === 'slides') {
+      const prev = item.blocks[index - 1], cur = item.blocks[index];
+      if (!prev || !cur || prev.image || prev.layers || cur.image || cur.layers) return false;
+      const own = String(typed ?? cur.text ?? '').replace(/\r/g, '').trim();
+      prev.text = [String(prev.text || '').trim(), own].filter(Boolean).join('\n');
+      item.blocks.splice(index, 1);
+    } else if (item.type === 'song' && slide.blockIndex != null) {
+      const b = item.blocks[slide.blockIndex];
+      if (!b) return false;
+      commitSlideText(item, null, slide, typed);
+      if (slide.lineStart > 0) {
+        if (!(b.breaks || []).includes(slide.lineStart)) {
+          if (typeof toast === 'function') toast('These two are split by the Lines count: lower Lines, or use Text to join them', 'error');
+          return true;
+        }
+        b.breaks = b.breaks.filter(x => x !== slide.lineStart);
+      } else {
+        const prev = item.blocks[slide.blockIndex - 1];
+        if (!prev) return false;
+        const at = (prev.lines || []).length;
+        prev.lines = [...(prev.lines || []), ...(b.lines || [])];
+        const moved = (b.breaks || []).map(x => x + at);
+        if (moved.length || prev.breaks) prev.breaks = [...(prev.breaks || []), ...moved];
+        item.blocks.splice(slide.blockIndex, 1);
+      }
+    } else return false;
+    refreshAfterSlideEdit(item);
+    if (typeof toast === 'function') toast('Slides joined', 'success');
+    return true;
+  }
+
   function splitFlowSlideAtCaret(item, index, el) {
     return splitFlowSlideAtCaretAt(item, index, el, caretLineIndex(el));
   }
