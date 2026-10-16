@@ -63,7 +63,8 @@
       "../databases/bibles/translations": "databases/bibles/translations",
       "../databases/bibles/verse_index.gemma-legacy.kvx": "databases/bibles/verse_index.gemma-legacy.kvx",
       "../databases/i18n": "databases/i18n",
-      "bin": "bin"
+      "bin": "bin",
+      "../databases/vad": "databases/vad"
     },
     "linux": {
       "deb": {

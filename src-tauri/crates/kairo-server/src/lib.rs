@@ -9,6 +9,7 @@ pub mod config;
 mod deepgram;
 pub mod detect;
 pub mod hub;
+pub mod interpretation;
 mod clock;
 mod library;
 mod media;
@@ -150,6 +151,7 @@ impl App {
 /// Serves until the process ends.
 pub async fn serve(cfg: Config) -> anyhow::Result<()> {
     routes::set_debug_log_path(cfg.app_data_dir.join("debug.log"));
+    interpretation::set_model_path(cfg.db_dir.parent().map(|d| d.join("vad/silero_vad.onnx")).unwrap_or_default());
     let settings = Settings::load(cfg.app_data_dir.join("settings.json"));
     let hub = Arc::new(Hub::new());
     let triggers = Arc::new(library::Triggers::open(&cfg.app_data_dir, hub.clone()));

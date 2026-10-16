@@ -30,7 +30,7 @@
     strip.hidden = !items.length;
     items.forEach(([key, p]) => {
       const row = document.createElement('div');
-      row.className = 'kp-row';
+      row.className = 'kp-row' + (p.actions ? ' kp-calm' : '');
       const t = document.createElement('span');
       t.className = 'kp-text';
       t.textContent = p.count > 1 ? `${p.text} (×${p.count})` : p.text;
@@ -38,6 +38,18 @@
       x.type = 'button'; x.className = 'kp-close'; x.textContent = '✕';
       x.title = 'Dismiss'; x.setAttribute('aria-label', 'Dismiss');
       x.addEventListener('click', () => { shown.delete(key); draw(); });
+      if (p.actions) {
+        p.actions.forEach((a) => {
+          const b = document.createElement('button');
+          b.type = 'button'; b.className = 'kp-action'; b.textContent = a.label;
+          b.addEventListener('click', () => { shown.delete(key); draw(); try { a.run(); } catch (e) { log('js-error', { msg: String(e && e.message).slice(0, 200), src: 'suggestion' }); } });
+          row.appendChild(b);
+        });
+        row.insertBefore(t, row.firstChild);
+        row.appendChild(x);
+        strip.appendChild(row);
+        return;
+      }
       row.append(t, x);
       strip.appendChild(row);
     });
@@ -51,6 +63,15 @@
     if (document.body) draw(); else document.addEventListener('DOMContentLoaded', draw, { once: true });
     log('problem', { text: text.slice(0, 300), key: String(k).slice(0, 80) });
   }
+  // A suggestion, not a problem: a calm row with buttons ({label, run}); never repeated once answered.
+  function kairoSuggest(message, actions, key) {
+    const text = String(message || '').trim();
+    if (!text || !key) return;
+    shown.set(key, { text, count: 1, at: Date.now(), actions });
+    if (document.body) draw(); else document.addEventListener('DOMContentLoaded', draw, { once: true });
+    log('suggestion', { text: text.slice(0, 200), key: String(key).slice(0, 60) });
+  }
+  window.kairoSuggest = kairoSuggest;
   // The same action worked: its earlier problem is over.
   function kairoProblemCleared(key) { if (shown.delete(key)) draw(); }
   window.kairoProblem = kairoProblem;
@@ -127,6 +148,9 @@
     .kp-strip { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 3000; display: flex; flex-direction: column; gap: 6px; max-width: min(640px, calc(100vw - 32px)); }
     .kp-strip[hidden] { display: none; }
     .kp-row { display: flex; align-items: center; gap: 10px; padding: 8px 10px 8px 14px; border-radius: 10px; border: 1px solid #8f3d1f; background: #2a1712; color: #ffe9e0; font-size: 12.5px; line-height: 1.35; box-shadow: 0 10px 28px rgba(0,0,0,.4); }
+    .kp-row.kp-calm { border-color: var(--border); background: var(--bg-elevated, #1b1b1f); color: var(--text); }
+    .kp-action { flex: none; padding: 5px 10px; border-radius: 7px; border: 1px solid var(--border); background: transparent; color: inherit; font-size: 12px; cursor: pointer; }
+    .kp-action:hover { background: rgba(255,255,255,.08); }
     .kp-text { flex: 1; min-width: 0; }
     .kp-close { flex: none; width: 24px; height: 24px; border: 0; border-radius: 6px; background: transparent; color: inherit; cursor: pointer; opacity: .7; }
     .kp-close:hover { opacity: 1; background: rgba(255,255,255,.08); }

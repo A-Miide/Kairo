@@ -170,6 +170,12 @@ async fn start_listening(State(app): State<Shared>, Json(body): Json<Value>) -> 
         return Json(json!({ "error": "Already listening" }));
     }
     let engine = body["engine"].as_str().unwrap_or("deepgram").to_lowercase();
+    let spoken = app.settings.str("sttLanguage").await.unwrap_or_else(|| "en-US".into());
+    if let Some((bible, _)) = app.ready() {
+        let k = bible.k.clone();
+        crate::interpretation::with(|i| i.set_known(std::sync::Arc::new(move |w: &str| k.lexicon.vocab().id(w).is_some())));
+    }
+    crate::interpretation::with(|i| i.reset(&spoken));
     let started = if engine == "offline" || engine == "browser" {
         crate::offline::start(app.clone()).await.map(crate::Listening::Offline)
     } else {
@@ -464,9 +470,13 @@ pub(crate) async fn send_service_slide(app: &Shared, verse: Value, look: Value, 
         match verse["book"].as_str().and_then(|b| bible.find(b, verse["chapter"].as_u64().unwrap_or(0), verse["verse"].as_u64().unwrap_or(0))) {
             Some(v) => {
                 d.send(Event::OperatorSent(v));
+                song_live(&app, false);
                 app.log.lock().unwrap_or_else(std::sync::PoisonError::into_inner).shown.push(crate::notes::Shown { verse: v, at: epoch_ms(), how: crate::notes::How::Cited });
             }
-            None if !is_bible => d.send(Event::NonScriptureLive),
+            None if !is_bible => {
+                d.send(Event::NonScriptureLive);
+                song_live(&app, true);
+            }
             None => {}
         }
     }
@@ -746,4 +756,11 @@ async fn debug_log(State(app): State<Shared>, Json(b): Json<Value>) -> Json<Valu
         write_debug_line(&app, &format!("client:{event}"), b["data"].clone());
     }
     Json(json!({ "ok": true }))
+}
+
+/// A song (or other non-scripture) slide going up or coming down: an interpreter is not expected while it plays.
+fn song_live(app: &Shared, live: bool) {
+    if let Some(change) = crate::interpretation::with(|i| i.set_song_live(live)) {
+        crate::detect::announce_interpretation(&app.hub, change);
+    }
 }

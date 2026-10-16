@@ -32,6 +32,10 @@ pub async fn root(State(app): State<Shared>, uri: Uri, headers: HeaderMap, ws: R
 
 async fn forward_audio(app: &Shared, data: bytes::Bytes) {
     crate::audio_stats::note_frame(&data);
+    let samples: Vec<f32> = data.chunks_exact(2).map(|s| i16::from_le_bytes([s[0], s[1]]) as f32 / 32768.0).collect();
+    if let Some(change) = crate::interpretation::with(|i| i.audio(&samples)) {
+        crate::detect::announce_interpretation(&app.hub, change);
+    }
     if let Some(tx) = app.audio.lock().await.as_ref() {
         if tx.try_send(data).is_err() {
             crate::audio_stats::STATS.dropped.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

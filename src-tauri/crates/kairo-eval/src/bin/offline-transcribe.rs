@@ -6,11 +6,13 @@
 //! writes `parity/offline/<name>.json`; then `replay --offline <name>`.
 //! `--beam` decodes with beam search; `--hotwords` also favours the book names.
 
+use std::cell::RefCell;
 use std::io::Read;
 use std::process::{Command, Stdio};
 use std::time::Instant;
 
 use kairo_eval::root;
+use kairo_server::interpretation::{model_path, Change, Interpreter, Verdict};
 use kairo_server::offline::{recognizer, Decoding, Heard, Transcriber, POLL, SAMPLE_RATE_HZ};
 use serde_json::{json, Value};
 
@@ -45,14 +47,37 @@ fn main() {
     let mut inputs: Vec<Value> = Vec::new();
     let mut cue_start: Option<u64> = None;
     let started = Instant::now();
+    // The interpreter, exactly as the app runs it: an interpreter's turn is not transcribed and
+    // never reaches the detectors (KAIRO_INTERPRETER=off turns it off for comparison runs).
+    let interp = RefCell::new(Interpreter::load(&model_path()));
+    {
+        // The Bible's vocabulary tells real words from the fragments of another language.
+        let k = std::sync::Arc::new(kairo_eval::knowledge());
+        interp.borrow_mut().set_known(std::sync::Arc::new(move |w: &str| k.lexicon.vocab().id(w).is_some()));
+    }
+    let interp_on = std::env::var("KAIRO_INTERPRETER").map_or(true, |v| v != "off");
+    let marks: RefCell<Vec<Value>> = RefCell::new(Vec::new());
     let mut record = |h: Heard, t: u64, cues: &mut Vec<Value>, inputs: &mut Vec<Value>| {
         let cue = cues.len();
-        let start = *cue_start.get_or_insert(t);
         let (text, fin, speech_final, continues) = match h {
             Heard::Interim(s) => (s, false, false, false),
             Heard::Locked(s) => (s, true, false, true),
             Heard::Final(s) => (s, true, true, false),
         };
+        if interp_on && !text.trim().is_empty() {
+            let (verdict, change) = interp.borrow_mut().text(&text, fin);
+            if let Some(c) = change {
+                marks.borrow_mut().push(json!({ "audioMs": t, "active": c == Change::Started }));
+            }
+            if verdict == Verdict::Interpretation {
+                marks.borrow_mut().push(json!({ "audioMs": t, "dropped": text }));
+                if fin {
+                    cue_start = None;
+                }
+                return;
+            }
+        }
+        let start = *cue_start.get_or_insert(t);
         inputs.push(json!({ "t": t, "audioMs": t, "cue": cue, "text": text, "isFinal": fin, "speechFinal": speech_final, "continues": continues }));
         if fin {
             cues.push(json!({ "text": text, "audioMs": start }));
@@ -97,6 +122,11 @@ fn main() {
         fed += samples.len();
         heard.accept(&samples);
         let t = (fed * 1000 / SAMPLE_RATE_HZ) as u64;
+        if interp_on {
+            if let Some(c) = interp.borrow_mut().audio(&samples) {
+                marks.borrow_mut().push(json!({ "audioMs": t, "active": c == Change::Started }));
+            }
+        }
         for h in heard.pump() {
             record(h, t, &mut cues, &mut inputs);
         }
@@ -122,6 +152,7 @@ fn main() {
         "stable": [],
         "unstable": [],
         "skips": skips,
+        "interpretation": marks.into_inner(),
     });
     let dir = root().join("parity/offline");
     std::fs::create_dir_all(&dir).unwrap();
