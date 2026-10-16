@@ -151,6 +151,12 @@ fn ordinal_forms(t: &str, books: &Books) -> String {
             nums.join("|")
         ))
     });
+    // "28 down to 31": a range, said as moving down the page.
+    static DOWN_TO: LazyLock<regex::Regex> = LazyLock::new(|| {
+        let nums: Vec<&str> = WORD_TO_NUM_ORDERED.iter().map(|(w, _)| w.as_str()).collect();
+        let n = format!("[0-9]{{1,3}}|{}", nums.join("|"));
+        re(&format!(r"(?-u:\b)({n}) down to ({n})(?-u:\b)"))
+    });
     static ORD_ALT: LazyLock<String> = LazyLock::new(|| {
         let mut keys: Vec<&str> = ORDINALS_ORDERED.iter().map(|(w, _)| w.as_str()).collect();
         keys.sort_by_key(|k| std::cmp::Reverse(k.len()));
@@ -176,6 +182,9 @@ fn ordinal_forms(t: &str, books: &Books) -> String {
     }
     if t.contains(" the end") {
         t = TO_THE_END.replace_all(&t, "$1 to end").into_owned();
+    }
+    if t.contains(" down to ") {
+        t = DOWN_TO.replace_all(&t, "$1 to $2").into_owned();
     }
     if t.contains("chapter of ") || t.contains("verse of ") {
         let src = t.clone();
@@ -307,6 +316,8 @@ mod tests {
     fn spoken_shapes() {
         assert_eq!(n("in in John's gospel"), "in john gospel");
         assert_eq!(n("the twenty third psalm"), "psalm 23");
+        assert_eq!(n("Romans eight from twenty eight down to thirty one"), "romans eight from twenty eight to thirty one");
+        assert_eq!(n("now drop down to verse thirty one"), "now drop down to verse thirty one");
         assert_eq!(n("the 23rd Psalm"), "psalm 23");
         assert_eq!(n("the second epistle of Timothy"), "second timothy");
         assert_eq!(n("the eighth chapter of Romans"), "chapter 8 of romans");

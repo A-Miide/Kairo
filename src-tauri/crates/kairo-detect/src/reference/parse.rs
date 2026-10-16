@@ -198,6 +198,10 @@ impl Parser<'_> {
         if matches!(get(w, idx), "and" | "of" | "from") && is_verse_word(get(w, idx + 1)) {
             idx += 1;
         }
+        // "Romans 8 from 28 to 31": "from" opens the verse range.
+        if get(w, idx) == "from" && num(w, idx + 1, None).is_some_and(|n| matches!(get(w, idx + 1 + n.consumed), "to" | "through")) {
+            idx += 1;
+        }
         let mut verse_kw = is_verse_word(get(w, idx)) || get(w, idx) == ":";
         if verse_kw {
             idx += 1;
