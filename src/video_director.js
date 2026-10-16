@@ -511,7 +511,8 @@
   const recordChanges = (changes) => window.KairoDirectorBaseline?.record(changes);
   function restoreBaseline() { window.KairoDirectorBaseline?.restore().catch((err) => console.warn('[Video] could not put the outputs back:', err.message)); }
   const setOverlayLive = (map) => {
-    for (const [id, live] of Object.entries(map)) fetch(`${SERVER}/api/overlays/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ live: !!live }) }).catch(() => {});
+    // Not caught here: a refused or unanswered change is reported by the app's request watcher (problems.js).
+    for (const [id, live] of Object.entries(map)) fetch(`${SERVER}/api/overlays/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ live: !!live }) });
   };
   function applyLook(look) {
     D.lookSnap = D.last;
@@ -534,8 +535,9 @@
         return items;
       }).then(items => items.forEach(it => {
         const want = look.overlays.includes(it.id);
-        if (!!it.live !== want) fetch(`${SERVER}/api/overlays/${it.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ live: want }) }).catch(() => {});
-      })).catch(() => {});
+        // Not caught: the request watcher (problems.js) reports a change the server refused.
+        if (!!it.live !== want) fetch(`${SERVER}/api/overlays/${it.id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ live: want }) });
+      }));
     }
     applyScreenTheme(look.themeId || null);
     D.lookSent = true;   // Preview keeps holding the layout: it now matches the Output
