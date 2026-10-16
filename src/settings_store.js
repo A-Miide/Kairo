@@ -105,3 +105,40 @@ function onDirectorChange(fn) {
   window.addEventListener('kairo:director', h);
   return () => window.removeEventListener('kairo:director', h);
 }
+
+// ── Cameras (video sources) ────────────────────────────────────────────────
+// ONE list: settings.videoSources, saved to the server like every setting. Display windows are
+// other webviews that cannot read `settings`, so the same list is mirrored to localStorage
+// ('kairo-video-sources', with the live map in 'kairo-video-live'); the mirror is written only
+// here, and read only by display windows. Everything in this window asks for the list with
+// KairoCameras.list() / find(id) rather than reading either copy.
+const KairoCameras = (() => {
+  const SOURCES_KEY = 'kairo-video-sources', LIVE_KEY = 'kairo-video-live';
+  const set = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (err) { console.warn('[Video] could not publish state:', err.message); } };
+  return {
+    list() {
+      const l = typeof settings === 'object' && settings ? settings.videoSources : null;
+      return Array.isArray(l) ? l.filter(x => x && typeof x === 'object') : [];
+    },
+    find(id) { return this.list().find(s => s.id === id) || null; },
+    // Write what the display windows read. `live` is the normalized {outputId: sourceId|null}.
+    mirror(sources, live) {
+      set(SOURCES_KEY, sources);
+      if (live !== undefined) set(LIVE_KEY, live);
+    },
+    // A new list (and optionally the live map that goes with it): kept, saved, mirrored.
+    save(sources, live) {
+      settings.videoSources = sources;
+      const patch = { videoSources: sources };
+      if (live !== undefined) { settings.videoLive = live; patch.videoLive = live; }
+      saveSettingsPatch(patch);
+      this.mirror(sources, live);
+    },
+    // Which source is live on which output.
+    saveLive(live) {
+      settings.videoLive = live;
+      saveSettingsPatch({ videoLive: live });
+      set(LIVE_KEY, live);
+    },
+  };
+})();

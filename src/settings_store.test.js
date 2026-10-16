@@ -10,12 +10,13 @@ function load(fetchImpl) {
   const sandbox = {
     console, setTimeout, clearTimeout, AbortController, structuredClone,
     SERVER: 'http://x', settings: { a: 1 },
+    localStorage: { data: {}, setItem(k, v) { this.data[k] = v; }, getItem(k) { return this.data[k] ?? null; } },
     fetch: fetchImpl,
     CustomEvent: class { constructor(type, init) { this.type = type; this.detail = init && init.detail; } },
     window: { dispatchEvent: (e) => { events.push(e); return true; }, addEventListener() {}, removeEventListener() {} },
   };
   vm.createContext(sandbox);
-  vm.runInContext(fs.readFileSync(require.resolve('./settings_store.js'), 'utf8') + '\nthis.saveSettingsPatch = saveSettingsPatch; this.fetchServerSettings = fetchServerSettings;', sandbox);
+  vm.runInContext(fs.readFileSync(require.resolve('./settings_store.js'), 'utf8') + '\nthis.saveSettingsPatch = saveSettingsPatch; this.fetchServerSettings = fetchServerSettings; this.KairoCameras = KairoCameras; this.isDirectorOn = isDirectorOn;', sandbox);
   return { api: sandbox, events };
 }
 
@@ -65,4 +66,26 @@ test('reads in flight are shared but each caller gets its own copy', async () =>
   assert.equal(calls, 1);
   a.k.n = 9;
   assert.equal(b.k.n, 1);
+});
+
+test('the camera list lives in settings; the display windows get a mirror written only by KairoCameras', async () => {
+  const { api } = load(async () => ({ ok: true }));
+  assert.deepEqual(JSON.parse(JSON.stringify(api.KairoCameras.list())), []);
+  const list = [{ id: 'vid-1', name: 'Cam 1' }, null, { id: 'vid-2', name: 'Cam 2' }];
+  api.KairoCameras.save(list, { 'display-1': 'vid-1' });
+  assert.equal(api.settings.videoSources, list);
+  assert.equal(api.KairoCameras.find('vid-2').name, 'Cam 2');
+  assert.equal(api.KairoCameras.find('nope'), null);
+  assert.equal(JSON.parse(api.localStorage.getItem('kairo-video-sources')).length, 3);
+  assert.equal(JSON.parse(api.localStorage.getItem('kairo-video-live'))['display-1'], 'vid-1');
+  api.KairoCameras.saveLive({ 'display-1': null });
+  assert.equal(api.settings.videoLive['display-1'], null);
+  assert.equal(JSON.parse(api.localStorage.getItem('kairo-video-live'))['display-1'], null);
+});
+
+test('isDirectorOn reads the one setting', () => {
+  const { api } = load(async () => ({ ok: true }));
+  assert.equal(api.isDirectorOn(), false);
+  api.settings.videoDirector = true;
+  assert.equal(api.isDirectorOn(), true);
 });

@@ -22,9 +22,6 @@
   function programSourceId() {
     try { const st = D() && D().state(); const p = st && st.active && st.program; return p && !p.mixed && p.id ? p.id : null; } catch { return null; }
   }
-  function sourceById(id) {
-    try { return (JSON.parse(localStorage.getItem('kairo-video-sources') || '[]') || []).find(s => s && s.id === id) || null; } catch { return null; }
-  }
 
   function stopAll() {
     timers.forEach(clearTimeout); timers = [];
@@ -60,7 +57,7 @@
     if (opening) return;
     opening = true;
     try {
-      const src = sourceById(id);
+      const src = KairoCameras.find(id);
       const V = window.KairoVideoSources;
       const devices = await navigator.mediaDevices.enumerateDevices();
       const deviceId = src && V && V.resolveDevice ? V.resolveDevice(src, devices) : null;

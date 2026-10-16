@@ -51,7 +51,7 @@
     const fps = Number((c.video || {}).fps) || 30;
     // Cameras belong to Director mode; placeholders (no device yet) can't be opened.
     const director = isDirectorOn();
-    const cameras = director ? readJson('kairo-video-sources', [])
+    const cameras = director ? KairoCameras.list()
       .filter(s => s && s.enabled !== false && (s.deviceId || s.label) && s.label)
       .map(s => ({ id: s.id, label: s.label })) : [];
     // Every video zone the screen themes have: the engine prepares the camera for each.
