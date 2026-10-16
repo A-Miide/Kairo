@@ -5722,10 +5722,11 @@
   async function toggleSegment(seg, anchorEl) {
     try {
       if (seg.status === 'live') {
-        await fetchWithTimeout(`${SERVER}/api/segments/${seg.id}/stop`, {
+        const r = await fetchWithTimeout(`${SERVER}/api/segments/${seg.id}/stop`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ markDone: true }),
         });
-        await loadSegments(); renderTimerGrid();
+        await loadSegments(); renderTimerGrid();   // the grid shows what the server has, stopped or not
+        if (!r.ok) flashCardError(seg, 'Could not stop');
         return;
       }
       const p = seg.trigger?.params || {};
@@ -6284,17 +6285,22 @@
       // Reaching zero on its own no longer counts as "cleared" — the
       // timer runs into overtime instead of ending, so only a real stop
       // reconciles status now.
+      // A refused or unanswered request is reported by the app's request watcher (problems.js);
+      // here the timer grid is drawn again from what the server really has, so a stop that didn't
+      // happen doesn't leave the card looking stopped.
+      const resync = () => loadSegments().then(renderTimerGrid);
       if (seg.status === 'live') {
         fetchWithTimeout(`${SERVER}/api/segments/${seg.id}/stop`, {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ markDone: true }),
-        }).then(() => loadSegments()).then(renderTimerGrid).catch(() => {});
+        }).then((r) => { if (!r.ok) flashCardError(seg, 'Could not stop'); }, () => flashCardError(seg, 'Could not reach server'))
+          .then(resync);
       }
       // Belt-and-suspenders: also tell the real output to drop the timer
       // layer, in case this 'cleared' came from the segment itself rather
       // than a Clear-Timer press (which the server already routes).
       fetchWithTimeout(`${SERVER}/api/service/send-timer`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clear: true }),
-      }).catch(() => {});
+      }).then((r) => { if (!r.ok) return resync(); }, () => resync());
       return;
     }
     const overtime = remainingMs < 0;
