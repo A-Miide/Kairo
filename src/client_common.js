@@ -20,7 +20,41 @@ let AUTH_TOKEN = '';
 // their own — they borrow the token the operator window already holds.
 window.kairoAuthToken = () => AUTH_TOKEN;
 
+// Every window's lines for the debug log (databases/debug.log, prefixed client: by the server):
+// one way to write them. They carry the token themselves, so they aren't refused (401) in the
+// packaged app, and a line written before the token has loaded waits for it instead of being
+// lost. Lines logged before this script ran (window.__kairoEarlyLog) are sent too.
+const _kairoLogQueue = [];
+let _kairoLogReady = false;
+// One after another, so the log keeps the order things happened in.
+let _kairoLogChain = Promise.resolve();
+function _kairoPostLog(event, data) {
+  const body = JSON.stringify({ event, data });
+  _kairoLogChain = _kairoLogChain.then(() => {
+    const headers = { 'Content-Type': 'application/json' };
+    if (AUTH_TOKEN) headers.Authorization = `Bearer ${AUTH_TOKEN}`;
+    return (window.__kairoRawFetch || fetch)(`${location.origin}/api/debug-log`, { method: 'POST', headers, body });
+  }).catch(() => {});
+}
+function kairoLog(event, data) {
+  if (_kairoLogReady) { _kairoPostLog(event, data); return; }
+  _kairoLogQueue.push([event, data]);
+  if (_kairoLogQueue.length > 200) _kairoLogQueue.shift();
+}
+function _kairoLogFlush() {
+  if (_kairoLogReady) return;
+  _kairoLogReady = true;
+  _kairoLogQueue.splice(0).forEach(([e, d]) => _kairoPostLog(e, d));
+}
+window.kairoLog = kairoLog;
+(window.__kairoEarlyLog || []).splice(0).forEach(([e, d]) => kairoLog(e, d));
+// A page that never loads the token (or a token that never comes) still gets its lines out.
+setTimeout(_kairoLogFlush, 8000);
+
 async function loadAuthToken(attempts = 5, delayMs = 200) {
+  try { await _loadAuthToken(attempts, delayMs); } finally { _kairoLogFlush(); }
+}
+async function _loadAuthToken(attempts, delayMs) {
   if (window.parent !== window) {
     for (let i = 0; i < attempts; i++) {
       try {
