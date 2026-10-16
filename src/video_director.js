@@ -24,7 +24,8 @@
 // sends from search and the Bible tab are staged on Preview
 // (sendVerseToServer is wrapped while the mode is on) and TAKE sends them to
 // Program; verses the detection engine sends by itself go live exactly as they
-// do without the mode. Slide, media and overlay sends are not staged.
+// do without the mode, and a verse they held back (Auto-send off) waits on the Detected chip.
+// Slide and media clicks are staged too (a double-click sends at once); overlays are not.
 'use strict';
 (function () {
   const D = {
@@ -151,8 +152,26 @@
   // (D.composite) the verse joins that step's snapshot, so a single Undo reverses the whole Send.
   function markVerse() { D.last = D.composite ? { ...(D.last || {}), verse: true } : { verse: true }; }
   const sameVerse = (a, b) => !!a && !!b && (a.reference || a.ref) === (b.reference || b.ref) && (a.text || a.verse) === (b.text || b.verse);
-  function stage(verse, look) {
-    D.staged = { verse, look: look || null };
+  // showInViewer's work for a verse being sent by hand, held until it is really on screen.
+  // Held only when a hand send follows at once (the callers do showInViewer then send): a
+  // verse Kairo itself put on screen (auto-send) has no send after it and is shown right away.
+  function holdViewer(args) {
+    if (!D.active || !stageManual() || !args || args[1] === 'service') return false;
+    D.heldViewer = args; D.heldPending = true;
+    setTimeout(() => {
+      if (D.heldPending && D.heldViewer === args) { D.heldPending = false; D.heldViewer = null; if (typeof showInViewerNow === 'function') showInViewerNow(...args); }
+    }, 0);
+    return true;
+  }
+  function releaseViewerFor(verse, fromDetection) {
+    const held = D.heldViewer && D.heldViewer[0] && sameVerse(D.heldViewer[0][0], verse) ? D.heldViewer : null;
+    D.heldViewer = null;
+    if (typeof showInViewerNow !== 'function') return;
+    if (held) showInViewerNow(...held);
+    else if (fromDetection) showInViewerNow([verse], 'direct', 1.0);   // as normal mode's Send to Air
+  }
+  function stage(verse, look, opts = {}) {
+    D.staged = { verse, look: look || null, fromDetection: !!opts.fromDetection };
     D.detected = null;
     syncPreviewFrame();
     refresh();
@@ -177,7 +196,9 @@
       : D.origSend(verse, look);
     // It didn't reach the screen: Preview no longer claims to match the Output, so Send can try again.
     Promise.resolve(sent).then((ok) => {
-      if (ok === false && D.staged === staged) { staged.sent = false; refresh(); }
+      if (ok === false) { if (D.staged === staged) { staged.sent = false; refresh(); } return; }
+      // On screen now: the live preview, Live Queue and notes catch up.
+      if (!slide && !media) releaseViewerFor(verse, staged && staged.fromDetection);
     }).catch(() => { if (D.staged === staged) { staged.sent = false; refresh(); } });
     return sent;
   }
@@ -234,7 +255,6 @@
     if (!t) return;
     const slideEl = t.closest('.svc-slide');
     const mediaEl = t.closest('.media-card');
-    const rowEl = !slideEl && !mediaEl ? t.closest('.svc-item') : null;
     const itemById = (id) => svc.service.items.find(i => i.id === id);
     if (slideEl) {
       const item = itemById(slideEl.dataset.vdItem || (slideEl.closest('[data-id]') || {}).dataset?.id);
@@ -249,14 +269,9 @@
       const url = mediaEl.dataset.url;
       const key = `media:${url}`;
       if (D.staged && D.staged.key === key) { if (!D.staged.sent) takeVerse(); }
-    } else if (rowEl) {
-      const item = itemById(rowEl.dataset.id);
-      if (!item || !svc.slidesFor(item).length) return;
-      e.stopImmediatePropagation(); e.preventDefault();   // not the rename
-      const key = `slide:${item.id}:0`;
-      stageSent(key, () => svc.slideSendBody ? svc.slideSendBody(item, 0) : null, (b) => ({ verse: b.verse, look: b.look || null, next: b.next || null, slide: { item, index: 0 } }));
-      svc.sendSlide(item, 0, { direct: true });
     }
+    // A double-click on a playlist row renames it, as on the normal screen: it used to put the
+    // item's first slide on air here, a habit from the normal screen turned into a send.
   }
   function stageSlideSend(item, index, build) {
     return stageContent(`slide:${item.id}:${index}`, build, (b) => ({ verse: b.verse, look: b.look || null, next: b.next || null, slide: { item, index } }));
@@ -290,8 +305,12 @@
         if (!(D.staged && sameVerse(D.staged.verse, verse))) { D.staged = { verse, look: look || null }; D.stageKey = null; }
         D.staged.sent = true; markVerse();
         syncPreviewFrame(); refresh();
+        D.heldPending = false;
+        releaseViewerFor(verse, false);   // a direct send is on screen at once
         return D.origSend(verse, look);
       }
+      // A hand send: what showInViewer held waits for this verse's Send.
+      D.heldPending = false;
       // Sending the verse that is already staged takes it live.
       if (D.staged && sameVerse(D.staged.verse, verse)) return takeVerse();
       stage(verse, look);
@@ -501,6 +520,7 @@
   // Esc: cancel what is staged and not yet sent. Something already sent stays held in Preview.
   function clearStaging() {
     if (D.staged && !D.staged.sent) D.staged = null;
+    D.heldViewer = null;
     if (D.pendingLook && !D.lookSent) {
       D.pendingLook = null; D.previewLookId = null;
       if (settings.directorPreviewLook) { settings.directorPreviewLook = null; saveSettingsPatch({ directorPreviewLook: null }); }
@@ -542,7 +562,7 @@
     D.liveLookId = null;
     if (mode) {
       try { localStorage.setItem('kairo-video-transition', JSON.stringify(mode)); } catch {}
-      setTimeout(publishTransition, fadeMs() + 400);
+      clearTimeout(D.transTimer); D.transTimer = setTimeout(publishTransition, fadeMs() + 400);
     } else publishTransition();
     setVideoLiveFor(ps.on.map(o => o.id), id || null);
     syncPreviewFrame();   // with nothing staged, Preview follows the Output's input
@@ -850,7 +870,7 @@
     looksBtn.setAttribute('aria-haspopup', 'dialog'); looksBtn.setAttribute('aria-expanded', 'false');
     D.ui.looksBtn = looksBtn;
     D.ui.looksChip = vEl('span', 'vd-looks-chip'); D.ui.looksChip.hidden = true;
-    D.ui.detChip = vBtn('', 'Stage the verse that was just heard', () => { const d = D.detected; if (d) stage(d.verse, d.look); }, 'vd-mini vd-det-chip');
+    D.ui.detChip = vBtn('', 'Stage the verse that was just heard', () => { const d = D.detected; if (d) stage(d.verse, d.look, { fromDetection: true }); }, 'vd-mini vd-det-chip');
     D.ui.detChip.hidden = true;
     const helpBtn = vBtn('?', 'Keyboard shortcuts', (e) => toggleKeyHelp(e.currentTarget), 'vd-mini vd-help-btn');
     helpBtn.setAttribute('aria-label', 'Keyboard shortcuts'); helpBtn.setAttribute('aria-haspopup', 'dialog');
@@ -1094,7 +1114,10 @@
     if (!D.active) return;
     const t = e.target;
     if (t && (t.isContentEditable || (t.matches && t.matches('input,textarea,select')))) return;
-    if (document.querySelector('.modal:not(.hidden), .vd-add-panel')) return;
+    // Anything open over the Director (Settings, Theme Studio, the first-run tour, a menu or
+    // popover) has the keys: Space, 1–9, Esc and ⌘Z must not reach the live screen from there.
+    if (document.querySelector('.modal:not(.hidden), .vd-add-panel, #looks-modal:not(.hidden), .onboarding:not(.hidden), .svc-popover, .ctx-menu, .mc-pop, .mx-pop, .rp-pop')) return;
+    if (e.defaultPrevented) return;
     if (document.body.classList.contains('vd-sheet')) return;   // a full screen is open over the Director: its keys are not ours
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'z') {
       if (D.last) { e.preventDefault(); undo(); }
@@ -1134,6 +1157,7 @@
     wrapSend();
     try { migrateScreenOrig(); } catch {}
     D.restoreLook = settings.directorPreviewLook || null;
+    clearTimeout(D.offTimer); D.offTimer = null;   // a stop just before: its cleanup must not undo this start
     publishTransition();
     publishFade();
     if (typeof applyOutputModes === 'function') applyOutputModes();   // a chosen multiview display switches over
@@ -1188,7 +1212,9 @@
     // Going off air fades, without changing the transition the operator chose.
     try { localStorage.setItem('kairo-video-transition', JSON.stringify('fade')); } catch {}
     setVideoLiveFor(videoOutputs().map(o => o.id), null);
-    setTimeout(() => { try { localStorage.removeItem('kairo-video-transition'); } catch {} }, 1500);
+    // Kept, so turning the mode back on within the moment cancels it (it would wipe the new one).
+    clearTimeout(D.transTimer); D.transTimer = null;
+    clearTimeout(D.offTimer); D.offTimer = setTimeout(() => { D.offTimer = null; try { localStorage.removeItem('kairo-video-transition'); } catch {} }, 1500);
     Object.values(D.frames).forEach(f => { f.ro.disconnect(); f.frame.src = 'about:blank'; });
     D.frames = {};
     stopVideoSources();
@@ -1238,10 +1264,14 @@
     // A detected verse held back by Auto-send off: staged in Preview, never sent.
     // A verse the server held back (Auto-send off). It never replaces something the operator staged by hand:
     // then it waits behind a "Detected" chip beside the Layouts button.
+    holdViewer,
     stageDetected: (verse, look) => {
       if (!D.active || !verse) return;
-      if (D.staged && !D.staged.sent) { D.detected = { verse, look: look || null }; refresh(); return; }
-      stage(verse, look);
+      // Never into Preview by itself: Preview is what the next Send puts on screen, and a Send
+      // meant for a camera would take a verse nobody chose along with it. It waits on the
+      // Detected chip; one click stages it.
+      D.detected = { verse, look: look || null };
+      refresh();
     },
   };
 })();

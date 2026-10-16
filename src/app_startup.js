@@ -174,7 +174,11 @@ const REMOTE_ACTIONS = [
 ];
 function directorDo(fn, ...args) {
   const d = window.KairoVideoDirector;
-  if (d && typeof d[fn] === 'function') d[fn](...args);
+  // A Director action from a macro, Stream Deck or a menu while Director mode is off does
+  // nothing: say so, instead of a macro silently skipping its camera cut.
+  if (!d || !settings.videoDirector) { window.kairoProblem?.('That needs Director mode, which is off.', 'director-off'); return false; }
+  if (typeof d[fn] === 'function') return d[fn](...args);
+  return false;
 }
 function setAutoSend(on) {
   settings.autoSend = !!on;

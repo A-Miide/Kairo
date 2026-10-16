@@ -1177,7 +1177,14 @@ function updateViewerDisplay(v) {
   renderPreviewScreen(cleanVerseText(v.text), v.reference, null, v.translatedText || '', null, 'contain', {}, '', v.label || '');
 }
 
+// In Director mode a verse that is only staged isn't on screen yet: the live preview (which
+// NDI/Syphon follow), the LIVE marks, the Live Queue and the sermon notes wait until Send
+// puts it there (video_director.js holdViewer / takeVerse).
 function showInViewer(verses, method, topScore, correctedFrom = null, look = null) {
+  if (window.KairoVideoDirector?.holdViewer?.([verses, method, topScore, correctedFrom, look])) return;
+  return showInViewerNow(verses, method, topScore, correctedFrom, look);
+}
+function showInViewerNow(verses, method, topScore, correctedFrom = null, look = null) {
   const v = verses[0];
 
   // Update live preview screen — v.timerText is set for a timer-segment send

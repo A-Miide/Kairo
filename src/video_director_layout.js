@@ -281,8 +281,20 @@
     // Order: title, Auto, then on the right the Bible select, the message button and Theme together.
     // How verse text arrives (Fade / Slide / Cut): the app's own bar, in a small popover.
     S.verseBtn = hb('vd-hbtn', 'Verse transition', ICONS.verse, (e) => nodePopover(e.currentTarget, document.getElementById('rs-transition-bar'), 'vd-pop-verse'));
+    // Possible Matches: the same list as the normal screen (same detection, same Send to Air),
+    // opened from here. Shown only while there are matches.
+    const matches = document.querySelector('.rs-candidates');
+    S.matchBtn = hb('vd-hbtn vd-match-btn', 'Possible matches', '', (e) => nodePopover(e.currentTarget, matches, 'vd-pop-matches'));
+    const syncMatches = () => {
+      const n = Number(document.getElementById('suggestion-count-badge')?.textContent) || 0;
+      S.matchBtn.textContent = `Matches ${n}`;
+      S.matchBtn.hidden = n === 0 && !(L.np && L.np.node === matches);
+    };
+    const badge = document.getElementById('suggestion-count-badge');
+    if (badge) { S.matchObs = new MutationObserver(syncMatches); S.matchObs.observe(badge, { childList: true, characterData: true, subtree: true }); }
+    syncMatches();
     moveTo(document.getElementById('translation-select'), head);   // with a home marker, so it goes back when Director mode ends
-    [spacer, document.getElementById('translation-select'), S.monBtn, S.verseBtn, theme].forEach(n => n && head.appendChild(n));
+    [spacer, S.matchBtn, document.getElementById('translation-select'), S.monBtn, S.verseBtn, theme].forEach(n => n && head.appendChild(n));
     host.appendChild(head);
     S.head = head;
     parts.forEach(n => host.appendChild(n));
@@ -300,8 +312,10 @@
   function emptySends() {
     if (!L.sends) return;
     closePop();
-    const { parts, queueEl, queueLabel, head, foot, themeTitle, monObs } = L.sends;
+    const { parts, queueEl, queueLabel, head, foot, themeTitle, monObs, matchObs } = L.sends;
     monObs && monObs.disconnect();
+    matchObs && matchObs.disconnect();
+    if (L.np) closeNodePop();   // the Matches list or transition bar goes back to its own place
     L.sends.auto && L.sends.auto();
     if (queueEl) queueEl.textContent = queueLabel;
     const theme = document.getElementById('bible-theme-btn');
