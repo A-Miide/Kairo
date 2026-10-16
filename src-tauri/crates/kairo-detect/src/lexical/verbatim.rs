@@ -149,7 +149,31 @@ pub fn verbatim(lex: &Lexicon, text: &str, min_words: usize, limit: usize) -> Ve
     }
 
     results.sort_by(|a, b| b.score.total_cmp(&a.score));
+    prefer_what_was_said(&mut results);
     results
+}
+
+/// A score is the share of the *verse* covered, so a short verse that shares a long stretch with a
+/// longer one outranks it even when the longer verse explains more of what was actually said
+/// ("…should not perish, but have everlasting life": John 3:15 covers most of itself, John 3:16
+/// carries 34% more of the speech). Among close results, a verse carrying clearly more identifying
+/// weight goes first.
+fn prefer_what_was_said(results: &mut [VerbatimHit]) {
+    const CLOSE: f32 = 0.25;
+    const CLEARLY_MORE: f32 = 1.2;
+    let Some(top) = results.first().copied() else { return };
+    let Some(top_idf) = top.matched_idf else { return };
+    let best = results
+        .iter()
+        .enumerate()
+        .skip(1)
+        .take_while(|(_, h)| top.score - h.score <= CLOSE)
+        .filter(|(_, h)| h.matched_idf.is_some_and(|m| m >= top_idf * CLEARLY_MORE))
+        .max_by(|a, b| a.1.matched_idf.unwrap_or(0.0).total_cmp(&b.1.matched_idf.unwrap_or(0.0)))
+        .map(|(i, _)| i);
+    if let Some(i) = best {
+        results[..=i].rotate_right(1);
+    }
 }
 
 /// Verses sharing enough of the speech's words, most shared first.

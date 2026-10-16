@@ -1,0 +1,46 @@
+{
+ "source": "scn-rank-john-3-16-tail",
+ "kind": "scenario",
+ "lang": "en",
+ "songLive": false,
+ "cues": [
+  {
+   "text": "let us read John chapter three verse sixteen",
+   "audioMs": 0
+  },
+  {
+   "text": "that whosoever believeth in him should not perish, but have everlasting life",
+   "audioMs": 4100
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "let us read John",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "let us read John chapter three verse sixteen",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "that whosoever believeth in",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "that whosoever believeth in him should not perish,",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "that whosoever believeth in him should not perish, but have everlasting life",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}
