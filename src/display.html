@@ -221,6 +221,12 @@
         body[data-mode="confidence"] #kairo-label { display: none !important; }
         #confidence-view { display: none; }
         body[data-mode="confidence"] #confidence-view { display: flex; }
+        /* A Monitor layout from Theme Studio instead of the built-in view. */
+        #monitor-look { display: none; position: fixed; inset: 0; z-index: 1; overflow: hidden; background: #000; }
+        body[data-mode="confidence"].has-monitor-look #monitor-look { display: block; }
+        body[data-mode="confidence"].has-monitor-look #confidence-view { display: none; }
+        #monitor-look [data-binding="timer"].is-warning { color: #e8a64a !important; }
+        #monitor-look [data-binding="timer"].is-overtime { color: #ed1c24 !important; }
         /* Multiview (Video director mode): the input grid full screen, read-only. */
         #multiview-view { display: none; }
         body[data-mode="multiview"] { background: #000 !important; }
@@ -338,6 +344,7 @@
     <div id="clock-badge" class="hidden"></div>
     <!-- A Monitor output: the confidence monitor (renderConfidenceView). -->
     <div id="multiview-view" aria-label="Multiview"></div>
+    <div id="monitor-look" aria-label="Monitor"></div>
     <div id="confidence-view">
         <div class="cv-top">
             <div class="cv-clock" id="cv-clock"></div>
@@ -970,6 +977,7 @@
                 // after, so this is just a zeroed placeholder either way.
                 else if (layer.binding === 'timer-h' || layer.binding === 'timer-m' || layer.binding === 'timer-s') content = '00';
                 else if (hasTimerTemplate) content = layer.customText.replace('{timer}', timerText || '0:00');
+                else if (isMonitorBinding(layer.binding)) content = monitorBindingText(layer.binding);
                 else content = layer.customText || '';
 
                 const div = document.createElement('div');
@@ -2198,6 +2206,9 @@
                 if (map && map[OUTPUT_KEY]) applyOutputLayers({ ...DEFAULT_LAYERS, ...map[OUTPUT_KEY] });
             } catch {}
         }
+        if (e.key === 'kairo-monitor-looks') {
+            try { setMonitorLook((JSON.parse(e.newValue || '{}') || {})[OUTPUT_KEY] || null); } catch {}
+        }
         if (e.key === 'kairo-output-frames' && !PREVIEW) {
             try { const map = JSON.parse(e.newValue || 'null'); setFrame(map && map[OUTPUT_KEY] || null); } catch {}
         }
@@ -2486,6 +2497,7 @@
             const myLayers = pickLayers(msg);
             if (myLayers) { try { applyOutputLayers(myLayers); } catch {} }
             if (msg.frames && typeof msg.frames === 'object' && !PREVIEW) { try { setFrame(msg.frames[OUTPUT_KEY] || null); } catch {} }
+            if (msg.monitors && typeof msg.monitors === 'object') { try { setMonitorLook(msg.monitors[OUTPUT_KEY] || null); } catch {} }
             if (msg.keying && typeof msg.keying === 'object') { try { applyOutputKeying(msg.keying[OUTPUT_KEY]); } catch {} }
             return;
         }
@@ -2567,14 +2579,78 @@
         if (!n || n.book !== cur.book) return false;
         return n.chapter === cur.chapter ? n.verse > cur.verse : n.chapter === cur.chapter + 1;
     }
+    // ── A Monitor layout (Theme Studio's Monitor layouts) ──
+    // Drawn by the same renderer as every theme; its own bindings (the next slide, the time,
+    // the message) are filled from what the built-in view shows, and kept current.
+    function isMonitorBinding(b) { return b === 'mon-next' || b === 'mon-next-ref' || b === 'mon-clock' || b === 'mon-message'; }
+    const monitorLookEl = document.getElementById('monitor-look');
+    let monitorLook = null;
+    let monitorTimer = { text: '', warning: false, overtime: false };
+    function monitorBindingText(b) {
+        const cur = confCurrent;
+        const next = confNext();
+        if (b === 'mon-next') return next ? (next.text || next.verse || (next.image ? 'Picture' : '')) : '';
+        if (b === 'mon-next-ref') return next ? `Next${confRefOf(next) ? ' · ' + confRefOf(next) : ''}` : '';
+        if (b === 'mon-clock') return new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        if (b === 'mon-message') return cvMessage.hidden ? '' : cvMessage.textContent;
+        return '';
+    }
+    function setMonitorLook(look) {
+        monitorLook = look && Array.isArray(look.layers) ? look : null;
+        document.body.classList.toggle('has-monitor-look', !!monitorLook);
+        renderMonitorLook();
+    }
+    function renderMonitorLook() {
+        if (!monitorLook || outputMode !== 'confidence') return;
+        const cur = confCurrent;
+        const text = !cur ? '' : cur.text || (cur.image ? 'Picture on screen' : '');
+        const { frag } = buildLayerDOM(monitorLook, text, cur ? cur.ref : '', '', {}, monitorTimer.text, false, {});
+        monitorLookEl.innerHTML = '';
+        monitorLookEl.appendChild(frag);
+        refreshMonitorLook();
+    }
+    // The parts that change by themselves (the time, the countdown, the message) without a redraw.
+    function refreshMonitorLook() {
+        if (!monitorLook || outputMode !== 'confidence') return;
+        monitorLookEl.querySelectorAll('[data-binding]').forEach(el => {
+            const b = el.dataset.binding;
+            if (isMonitorBinding(b)) { const t = monitorBindingText(b); if (el.textContent !== t) el.textContent = t; }
+            else if (b === 'timer') { el.textContent = monitorTimer.text; el.classList.toggle('is-warning', monitorTimer.warning); el.classList.toggle('is-overtime', monitorTimer.overtime); }
+        });
+        fitMonitorLook();
+    }
+    // Each text as large as its box allows (from its designed size), like the verse on a screen.
+    function fitMonitorLook() {
+        const H = monitorLookEl.clientHeight || window.innerHeight;
+        if (H < 50) return;
+        monitorLookEl.querySelectorAll('[data-eff-pos]').forEach(el => {
+            let p; try { p = JSON.parse(el.dataset.effPos); } catch { return; }
+            if (!p || !(p.h > 0)) return;
+            const maxH = H * (p.h / DESIGN_H);
+            let size = parseFloat(el.dataset.baseSize) || 48;
+            el.style.fontSize = size + 'px';
+            const prevH = el.style.height;
+            el.style.height = 'auto';
+            let guard = 60;
+            while (el.scrollHeight > maxH && size > 12 && guard-- > 0) { size = Math.floor(size * 0.94); el.style.fontSize = size + 'px'; }
+            el.style.height = prevH;
+        });
+    }
+    // What goes under "Next": the range's next verse when the reading goes on, else the
+    // playlist's next slide.
+    function confNext() {
+        const cur = confCurrent;
+        return cur ? (cur.bible ? (rangeGoesOnFrom(cur) ? confNextRange : null) : confNextSlide) : null;
+    }
     function renderConfidenceView() {
         if (outputMode !== 'confidence') return;
+        renderMonitorLook();
         const cur = confCurrent;
         cvRef.textContent = cur ? cur.ref : '';
         const empty = !cur || !cur.text;
         cvText.textContent = !cur ? 'Nothing on screen' : cur.text || (cur.image ? 'Picture on screen' : 'Nothing on screen');
         cvText.classList.toggle('is-empty', empty);
-        const next = cur ? (cur.bible ? (rangeGoesOnFrom(cur) ? confNextRange : null) : confNextSlide) : null;
+        const next = confNext();
         const nextText = next ? (next.text || next.verse || (next.image ? 'Picture' : '')) : '';
         cvNext.hidden = !next || (!nextText && !confRefOf(next));
         cvNextRef.textContent = next ? confRefOf(next) : '';
@@ -2597,9 +2673,11 @@
     }
     function updateConfidenceTimer(p) {
         const { remainingMs, label, cleared } = p || {};
-        if (cleared || typeof remainingMs !== 'number') { cvTimer.hidden = true; return; }
+        if (cleared || typeof remainingMs !== 'number') { cvTimer.hidden = true; monitorTimer = { text: '', warning: false, overtime: false }; refreshMonitorLook(); return; }
         const overtime = remainingMs < 0;
         const warning = !overtime && remainingMs <= 60000;
+        monitorTimer = { text: (overtime ? '+' : '') + formatMs(Math.abs(remainingMs)), warning, overtime };
+        refreshMonitorLook();
         cvTimer.hidden = false;
         cvTimerLabel.textContent = label || 'Timer';
         cvTimerValue.textContent = (overtime ? '+' : '') + formatMs(Math.abs(remainingMs));
@@ -2619,10 +2697,11 @@
     }
     function setMonitorMessage(text) {
         const t = String(text || '').trim();
-        if (!t) { cvMessage.hidden = true; cvMessage.textContent = ''; fitConfidenceText(); return; }
+        if (!t) { cvMessage.hidden = true; cvMessage.textContent = ''; fitConfidenceText(); refreshMonitorLook(); return; }
         if (cvMessage.textContent === t && !cvMessage.hidden) return;
         cvMessage.textContent = t;
         cvMessage.hidden = false;
+        refreshMonitorLook();
         cvMessage.classList.remove('is-new');
         void cvMessage.offsetWidth;   // restart the arrival flash
         cvMessage.classList.add('is-new');
@@ -2631,6 +2710,8 @@
     let confidenceClockTimer = null;
     function tickConfidenceClock() {
         cvClock.textContent = new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+        const clocks = monitorLook ? monitorLookEl.querySelectorAll('[data-binding="mon-clock"]') : [];
+        clocks.forEach(el => { if (el.textContent !== cvClock.textContent) el.textContent = cvClock.textContent; });
     }
     function startConfidenceClock() {
         tickConfidenceClock();
@@ -2871,6 +2952,8 @@
     assignedLook = activeLook;   // baseline this output reverts to
     // A layout's frame saved by the main window (Director mode).
     if (!PREVIEW) { try { const fm = JSON.parse(localStorage.getItem('kairo-output-frames') || 'null'); if (fm && fm[OUTPUT_KEY]) setFrame(fm[OUTPUT_KEY]); } catch {} }
+    try { const ml = JSON.parse(localStorage.getItem('kairo-monitor-looks') || 'null'); if (ml && ml[OUTPUT_KEY]) setMonitorLook(ml[OUTPUT_KEY]); } catch {}
+    window.addEventListener('resize', () => { try { fitMonitorLook(); } catch {} });
 
     // 2. Start genuinely blank — nothing painted yet, not even the theme's
     // background — until the first real slide/verse actually arrives. See

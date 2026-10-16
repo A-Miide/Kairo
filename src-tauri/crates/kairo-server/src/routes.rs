@@ -655,6 +655,12 @@ async fn look_apply(State(app): State<Shared>, Json(b): Json<Value>) -> Response
         app.hub.broadcast(json!({ "type": "look-update", "layers": layers }));
         return Json(json!({ "ok": true, "outputs": count(layers) })).into_response();
     }
+    // A Monitor output's layout (a Monitor layout from Theme Studio, or none for the built-in).
+    let monitors = &b["monitors"];
+    if monitors.is_object() && look.is_null() && themes.is_null() {
+        app.hub.broadcast(json!({ "type": "look-update", "monitors": monitors }));
+        return Json(json!({ "ok": true, "outputs": count(monitors) })).into_response();
+    }
     // A layout's frame (Director mode): the screen around the slide or verse, per output.
     if frames.is_object() && look.is_null() && themes.is_null() {
         app.hub.broadcast(json!({ "type": "look-update", "frames": frames }));
