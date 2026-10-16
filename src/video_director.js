@@ -822,10 +822,13 @@
     const bare = (b, label) => { b.removeAttribute('title'); b.setAttribute('aria-label', label); return b; };
     D.ui.take = bare(vBtn('', '', takeStaged, 'vd-take vd-send'), 'Send: put Preview on the Output (Space)');
     D.ui.take.append(vEl('span', 'vd-send-text', 'Send'), vEl('span', 'vd-send-key', 'Space'));
-    D.ui.cut = bare(vBtn('Cut', '', () => { setTransition('cut'); refresh(); }, 'vd-take'), 'Send with a cut');
-    D.ui.fade = bare(vBtn('Fade', '', () => { setTransition('fade'); refresh(); }, 'vd-take'), 'Send with a fade');
+    // The camera's transition. Words keep their own (the Scripture header's Verse transition)
+    // and media theirs (the Media Bin's), so this says what it moves.
+    D.ui.cut = bare(vBtn('Cut', '', () => { setTransition('cut'); refresh(); }, 'vd-take'), 'Camera: cut');
+    D.ui.fade = bare(vBtn('Fade', '', () => { setTransition('fade'); refresh(); }, 'vd-take'), 'Camera: fade');
     const seg2 = vEl('div', 'vd-seg2');
-    seg2.setAttribute('role', 'group'); seg2.setAttribute('aria-label', 'Transition');
+    seg2.setAttribute('role', 'group'); seg2.setAttribute('aria-label', 'Camera transition');
+    seg2.appendChild(vEl('span', 'vd-seg-label', 'Camera'));
     D.ui.black = bare(vBtn('Fade to black', '', fadeToBlack, 'vd-take vd-quiet'), 'Fade to black: no video, and the verse, slide and timer come down');
     D.ui.blackText = D.ui.black.firstChild;
     const dur = vEl('label', 'vd-dur');
