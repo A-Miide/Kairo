@@ -31,7 +31,12 @@
   const captureUsers = {};
   async function useCapture(output, who, w, h) {
     (captureUsers[output] = captureUsers[output] || new Set()).add(who);
-    try { await window.KairoCapture?.open(`stream-${output}`, w, h, { output, stream: true }); } catch {}
+    try { await window.KairoCapture?.open(`stream-${output}`, w, h, { output, stream: true }); }
+    catch (err) {
+      // No graphics window: the stream would carry the camera and sound only. Said in the warnings.
+      captureOk = false;
+      console.warn('[Stream] capture window failed:', err);
+    }
   }
   function dropCapture(output, who) {
     const u = captureUsers[output];
@@ -115,7 +120,11 @@
 
   async function stop(confirmFirst = true) {
     if (confirmFirst && !(await ask('Stop the live stream on every destination?', 'Stop stream', true))) return;
-    try { await invoke?.('stream_stop'); } catch {}
+    try { await invoke?.('stream_stop'); } catch (err) {
+      // Not confirmed stopped: keep showing it live rather than claim it ended.
+      alertMsg(`The stream may still be running: ${err && err.message ? err.message : err}`);
+      return;
+    }
     Object.keys(status).forEach(o => dropCapture(o, 'stream'));
     Object.keys(status).forEach(o => delete status[o]);
     live = false;
@@ -127,7 +136,7 @@
     return Promise.resolve(window.confirm(message));
   }
   function alertMsg(m) {
-    if (typeof showToast === 'function') { showToast(m, 'error'); return; }
+    if (window.kairoProblem) { window.kairoProblem(m); return; }
     window.alert(m);
   }
 
@@ -185,7 +194,10 @@
   }
   async function stopRecording(confirmFirst = true) {
     if (confirmFirst && !(await ask('Stop recording? What has been recorded so far is kept.', 'Stop recording', true))) return;
-    try { await invoke?.('record_stop'); } catch {}
+    try { await invoke?.('record_stop'); } catch (err) {
+      alertMsg(`The recording may still be running: ${err && err.message ? err.message : err}`);
+      return;
+    }
     Object.keys(recStatus).forEach(o => { lastFiles = recStatus[o].files && recStatus[o].files.length ? recStatus[o].files : lastFiles; dropCapture(o, 'record'); delete recStatus[o]; });
     recording = false;
     notify();

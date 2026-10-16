@@ -117,7 +117,7 @@ async fn get_settings(State(app): State<Shared>) -> Json<Value> {
     Json(Value::Object(s))
 }
 
-async fn post_settings(State(app): State<Shared>, Json(body): Json<Map<String, Value>>) -> Json<Value> {
+async fn post_settings(State(app): State<Shared>, Json(body): Json<Map<String, Value>>) -> Response {
     let mut incoming = body.clone();
     let current_key = app.settings.str("deepgramApiKey").await.unwrap_or_default();
     // The redacted key coming back unchanged isn't a new key.
@@ -131,7 +131,7 @@ async fn post_settings(State(app): State<Shared>, Json(body): Json<Map<String, V
     }
     let animation_changed = incoming.contains_key("outputAnimation") || incoming.contains_key("outputAnimationSpeed");
     let obs_changed = ["obsEnabled", "obsUrl", "obsPassword"].iter().any(|k| body.contains_key(*k));
-    let s = app.settings.merge(incoming).await;
+    let (s, save_error) = app.settings.merge(incoming).await;
     app.refresh_presentation().await;
     if obs_changed {
         let a = app.clone();
@@ -144,7 +144,11 @@ async fn post_settings(State(app): State<Shared>, Json(body): Json<Map<String, V
             "speed": s.get("outputAnimationSpeed").cloned().unwrap_or_else(|| json!(1)),
         }));
     }
-    Json(json!({ "ok": true }))
+    // In use either way, but not on disk: say so, so the operator knows it won't survive a restart.
+    if let Some(e) = save_error {
+        return (StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": format!("settings couldn't be saved to disk ({e})") }))).into_response();
+    }
+    Json(json!({ "ok": true })).into_response()
 }
 
 // ── Detection input ─────────────────────────────────────────────────────────

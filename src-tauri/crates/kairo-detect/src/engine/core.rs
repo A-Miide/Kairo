@@ -20,6 +20,7 @@ use crate::knowledge::Knowledge;
 use crate::lexical::StreamMatcher;
 use crate::reference::{Active, Lang, ReadingContext};
 
+#[derive(Clone)]
 pub struct Config {
     pub lang: Lang,
     pub auto_send: bool,

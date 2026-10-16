@@ -421,9 +421,18 @@ fn start_server(app: &AppHandle, port: u16, token: &str) {
     };
     println!("[KAIRO] databases:  {}", cfg.db_dir.display());
     println!("[KAIRO] ui:         {}", cfg.ui_dir.display());
+    let app2 = app.clone();
     tauri::async_runtime::spawn(async move {
         if let Err(e) = kairo_server::serve(cfg).await {
             eprintln!("[KAIRO] Server failed: {e}");
+            // Without its server Kairo can't show anything: say why instead of opening a window
+            // that never loads.
+            use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
+            app2.dialog()
+                .message(format!("Kairo couldn't start its built-in server, so it can't run.\n\n{e}\n\nQuit Kairo and open it again. If this keeps happening, restart the computer."))
+                .title("Kairo couldn't start")
+                .kind(MessageDialogKind::Error)
+                .show(|_| {});
         }
     });
 }

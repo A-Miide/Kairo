@@ -25,12 +25,16 @@ const PRIMARY_DISPLAY = 'display-1';
 // Wrap fetch so every call automatically carries the token. All existing
 // `fetch(${SERVER}/api/...)` call sites work unchanged.
 const _origFetch = window.fetch.bind(window);
-window.fetch = (input, init = {}) => {
+const _authFetch = (input, init = {}) => {
   if (!AUTH_TOKEN) return _origFetch(input, init);
   const headers = new Headers(init.headers || (typeof input !== 'string' && input?.headers) || {});
   if (!headers.has('Authorization')) headers.set('Authorization', `Bearer ${AUTH_TOKEN}`);
   return _origFetch(input, { ...init, headers });
 };
+// An action the server refuses or never answers is reported (problems.js), so a send that
+// failed can't look like it worked.
+window.__kairoRawFetch = _authFetch;
+window.fetch = window.kairoWatchFetch ? window.kairoWatchFetch(_authFetch) : _authFetch;
 
 
 // ── Helpers ────────────────────────────────────────────────────────────────
@@ -303,6 +307,10 @@ function handleServerMessage(msg) {
     // a watched smart folder's contents having changed on disk — both just
     // forward into service.js, which owns the Media tab's DOM.
     case 'media-status':
+      if (msg.kind === 'error') {
+        window.kairoProblem?.(`The ${msg.mediaKind === 'image' ? 'picture' : 'video'} didn't show on screen${msg.error ? `: ${msg.error}` : ''}.`, `media-${msg.output || ''}`);
+        break;
+      }
       window.KairoService?.onMediaStatus?.(msg);
       break;
 
@@ -1684,14 +1692,16 @@ function buildRangeCard(v, isActive) {
 // detection pipeline and relies on the display window's own stored theme
 // rather than a look sent per-request — a real limitation of this
 // interpretation, not yet covered.
+// True when it reached the screen (a refused or unanswered send is reported by problems.js).
 async function sendVerseToServer(verse, look = null, _opts = null) {
   try {
-    await fetch(`${SERVER}/api/service/send`, {
+    const r = await fetch(`${SERVER}/api/service/send`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ verse, look }),
     });
-  } catch (err) { toast('Send failed: ' + err.message, 'error'); }
+    return r.ok;
+  } catch (err) { return false; }
 }
 
 // ── Listening / Audio ──────────────────────────────────────────────────────
@@ -2853,6 +2863,12 @@ function resetDeepgramKeyField() {
 }
 
 async function saveCurrentSettings() {
+  // Settings never loaded (the server didn't answer at startup): the form holds defaults, and
+  // saving them would write over the real settings.
+  if (!settingsLoaded) {
+    toast('Settings couldn’t be loaded from Kairo’s server, so nothing was saved. Restart Kairo and try again.', 'error');
+    return;
+  }
   const updated = {
     // Only include deepgramApiKey when the (now-blank-by-default) field
     // actually has something typed into it — an empty field means "keep
@@ -2878,11 +2894,13 @@ async function saveCurrentSettings() {
     ollamaModel:         settings.ollamaModel || 'qwen2.5:7b-instruct',
   };
   try {
-    await fetch(`${SERVER}/api/settings`, {
+    const r = await fetch(`${SERVER}/api/settings`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updated),
     });
+    // A refused save keeps Settings open (the problem strip says why).
+    if (!r.ok) return;
   } catch (err) {
     toast('Could not save settings: ' + err.message, 'error');
     return;
@@ -3346,7 +3364,9 @@ async function clearOutputLayer(layer) {
       body: JSON.stringify({ layer }),
     });
     result = await res.json().catch(() => ({}));
-  } catch (err) { console.warn('[KAIRO] clear-layer request failed:', err.message); }
+    // Not cleared on screen: the Preview keeps showing what is still up (the problem strip says why).
+    if (!res.ok) return;
+  } catch (err) { console.warn('[KAIRO] clear-layer request failed:', err.message); return; }
   if (layer === 'bible') { if (!result.restored) clearPreviewScreen(); return; }
   if (layer === 'slide' || layer === 'all') {
     if (!result.keptBible) clearPreviewScreen();
@@ -4311,7 +4331,8 @@ function updateElapsed() {
 // this just no-ops instead of rendering anything. Kept as a real function
 // rather than deleting every call site so none of that surrounding logic
 // needs touching.
-function toast() {}
+// Pop-ups stay off (success is silent); an error goes to the problem strip (problems.js).
+function toast(msg, type) { if (type === 'error') window.kairoProblem?.(msg); }
 
 // ── Platform class ─────────────────────────────────────────────────────────
 // Platform class is set on <html> by an inline script in index.html (before

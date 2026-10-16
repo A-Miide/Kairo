@@ -373,6 +373,15 @@
     </script>
     <script src="video_sim.js"></script>
     <script src="client_common.js"></script>
+    <script>
+    // An output window has no devtools: its uncaught errors go to the debug log
+    // (databases/debug.log) instead of nowhere. Never shown on the screen itself.
+    (function () {
+        const out = (event, data) => { try { fetch(`${location.origin}/api/debug-log`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(window.kairoAuthToken && window.kairoAuthToken() ? { Authorization: `Bearer ${window.kairoAuthToken()}` } : {}) }, body: JSON.stringify({ event, data: { ...data, output: new URLSearchParams(location.search).get('output') || '' } }) }).catch(() => {}); } catch {} };
+        window.addEventListener('error', (e) => out('display-js-error', { msg: String(e.message || '').slice(0, 300), src: String(e.filename || '').split('/').pop(), line: e.lineno }));
+        window.addEventListener('unhandledrejection', (e) => out('display-js-rejection', { msg: String((e.reason && (e.reason.message || e.reason)) || '').slice(0, 300) }));
+    })();
+    </script>
     <script src="overlay_layer.js"></script>
     <script src="design_space.js"></script>
     <script src="word_split.js"></script>
@@ -1980,6 +1989,8 @@
             v.addEventListener('play', () => reportMediaStatus(v));
             v.addEventListener('pause', () => reportMediaStatus(v));
             v.addEventListener('loadedmetadata', () => reportMediaStatus(v));
+            // A file that won't load or decode shows black here: the operator is told.
+            v.addEventListener('error', () => reportMediaError('video', v.error ? (['', 'stopped', 'a network error', 'it couldn’t be decoded', 'this format isn’t supported'][v.error.code] || v.error.message) : ''));
             mediaLayer.appendChild(v);
             // Belt-and-suspenders explicit play() alongside the declarative
             // `autoplay` attribute, called after the element is actually in
@@ -1988,6 +1999,7 @@
             v.play().catch((err) => console.warn('[Display] Video play() rejected:', err.message));
         } else {
             const img = document.createElement('img');
+            img.addEventListener('error', () => reportMediaError('image', 'it couldn’t be loaded'));
             img.src = src;
             img.style.objectFit = objectFit;
             if (motion === 'kenburns') img.style.animation = 'kairo-kenburns 18s ease-in-out infinite alternate';
@@ -1996,6 +2008,9 @@
         }
     }
 
+    function reportMediaError(kind, why) {
+        sendToServer({ type: 'media-status', kind: 'error', mediaKind: kind, error: why || '', output: OUTPUT_KEY });
+    }
     function reportMediaStatus(v) {
         sendToServer({ type: 'media-status', kind: 'video', currentTime: v.currentTime, duration: v.duration || 0, paused: v.paused });
     }
@@ -2275,7 +2290,12 @@
         ws.onmessage = (event) => {
             let msg;
             try { msg = JSON.parse(event.data); } catch { return; }
-            handleMessage(msg);
+            // One message that fails to draw is logged (by its type) and the next still lands,
+            // instead of the error ending this handler's turn with no trace.
+            try { handleMessage(msg); } catch (err) {
+                console.error('[display] message failed:', msg && msg.type, err);
+                try { window.dispatchEvent(new ErrorEvent('error', { message: `${msg && msg.type}: ${err && err.message}`, filename: 'display.html' })); } catch {}
+            }
         };
 
         ws.onerror = () => {};

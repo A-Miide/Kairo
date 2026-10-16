@@ -869,7 +869,13 @@ const LEGACY_BUILTIN_IDS = new Set([
 ]);
 
 let looks = (function loadLooks() {
-  const stored = JSON.parse(localStorage.getItem(LOOKS_KEY) || 'null');
+  // A damaged value is kept aside (not lost) and Kairo starts from the built-in themes.
+  let stored = null;
+  const storedText = localStorage.getItem(LOOKS_KEY);
+  try { stored = JSON.parse(storedText || 'null'); } catch (err) {
+    try { localStorage.setItem(`${LOOKS_KEY}-damaged-${Date.now()}`, storedText); } catch {}
+    setTimeout(() => window.kairoProblem?.('Your themes couldn’t be read, so a copy was kept and the built-in themes are in use.'), 0);
+  }
   if (Array.isArray(stored) && stored.length) {
     // Renamed BEFORE knownIds/missing below are computed from stored's ids —
     // otherwise the new id ('lyrics-bold-caption') still reads as entirely
@@ -1205,8 +1211,10 @@ function saveLooks() {
   // toast() a deliberate no-op, silently and invisibly.
   try {
     localStorage.setItem(LOOKS_KEY, JSON.stringify(looks));
+    window.kairoProblemCleared?.('themes-save');
   } catch (err) {
     console.warn('[KAIRO] saveLooks failed (storage quota?):', err.message);
+    window.kairoProblem?.('Theme changes aren’t being saved: this computer’s storage for Kairo is full. A theme with a large picture or video inside it is the usual cause.', 'themes-save');
     return;
   }
   // Keep every live output in step with the edit (by design: an output showing
