@@ -198,6 +198,49 @@
     window.__TAURI__.event.listen('menu-video-director', toggle);
   }
 
+  // ── What the outputs had before the first Layout of a Director session ──
+  // Kept in settings (not only in memory), so a crash or a quit with a Layout applied can't
+  // leave the normal screen with, say, the Bible layer off: it is put back when the mode
+  // ends, or at the next start with the mode off. Shape: { layers: { outputId: {...} },
+  // overlays: { overlayId: live } }.
+  const readBaseline = () => {
+    const b = settings.directorBaseline;
+    return b && typeof b === 'object' ? b : null;
+  };
+  function writeBaseline(b) {
+    settings.directorBaseline = b;
+    if (typeof saveSettingsPatch === 'function') saveSettingsPatch({ directorBaseline: b });
+  }
+  window.KairoDirectorBaseline = {
+    // The first record wins: later Layouts in the same session keep the state from before any of them.
+    recordLayers(layers) {
+      const b = readBaseline() || {};
+      if (b.layers) return;
+      writeBaseline({ ...b, layers });
+    },
+    recordOverlays(overlays) {
+      const b = readBaseline() || {};
+      if (b.overlays) return;
+      writeBaseline({ ...b, overlays });
+    },
+    restore() {
+      const b = readBaseline();
+      if (!b) return;
+      if (b.layers && typeof outputLayerMap === 'function' && typeof setOutputLayer === 'function') {
+        const now = outputLayerMap();
+        for (const [id, ly] of Object.entries(b.layers)) {
+          if (!ly || typeof ly !== 'object') continue;
+          for (const k of Object.keys(ly)) if (now[id] && now[id][k] !== ly[k]) setOutputLayer(id, k, ly[k]);
+        }
+      }
+      if (b.overlays && typeof b.overlays === 'object') {
+        // A refused change is reported by the app's request watcher (problems.js).
+        for (const [id, live] of Object.entries(b.overlays)) fetch(`${SERVER}/api/overlays/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ live: !!live }) });
+      }
+      writeBaseline(null);
+    },
+  };
+
   // Called by loadSettings (app.js) once the saved settings are in.
   window.initVideoSources = async function () {
     // Simulated cameras: keep the four test inputs in step with the flag.
@@ -213,6 +256,8 @@
       }
     } catch {}
     if (settings.videoDirector) { await enable(false); return; }
+    // Mode off: a Layout's layer and overlay changes left by a crash go back as they were.
+    try { window.KairoDirectorBaseline.restore(); } catch (err) { console.warn('[Video] could not restore the outputs from before a Layout:', err.message); }
     // Mode off: no screen frame may be left around an output (a crash could have left one).
     try {
       if (settings.outputFrames && Object.keys(settings.outputFrames).length) { settings.outputFrames = {}; saveSettingsPatch({ outputFrames: {} }); if (typeof applyOutputFrames === 'function') applyOutputFrames(); }

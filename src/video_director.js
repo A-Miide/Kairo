@@ -473,20 +473,14 @@
   }
   // Take: the Look's layers and overlays go onto the real outputs. Its video goes with the ordinary take.
   // What the outputs had before the first Layout of this session, put back when Director mode ends.
+  // Kept in settings by video_director_boot.js, so it survives a crash.
   function recordBaseline() {
-    if (D.baseLayers) return;
     const ly = outputLayerMap();
-    D.baseLayers = {};
-    for (const o of videoOutputs()) D.baseLayers[o.id] = { ...(ly[o.id] || {}) };
+    const layers = {};
+    for (const o of videoOutputs()) layers[o.id] = { ...(ly[o.id] || {}) };
+    window.KairoDirectorBaseline?.recordLayers(layers);
   }
-  function restoreBaseline() {
-    if (D.baseLayers) {
-      const now = outputLayerMap();
-      for (const [id, ly] of Object.entries(D.baseLayers)) for (const k of Object.keys(ly)) if (now[id] && now[id][k] !== ly[k]) setOutputLayer(id, k, ly[k]);
-      D.baseLayers = null;
-    }
-    if (D.baseOverlays) { setOverlayLive(D.baseOverlays); D.baseOverlays = null; }
-  }
+  function restoreBaseline() { window.KairoDirectorBaseline?.restore(); }
   const setOverlayLive = (map) => {
     for (const [id, live] of Object.entries(map)) fetch(`${SERVER}/api/overlays/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ live: !!live }) }).catch(() => {});
   };
@@ -502,7 +496,7 @@
     if (Array.isArray(look.overlays) && window.KairoOverlays && window.KairoOverlays.load) {
       window.KairoOverlays.load().then(items => {
         const prev = {}; items.forEach(it => { prev[it.id] = !!it.live; });
-        if (!D.baseOverlays) D.baseOverlays = prev;          // the state before any Layout
+        window.KairoDirectorBaseline?.recordOverlays(prev);  // the state before any Layout (the first record wins)
         if (step) step.overlays = prev;                      // Undo puts the overlays back too (this step's, even if another came since)
         return items;
       }).then(items => items.forEach(it => {
