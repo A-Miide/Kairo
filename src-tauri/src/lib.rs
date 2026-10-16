@@ -814,6 +814,13 @@ fn stream_program(app: AppHandle, output: Option<String>, program: Option<String
     app.state::<RecordState>().0.set_program(output.as_deref(), program, zone);
 }
 
+/// The sound mixer's levels and mutes changed: applied live to the stream and the recording.
+#[tauri::command]
+fn stream_mix(app: AppHandle, mix: Vec<stream::AudioIn>) {
+    app.state::<stream::StreamState>().set_mix(mix.clone());
+    app.state::<RecordState>().0.set_mix(mix);
+}
+
 // ── Recording (the stream engine writing a file) ─────────────────────────
 // The top bar's Record: the same picture, cameras and sound as a stream, written to an MP4
 // in the folder chosen under Settings → Streaming (Movies/Kairo by default). Separate from
@@ -1114,6 +1121,7 @@ pub fn run() {
             stream_stop,
             stream_status,
             stream_program,
+            stream_mix,
             record_start,
             record_stop,
             record_status,

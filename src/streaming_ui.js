@@ -62,6 +62,8 @@
       destinations: [], cameras,
       program: (layers[output] && layers[output].video && liveMap[output]) || null,
       zone: null, zones, audioInput,
+      // The sound mixer's channels (sound_mixer.js); the engine mixes them.
+      audioMix: (window.KairoMixer && window.KairoMixer.forEngine()) || [],
     };
   }
 

@@ -61,6 +61,25 @@ pub struct Camera {
     pub label: String,
 }
 
+/// One channel of the sound mixer (Settings → Streaming → Sound): an audio input, its level
+/// and whether it is muted. Levels and mutes change live, without restarting FFmpeg.
+#[derive(Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct AudioIn {
+    pub id: String,
+    /// The input's name, as FFmpeg lists it.
+    pub label: String,
+    #[serde(default)]
+    pub gain_db: f32,
+    #[serde(default)]
+    pub muted: bool,
+}
+
+/// A channel's level as FFmpeg's `volume` filter takes it: a factor, 0 when muted.
+pub fn mix_volume(c: &AudioIn) -> f32 {
+    if c.muted { 0.0 } else { 10f32.powf(c.gain_db.clamp(-60.0, 12.0) / 20.0) }
+}
+
 #[derive(Deserialize, Serialize, Clone, Copy, Debug, PartialEq)]
 pub struct Zone {
     pub x: f64,
@@ -99,6 +118,9 @@ pub struct PipelineConfig {
     /// after trouble writes the next part beside it ("… part 2.mp4"), never over it.
     #[serde(default)]
     pub record_to: Option<String>,
+    /// The sound mixer's channels; when there are any they replace `audio_input`.
+    #[serde(default)]
+    pub audio_mix: Vec<AudioIn>,
 }
 
 #[derive(Serialize, Clone, Debug, Default)]
@@ -322,6 +344,8 @@ pub struct Inputs {
     /// Camera id → FFmpeg input number, for the cameras FFmpeg is asked to open.
     pub camera_inputs: Vec<(String, usize)>,
     pub audio_input: Option<usize>,
+    /// The mixer's channels FFmpeg was asked to open: (channel id, FFmpeg input number).
+    pub mix_inputs: Vec<(String, usize)>,
     pub warnings: Vec<String>,
 }
 
@@ -375,7 +399,27 @@ pub fn build_inputs(cfg: &PipelineConfig, graphics_port: u16, video_names: &[Str
         next += 1;
     }
     let mut audio_input = None;
-    if test_sources {
+    let mut mix_inputs = Vec::new();
+    if !cfg.audio_mix.is_empty() {
+        let mut used = HashSet::new();
+        for (k, ch) in cfg.audio_mix.iter().enumerate() {
+            if test_sources {
+                args.extend(["-re", "-f", "lavfi", "-i"].map(String::from));
+                args.push(format!("sine=frequency={}:sample_rate=48000", 330 + 110 * k));
+            } else {
+                let found = device_format().zip(match_device(&ch.label, audio_names, &used));
+                let Some((fmt, i)) = found else {
+                    warnings.push(format!("The sound input \"{}\" wasn't found; it is left out of the mix.", ch.label));
+                    continue;
+                };
+                used.insert(i);
+                args.extend(["-thread_queue_size", "1024", "-f", fmt].map(String::from));
+                args.extend(["-i".into(), if fmt == "avfoundation" { format!(":{i}") } else { format!("audio={}", audio_names[i]) }]);
+            }
+            mix_inputs.push((ch.id.clone(), next));
+            next += 1;
+        }
+    } else if test_sources {
         args.extend(["-re", "-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000"].map(String::from));
         audio_input = Some(next);
     } else if let Some(label) = cfg.audio_input.as_deref().filter(|l| !l.trim().is_empty()) {
@@ -395,12 +439,12 @@ pub fn build_inputs(cfg: &PipelineConfig, graphics_port: u16, video_names: &[Str
         warnings.push("No audio input is chosen under Settings → Audio; the stream goes out silent.".into());
     }
     if audio_input.is_none() {
-        // Generated silence is made at real-time speed (-re): nothing else paces it, and the
+        // Generated silence (also the mixer's floor, so the sound never stops) is made at real-time speed (-re): nothing else paces it, and the
         // destinations' buffers would otherwise let it run far ahead of the picture.
         args.extend(["-re", "-f", "lavfi", "-i", "anullsrc=channel_layout=stereo:sample_rate=48000"].map(String::from));
         audio_input = Some(next);
     }
-    Inputs { args, camera_inputs, audio_input, warnings }
+    Inputs { args, camera_inputs, audio_input, mix_inputs, warnings }
 }
 
 /// The selection index for `program` among the opened cameras; the last index is "no camera".
@@ -437,7 +481,8 @@ pub fn filter_graph(cfg: &PipelineConfig, inputs: &Inputs, selected: usize, zone
     g += &format!("color=c=black:s={w}x{h}:r={fps},format=yuv420p[nocam];");
     labels += "[nocam]";
     let n = inputs.camera_inputs.len() + 1;
-    g += &format!("{labels}streamselect@sel=inputs={n}:map={selected}[cam];");
+    // streamselect needs two or more pictures to choose between: with no cameras, just black.
+    if n == 1 { g += "[nocam]null[cam];"; } else { g += &format!("{labels}streamselect@sel=inputs={n}:map={selected}[cam];"); }
     // The camera on air, ready in every zone (each on its own black canvas, all the same size).
     if zones.len() == 1 {
         g += "[cam]null[bv];";
@@ -460,6 +505,18 @@ pub fn filter_graph(cfg: &PipelineConfig, inputs: &Inputs, selected: usize, zone
     }
     // The graphics end the stream when they stop (Kairo has gone): nothing goes out unwatched.
     g += "[0:v]format=rgba[g];[bv][g]overlay=format=auto:eof_action=endall,format=yuv420p[v]";
+    // The sound mixer: each channel at its level (volume@m<k>, changed live), all summed over
+    // the silent floor so the sound never stops when an input does.
+    if !inputs.mix_inputs.is_empty() {
+        let mut ins = String::new();
+        for (k, (id, n)) in inputs.mix_inputs.iter().enumerate() {
+            let vol = cfg.audio_mix.iter().find(|c| &c.id == id).map(mix_volume).unwrap_or(1.0);
+            g += &format!(";[{n}:a]aresample=48000,aformat=sample_rates=48000:channel_layouts=stereo,volume@m{k}=volume={vol:.4}:eval=frame[m{k}]");
+            ins += &format!("[m{k}]");
+        }
+        let floor = inputs.audio_input.unwrap_or(1);
+        g += &format!(";[{floor}:a]aformat=sample_rates=48000:channel_layouts=stereo[mfloor];{ins}[mfloor]amix=inputs={}:duration=longest:normalize=0:dropout_transition=0[a]", inputs.mix_inputs.len() + 1);
+    }
     g
 }
 
@@ -476,7 +533,8 @@ pub fn ffmpeg_args(cfg: &PipelineConfig, enc: &str, inputs: &Inputs, selected: u
     let mut a: Vec<String> = ["-hide_banner", "-loglevel", "warning", "-stats", "-stats_period", "1", "-y"].map(String::from).to_vec();
     a.extend(inputs.args.iter().cloned());
     a.extend(["-filter_complex".into(), filter_graph(cfg, inputs, selected, zones, zone_sel)]);
-    a.extend(["-map".into(), "[v]".into(), "-map".into(), format!("{}:a", inputs.audio_input.unwrap_or(1))]);
+    let audio = if inputs.mix_inputs.is_empty() { format!("{}:a", inputs.audio_input.unwrap_or(1)) } else { "[a]".into() };
+    a.extend(["-map".into(), "[v]".into(), "-map".into(), audio]);
     a.extend(encoder_args(enc, cfg));
     a.extend([
         "-c:a".into(), "aac".into(), "-b:a".into(), format!("{}k", cfg.audio_kbps.clamp(64, 320)),
@@ -558,6 +616,9 @@ struct Shared {
     zones: Mutex<Vec<Option<Zone>>>,
     /// When FFmpeg last reported progress.
     progress: Mutex<Instant>,
+    /// The mixer channels this FFmpeg opened, in filter order, and the level each was last set to.
+    mix_inputs: Mutex<Vec<(String, usize)>>,
+    sent_volumes: Mutex<Vec<f32>>,
 }
 
 #[derive(Default)]
@@ -603,6 +664,8 @@ impl Pipeline {
             sent: Mutex::new(None),
             zones: Mutex::new(vec![None]),
             progress: Mutex::new(Instant::now()),
+            mix_inputs: Mutex::new(Vec::new()),
+            sent_volumes: Mutex::new(Vec::new()),
         });
         let (nudge, wake) = mpsc::channel::<()>();
         let s2 = shared.clone();
@@ -636,6 +699,17 @@ impl Pipeline {
         if let Ok(mut cfg) = self.shared.cfg.lock() {
             cfg.program = program;
             cfg.zone = zone;
+        }
+        let _ = self.nudge.send(());
+    }
+
+    /// The sound mixer's levels or mutes changed: applied live. (A channel added or removed
+    /// is used from the next start.)
+    pub fn set_mix(&self, mix: Vec<AudioIn>) {
+        if let Ok(mut cfg) = self.shared.cfg.lock() {
+            for c in &mut cfg.audio_mix {
+                if let Some(n) = mix.iter().find(|n| n.id == c.id) { c.gain_db = n.gain_db; c.muted = n.muted; }
+            }
         }
         let _ = self.nudge.send(());
     }
@@ -679,6 +753,9 @@ fn send_commands(shared: &Shared, wake: mpsc::Receiver<()>) {
         };
         let from = shared.sent.lock().ok().and_then(|s| *s);
         let mut cmds = live_commands(from, selected, zone_sel, nzones);
+        let volumes = wanted_volumes(shared);
+        let sent_vol = shared.sent_volumes.lock().map(|v| v.clone()).unwrap_or_default();
+        cmds.extend(volume_commands(&sent_vol, &volumes));
         if cmds.is_empty() { continue; }
         // FFmpeg polls its keyboard about every 100 ms and the last command of a burst waits
         // for the next key, so they go one at a time and harmless repeats follow them.
@@ -694,8 +771,26 @@ fn send_commands(shared: &Shared, wake: mpsc::Receiver<()>) {
             }
             thread::sleep(Duration::from_millis(110));
         }
-        if ok { if let Ok(mut s) = shared.sent.lock() { *s = Some((selected, zone_sel)); } }
+        if ok {
+            if let Ok(mut s) = shared.sent.lock() { *s = Some((selected, zone_sel)); }
+            if let Ok(mut v) = shared.sent_volumes.lock() { *v = volumes; }
+        }
     }
+}
+
+/// The level each opened mixer channel should be at now, in filter order.
+fn wanted_volumes(shared: &Shared) -> Vec<f32> {
+    let mix = shared.cfg.lock().map(|c| c.audio_mix.clone()).unwrap_or_default();
+    let opened = shared.mix_inputs.lock().map(|m| m.clone()).unwrap_or_default();
+    opened.iter().map(|(id, _)| mix.iter().find(|c| &c.id == id).map(mix_volume).unwrap_or(1.0)).collect()
+}
+
+/// FFmpeg commands for the mixer channels whose level changed.
+pub fn volume_commands(sent: &[f32], wanted: &[f32]) -> Vec<String> {
+    wanted.iter().enumerate()
+        .filter(|(k, v)| sent.get(*k).is_none_or(|s| (s - **v).abs() > 0.0005))
+        .map(|(k, v)| format!("volume@m{k} -1 volume {v:.4}"))
+        .collect()
 }
 
 fn set_status(shared: &Shared, on_status: &OnStatus, f: impl FnOnce(&mut PipelineStatus)) {
@@ -724,6 +819,11 @@ fn supervise(ffmpeg: PathBuf, shared: Arc<Shared>, on_status: OnStatus) {
         set_status(&shared, &on_status, |s| { s.state = "failed".into(); s.error = Some("No H.264 encoder works with this copy of FFmpeg on this computer.".into()); });
         return;
     };
+    // Mixing needs FFmpeg's amix and volume filters; without them the first channel that is
+    // on is used alone.
+    let filters = Command::new(&ffmpeg).args(["-hide_banner", "-filters"]).stdin(Stdio::null()).stderr(Stdio::null()).output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
+    let can_mix = ["amix", "volume"].iter().all(|f| filters.lines().any(|l| l.split_whitespace().any(|w| w == *f)));
     let mut backoff = 2u64;
     let mut skip: HashSet<String> = HashSet::new();
     let mut part = 0u32;
@@ -745,13 +845,24 @@ fn supervise(ffmpeg: PathBuf, shared: Arc<Shared>, on_status: OnStatus) {
             set_status(&shared, &on_status, |s| { s.state = "failed".into(); s.error = Some(format!("No local port for the picture: {e}")); });
             return;
         } };
-        let inputs = build_inputs(&cfg, port, &video_names, &audio_names, &skip);
+        let mut mix_warning = None;
+        if !can_mix && !cfg.audio_mix.is_empty() {
+            cfg.audio_input = cfg.audio_mix.iter().find(|c| !c.muted).map(|c| c.label.clone());
+            cfg.audio_mix.clear();
+            mix_warning = Some("This copy of FFmpeg can't mix sound, so only the first sound input that is on is used.".to_string());
+        }
+        let mut inputs = build_inputs(&cfg, port, &video_names, &audio_names, &skip);
+        inputs.warnings.extend(mix_warning);
         let selected = select_index(cfg.program.as_deref(), &inputs.camera_inputs);
         let zones = zone_list(&cfg);
         let zone_sel = zone_index(cfg.zone, &zones);
         if let Ok(mut c) = shared.camera_inputs.lock() { *c = inputs.camera_inputs.clone(); }
         if let Ok(mut z) = shared.zones.lock() { *z = zones.clone(); }
         if let Ok(mut s) = shared.sent.lock() { *s = Some((selected, zone_sel)); }
+        if let Ok(mut m) = shared.mix_inputs.lock() { *m = inputs.mix_inputs.clone(); }
+        if let Ok(mut v) = shared.sent_volumes.lock() {
+            *v = inputs.mix_inputs.iter().map(|(id, _)| cfg.audio_mix.iter().find(|c| &c.id == id).map(mix_volume).unwrap_or(1.0)).collect();
+        }
         let args = ffmpeg_args(&cfg, enc, &inputs, selected, &zones, zone_sel);
         let mut child = match Command::new(&ffmpeg).args(&args).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped()).spawn() {
             Ok(c) => c,
@@ -1035,6 +1146,10 @@ impl StreamState {
         }
     }
 
+    pub fn set_mix(&self, mix: Vec<AudioIn>) {
+        if let Ok(p) = self.pipelines.lock() { for x in p.iter() { x.set_mix(mix.clone()); } }
+    }
+
     pub fn set_program(&self, output: Option<&str>, program: Option<String>, zone: Option<Zone>) {
         if let Ok(p) = self.pipelines.lock() {
             for x in p.iter().filter(|x| output.is_none_or(|o| x.output() == o)) { x.set_program(program.clone(), zone); }
@@ -1057,7 +1172,37 @@ mod tests {
             program: Some("cam1".into()), zone: None, audio_input: Some("MacBook Pro Microphone (Built-in)".into()),
             zones: vec![Zone { x: 60.0, y: 120.0, w: 640.0, h: 840.0 }],
             record_to: None,
+            audio_mix: Vec::new(),
         }
+    }
+
+    #[test]
+    fn no_cameras_is_just_black() {
+        let mut c = cfg();
+        c.cameras.clear();
+        let inputs = Inputs { args: vec![], camera_inputs: vec![], audio_input: Some(1), mix_inputs: vec![], warnings: vec![] };
+        let g = filter_graph(&c, &inputs, 0, &zone_list(&c), 0);
+        assert!(!g.contains("streamselect@sel"), "one picture can't be selected between: {g}");
+        assert!(g.contains("[nocam]null[cam]"), "{g}");
+    }
+
+    #[test]
+        fn mixer_levels_and_live_changes() {
+        let ch = |id: &str, db: f32, muted: bool| AudioIn { id: id.into(), label: id.into(), gain_db: db, muted };
+        assert!((mix_volume(&ch("a", 0.0, false)) - 1.0).abs() < 1e-4);
+        assert!((mix_volume(&ch("a", -6.0, false)) - 0.501).abs() < 1e-3);
+        assert_eq!(mix_volume(&ch("a", 0.0, true)), 0.0);
+        assert!(mix_volume(&ch("a", 99.0, false)) < 4.0, "kept to +12 dB");
+        assert_eq!(volume_commands(&[1.0, 0.5], &[1.0, 0.0]), vec!["volume@m1 -1 volume 0.0000"]);
+        assert!(volume_commands(&[1.0], &[1.0]).is_empty());
+        let mut c = cfg();
+        c.audio_mix = vec![ch("desk", 0.0, false), ch("mic", -6.0, true)];
+        let inputs = Inputs { args: vec![], camera_inputs: vec![], audio_input: Some(3), mix_inputs: vec![("desk".into(), 1), ("mic".into(), 2)], warnings: vec![] };
+        let g = filter_graph(&c, &inputs, 0, &zone_list(&c), 0);
+        assert!(g.contains("volume@m0=volume=1.0000") && g.contains("volume@m1=volume=0.0000"), "{g}");
+        assert!(g.contains("amix=inputs=3"), "two channels over the silent floor: {g}");
+        let a = ffmpeg_args(&c, "libx264", &inputs, 0, &zone_list(&c), 0);
+        assert!(a.windows(2).any(|w| w[0] == "-map" && w[1] == "[a]"));
     }
 
     #[test]
@@ -1246,6 +1391,42 @@ mod tests {
         let _ = Command::new(&ffmpeg).args(["-hide_banner", "-loglevel", "error", "-y", "-sseof", "-1", "-i"]).arg(dir.join("a.flv"))
             .args(["-frames:v", "1"]).arg(dir.join("a.png")).status();
         println!("frames in {}", dir.display());
+    }
+
+    /// Mixes two test tones, mutes both live and checks the end of the recording is silent:
+    /// `KAIRO_STREAM_E2E=1 cargo test -p kairo --lib mix_e2e -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn mix_e2e() {
+        if std::env::var("KAIRO_STREAM_E2E").is_err() { return; }
+        std::env::set_var("KAIRO_STREAM_TEST_DEVICES", "1");
+        let ffmpeg = PathBuf::from(std::env::var("KAIRO_FFMPEG").unwrap_or_else(|_| "ffmpeg".into()));
+        let dir = std::env::temp_dir().join(format!("kairo-mix-e2e-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("mix.mp4");
+        let ch = |id: &str, muted: bool| AudioIn { id: id.into(), label: id.into(), gain_db: 0.0, muted };
+        let mut c = cfg();
+        c.width = 640; c.height = 360; c.destinations.clear(); c.program = None; c.cameras.clear();
+        c.record_to = Some(file.to_string_lossy().to_string());
+        c.audio_mix = vec![ch("desk", false), ch("mic", false)];
+        let p = Pipeline::start(ffmpeg.clone(), c, Arc::new(|_| {}));
+        p.push_frame(Arc::new(Frame { width: 640, height: 360, bgra: vec![90u8; 640 * 360 * 4] }), 0);
+        thread::sleep(Duration::from_secs(4));
+        p.set_mix(vec![ch("desk", true), ch("mic", true)]);
+        thread::sleep(Duration::from_secs(4));
+        let st = p.status();
+        p.stop();
+        p.join(Duration::from_secs(6));
+        assert_eq!(st.state, "live", "{st:?}");
+        let level = |from: &str, len: &str| {
+            let o = Command::new(&ffmpeg).args(["-hide_banner", "-ss", from, "-t", len, "-i"]).arg(&file).args(["-af", "volumedetect", "-f", "null", "-"]).output().unwrap();
+            let t = String::from_utf8_lossy(&o.stderr).to_string();
+            t.lines().find_map(|l| l.split("max_volume: ").nth(1)).and_then(|v| v.trim_end_matches(" dB").trim().parse::<f32>().ok()).unwrap_or(-999.0)
+        };
+        let (before, after) = (level("1", "2"), level("6", "1.5"));
+        println!("max level before mute {before} dB, after {after} dB");
+        assert!(before > -20.0, "the tones are heard: {before}");
+        assert!(after < -60.0, "muted live: {after}");
     }
 
     /// Records ~4 s to a file with test sources and checks it plays, even cut off by a kill:

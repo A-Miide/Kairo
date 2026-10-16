@@ -6,6 +6,7 @@
 //   { destinations: [{ id, name, preset, url, key, enabled }],
 //     video: { resolution: '1080p', fps: 30, bitrate: 6000 },
 //     audio: { bitrate: 160, music: true, input: true },
+//     mix: [sound mixer channels, sound_mixer.js],
 //     record: { output, bitrate: 12000, folder: null (Movies/Kairo), button: false } }
 // Stream keys stay on this computer (they are saved in Kairo's own settings file and are
 // never put in a log, an export or a link).
@@ -30,6 +31,7 @@
   let editingId = null;      // the destination whose form is open ('new' while adding)
   let checking = {};          // id → 'checking' | { ok, message }
   let revealed = new Set();   // ids whose key is shown
+  let mixerEl = null;         // the sound mixer, kept across redraws
 
   const host = () => document.getElementById('streaming-panel');
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
@@ -254,10 +256,15 @@
 
     // Audio
     const audio = el('div', 'st-card');
-    audio.appendChild(el('div', 'st-card-head')).appendChild(el('div', 'st-card-title', 'Audio'));
+    audio.appendChild(el('div', 'st-card-head')).appendChild(el('div', 'st-card-title', 'Sound'));
     const ab = el('div', 'st-card-body');
+    // The same mixer each redraw (the page redraws with the live status): a fader being
+    // dragged is never replaced under the pointer.
+    if (!mixerEl) mixerEl = el('div');
+    if (window.KairoMixer && !window.KairoMixer.isMounted(mixerEl)) window.KairoMixer.mount(mixerEl);
+    const mixer = mixerEl;
     ab.append(
-      row('Sound desk or microphone', 'The input chosen under Audio', toggle(c.audio.input, '', (on) => save({ ...cfg(), audio: { ...cfg().audio, input: on } }))),
+      mixer,
       row('Quality', null, select(AUDIO_BITRATES.map(b => [b, `${b} kbps`]), c.audio.bitrate, (v) => save({ ...cfg(), audio: { ...cfg().audio, bitrate: Number(v) } }))),
     );
     audio.appendChild(ab);
