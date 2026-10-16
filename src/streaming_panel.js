@@ -34,18 +34,23 @@
   let mixerEl = null;         // the sound mixer, kept across redraws
 
   const host = () => document.getElementById('streaming-panel');
-  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const { el } = window.KairoUI;
   const uid = () => 'dest-' + Math.random().toString(36).slice(2, 8);
 
+  // settings.stream is shared: the sound mixer (mix) and Recording (record) live in it too, so
+  // every read keeps all of it and every save merges into it. (This used to rebuild it from
+  // destinations/video/audio only, so changing a destination wiped the mix and recording.)
   function cfg() {
     const s = (typeof settings === 'object' && settings && settings.stream) || {};
     return {
+      ...s,
       destinations: Array.isArray(s.destinations) ? s.destinations.filter(d => d && typeof d === 'object') : [],
       video: { ...DEFAULTS.video, ...(s.video || {}) },
       audio: { ...DEFAULTS.audio, ...(s.audio || {}) },
     };
   }
   function save(next) {
+    next = { ...((typeof settings === 'object' && settings && settings.stream) || {}), ...next };
     settings.stream = next;
     if (typeof saveSettingsPatch === 'function') saveSettingsPatch({ stream: next });
   }
@@ -62,14 +67,7 @@
   const mask = (key) => (key ? '•'.repeat(Math.min(12, Math.max(6, key.length))) : 'No key');
   function presetOf(d) { return PRESETS.find(p => p.id === d.preset) || PRESETS[PRESETS.length - 1]; }
 
-  function toggle(checked, title, onChange) {
-    const wrap = el('label', 'output-toggle');
-    wrap.title = title || '';
-    const input = document.createElement('input'); input.type = 'checkbox'; input.checked = !!checked;
-    input.addEventListener('change', () => onChange(input.checked));
-    wrap.append(input, el('span', 'output-toggle-track'));
-    return wrap;
-  }
+  const toggle = (checked, title, onChange) => window.KairoUI.toggle(checked, title, onChange);
   function select(options, value, onChange) {
     const s = el('select', 'setting-input');
     options.forEach(([v, label]) => { const o = document.createElement('option'); o.value = String(v); o.textContent = label; if (String(v) === String(value)) o.selected = true; s.appendChild(o); });

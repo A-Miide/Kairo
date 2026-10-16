@@ -23,7 +23,8 @@
     if (!sendTimers[id]) sendTimers[id] = setTimeout(send, 60);
   }
 
-  function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; }
+  // (This copy used `if (text)`, so 0 showed nothing: the shared one shows it.)
+  const { el } = window.KairoUI;
   const mediaSrc = (o) => (typeof authedMediaUrl === 'function' ? authedMediaUrl(o.url) : o.url);
 
   let stage = null;
@@ -93,15 +94,8 @@
   };
 
   // A pill switch (same look as the output on/off switches).
-  function toggle(checked, title, onChange) {
-    const wrap = el('label', 'output-toggle');
-    wrap.title = title || '';
-    const input = document.createElement('input'); input.type = 'checkbox'; input.checked = !!checked;
-    input.addEventListener('change', () => onChange(input.checked));
-    wrap.append(input, el('span', 'output-toggle-track'));
-    wrap.addEventListener('click', (e) => e.stopPropagation());
-    return wrap;
-  }
+  // In a clickable row: its clicks are its own.
+  const toggle = (checked, title, onChange) => window.KairoUI.toggle(checked, title, onChange, { stopClicks: true });
 
   function render() {
     const h = host();
