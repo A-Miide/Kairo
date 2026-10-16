@@ -13,7 +13,7 @@
   const running = new Set();
   let editing = null;   // the macro being edited (a copy), or null
 
-  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const { el } = window.KairoUI;
   const uid = () => 'macro-' + Math.random().toString(36).slice(2, 8);
   const list = () => (Array.isArray(settings.macros) ? settings.macros.filter(m => m && Array.isArray(m.steps)) : []);
   function save(next) {
@@ -75,25 +75,17 @@
 
   // ── Top bar: a Macros button and its list ──
   let topBtn = null, pop = null;
-  function closePop() { if (pop) { pop.remove(); pop = null; document.removeEventListener('mousedown', outside, true); document.removeEventListener('keydown', esc, true); } }
-  const outside = (e) => { if (pop && !pop.contains(e.target) && e.target !== topBtn) closePop(); };
-  const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); closePop(); } };
+  function closePop() { if (pop) pop.close(); }
   function openPop() {
-    closePop();
-    pop = el('div', 'mc-pop');
-    pop.setAttribute('role', 'menu');
+    const menu = el('div');
     list().forEach((m, i) => {
       const b = el('button', 'mc-pop-item' + (running.has(m.id) ? ' is-running' : ''));
       b.type = 'button'; b.setAttribute('role', 'menuitem');
       b.append(el('span', 'mc-pop-name', m.name || `Macro ${i + 1}`), el('span', 'mc-pop-key', running.has(m.id) ? 'Running…' : (i < 9 ? `macro-${i + 1}` : '')));
       b.addEventListener('click', () => { closePop(); if (running.has(m.id)) stop(m); else run(m); });
-      pop.appendChild(b);
+      menu.appendChild(b);
     });
-    const r = topBtn.getBoundingClientRect();
-    pop.style.top = `${r.bottom + 6}px`; pop.style.left = `${Math.max(8, r.right - 240)}px`;
-    document.body.appendChild(pop);
-    document.addEventListener('mousedown', outside, true);
-    document.addEventListener('keydown', esc, true);
+    pop = window.KairoUI.popover(topBtn, menu, { cls: 'mc-pop', role: 'menu', label: 'Macros', onClose: () => { pop = null; } });
   }
   function renderTop() {
     const listen = document.getElementById('listen-btn');
@@ -103,7 +95,7 @@
       topBtn.type = 'button';
       topBtn.title = 'Run a macro';
       topBtn.setAttribute('aria-haspopup', 'menu');
-      topBtn.addEventListener('click', () => (pop ? closePop() : openPop()));
+      topBtn.addEventListener('click', () => (pop && pop.isOpen() ? closePop() : openPop()));
       const stream = document.getElementById('stream-btn');
       listen.parentNode.insertBefore(topBtn, stream || listen);
     }
@@ -261,7 +253,7 @@
     .tb-macro-btn { height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border-md, rgba(255,255,255,0.14)); background: transparent; color: var(--text); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; margin-right: 8px; }
     .tb-macro-btn[hidden] { display: none; }
     .tb-macro-btn.is-running { border-color: #b5832c; }
-    .mc-pop { position: fixed; z-index: 2000; width: 240px; max-height: 60vh; overflow: auto; padding: 6px; border-radius: 10px; border: 1px solid var(--border); background: var(--bg-elevated, #1b1b1f); box-shadow: 0 16px 40px rgba(0,0,0,.45); }
+    .mc-pop { width: 240px; max-height: 60vh; padding: 6px; border-radius: 10px; }
     .mc-pop-item { width: 100%; display: flex; justify-content: space-between; gap: 10px; padding: 8px 10px; border: 0; border-radius: 7px; background: transparent; color: var(--text); font: inherit; font-size: 13px; cursor: pointer; text-align: left; }
     .mc-pop-item:hover, .mc-pop-item:focus-visible { background: rgba(255,255,255,0.06); }
     .mc-pop-item.is-running .mc-pop-key { color: #e0a64a; }

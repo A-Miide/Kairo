@@ -10,7 +10,7 @@
   const T = window.__TAURI__;
   const invoke = T && T.core && T.core.invoke;
   const MIN_DB = -30, MAX_DB = 10;
-  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const { el } = window.KairoUI;
   const uid = () => 'mix-' + Math.random().toString(36).slice(2, 8);
 
   const streamCfg = () => (typeof settings === 'object' && settings && settings.stream) || {};
@@ -172,23 +172,15 @@
 
   // ── The top bar's Sound button, while live or recording ──
   let btn = null, pop = null;
-  function closePop() { if (pop) { pop.remove(); pop = null; document.removeEventListener('mousedown', outside, true); document.removeEventListener('keydown', esc, true); } }
-  const outside = (e) => { if (pop && !pop.contains(e.target) && e.target !== btn) closePop(); };
-  const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); closePop(); } };
+  function closePop() { if (pop) pop.close(); }
   async function openPop() {
-    closePop();
-    pop = el('div', 'mx-pop');
-    pop.setAttribute('role', 'dialog');
-    pop.setAttribute('aria-label', 'Sound');
-    pop.appendChild(el('div', 'mx-pop-title', 'Sound for the stream and recording'));
+    const box = el('div');
+    box.appendChild(el('div', 'mx-pop-title', 'Sound for the stream and recording'));
     const body = el('div');
-    pop.appendChild(body);
-    const r = btn.getBoundingClientRect();
-    pop.style.top = `${r.bottom + 6}px`; pop.style.left = `${Math.max(8, Math.min(window.innerWidth - 388, r.right - 380))}px`;
-    document.body.appendChild(pop);
-    document.addEventListener('mousedown', outside, true);
-    document.addEventListener('keydown', esc, true);
+    box.appendChild(body);
+    pop = window.KairoUI.popover(btn, box, { cls: 'mx-pop', label: 'Sound', onClose: () => { pop = null; } });
     await mount(body);
+    if (pop) pop.place();   // its height is known once the inputs are in
   }
   function renderButton() {
     const listen = document.getElementById('listen-btn');
@@ -199,7 +191,7 @@
       btn.type = 'button';
       btn.title = 'Sound levels for the stream and recording';
       btn.setAttribute('aria-haspopup', 'dialog');
-      btn.addEventListener('click', () => (pop ? closePop() : openPop()));
+      btn.addEventListener('click', () => (pop && pop.isOpen() ? closePop() : openPop()));
       listen.parentNode.insertBefore(btn, document.getElementById('record-btn') || document.getElementById('stream-btn') || listen);
     }
     const on = S.isLive() || S.isRecording();
@@ -229,7 +221,7 @@
     .mx-db { font-size: 12px; color: var(--text-2, var(--text)); font-variant-numeric: tabular-nums; text-align: right; }
     .mx-foot { display: flex; align-items: center; gap: 10px; padding-top: 8px; flex-wrap: wrap; }
     .mx-foot .setting-hint { margin: 0; }
-    .mx-pop { position: fixed; z-index: 2000; width: 380px; max-width: calc(100vw - 16px); max-height: 70vh; overflow: auto; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-elevated, #1b1b1f); box-shadow: 0 16px 40px rgba(0,0,0,.45); }
+    .mx-pop { width: 380px; padding: 12px 14px; }
     .mx-pop-title { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim, var(--text)); margin-bottom: 4px; }
     .tb-sound-btn[hidden] { display: none; }
   `;

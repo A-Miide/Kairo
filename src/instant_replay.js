@@ -8,7 +8,7 @@
 // stages it. Off by default: it keeps the camera open and encoding while on.
 (function () {
   const REPLAY = 8, SEG = 16;
-  const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
+  const { el } = window.KairoUI;
   const D = () => window.KairoVideoDirector;
   const enabled = () => !!(typeof settings === 'object' && settings && settings.videoDirector && settings.videoReplay);
 
@@ -127,32 +127,23 @@
 
   // ── The top bar: Replay (Director mode only) with its switch ──
   let btn = null, pop = null;
-  function closePop() { if (pop) { pop.remove(); pop = null; document.removeEventListener('mousedown', outside, true); document.removeEventListener('keydown', esc, true); } }
-  const outside = (e) => { if (pop && !pop.contains(e.target) && e.target !== btn) closePop(); };
-  const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); closePop(); } };
+  function closePop() { if (pop) pop.close(); }
   function openPop() {
-    closePop();
-    pop = el('div', 'rp-pop');
-    pop.setAttribute('role', 'dialog');
-    pop.setAttribute('aria-label', 'Instant replay');
+    const box = el('div', 'rp-box');
     const row = el('label', 'rp-row');
     const cb = el('input'); cb.type = 'checkbox'; cb.checked = enabled();
     cb.addEventListener('change', () => { setEnabled(cb.checked); openPop(); });
     row.append(cb, el('span', null, 'Keep the camera on air recording for replays'));
-    pop.appendChild(row);
-    pop.appendChild(el('p', 'rp-hint', enabled()
+    box.appendChild(row);
+    box.appendChild(el('p', 'rp-hint', enabled()
       ? (stream ? (ready() ? `Replay puts about the last ${REPLAY}–${SEG} seconds in Preview.` : 'Getting the first seconds…') : 'Waiting for a camera on air.')
       : 'Off: the camera isn’t recorded. On, it uses a little more of the computer while Director mode runs.'));
     const go = el('button', 'modal-btn primary', busy ? 'Saving…' : 'Replay to Preview');
     go.type = 'button';
     go.disabled = busy || !stream || !ready();
     go.addEventListener('click', () => { closePop(); replay(); });
-    pop.appendChild(go);
-    const r = btn.getBoundingClientRect();
-    pop.style.top = `${r.bottom + 6}px`; pop.style.left = `${Math.max(8, Math.min(window.innerWidth - 300, r.right - 290))}px`;
-    document.body.appendChild(pop);
-    document.addEventListener('mousedown', outside, true);
-    document.addEventListener('keydown', esc, true);
+    box.appendChild(go);
+    pop = window.KairoUI.popover(btn, box, { cls: 'rp-pop', label: 'Instant replay', onClose: () => { pop = null; } });
   }
   function render() {
     const listen = document.getElementById('listen-btn');
@@ -175,7 +166,8 @@
   style.textContent = `
     .tb-replay-btn[hidden] { display: none; }
     .tb-replay-btn.is-armed { border-color: #6f9a5b; }
-    .rp-pop { position: fixed; z-index: 2000; width: 290px; padding: 12px 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-elevated, #1b1b1f); box-shadow: 0 16px 40px rgba(0,0,0,.45); display: flex; flex-direction: column; gap: 10px; }
+    .rp-pop { width: 290px; padding: 12px 14px; }
+    .rp-box { display: flex; flex-direction: column; gap: 10px; }
     .rp-row { display: flex; gap: 8px; align-items: flex-start; font-size: 13px; color: var(--text); cursor: pointer; }
     .rp-hint { margin: 0; font-size: 12px; color: var(--text-2, var(--text)); line-height: 1.4; }
   `;
