@@ -27,6 +27,17 @@ const MAX_LIVE_WORDS: usize = LIVE_TAIL_WORDS + 4;
 /// The recogniser restarts its context after an utterance this long.
 const RESET_AFTER_WORDS: usize = 300;
 const UTTERANCE_END_SECS: f32 = 1.2;
+/// Live speech stays live: audio still waiting to be decoded when it is older than this is
+/// dropped and recognition starts again at the newest audio. On a computer too busy to decode
+/// in real time the backlog otherwise grew for the whole service (measured 2026-10-16: 5.4
+/// minutes behind after an hour), detection reacting to things said minutes before. The live
+/// worker and `offline-transcribe --realtime` both use this rule (see [`too_far_behind`]).
+pub const MAX_BEHIND: Duration = Duration::from_secs(4);
+
+/// The catch-up rule: audio that arrived `waited` ago and isn't decoded yet is too old to use.
+pub fn too_far_behind(waited: Duration) -> bool {
+    waited > MAX_BEHIND
+}
 const REQUIRED: [&str; 4] = ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"];
 
 static NUMBER_WORD: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
@@ -272,6 +283,20 @@ impl Transcriber {
         out
     }
 
+    /// Recognition fell behind and the waiting audio was dropped: what was heard so far ends
+    /// as a final, and the recogniser starts fresh at the next audio (no half-sentence glued
+    /// across the gap).
+    pub fn cut(&mut self) -> Option<Heard> {
+        self.decode();
+        let words = self.words();
+        let rest = words.get(self.locked.min(words.len())..).unwrap_or(&[]).join(" ");
+        self.rec.reset(&self.stream);
+        self.pin();
+        self.locked = 0;
+        self.last_partial.clear();
+        (!rest.is_empty()).then_some(Heard::Final(rest))
+    }
+
     /// The audio has ended: whatever is left, as a final.
     pub fn finish(&mut self) -> Option<Heard> {
         self.stream.input_finished();
@@ -414,22 +439,30 @@ fn run_worker(dir: &std::path::Path, language: Option<String>) -> i32 {
         let _ = o.flush();
     };
     say("ready".into());
-    let (tx, rx) = std::sync::mpsc::channel::<Option<Vec<u8>>>();
+    // Each chunk with when it arrived (for the catch-up rule). `gone`: the server closed our
+    // input (stopped listening, or the server itself went): no one is listening any more, so
+    // nothing still queued is decoded (it used to decode minutes of backlog for no one).
+    let (tx, rx) = std::sync::mpsc::channel::<Option<(Instant, Vec<u8>)>>();
+    let gone = Arc::new(AtomicBool::new(false));
+    let gone_reader = gone.clone();
     std::thread::spawn(move || {
         let mut input = std::io::stdin().lock();
         loop {
             let mut len = [0u8; 4];
             if input.read_exact(&mut len).is_err() {
+                gone_reader.store(true, Ordering::SeqCst);
                 let _ = tx.send(None);
                 return;
             }
             let n = u32::from_le_bytes(len) as usize;
             let mut buf = vec![0u8; n];
             if n == 0 || input.read_exact(&mut buf).is_err() {
+                // A zero length is the server's "finish": the last words still matter.
+                if n != 0 { gone_reader.store(true, Ordering::SeqCst); }
                 let _ = tx.send(None);
                 return;
             }
-            if tx.send(Some(buf)).is_err() {
+            if tx.send(Some((Instant::now(), buf))).is_err() {
                 return;
             }
         }
@@ -445,8 +478,30 @@ fn run_worker(dir: &std::path::Path, language: Option<String>) -> i32 {
     };
     let mut last_pump = Instant::now();
     loop {
+        if gone.load(Ordering::SeqCst) {
+            return 0;
+        }
         match rx.recv_timeout(Duration::from_millis(15)) {
-            Ok(Some(chunk)) => {
+            Ok(Some((arrived, chunk))) => {
+                if too_far_behind(arrived.elapsed()) {
+                    // Behind live speech: drop what is waiting, say so, start fresh at the newest.
+                    let mut dropped = chunk.len() / 2;
+                    let mut ended = false;
+                    while let Ok(next) = rx.try_recv() {
+                        match next {
+                            Some((_, c)) => dropped += c.len() / 2,
+                            None => { ended = true; break; }
+                        }
+                    }
+                    if let Some(h) = heard.cut() {
+                        emit(h);
+                    }
+                    say(json!({ "k": "s", "ms": dropped * 1000 / SAMPLE_RATE_HZ }).to_string());
+                    if ended {
+                        return 0;
+                    }
+                    continue;
+                }
                 let samples: Vec<f32> = chunk.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect();
                 heard.accept(&samples);
             }
@@ -470,6 +525,8 @@ fn run_worker(dir: &std::path::Path, language: Option<String>) -> i32 {
 enum FromWorker {
     Ready,
     Heard(Heard),
+    /// Recognition had fallen behind: this much waiting audio was dropped to stay live.
+    Skipped(u64),
     Gone,
 }
 
@@ -497,6 +554,10 @@ fn spawn_worker(dir: &std::path::Path, language: &Option<String>) -> Result<(std
             } else {
                 let Ok(v) = serde_json::from_str::<Value>(body) else { continue };
                 let t = v["t"].as_str().unwrap_or("").to_string();
+                if v["k"] == "s" {
+                    if tx.send(FromWorker::Skipped(v["ms"].as_u64().unwrap_or(0))).is_err() { return; }
+                    continue;
+                }
                 FromWorker::Heard(match v["k"].as_str() {
                     Some("f") => Heard::Final(t),
                     Some("l") => Heard::Locked(t),
@@ -622,6 +683,11 @@ fn supervise(
             while let Ok(m) = from.try_recv() {
                 match m {
                     FromWorker::Heard(h) => tell(h),
+                    FromWorker::Skipped(ms) => {
+                        // Said, in the log and to the operator: this computer can't keep up.
+                        crate::routes::write_debug_global("server:speech-behind", json!({ "skippedMs": ms }));
+                        hub.broadcast(json!({ "type": "speech-behind", "skippedMs": ms }));
+                    }
                     FromWorker::Gone => dead = true,
                     FromWorker::Ready => {}
                 }
@@ -696,6 +762,14 @@ pub async fn stopped(app: &Shared) {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn live_speech_stays_live() {
+        use std::time::Duration;
+        assert!(!super::too_far_behind(Duration::from_millis(500)), "a normal wait is decoded");
+        assert!(!super::too_far_behind(super::MAX_BEHIND), "exactly at the limit is still decoded");
+        assert!(super::too_far_behind(super::MAX_BEHIND + Duration::from_millis(1)), "older than the limit is dropped");
+    }
+
     #[test]
     fn a_restarted_engine_does_not_repeat_settled_words() {
         let said: std::collections::VecDeque<String> = ["through", "this", "testimony"].iter().map(|w| w.to_string()).collect();

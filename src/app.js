@@ -312,6 +312,16 @@ function handleServerMessage(msg) {
     // Display window reporting media <video> playback state back up, and
     // a watched smart folder's contents having changed on disk — both just
     // forward into service.js, which owns the Media tab's DOM.
+    // The offline engine fell behind live speech and skipped ahead (offline.rs MAX_BEHIND).
+    // Counted, one line in the strip: detection only works on live words.
+    case 'speech-behind': {
+      // (The strip counts repeats itself; the total skipped is kept here.)
+      window.__speechSkippedMs = (window.__speechSkippedMs || 0) + (msg.skippedMs || 0);
+      const secs = Math.round(window.__speechSkippedMs / 1000);
+      window.kairoProblem?.(`This computer is too busy for live speech recognition, so Kairo skipped ${secs} s of speech in all to stay live. Close other apps, use fewer cameras, or switch Speech Engine to Deepgram.`, 'speech-behind');
+      break;
+    }
+
     case 'media-status':
       if (msg.kind === 'error') {
         window.kairoProblem?.(`The ${msg.mediaKind === 'image' ? 'picture' : 'video'} didn't show on screen${msg.error ? `: ${msg.error}` : ''}.`, `media-${msg.output || ''}`);

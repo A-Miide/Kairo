@@ -59,18 +59,51 @@ fn main() {
             cue_start = None;
         }
     };
+    // --realtime: the audio arrives at live speed, as in the app, and the app's catch-up rule
+    // (offline::too_far_behind / Transcriber::cut) applies: on a computer too slow to keep up
+    // the run shows exactly what the live worker would skip. Without it the audio is fed as
+    // fast as it decodes (the deterministic default, what the app does whenever it keeps up).
+    let realtime = args.iter().any(|a| a == "--realtime");
+    let mut skips: Vec<Value> = Vec::new();
     loop {
         let n = read_full(&mut pcm, &mut buf);
         if n == 0 {
             break;
         }
         let samples: Vec<f32> = buf[..n].chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect();
+        if realtime {
+            let arrives = started + std::time::Duration::from_millis((fed * 1000 / SAMPLE_RATE_HZ) as u64);
+            let now = Instant::now();
+            if now < arrives {
+                std::thread::sleep(arrives - now);
+            } else if kairo_server::offline::too_far_behind(now - arrives) {
+                // Everything that has arrived by now is dropped, as the worker drops its queue.
+                let at = (fed * 1000 / SAMPLE_RATE_HZ) as u64;
+                let mut dropped = samples.len();
+                fed += samples.len();
+                while started + std::time::Duration::from_millis((fed * 1000 / SAMPLE_RATE_HZ) as u64) <= Instant::now() {
+                    let m = read_full(&mut pcm, &mut buf);
+                    if m == 0 { break; }
+                    dropped += m / 2;
+                    fed += m / 2;
+                }
+                if let Some(h) = heard.cut() {
+                    record(h, at, &mut cues, &mut inputs);
+                }
+                skips.push(json!({ "audioMs": at, "skippedMs": dropped * 1000 / SAMPLE_RATE_HZ }));
+                continue;
+            }
+        }
         fed += samples.len();
         heard.accept(&samples);
         let t = (fed * 1000 / SAMPLE_RATE_HZ) as u64;
         for h in heard.pump() {
             record(h, t, &mut cues, &mut inputs);
         }
+    }
+    if realtime {
+        let total: u64 = skips.iter().filter_map(|s| s["skippedMs"].as_u64()).sum();
+        eprintln!("[offline] realtime: {} skips, {:.1} s of audio dropped to stay live", skips.len(), total as f64 / 1000.0);
     }
     let t = (fed * 1000 / SAMPLE_RATE_HZ) as u64;
     if let Some(h) = heard.finish() {
@@ -88,6 +121,7 @@ fn main() {
         "inputs": inputs,
         "stable": [],
         "unstable": [],
+        "skips": skips,
     });
     let dir = root().join("parity/offline");
     std::fs::create_dir_all(&dir).unwrap();
