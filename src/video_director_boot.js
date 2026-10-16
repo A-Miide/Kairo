@@ -79,7 +79,7 @@
             </div>
             <label class="output-toggle"><input type="checkbox" id="dm-toggle" aria-labelledby="dm-name"><span class="output-toggle-track"></span></label>
           </div>
-          <p class="dm-armed" id="dm-armed" role="status" hidden>Video is live. Switch off again to go to no video and turn off.</p>
+          <p class="dm-armed" id="dm-armed" role="status" hidden></p>
           <div class="dm-row" id="dm-sim-row" hidden>
             <div class="dm-text">
               <div class="dm-name" id="dm-sim-name">Simulate 4 cameras at 30 fps</div>
@@ -129,18 +129,37 @@
     try { localStorage.setItem('kairo-video-sources', JSON.stringify(list)); } catch {}
   }
 
+  // armed: false, or the sentence saying what the next choice will do (shown under the switch and as the button's label).
   function paint(on, armed) {
     if (dmToggle) dmToggle.checked = !!on;
-    if (dmArmed) dmArmed.hidden = !armed;
+    if (dmArmed) { dmArmed.hidden = !armed; if (armed) dmArmed.textContent = armed; }
     btn.classList.toggle('active', on);
     btn.classList.toggle('vd-armed', !!armed);
     btn.setAttribute('aria-pressed', String(on));
-    const label = armed ? 'Video is live. Choose again to go to no video and turn off video director mode'
-      : on ? 'Video director mode is on. Choose to turn it off' : 'Video director mode';
+    const label = armed || (on ? 'Video director mode is on. Choose to turn it off' : 'Video director mode');
     btn.title = label;
     btn.setAttribute('aria-label', label);
   }
   paint(false, false);
+
+  // A stream or recording is built at Go live / Record with the cameras of that moment
+  // (streaming_ui.js pipelineBase): switching the mode does not change what it carries.
+  function capturing() {
+    const s = window.KairoStreaming;
+    const live = !!(s && s.isLive && s.isLive()), rec = !!(s && s.isRecording && s.isRecording());
+    if (!live && !rec) return '';
+    return live && rec ? 'The stream and the recording keep their cameras until they are restarted.'
+      : live ? 'The stream keeps its cameras until it is restarted.' : 'The recording keeps its cameras until it is restarted.';
+  }
+  // The first choice only arms (says what will happen); a second within 5 seconds does it.
+  let armedFor = null;   // 'on' | 'off' while armed
+  function arm(dir, text) {
+    armedFor = dir;
+    paint(dir === 'off', text);
+    clearTimeout(armedTimer);
+    armedTimer = setTimeout(() => { armedFor = null; paint(!!settings.videoDirector, false); }, 5000);
+  }
+  function disarm() { clearTimeout(armedTimer); armedFor = null; }
 
   function refreshOutputsUi() {
     try { if (typeof renderOutputsList === 'function') renderOutputsList(); } catch {}
@@ -152,6 +171,10 @@
 
   async function enable(persist) {
     if (busy) return;
+    // Turned on by a choice while streaming or recording: say first that it won't reach the stream.
+    const cap = persist ? capturing() : '';
+    if (cap && armedFor !== 'on') { arm('on', `${cap} Choose again to turn video director mode on.`); return; }
+    disarm();
     busy = true;
     try {
       if (persist) save(true);
@@ -175,14 +198,19 @@
   function disable() {
     if (busy) { wantOff = true; return; }   // a start is still running: off comes right after it
     const dir = window.KairoVideoDirector;
-    // Taking live video off air is deliberate: the first choice arms it.
-    if (dir && dir.isLive() && !btn.classList.contains('vd-armed')) {
-      paint(true, true);
-      clearTimeout(armedTimer);
-      armedTimer = setTimeout(() => paint(!!settings.videoDirector, false), 5000);
+    // Taking live video off air is deliberate, and so is changing the mode under a stream or
+    // recording: the first choice arms it and says what will happen.
+    const videoLive = !!(dir && dir.isLive());
+    const cap = capturing();
+    if ((videoLive || cap) && armedFor !== 'off') {
+      const parts = [];
+      if (videoLive) parts.push('Video is live.');
+      if (cap) parts.push(cap);
+      parts.push(videoLive ? 'Choose again to go to no video and turn off video director mode.' : 'Choose again to turn video director mode off.');
+      arm('off', parts.join(' '));
       return;
     }
-    clearTimeout(armedTimer);
+    disarm();
     save(false);
     paint(false, false);
     if (dir) dir.stop();
@@ -191,9 +219,9 @@
 
   function toggle() { return settings.videoDirector ? disable() : enable(true); }
   btn.addEventListener('click', toggle);
-  // The switch does what the button and the View menu item do. A refused
-  // first click (video is live) leaves it on and shows the line under it.
-  if (dmToggle) dmToggle.addEventListener('change', () => { toggle(); dmToggle.checked = !!settings.videoDirector || btn.classList.contains('vd-armed'); });
+  // The switch does what the button and the View menu item do. A first click that only
+  // armed (video is live, or a stream or recording is running) leaves it as it was and shows the line under it.
+  if (dmToggle) dmToggle.addEventListener('change', () => { toggle(); dmToggle.checked = armedFor === 'off' || (armedFor !== 'on' && !!settings.videoDirector); });
   if (window.__TAURI__ && window.__TAURI__.event) {
     window.__TAURI__.event.listen('menu-video-director', toggle);
   }
