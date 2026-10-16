@@ -2406,20 +2406,6 @@ function layerOrderDiagram(mk) {
   return box;
 }
 
-// Persist a partial settings change without clobbering unrelated fields.
-async function saveSettingsPatch(patch) {
-  try {
-    await fetch(`${SERVER}/api/settings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(patch),
-    });
-  } catch (err) {
-    console.warn('[Settings] save failed:', err.message);
-  }
-}
-
-
 // Audio pane: sound output (video sound and background music) under the microphone settings.
 function renderAudioPaneOutput() {
   const host = document.getElementById('audio-out-host');

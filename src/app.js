@@ -727,7 +727,7 @@ let lastPreviewHadOwnLook = false; // true only when `look` itself was truthy, n
 // listens for (see handleServerMessage's case below) — no per-file polling.
 let outputAnimation = 'fade';
 let outputAnimationSpeed = 1;
-fetch(`${SERVER}/api/settings`).then(r => r.json()).then(s => {
+fetchServerSettings().then(s => {
   if (s.outputAnimation) outputAnimation = s.outputAnimation;
   if (typeof s.outputAnimationSpeed === 'number' && s.outputAnimationSpeed > 0) outputAnimationSpeed = s.outputAnimationSpeed;
 }).catch(() => {});
@@ -2598,8 +2598,7 @@ function readToggleGroup(groupId, dataKey) {
 
 async function loadSettings() {
   try {
-    const r = await fetch(`${SERVER}/api/settings`);
-    settings = await r.json();
+    settings = await fetchServerSettings();
     if (typeof seedMonitorOutput === 'function') seedMonitorOutput();
     const versionEl = document.getElementById('settings-nav-version');
     if (versionEl) versionEl.textContent = settings.appVersion ? `v${settings.appVersion}` : '';
@@ -2660,6 +2659,7 @@ async function loadSettings() {
     showFirstRunBannerIfNeeded(settings);
     if (typeof renderHotkeysList === 'function') renderHotkeysList(); // now that settings.hotkeys is real, not defaults
     settingsLoaded = true;
+    notifySettings('loaded');
   } catch (err) {
     console.warn('[Settings] Load failed:', err);
     toast('Could not load settings from server', 'error');
@@ -2795,14 +2795,8 @@ async function checkOnboardingSpeechSetup() {
 }
 
 async function markOnboardingComplete() {
-  try {
-    await fetch(`${SERVER}/api/settings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...settings, onboardingCompleted: true }),
-    });
-    settings = { ...settings, onboardingCompleted: true };
-  } catch { /* best-effort — worst case the tour just reappears next launch */ }
+  // Best-effort: worst case the tour just reappears next launch.
+  if (await saveSettingsPatch({ onboardingCompleted: true })) settings = { ...settings, onboardingCompleted: true };
 }
 
 function closeFirstRunModal() {
@@ -2820,18 +2814,12 @@ async function saveFirstRunChoice() {
     // Offline chosen — no key needed. Persist the engine choice so it sticks
     // (bootstrapStartup()/Settings both see it). A download started from the
     // tour's own button runs server-side whether or not the tour stays open.
-    try {
-      await fetch(`${SERVER}/api/settings`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...settings, speechEngine: 'browser' }),
-      });
-      settings = { ...settings, speechEngine: 'browser' };
-      syncToggleGroup('speech-engine-toggle', 'engine', 'browser'); // keep Settings' own toggle in sync
-    } catch {
+    if (!(await saveSettingsPatch({ speechEngine: 'browser' }))) {
       toast('Could not save — try again in Settings', 'error');
       return;
     }
+    settings = { ...settings, speechEngine: 'browser' };
+    syncToggleGroup('speech-engine-toggle', 'engine', 'browser'); // keep Settings' own toggle in sync
     // The choice is saved; the model downloads only when the operator asks
     // (2026-10-12: finishing the tour used to start the 465 MB download
     // unasked). Settings → Audio offers it, and Start Listening says so.
@@ -2844,17 +2832,12 @@ async function saveFirstRunChoice() {
   if (!key) { closeFirstRunModal(); return; }
   // Persisted through the same endpoint saveCurrentSettings uses. The Settings
   // field is not filled in with it (see resetDeepgramKeyField).
-  try {
-    await fetch(`${SERVER}/api/settings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ ...settings, deepgramApiKey: key }),
-    });
+  if (await saveSettingsPatch({ deepgramApiKey: key })) {
     settings = { ...settings, deepgramApiKey: maskDeepgramKey(key) };
     if (input) input.value = '';
     resetDeepgramKeyField();
     toast('Deepgram key saved', 'success');
-  } catch {
+  } else {
     toast('Could not save key — try again in Settings', 'error');
   }
   closeFirstRunModal();
@@ -2907,18 +2890,11 @@ async function saveCurrentSettings() {
     ollamaUrl:           settings.ollamaUrl || 'http://localhost:11434',
     ollamaModel:         settings.ollamaModel || 'qwen2.5:7b-instruct',
   };
-  try {
-    const r = await fetch(`${SERVER}/api/settings`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(updated),
-    });
-    // A refused save keeps Settings open (the problem strip says why).
-    if (!r.ok) return;
-  } catch (err) {
-    toast('Could not save settings: ' + err.message, 'error');
-    return;
-  }
+  // A refused save keeps Settings open (the problem strip says why); an unreachable server is a toast.
+  const saved = await saveSettingsPatch(updated, {
+    onError: (err) => { if (err instanceof Error) toast('Could not save settings: ' + err.message, 'error'); },
+  });
+  if (!saved) return;
   settings = { ...settings, ...updated };
   if (updated.deepgramApiKey) settings.deepgramApiKey = maskDeepgramKey(updated.deepgramApiKey);
   resetDeepgramKeyField();
