@@ -111,14 +111,26 @@ impl Detector {
     /// One recognised stretch of speech, from any engine.
     pub fn speech(&self, hub: &Hub, text: &str, is_final: bool, confidence: f32, speech_final: bool, words: Option<Value>, continues_live: bool) {
         // An interpreter's turn is not transcribed and never reaches the detectors.
-        let (verdict, change) = crate::interpretation::with(|i| i.text(text, is_final));
+        let (verdict, change, released) = crate::interpretation::with(|i| {
+            let (v, c) = i.text(text, is_final);
+            (v, c, i.take_released())
+        });
         if let Some(c) = change {
             announce_interpretation(hub, c);
+        }
+        // Words kept aside during a turn that was the preacher's after all go through first, in order.
+        for (t, f) in released {
+            self.forward(hub, &t, f, confidence, false, None, false);
         }
         if verdict == crate::interpretation::Verdict::Interpretation && !text.trim().is_empty() {
             hub.broadcast(json!({ "type": "transcript", "text": "(interpretation)", "isFinal": is_final, "confidence": confidence, "interpretation": true }));
             return;
         }
+        self.forward(hub, text, is_final, confidence, speech_final, words, continues_live);
+    }
+
+    /// Transcript and detectors, for what is the preacher's.
+    fn forward(&self, hub: &Hub, text: &str, is_final: bool, confidence: f32, speech_final: bool, words: Option<Value>, continues_live: bool) {
         let mut msg = json!({ "type": "transcript", "text": text, "isFinal": is_final, "confidence": confidence });
         if let Some(w) = words {
             msg["words"] = w;

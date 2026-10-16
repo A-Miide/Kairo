@@ -53,6 +53,8 @@ fn main() {
             if v == Verdict::Interpretation {
                 held += 1;
             }
+            // Kept aside as possibly the preacher's and handed back: not lost.
+            held -= it.take_released().len().min(held);
             match c {
                 Some(Change::Ended) => spans.push((started, now)),
                 _ => {}
@@ -64,7 +66,7 @@ fn main() {
         spans.push((started, it.clock_ms()));
     }
     let hours = it.clock_ms() as f64 / 3_600_000.0;
-    println!("{name}: {:.2} h, {} marked turns, {} pieces of text held back", hours, spans.len(), held);
+    println!("{name}: {:.2} h, {} marked turns, {} pieces of text lost", hours, spans.len(), held);
     for (a, b) in spans {
         println!("   {:>6.1} min – {:>6.1} min", a as f64 / 60000.0, b as f64 / 60000.0);
     }
