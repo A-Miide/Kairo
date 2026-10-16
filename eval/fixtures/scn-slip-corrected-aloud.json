@@ -1,0 +1,24 @@
+{
+ "videoId": "scn-slip-corrected-aloud",
+ "title": "Scenario: slip-corrected-aloud",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "turn with me to Romans chapter eight, sorry, Romans chapter twelve verse one"
+  },
+  {
+   "startMs": 6100,
+   "text": "I beseech you therefore, brethren, by the mercies of God, that ye present your bodies a living sacrifice"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Romans",
+   "chapter": 12,
+   "kind": "citation",
+   "startMs": 0,
+   "verse": 1
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

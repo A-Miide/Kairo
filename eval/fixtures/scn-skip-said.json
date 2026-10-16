@@ -1,0 +1,39 @@
+{
+ "videoId": "scn-skip-said",
+ "title": "Scenario: skip-said",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "Romans chapter eight verse twenty eight"
+  },
+  {
+   "startMs": 3300,
+   "text": "and we know that all things work together for good to them that love God, to them who are the called according to his purpose"
+  },
+  {
+   "startMs": 14200,
+   "text": "now drop down to verse thirty one"
+  },
+  {
+   "startMs": 17900,
+   "text": "what shall we then say to these things? If God be for us, who can be against us"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Romans",
+   "chapter": 8,
+   "kind": "citation",
+   "startMs": 0,
+   "verse": 28
+  },
+  {
+   "book": "Romans",
+   "chapter": 8,
+   "kind": "citation",
+   "startMs": 14200,
+   "verse": 31
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

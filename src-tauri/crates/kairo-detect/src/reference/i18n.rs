@@ -292,6 +292,10 @@ fn compile(lang: Lang) -> Compiled {
     if lang == Lang::Pt {
         nums.insert("duas".into(), 2);
     }
+    // "veinti" heard on its own before the unit ("veinti 8", "veinti ocho"): twenty, waiting for it.
+    if lang == Lang::Es {
+        nums.insert("veinti".into(), 20);
+    }
     for (w, n) in d.tens {
         nums.insert(w.to_string(), *n);
     }
@@ -377,6 +381,22 @@ fn german_number(w: &str, nums: &HashMap<String, u32>) -> Option<u32> {
     (unit > 0 && unit < 10).then_some(tens + unit)
 }
 
+/// A number that may still grow, as this language says it: a tens word at the end ("vinte",
+/// "vingt", "veinte", "zwanzig") or an "and" that more is coming after ("vinte e…"). The same
+/// rule English uses (citations.rs ends_on_growable_number), for the other languages.
+pub fn ends_open_number(last_word: &str, lang: Lang) -> bool {
+    let Some(d) = data(lang) else { return false };
+    let w = fold(last_word);
+    if d.and.contains(&w.as_str()) {
+        return true;
+    }
+    let local = localize(&w, lang);
+    match local.trim().parse::<u32>() {
+        Ok(n) => n >= 20 && n % 10 == 0 && n < 100,
+        Err(_) => w == "veinti",
+    }
+}
+
 fn numbers_to_digits(words: &[&str], c: &Compiled) -> Vec<String> {
     let d = c.data;
     let citation_slot = |prev: Option<&String>| {
@@ -429,7 +449,12 @@ fn numbers_to_digits(words: &[&str], c: &Compiled) -> Vec<String> {
                 if words.get(k).is_some_and(|x| d.and.contains(x)) {
                     k += 1;
                 }
-                let unit = words.get(k).and_then(|x| if matches!(*x, "un" | "une" | "uma" | "una") { Some(1) } else { c.nums.get(*x).copied() });
+                // The unit may come as a digit ("veinti 8"): the recogniser mixes them.
+                let unit = words.get(k).and_then(|x| {
+                    if matches!(*x, "un" | "une" | "uma" | "una") { Some(1) }
+                    else if x.len() == 1 && x.bytes().all(|b| b.is_ascii_digit()) { x.parse().ok() }
+                    else { c.nums.get(*x).copied() }
+                });
                 let max_unit = if c.lang == Lang::Fr && (first == 60 || first == 80) { 20 } else { 10 };
                 if let Some(u) = unit.filter(|u| *u > 0 && *u < max_unit) {
                     v += u;

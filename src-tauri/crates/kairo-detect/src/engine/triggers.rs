@@ -158,8 +158,8 @@ impl Engine {
     pub(crate) fn interim_partial(&mut self, text: &str, now: u64) {
         let Some(p) = self.k.partials(self.cfg.lang).resolve(text, self.active(now), false) else { return };
         let Verses::One(verse) = p.citation.verses else { return };
-        if interim_looks_incomplete(text) {
-            if ends_on_growable_number(text) {
+        if interim_looks_incomplete(text, self.cfg.lang) {
+            if ends_on_growable_number(text, self.cfg.lang) {
                 return;
             }
             let key = format!("partial|{}|{}|{verse}", p.citation.book.index(), p.citation.chapter);
@@ -199,7 +199,7 @@ impl Engine {
         if self.reading.is_valid(now) || now.saturating_sub(at) > ON_SCREEN_CONTEXT_MS {
             return false;
         }
-        if !is_final && interim_looks_incomplete(text) {
+        if !is_final && interim_looks_incomplete(text, self.cfg.lang) {
             return false;
         }
         let r = self.r(up);

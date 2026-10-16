@@ -1,0 +1,108 @@
+{
+ "source": "scn-skip-said",
+ "kind": "scenario",
+ "lang": "en",
+ "cues": [
+  {
+   "text": "Romans chapter eight verse twenty eight",
+   "audioMs": 0
+  },
+  {
+   "text": "and we know that all things work together for good to them that love God, to them who are the called according to his purpose",
+   "audioMs": 3300
+  },
+  {
+   "text": "now drop down to verse thirty one",
+   "audioMs": 14200
+  },
+  {
+   "text": "what shall we then say to these things? If God be for us, who can be against us",
+   "audioMs": 17900
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "Romans chapter eight verse",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "Romans chapter eight verse twenty eight",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "and we know that",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and we know that all things work together",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and we know that all things work together for good to them",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and we know that all things work together for good to them that love God, to",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and we know that all things work together for good to them that love God, to them who are the",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and we know that all things work together for good to them that love God, to them who are the called according to his",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and we know that all things work together for good to them that love God, to them who are the called according to his purpose",
+   "isFinal": true
+  },
+  {
+   "cue": 2,
+   "text": "now drop down to",
+   "isFinal": false
+  },
+  {
+   "cue": 2,
+   "text": "now drop down to verse thirty one",
+   "isFinal": true
+  },
+  {
+   "cue": 3,
+   "text": "what shall we then",
+   "isFinal": false
+  },
+  {
+   "cue": 3,
+   "text": "what shall we then say to these things?",
+   "isFinal": false
+  },
+  {
+   "cue": 3,
+   "text": "what shall we then say to these things? If God be for",
+   "isFinal": false
+  },
+  {
+   "cue": 3,
+   "text": "what shall we then say to these things? If God be for us, who can be",
+   "isFinal": false
+  },
+  {
+   "cue": 3,
+   "text": "what shall we then say to these things? If God be for us, who can be against us",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

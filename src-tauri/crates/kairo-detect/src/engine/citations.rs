@@ -86,20 +86,28 @@ fn is_number_word(w: &str) -> bool {
 
 /// An interim still mid-citation: its last word a bare number or a word that
 /// always continues one. Punctuation after it means the clause is committed.
-pub(crate) fn interim_looks_incomplete(text: &str) -> bool {
+pub(crate) fn interim_looks_incomplete(text: &str, lang: crate::reference::Lang) -> bool {
     let last = last_raw_word(text);
     if last.ends_with([',', '.', ';', '!', '?']) {
         return false;
+    }
+    // In the service's language too: "vinte", "vinte e…", "veinti".
+    if crate::reference::i18n::ends_open_number(last, lang) {
+        return true;
     }
     let w: String = last.to_lowercase().chars().filter(|c| c.is_ascii_alphanumeric() || *c == '-').collect();
     !w.is_empty() && (is_number_word(&w) || w == "hundred" || DANGLING.contains(&w.as_str()))
 }
 
-/// A number at the end whose own sound can still grow ("seven…teen").
-pub(crate) fn ends_on_growable_number(text: &str) -> bool {
+/// A number at the end whose own sound can still grow ("seven…teen"), in the service's
+/// language ("vinte" → "vinte e oito").
+pub(crate) fn ends_on_growable_number(text: &str, lang: crate::reference::Lang) -> bool {
     let last = last_raw_word(text);
     if last.ends_with([',', '.', ';', '!', '?']) {
         return false;
+    }
+    if crate::reference::i18n::ends_open_number(last, lang) {
+        return true;
     }
     let w: String = last.to_lowercase().chars().filter(|c| c.is_ascii_alphanumeric()).collect();
     if w == "hundred" {
@@ -408,8 +416,8 @@ impl Engine {
             }
 
             // A citation at the end of a growing interim may be half-heard.
-            if !is_final && !unresolved && i + 1 == count && interim_looks_incomplete(text) {
-                if ends_on_growable_number(text) {
+            if !is_final && !unresolved && i + 1 == count && interim_looks_incomplete(text, self.cfg.lang) {
+                if ends_on_growable_number(text, self.cfg.lang) {
                     continue;
                 }
                 let key = cite_key(&c);
@@ -999,12 +1007,16 @@ mod tests {
 
     #[test]
     fn unfinished_interims() {
-        assert!(interim_looks_incomplete("Romans chapter eight verse"));
-        assert!(interim_looks_incomplete("Isaiah 41 from verse seven"));
-        assert!(!interim_looks_incomplete("Isaiah 41 verse seven,"));
-        assert!(ends_on_growable_number("from verse seven"));
-        assert!(!ends_on_growable_number("from verse three"));
-        assert!(ends_on_growable_number("verse 20"));
+        assert!(interim_looks_incomplete("Romans chapter eight verse", crate::reference::Lang::En));
+        assert!(interim_looks_incomplete("Isaiah 41 from verse seven", crate::reference::Lang::En));
+        assert!(!interim_looks_incomplete("Isaiah 41 verse seven,", crate::reference::Lang::En));
+        assert!(ends_on_growable_number("from verse seven", crate::reference::Lang::En));
+        assert!(!ends_on_growable_number("from verse three", crate::reference::Lang::En));
+        assert!(ends_on_growable_number("verse 20", crate::reference::Lang::En));
+        assert!(ends_on_growable_number("Romanos oito versículo vinte", crate::reference::Lang::Pt));
+        assert!(ends_on_growable_number("Romanos oito versículo vinte e", crate::reference::Lang::Pt));
+        assert!(ends_on_growable_number("Romains huit verset vingt", crate::reference::Lang::Fr));
+        assert!(!ends_on_growable_number("Romains huit verset vingt-huit", crate::reference::Lang::Fr));
     }
 
     #[test]

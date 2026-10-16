@@ -1,0 +1,21 @@
+{
+ "source": "scn-num-french",
+ "kind": "scenario",
+ "lang": "fr",
+ "cues": [
+  {
+   "text": "Romains huit verset vingt-huit",
+   "audioMs": 0
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "Romains huit verset vingt-huit",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

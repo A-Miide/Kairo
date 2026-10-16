@@ -1,0 +1,31 @@
+{
+ "source": "scn-fmt-psalm119-105",
+ "kind": "scenario",
+ "lang": "en",
+ "cues": [
+  {
+   "text": "Psalm one hundred and nineteen verse one hundred and five",
+   "audioMs": 0
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "Psalm one hundred and",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "Psalm one hundred and nineteen verse one hundred",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "Psalm one hundred and nineteen verse one hundred and five",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

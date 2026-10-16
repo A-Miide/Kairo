@@ -1,0 +1,75 @@
+{
+ "source": "scn-niv-philippians4-uncited",
+ "kind": "scenario",
+ "lang": "en",
+ "cues": [
+  {
+   "text": "do not be anxious about anything, but in every situation, by prayer and petition, with thanksgiving, present your requests to God",
+   "audioMs": 0
+  },
+  {
+   "text": "and the peace of God, which transcends all understanding, will guard your hearts and your minds in Christ Jesus",
+   "audioMs": 9300
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "do not be anxious",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "do not be anxious about anything, but in",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "do not be anxious about anything, but in every situation, by prayer",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "do not be anxious about anything, but in every situation, by prayer and petition, with thanksgiving,",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "do not be anxious about anything, but in every situation, by prayer and petition, with thanksgiving, present your requests to",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "do not be anxious about anything, but in every situation, by prayer and petition, with thanksgiving, present your requests to God",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "and the peace of",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and the peace of God, which transcends all",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and the peace of God, which transcends all understanding, will guard your",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and the peace of God, which transcends all understanding, will guard your hearts and your minds",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and the peace of God, which transcends all understanding, will guard your hearts and your minds in Christ Jesus",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

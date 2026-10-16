@@ -1,0 +1,26 @@
+{
+ "source": "scn-num-portuguese",
+ "kind": "scenario",
+ "lang": "pt",
+ "cues": [
+  {
+   "text": "Romanos oito versículo vinte e oito",
+   "audioMs": 0
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "Romanos oito versículo vinte",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "Romanos oito versículo vinte e oito",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

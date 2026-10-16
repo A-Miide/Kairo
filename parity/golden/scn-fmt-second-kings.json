@@ -1,0 +1,26 @@
+{
+ "source": "scn-fmt-second-kings",
+ "kind": "scenario",
+ "lang": "en",
+ "cues": [
+  {
+   "text": "second Kings chapter two verse nine",
+   "audioMs": 0
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "second Kings chapter two",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "second Kings chapter two verse nine",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

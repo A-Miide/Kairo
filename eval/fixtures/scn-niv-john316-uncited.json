@@ -1,0 +1,24 @@
+{
+ "videoId": "scn-niv-john316-uncited",
+ "title": "Scenario: niv-john316-uncited",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "for God so loved the world that he gave his one and only Son"
+  },
+  {
+   "startMs": 6500,
+   "text": "that whoever believes in him shall not perish but have eternal life"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "John",
+   "chapter": 3,
+   "kind": "quote",
+   "startMs": 6500,
+   "verse": 16
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

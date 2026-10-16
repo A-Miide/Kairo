@@ -1,0 +1,141 @@
+{
+ "source": "scn-recall-and-return",
+ "kind": "scenario",
+ "lang": "en",
+ "cues": [
+  {
+   "text": "let us read John chapter three verse sixteen",
+   "audioMs": 0
+  },
+  {
+   "text": "for God so loved the world, that he gave his only begotten Son",
+   "audioMs": 4100
+  },
+  {
+   "text": "remember John eleven thirty five we read last week, Jesus wept",
+   "audioMs": 10200
+  },
+  {
+   "text": "he felt what you feel church, he knows your pain, he has been there, he understands",
+   "audioMs": 15500
+  },
+  {
+   "text": "that is why I am telling you this morning that his love is real and his love is personal",
+   "audioMs": 22800
+  },
+  {
+   "text": "that whosoever believeth in him should not perish, but have everlasting life",
+   "audioMs": 31300
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "let us read John",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "let us read John chapter three verse sixteen",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "for God so loved",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "for God so loved the world, that he",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "for God so loved the world, that he gave his only begotten",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "for God so loved the world, that he gave his only begotten Son",
+   "isFinal": true
+  },
+  {
+   "cue": 2,
+   "text": "remember John eleven thirty",
+   "isFinal": false
+  },
+  {
+   "cue": 2,
+   "text": "remember John eleven thirty five we read last",
+   "isFinal": false
+  },
+  {
+   "cue": 2,
+   "text": "remember John eleven thirty five we read last week, Jesus wept",
+   "isFinal": true
+  },
+  {
+   "cue": 3,
+   "text": "he felt what you",
+   "isFinal": false
+  },
+  {
+   "cue": 3,
+   "text": "he felt what you feel church, he knows",
+   "isFinal": false
+  },
+  {
+   "cue": 3,
+   "text": "he felt what you feel church, he knows your pain, he has",
+   "isFinal": false
+  },
+  {
+   "cue": 3,
+   "text": "he felt what you feel church, he knows your pain, he has been there, he understands",
+   "isFinal": true
+  },
+  {
+   "cue": 4,
+   "text": "that is why I",
+   "isFinal": false
+  },
+  {
+   "cue": 4,
+   "text": "that is why I am telling you this",
+   "isFinal": false
+  },
+  {
+   "cue": 4,
+   "text": "that is why I am telling you this morning that his love",
+   "isFinal": false
+  },
+  {
+   "cue": 4,
+   "text": "that is why I am telling you this morning that his love is real and his",
+   "isFinal": false
+  },
+  {
+   "cue": 4,
+   "text": "that is why I am telling you this morning that his love is real and his love is personal",
+   "isFinal": true
+  },
+  {
+   "cue": 5,
+   "text": "that whosoever believeth in",
+   "isFinal": false
+  },
+  {
+   "cue": 5,
+   "text": "that whosoever believeth in him should not perish,",
+   "isFinal": false
+  },
+  {
+   "cue": 5,
+   "text": "that whosoever believeth in him should not perish, but have everlasting life",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

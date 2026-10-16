@@ -1,0 +1,26 @@
+{
+ "source": "scn-num-spanish-mixed",
+ "kind": "scenario",
+ "lang": "es",
+ "cues": [
+  {
+   "text": "Romanos ocho versículo veinti 8",
+   "audioMs": 0
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "Romanos ocho versículo veinti",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "Romanos ocho versículo veinti 8",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}
