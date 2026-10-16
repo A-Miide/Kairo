@@ -54,7 +54,7 @@ for ARCH in "${ARCHS[@]}"; do
       --enable-encoder=h264_videotoolbox,aac,rawvideo --enable-muxer=mp4,rawvideo,flv,tee,fifo \
       --enable-protocol=file,pipe,tcp,tls,rtmp,rtmps \
       --enable-indev=avfoundation,lavfi \
-      --enable-filter=scale,format,null,anull,aresample,aformat,setsar,fps,crop,pad,overlay,streamselect,color,anullsrc,split \
+      --enable-filter=scale,format,null,anull,aresample,aformat,setsar,fps,crop,pad,overlay,streamselect,color,anullsrc,split,amix,volume \
       --enable-bsf=aac_adtstoasc,extract_extradata \
       ${EXTRA[@]+"${EXTRA[@]}"} >"$WORK/configure-$ARCH.log" 2>&1 || { tail -30 "$WORK/configure-$ARCH.log" >&2; exit 1; }
     make -j"$(sysctl -n hw.ncpu)" ffmpeg >"$WORK/make-$ARCH.log" 2>&1 || { tail -30 "$WORK/make-$ARCH.log" >&2; exit 1; }

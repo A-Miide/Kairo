@@ -525,6 +525,12 @@
           "markdownDescription": "Enables the signal_main_ready command without any pre-configured scope."
         },
         {
+          "description": "Enables the stream_mix command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stream-mix",
+          "markdownDescription": "Enables the stream_mix command without any pre-configured scope."
+        },
+        {
           "description": "Enables the stream_program command without any pre-configured scope.",
           "type": "string",
           "const": "allow-stream-program",
@@ -721,6 +727,12 @@
           "type": "string",
           "const": "deny-signal-main-ready",
           "markdownDescription": "Denies the signal_main_ready command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stream_mix command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stream-mix",
+          "markdownDescription": "Denies the stream_mix command without any pre-configured scope."
         },
         {
           "description": "Denies the stream_program command without any pre-configured scope.",

@@ -51,6 +51,7 @@ fn main() {
                 "stream_stop",
                 "stream_status",
                 "stream_program",
+                "stream_mix",
                 "record_start",
                 "record_stop",
                 "record_status",
