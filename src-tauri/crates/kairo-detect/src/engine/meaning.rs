@@ -255,6 +255,30 @@ impl MeaningThresholds {
         send: (0.99, 0.84, 15.0, 0.2),
         scoped: (0.60, 0.03),
     };
+
+    /// bge-small-en-v1.5 (CLS pooling, its query prompt; MiniLM cross-encoder):
+    /// LEGACY carried over by `calibrate` (the same share of sermon speech
+    /// clears each cosine), then the offer cosines lowered so the cross-encoder
+    /// decides — calibrated, right paraphrases sat a hair under them (John 3:16
+    /// at 0.719, Matthew 26:75 at 0.725). Measured 2026-10-16 against LEGACY on
+    /// EmbeddingGemma: dev found 225/259 both, wrong sends 2 both; held-out
+    /// found 61/76 vs 62/76, 0 wrong both, Possible Matches 57% vs 54% right.
+    pub const BGE_SMALL: MeaningThresholds = MeaningThresholds {
+        offer: (0.98, 0.70, 10.0),
+        offer_in_play: (0.95, 0.68, 8.0),
+        offer_no_rerank: (0.748, 10.0),
+        offer_modern: (0.98, 0.65, 15.0, 0.2),
+        send: (0.99, 0.767, 15.0, 0.2),
+        scoped: (0.546, 0.03),
+    };
+
+    /// The thresholds for the embedder of this name (`EmbedderConfig::name`).
+    pub fn for_embedder(name: &str) -> MeaningThresholds {
+        match name {
+            "bge-small" => MeaningThresholds::BGE_SMALL,
+            _ => MeaningThresholds::LEGACY,
+        }
+    }
 }
 
 impl Default for MeaningThresholds {

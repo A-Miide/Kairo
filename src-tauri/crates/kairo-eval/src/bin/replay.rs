@@ -26,7 +26,7 @@
 //! embedder config (in `kairo-semantic/bench`); `--reranker <config>`,
 //! `--index KJV,NLT` and `--thresholds <file.json>` choose the rest.
 //!
-//!   cargo run --release -p kairo-eval --bin replay -- [--clock golden] [--parity] [--held-out] [--verbose] [--trace a..b] [--meaning gemma.json] [name ...]
+//!   cargo run --release -p kairo-eval --bin replay -- [--clock golden] [--parity] [--held-out] [--verbose] [--trace a..b] [--meaning bge-small.json] [name ...]
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -388,7 +388,11 @@ fn main() {
     });
     let thresholds: MeaningThresholds = opt("--thresholds")
         .map(|p| serde_json::from_slice(&std::fs::read(root().join("src-tauri/crates/kairo-semantic/bench").join(p)).expect("thresholds")).expect("thresholds"))
-        .unwrap_or_default();
+        // Otherwise the ones the app uses with this embedder.
+        .unwrap_or_else(|| {
+            let name = opt("--meaning").and_then(|e| std::fs::read(root().join("src-tauri/crates/kairo-semantic/bench").join(e)).ok()).and_then(|b| serde_json::from_slice::<Value>(&b).ok()).and_then(|v| v["name"].as_str().map(str::to_string));
+            name.map_or_else(MeaningThresholds::default, |n| MeaningThresholds::for_embedder(&n))
+        });
     eprintln!("[replay] knowledge built in {:.1}s; clock: {}", t0.elapsed().as_secs_f64(), if audio { "audio" } else { "golden (Node's)" });
 
     let (mut rust_total, mut node_total) = (Score::default(), Score::default());
