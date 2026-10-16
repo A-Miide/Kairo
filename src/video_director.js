@@ -1118,7 +1118,7 @@
     if (t && (t.isContentEditable || (t.matches && t.matches('input,textarea,select')))) return;
     // Anything open over the Director (Settings, Theme Studio, the first-run tour, a menu or
     // popover) has the keys: Space, 1–9, Esc and ⌘Z must not reach the live screen from there.
-    if (document.querySelector('.modal:not(.hidden), .vd-add-panel, #looks-modal:not(.hidden), .onboarding:not(.hidden), .svc-popover, .ctx-menu, .mc-pop, .mx-pop, .rp-pop')) return;
+    if (document.querySelector('.modal:not(.hidden), .vd-add-panel, #looks-modal:not(.hidden), .onboarding:not(.hidden), .svc-popover:not(.hidden), .ctx-menu, .mc-pop, .mx-pop, .rp-pop')) return;
     if (e.defaultPrevented) return;
     if (document.body.classList.contains('vd-sheet')) return;   // a full screen is open over the Director: its keys are not ours
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'z') {

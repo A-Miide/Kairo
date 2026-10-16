@@ -2704,6 +2704,10 @@
     if (e.key !== 'Escape') return;
     const tag = document.activeElement?.tagName;
     if (tag === 'INPUT' || tag === 'TEXTAREA' || document.activeElement?.isContentEditable) return;
+    // Marked as used only when something was open: Director mode's Esc (clear what is staged)
+    // must not also fire for the press that just closed a menu.
+    const pop = document.getElementById('svc-popover');
+    if (pop && !pop.classList.contains('hidden')) e.preventDefault();
     closePopover();
   });
 
@@ -7120,6 +7124,7 @@
           selectedItemIds.clear();
         });
       } else if (e.key === 'Escape' && selectedItemIds.size) {
+        e.preventDefault();   // this Esc cleared the selection: Director mode's Esc must not also clear staging
         selectedItemIds.clear();
         renderSidebar();
       }
@@ -7168,6 +7173,7 @@
         const message = indices.length === 1 ? 'Remove this slide?' : `Remove ${indices.length} slides?`;
         confirmDeletePopover(document.getElementById('svc-items-list'), message, () => bulkDeleteSlides(item, indices));
       } else if (e.key === 'Escape' && selectedSlideIndices.size) {
+        e.preventDefault();   // this Esc cleared the selection: Director mode's Esc must not also clear staging
         clearSlideSelection();
         rerenderActiveSlideSurface(item);
       }
