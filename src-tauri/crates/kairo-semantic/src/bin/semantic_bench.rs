@@ -131,17 +131,47 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
 
     // Scores for every case: the vector ranking, and the reranked shortlist.
     let mut query_ms = Vec::new();
+    // `--window N [--step M]`: the speech is also searched in sliding windows of N words; a verse
+    // scores as its best window (the paraphrase is usually a part of what was said around it).
+    let window: usize = arg("--window").and_then(|s| s.parse().ok()).unwrap_or(0);
+    let step: usize = arg("--step").and_then(|s| s.parse().ok()).unwrap_or(window.max(2) / 2);
     let mut score_case = |said: &str| -> Result<(Vec<(VerseId, f32)>, Vec<(VerseId, f32)>), Box<dyn std::error::Error>> {
         let t = Instant::now();
-        let q = embedder.embed_queries(&[said])?.remove(0);
-        let hits = index.search(&q, SHORTLIST);
+        let mut queries: Vec<String> = vec![said.to_string()];
+        let words: Vec<&str> = said.split_whitespace().collect();
+        if window > 0 && words.len() > window + step {
+            let mut i = 0;
+            while i + window <= words.len() {
+                queries.push(words[i..i + window].join(" "));
+                i += step;
+            }
+            queries.push(words[words.len() - window..].join(" "));
+        }
+        let refs: Vec<&str> = queries.iter().map(String::as_str).collect();
+        let embedded = embedder.embed_queries(&refs)?;
+        // verse → (best score, the query text that found it)
+        let mut best: HashMap<VerseId, (f32, usize)> = HashMap::new();
+        for (qi, q) in embedded.iter().enumerate() {
+            for h in index.search(q, SHORTLIST) {
+                let e = best.entry(h.verse).or_insert((f32::NEG_INFINITY, qi));
+                if h.score > e.0 {
+                    *e = (h.score, qi);
+                }
+            }
+        }
+        let mut merged: Vec<(VerseId, f32, usize)> = best.into_iter().map(|(v, (s, q))| (v, s, q)).collect();
+        merged.sort_by(|a, b| b.1.total_cmp(&a.1));
+        merged.truncate(SHORTLIST);
         query_ms.push(t.elapsed().as_secs_f64() * 1000.0);
-        let vector: Vec<(VerseId, f32)> = hits.iter().map(|h| (h.verse, h.score)).collect();
+        let vector: Vec<(VerseId, f32)> = merged.iter().map(|h| (h.0, h.1)).collect();
         let reranked = match &reranker {
             Some(r) => {
-                let texts: Vec<&str> = hits.iter().map(|h| kjv.text(h.verse).unwrap_or("")).collect();
-                let scores = r.score(said, &texts)?;
-                let mut v: Vec<(VerseId, f32)> = hits.iter().map(|h| h.verse).zip(scores).collect();
+                // Each candidate against the words that found it.
+                let mut v: Vec<(VerseId, f32)> = Vec::with_capacity(merged.len());
+                for (verse, _, qi) in &merged {
+                    let score = r.score(&queries[*qi], &[kjv.text(*verse).unwrap_or("")])?[0];
+                    v.push((*verse, score));
+                }
                 v.sort_by(|a, b| b.1.total_cmp(&a.1));
                 v
             }
@@ -150,6 +180,14 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         Ok((vector, reranked))
     };
 
+    // `--dump <file>`: each case with its top candidates (the ranker's own order), for a judge to read.
+    let mut dump: Vec<serde_json::Value> = Vec::new();
+    let candidates_json = |ranked: &[(VerseId, f32)], vector: &[(VerseId, f32)]| -> Vec<serde_json::Value> {
+        ranked.iter().take(5).map(|(v, s)| {
+            let vs = vector.iter().find(|(x, _)| x == v).map_or(0.0, |x| x.1);
+            serde_json::json!({ "ref": corpus.verse_ref(*v).to_string(), "text": kjv.text(*v).unwrap_or(""), "rr": s, "vec": vs })
+        }).collect()
+    };
     let mut by_group: HashMap<&str, Vec<(usize, f32, usize, f32)>> = HashMap::new(); // (vec rank, vec score at #1 if right, rr rank, rr score)
     for c in &cases {
         let (vector, reranked) = score_case(&c.said)?;
@@ -157,6 +195,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         let (vr, rr) = (rank(&vector), rank(&reranked));
         let top_if_right = |l: &[(VerseId, f32)], r: usize| if r == 1 { l[0].1 } else { f32::NEG_INFINITY };
         by_group.entry(c.group).or_default().push((vr, top_if_right(&vector, vr), rr, top_if_right(&reranked, rr)));
+        dump.push(serde_json::json!({ "group": c.group, "said": c.said, "truth": c.refs.iter().map(|v| corpus.verse_ref(*v).to_string()).collect::<Vec<_>>(), "candidates": candidates_json(if reranked.is_empty() { &vector } else { &reranked }, &vector) }));
         if list && (vr > 1 || (reranker.is_some() && rr > 1)) {
             let show = |l: &[(VerseId, f32)]| l.iter().take(3).map(|(v, s)| format!("{} {s:.2}", corpus.verse_ref(*v))).collect::<Vec<_>>().join(", ");
             println!("  [{}] want {} | vec #{} rr #{} | vec: {} | rr: {} | \"{}\"",
@@ -169,6 +208,11 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         let (vector, reranked) = score_case(said)?;
         neg_vec.push(vector.first().map_or(0.0, |x| x.1));
         neg_rr.push(reranked.first().map_or(0.0, |x| x.1));
+        dump.push(serde_json::json!({ "group": "negative", "said": said, "truth": [], "candidates": candidates_json(if reranked.is_empty() { &vector } else { &reranked }, &vector) }));
+    }
+    if let Some(path) = arg("--dump") {
+        std::fs::write(&path, serde_json::to_string(&dump)?)?;
+        eprintln!("[bench] {} cases written to {path}", dump.len());
     }
 
     // Thresholds that let through at most NEGATIVE_BUDGET of ordinary talk.
