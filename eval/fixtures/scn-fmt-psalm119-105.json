@@ -1,0 +1,20 @@
+{
+ "videoId": "scn-fmt-psalm119-105",
+ "title": "Scenario: fmt-psalm119-105",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "Psalm one hundred and nineteen verse one hundred and five"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Psalm",
+   "chapter": 119,
+   "kind": "citation",
+   "startMs": 0,
+   "verse": 105
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

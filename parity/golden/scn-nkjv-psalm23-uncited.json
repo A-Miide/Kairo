@@ -1,0 +1,60 @@
+{
+ "source": "scn-nkjv-psalm23-uncited",
+ "kind": "scenario",
+ "lang": "en",
+ "cues": [
+  {
+   "text": "the Lord is my shepherd, I shall not want, he makes me to lie down in green pastures",
+   "audioMs": 0
+  },
+  {
+   "text": "he leads me beside the still waters, he restores my soul",
+   "audioMs": 8100
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "the Lord is my",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "the Lord is my shepherd, I shall not",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "the Lord is my shepherd, I shall not want, he makes me",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "the Lord is my shepherd, I shall not want, he makes me to lie down in",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "the Lord is my shepherd, I shall not want, he makes me to lie down in green pastures",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "he leads me beside",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "he leads me beside the still waters, he",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "he leads me beside the still waters, he restores my soul",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

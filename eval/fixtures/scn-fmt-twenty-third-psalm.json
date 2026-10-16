@@ -1,0 +1,20 @@
+{
+ "videoId": "scn-fmt-twenty-third-psalm",
+ "title": "Scenario: fmt-twenty-third-psalm",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "let us go to the twenty third Psalm, the Lord is my shepherd"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Psalm",
+   "chapter": 23,
+   "kind": "citation",
+   "startMs": 0,
+   "verse": 1
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

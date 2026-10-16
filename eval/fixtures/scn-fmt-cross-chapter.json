@@ -1,0 +1,20 @@
+{
+ "videoId": "scn-fmt-cross-chapter",
+ "title": "Scenario: fmt-cross-chapter",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "John three thirty six to chapter four verse two"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "John",
+   "chapter": 3,
+   "kind": "citation",
+   "startMs": 0,
+   "verse": 36
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

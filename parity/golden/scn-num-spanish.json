@@ -1,0 +1,21 @@
+{
+ "source": "scn-num-spanish",
+ "kind": "scenario",
+ "lang": "es",
+ "cues": [
+  {
+   "text": "Romanos ocho versículo veintiocho",
+   "audioMs": 0
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "Romanos ocho versículo veintiocho",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

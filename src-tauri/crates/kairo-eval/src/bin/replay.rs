@@ -259,7 +259,9 @@ fn trace_range() -> Option<(usize, usize)> {
 
 fn replay(k: &Arc<Knowledge>, golden: &Value, audio: bool, m: Option<&MeaningService>, thresholds: MeaningThresholds) -> (Vec<Decision>, f64) {
     let trace = trace_range();
-    let mut engine = Engine::new(k.clone(), Config { explain: trace.is_some(), meaning: m.is_some(), meaning_thresholds: thresholds, offline: golden["offline"].as_bool().unwrap_or(false), ..Config::default() });
+    // A recording can say which language the service was in ("lang": "es"), as Settings does.
+    let lang = golden["lang"].as_str().map(kairo_detect::reference::Lang::from_code).unwrap_or_default();
+    let mut engine = Engine::new(k.clone(), Config { explain: trace.is_some(), meaning: m.is_some(), meaning_thresholds: thresholds, offline: golden["offline"].as_bool().unwrap_or(false), lang, ..Config::default() });
     let cue_at = cue_ms(golden);
     let mut out = Vec::new();
     let mut wakes: Vec<(u64, Event)> = Vec::new();

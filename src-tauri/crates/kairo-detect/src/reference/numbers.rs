@@ -58,7 +58,8 @@ pub fn spoken_to_number(word: &str) -> Option<i64> {
     if word.is_empty() {
         return None;
     }
-    let w = word.trim().to_lowercase();
+    // "twenty-8", "twenty-eight": the recogniser's hyphen is a space.
+    let w = word.trim().to_lowercase().replace('-', " ");
     if all_digits(&w) {
         return Some(parse_digits(&w));
     }
@@ -66,8 +67,10 @@ pub fn spoken_to_number(word: &str) -> Option<i64> {
         return Some(n);
     }
     let parts: Vec<&str> = w.split_whitespace().collect();
+    // A unit after a tens word may come as a digit ("twenty 8"): the recogniser mixes them.
+    let unit = |p: &str| word_value(p).or_else(|| (p.len() == 1 && all_digits(p)).then(|| parse_digits(p)));
     if parts.len() == 2 {
-        if let (Some(a), Some(b)) = (word_value(parts[0]), word_value(parts[1])) {
+        if let (Some(a), Some(b)) = (word_value(parts[0]), unit(parts[1])) {
             // A tens word takes a units word: "forty three", never "forty thirteen".
             if a >= 20 && a % 10 == 0 && a < 100 && (1..=9).contains(&b) {
                 return Some(a + b);
@@ -227,6 +230,15 @@ mod tests {
 
     fn w(s: &str) -> Vec<&str> {
         s.split(' ').collect()
+    }
+
+    #[test]
+    fn tens_with_a_digit() {
+        assert_eq!(spoken_to_number("twenty-8"), Some(28));
+        assert_eq!(spoken_to_number("twenty 8"), Some(28));
+        assert_eq!(spoken_to_number("twenty-eight"), Some(28));
+        assert_eq!(spoken_to_number("forty 3"), Some(43));
+        assert_eq!(spoken_to_number("twenty 13"), None, "a tens word takes a single unit");
     }
 
     #[test]

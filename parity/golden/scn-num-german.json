@@ -1,0 +1,21 @@
+{
+ "source": "scn-num-german",
+ "kind": "scenario",
+ "lang": "de",
+ "cues": [
+  {
+   "text": "Römer acht Vers achtundzwanzig",
+   "audioMs": 0
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "Römer acht Vers achtundzwanzig",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

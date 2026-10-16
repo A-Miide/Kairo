@@ -1,0 +1,60 @@
+{
+ "source": "scn-slip-judges-jude",
+ "kind": "scenario",
+ "lang": "en",
+ "cues": [
+  {
+   "text": "look at Jude chapter six verse twelve",
+   "audioMs": 0
+  },
+  {
+   "text": "and the angel of the Lord appeared unto him, and said unto him, The Lord is with thee, thou mighty man of valour",
+   "audioMs": 3700
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "look at Jude chapter",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "look at Jude chapter six verse twelve",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "and the angel of",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and the angel of the Lord appeared unto",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and the angel of the Lord appeared unto him, and said unto",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and the angel of the Lord appeared unto him, and said unto him, The Lord is",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and the angel of the Lord appeared unto him, and said unto him, The Lord is with thee, thou mighty",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and the angel of the Lord appeared unto him, and said unto him, The Lord is with thee, thou mighty man of valour",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

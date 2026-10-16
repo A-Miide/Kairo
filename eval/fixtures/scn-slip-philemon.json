@@ -1,0 +1,24 @@
+{
+ "videoId": "scn-slip-philemon",
+ "title": "Scenario: slip-philemon",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "Philemon four thirteen, say it with me"
+  },
+  {
+   "startMs": 3700,
+   "text": "I can do all things through Christ which strengtheneth me"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Philippians",
+   "chapter": 4,
+   "kind": "quote",
+   "startMs": 3700,
+   "verse": 13
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

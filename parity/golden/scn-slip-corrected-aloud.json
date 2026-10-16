@@ -1,0 +1,65 @@
+{
+ "source": "scn-slip-corrected-aloud",
+ "kind": "scenario",
+ "lang": "en",
+ "cues": [
+  {
+   "text": "turn with me to Romans chapter eight, sorry, Romans chapter twelve verse one",
+   "audioMs": 0
+  },
+  {
+   "text": "I beseech you therefore, brethren, by the mercies of God, that ye present your bodies a living sacrifice",
+   "audioMs": 6100
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "turn with me to",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "turn with me to Romans chapter eight, sorry,",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "turn with me to Romans chapter eight, sorry, Romans chapter twelve verse",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "turn with me to Romans chapter eight, sorry, Romans chapter twelve verse one",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "I beseech you therefore,",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "I beseech you therefore, brethren, by the mercies",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "I beseech you therefore, brethren, by the mercies of God, that ye",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "I beseech you therefore, brethren, by the mercies of God, that ye present your bodies a",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "I beseech you therefore, brethren, by the mercies of God, that ye present your bodies a living sacrifice",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}
