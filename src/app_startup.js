@@ -87,6 +87,10 @@
   // to open first, unlike the Theme Studio items above.
   const clickDirect = (btnId) => document.getElementById(btnId)?.click();
   window.__TAURI__.event.listen('menu-toggle-listening', () => clickDirect('listen-btn'));
+  // Director and Production menus: each item is a remote action ("menu-run-<id>"), the same
+  // thing a Stream Deck button or an OSC message does.
+  // (After this file has loaded: the action list is declared further down.)
+  setTimeout(() => REMOTE_ACTIONS.forEach(a => window.__TAURI__.event.listen(`menu-run-${a.id}`, () => runRemoteAction(a.id))), 0);
   window.__TAURI__.event.listen('menu-range-next',       () => clickDirect('range-next-btn'));
   window.__TAURI__.event.listen('menu-range-end',        () => clickDirect('range-clear-btn'));
   window.__TAURI__.event.listen('menu-clear-slide',      () => clickDirect('clear-slide-layer-btn'));
