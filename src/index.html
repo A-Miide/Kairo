@@ -1244,6 +1244,10 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="2"/><path d="M16.2 7.8a6 6 0 0 1 0 8.4M7.8 16.2a6 6 0 0 1 0-8.4M19 5a10 10 0 0 1 0 14M5 19A10 10 0 0 1 5 5"/></svg>
                     <span>Streaming</span>
                 </button>
+                <button class="settings-nav-item" data-pane="macros">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6h10M4 12h7M4 18h10"/><path d="M17 9l4 3-4 3z"/></svg>
+                    <span>Macros</span>
+                </button>
                 <button class="settings-nav-item" data-pane="overlays">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="5" rx="1"/></svg>
                     <span>Overlays</span>
@@ -1473,6 +1477,13 @@
                 </div>
             </section>
 
+            <section class="settings-pane" data-pane="macros">
+                <div class="settings-section">
+                    <div class="settings-section-label">Macros</div>
+                    <div id="macros-panel"></div>
+                </div>
+            </section>
+
             <section class="settings-pane" data-pane="overlays">
                 <div class="settings-section">
                     <div class="settings-section-label">Overlays</div>
@@ -1657,6 +1668,14 @@
                                 <p><strong>Go live</strong> (top bar, or on that page) starts every destination that is switched on; the button then shows LIVE and how long you have been on air, and each destination shows whether it is live. Click it again to stop. The stream is exactly what the output shows: scripture, slides, the layout, overlays, and in Director mode the camera on air, placed in the layout's video zone; switching cameras or layouts never drops the stream. If the connection drops, Kairo reconnects by itself.</p>
                                 <p>When there is more than one output, each destination can stream a different one (<strong>Streams</strong> in its settings). <strong>Check</strong> tests that this computer can reach a server without starting anything. Stream keys stay on this computer. Stream Deck and OSC can start and stop the stream.</p>
                                 <p><strong>Sound:</strong> the stream takes the input chosen under <strong>Settings → Audio</strong>. Use your sound desk's stream or aux feed for it (through a USB audio interface or the desk's own USB): it already carries the microphones, the band and Kairo's music as the room hears them. Kairo doesn't add its own music on top, so nothing is heard twice. With no desk, a loopback driver (such as BlackHole on a Mac) can combine a microphone and Kairo's sound into one input.</p>
+                            </div>
+                        </details>
+
+                        <details class="help-group">
+                            <summary>Macros</summary>
+                            <div class="help-body">
+                                <p>A macro does several things with one press. Make one under <strong>Settings → Macros</strong>: give it a name and add steps, for example load Layout 2, switch the welcome overlay on, start the music, wait 3 seconds, Send. A step can be anything Stream Deck or OSC can do, a message on the Monitors or the screens, an overlay on or off, or a wait.</p>
+                                <p>Run it from the <strong>Macros</strong> button in the top bar (it appears once there is a macro), or from Stream Deck and OSC: the first nine are <code>/kairo/macro-1</code> to <code>/kairo/macro-9</code>, in the order shown in Settings. Clicking a running macro stops it before its next step. A macro sends nothing a person couldn't: a Send step sends what is in Preview, as the Send button would.</p>
                             </div>
                         </details>
 
@@ -2420,6 +2439,7 @@
     <script src="overlay_panel.js"></script>
     <script src="streaming_panel.js"></script>
     <script src="streaming_ui.js"></script>
+    <script src="macros.js"></script>
     <script src="settings_layout.js"></script>
     <script src="design_space.js"></script>
     <script src="word_split.js"></script>

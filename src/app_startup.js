@@ -163,6 +163,7 @@ const REMOTE_ACTIONS = [
   { id: 'auto-send-off',          label: 'Auto-send verses: off',                run: () => setAutoSend(false) },
   ...Array.from({ length: 9 }, (_, i) => ({ id: `director-layout-${i + 1}`, label: `Director: Layout ${i + 1} to Preview`, run: () => directorDo('loadLayout', i + 1) })),
   ...Array.from({ length: 9 }, (_, i) => ({ id: `director-input-${i + 1}`,  label: `Director: Input ${i + 1} to the screen`, run: () => directorDo('sendInput', i + 1) })),
+  ...Array.from({ length: 9 }, (_, i) => ({ id: `macro-${i + 1}`,           label: `Run macro ${i + 1}`,                    run: () => window.KairoMacros?.runIndex(i + 1) })),
 ];
 function directorDo(fn, ...args) {
   const d = window.KairoVideoDirector;
