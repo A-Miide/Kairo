@@ -59,12 +59,7 @@ async function loadSystemFonts(attempts = 5, delayMs = 200) {
   // same blind spot applied here with no way to tell "the bridge never
   // came up" from "the command ran and genuinely found zero fonts" from
   // "it threw" apart, short of a debugger.
-  const report = (outcome, extra) => {
-    fetch(`${SERVER}/api/debug-log`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ event: 'system-fonts', data: { outcome, ...extra } }),
-    }).catch(() => {});
-  };
+  const report = (outcome, extra) => window.kairoLog('system-fonts', { outcome, ...extra });
   for (let i = 0; i < attempts; i++) {
     const inv = window.__TAURI__?.core?.invoke || window.__TAURI__?.invoke;
     if (inv) {

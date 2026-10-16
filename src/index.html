@@ -2352,9 +2352,7 @@
                         visible: false,
                     });
                     win.once('tauri://error', function(e) {
-                      fetch('/api/debug-log', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({
-                        event: 'WebviewWindow creation error', data: { label, error: String(e) },
-                      }) }).catch(function(){});
+                      window.kairoLog('WebviewWindow creation error', { label, error: String(e) });
                       console.warn('[KAIRO] WebviewWindow creation error:', e);
                     });
                     // A replaced window boots blank — re-push whatever is live
@@ -2367,9 +2365,7 @@
                         });
                     }
                 } catch (e) {
-                    fetch('/api/debug-log', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({
-                      event: 'openDisplayWindow threw', data: { label, error: String(e), message: e && e.message },
-                    }) }).catch(function(){});
+                    window.kairoLog('openDisplayWindow threw', { label, error: String(e), message: e && e.message });
                     console.warn('[KAIRO] Tauri window creation failed, falling back:', e);
                     window.open(url, label, 'width=' + (opts.width||1280) + ',height=' + (opts.height||720));
                 }
@@ -2419,10 +2415,9 @@
         // (e.g. this script block getting wrapped in yet another scope)
         // shows up in the debug log immediately instead of only when
         // someone notices the display never opens.
-        fetch('/api/debug-log', { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify({
-          event: 'display-lifecycle-globals-attached',
-          data: { openDisplayWindow: typeof window.openDisplayWindow === 'function', closeDisplayWindow: typeof window.closeDisplayWindow === 'function' },
-        }) }).catch(function(){});
+        // Runs before client_common.js has loaded: queued, and sent by kairoLog with the token.
+        (window.__kairoEarlyLog = window.__kairoEarlyLog || []).push(['display-lifecycle-globals-attached',
+          { openDisplayWindow: typeof window.openDisplayWindow === 'function', closeDisplayWindow: typeof window.closeDisplayWindow === 'function' }]);
 
         // Syphon/NDI: Output Looks generalized these from one fixed sender
         // each into a LIST of independent named outputs (see the Card 4/5

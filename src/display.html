@@ -377,7 +377,7 @@
     // An output window has no devtools: its uncaught errors go to the debug log
     // (databases/debug.log) instead of nowhere. Never shown on the screen itself.
     (function () {
-        const out = (event, data) => { try { fetch(`${location.origin}/api/debug-log`, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(window.kairoAuthToken && window.kairoAuthToken() ? { Authorization: `Bearer ${window.kairoAuthToken()}` } : {}) }, body: JSON.stringify({ event, data: { ...data, output: new URLSearchParams(location.search).get('output') || '' } }) }).catch(() => {}); } catch {} };
+        const out = (event, data) => window.kairoLog(event, { ...data, output: new URLSearchParams(location.search).get('output') || '' });
         window.addEventListener('error', (e) => out('display-js-error', { msg: String(e.message || '').slice(0, 300), src: String(e.filename || '').split('/').pop(), line: e.lineno }));
         window.addEventListener('unhandledrejection', (e) => out('display-js-rejection', { msg: String((e.reason && (e.reason.message || e.reason)) || '').slice(0, 300) }));
     })();

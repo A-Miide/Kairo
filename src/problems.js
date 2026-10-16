@@ -12,12 +12,7 @@
 // - every uncaught error and rejected promise goes to the debug log (databases/debug.log).
 'use strict';
 (function () {
-  const log = (event, data) => {
-    try {
-      const f = window.__kairoRawFetch || window.fetch;
-      f(`${typeof SERVER !== 'undefined' ? SERVER : ''}/api/debug-log`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ event, data }) }).catch(() => {});
-    } catch {}
-  };
+  const log = (event, data) => window.kairoLog(event, data);   // client_common.js
 
   // ── The strip ──
   let strip = null;

@@ -109,12 +109,7 @@ async function refreshVideoDevices(askPermission) {
 
 // Camera trouble goes to the debug log (databases/debug.log), so it can be looked at later.
 function logVideoProblem(what, err) {
-  try {
-    fetch(`${SERVER}/api/debug-log`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ event: 'client:video-problem', data: { what, name: err && err.name, message: String(err && err.message || err).slice(0, 300) } }),
-    }).catch(() => {});
-  } catch {}
+  window.kairoLog('video-problem', { what, name: err && err.name, message: String(err && err.message || err).slice(0, 300) });
 }
 
 function previewKey(source) {
