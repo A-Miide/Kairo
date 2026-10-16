@@ -193,6 +193,16 @@ impl Engine {
 
         if judged >= MEANING_MIN_WORDS && c.asked.is_none() && (is_final || just_started || spoken.saturating_sub(c.meaning_at) >= MEANING_EVERY_WORDS) {
             c.meaning_at = spoken;
+            // The rare words already say which verse is being read: switch now, in the same
+            // breath, with or without the models. Asking the cross-encoder first left the
+            // misspoken citation on screen while it answered (measured: "Ephesians two verse
+            // ten … every knee" showed Ephesians 2:10 before Philippians 2:10). The models
+            // are asked only when the words don't settle it.
+            if let Some((v, _, _)) = by_words {
+                self.check = Some(c);
+                self.switch_citation_to_sibling(v, &judged_text, now);
+                return;
+            }
             if self.cfg.meaning {
                 let id = self.next_request_id();
                 let words: Vec<&str> = judged_text.split_whitespace().collect();
@@ -206,11 +216,6 @@ impl Engine {
                 let verses = std::iter::once(c.verse).chain(c.siblings.iter().map(|s| s.verse)).collect();
                 self.out.requests.push(Request::Compare { id, texts, verses });
                 c.asked = Some((id, by_words, judged_text));
-            } else if let Some((v, _, _)) = by_words {
-                // No cross-encoder: the rare words decide.
-                self.check = Some(c);
-                self.switch_citation_to_sibling(v, &judged_text, now);
-                return;
             }
         }
         if spoken < CHECK_WORDS {
