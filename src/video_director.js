@@ -39,6 +39,7 @@
     ui: {},
     liveObserver: null,
     last: null,             // one-step undo: { live, preview, layers, verse }
+    outSeq: 0,              // verse/slide changes the Output has made (Undo's check, see markVerse)
     pendingLook: null, previewLookId: null, liveLookId: null,   // Looks (video_looks.js)
     programState: { on: [], id: null, mixed: false },
   };
@@ -139,10 +140,10 @@
   function onServerMessage(msg) {
     if (!D.active || !msg) return;
     let changed = false;
-    if (msg.type === 'detection' && msg.target === 'viewer' && msg.verses && msg.verses.length && !msg.retranslated) { D.liveMsg = msg; changed = true; }
+    if (msg.type === 'detection' && msg.target === 'viewer' && msg.verses && msg.verses.length && !msg.retranslated) { D.liveMsg = msg; D.outSeq++; changed = true; }
     else if (msg.type === 'media' && msg.target === 'viewer') { D.liveMedia = msg; changed = true; }
     else if (msg.type === 'clear-layer') {
-      if (msg.layer === 'slide' || msg.layer === 'all') { D.liveMsg = null; changed = true; }
+      if (msg.layer === 'slide' || msg.layer === 'all') { D.liveMsg = null; D.outSeq++; changed = true; }
       if (msg.layer === 'media' || msg.layer === 'all') { D.liveMedia = null; changed = true; }
     }
     if (changed && !D.staged) syncPreviewFrame();
@@ -151,7 +152,27 @@
   // ── Staging ──────────────────────────────────────────────────────────────
   // Undo of a verse-only send takes back just that verse. Inside one Send that also moves video or a Layout
   // (D.composite) the verse joins that step's snapshot, so a single Undo reverses the whole Send.
-  function markVerse() { D.last = D.composite ? { ...(D.last || {}), verse: true } : { verse: true }; }
+  //
+  // Undo takes a verse or slide back with the app's Back, which steps back the server's latest screen
+  // change, whatever made it. So each step notes what the Output showed when it was sent (D.outSeq counts
+  // the verse/slide changes the Output has made, from the server's broadcasts): Back is used only
+  // when the one change since is this send and it really changed the screen. Media never enters
+  // the server's screen history: Back would step back a verse instead.
+  // kind: 'media' for a media send; ref: the reference the send puts up, when known.
+  const screenKey = (m) => { const v = m && m.verses && m.verses[0]; return v ? `${v.reference || ''}|${v.text || ''}` : ''; };
+  const verseStep = (kind, ref) => ({ seq: D.outSeq, key: screenKey(D.liveMsg), media: kind === 'media', ref: ref || null });
+  function markVerse(kind, ref) { const verse = verseStep(kind, ref); D.last = D.composite ? { ...(D.last || {}), verse } : { verse }; }
+  // Why Undo must leave the screen's words alone, or null when Back takes exactly this send back.
+  function verseUndoBlocked(v) {
+    if (!v || typeof v !== 'object') return null;
+    if (v.media) return 'Undo can\u2019t take media back: clear it with Clear media.';
+    const n = D.outSeq - v.seq;
+    if (n === 0) return 'Undo didn\u2019t take the words back: the send hadn\u2019t reached the screen yet.';
+    const now = D.liveMsg && D.liveMsg.verses && D.liveMsg.verses[0];
+    if (n > 1 || (v.ref && now && now.reference !== v.ref)) return 'Undo didn\u2019t take the words back: something else went on screen after the Send. Use Back to step the screen back.';
+    if (screenKey(D.liveMsg) === v.key) return '';   // the send changed nothing on screen: nothing to take back
+    return null;
+  }
   const sameVerse = (a, b) => !!a && !!b && (a.reference || a.ref) === (b.reference || b.ref) && (a.text || a.verse) === (b.text || b.verse);
   // showInViewer's work for a verse being sent by hand, held until it is really on screen.
   // Held only when a hand send follows at once (the callers do showInViewer then send): a
@@ -187,7 +208,7 @@
     const { verse, look, slide, media } = D.staged;
     D.staged.sent = true;   // Preview keeps showing it: it now matches the Output
     D.detected = null;
-    markVerse();
+    markVerse(media ? 'media' : null, !slide && !media && verse ? verse.reference : null);   // a slide's send builds its own reference
     refresh();
     // A staged slide goes out through the playlist's own send, a verse through the normal one.
     // A staged slide or media item goes out through the app's own send, as an explicit one (not staged again).
@@ -225,11 +246,11 @@
   const sheetOpen = () => document.body.classList.contains('vd-sheet');
   function stageContent(key, build, make) {
     if (!D.active) return false;
-    if (sheetOpen()) { markVerse(); return false; }
+    if (sheetOpen()) { markVerse(key.startsWith('media:') ? 'media' : null); return false; }
     const now = Date.now();
     if (D.stageKey === key && now - D.stageAt < DOUBLE_MS && fromPointer()) {
       // Quick cut: the real send goes straight out; Preview holds the same item (it now matches the Output).
-      markVerse();   // Undo can take the slide back
+      markVerse(key.startsWith('media:') ? 'media' : null);   // Undo can take the slide back
       if (D.staged && D.staged.key === key) { D.staged.sent = true; refresh(); }
       else D.sentKey = key;        // the staged copy is still being made: it is marked sent when it lands
       D.stageAt = 0;               // the next click starts staging again
@@ -248,7 +269,7 @@
   // Stage something and mark it as already sent (a direct send): Preview then holds it.
   function stageSent(key, build, make) {
     D.sentKey = key;
-    markVerse();
+    markVerse(key.startsWith('media:') ? 'media' : null);
     stageContent(key, build, make);
   }
   // The real dblclick event, as a fallback where the second-click timing above did not catch it, and for
@@ -310,7 +331,7 @@
       // A double-click (direct) goes straight out, and Preview holds the same verse.
       if (opts && opts.direct) {
         if (!(D.staged && sameVerse(D.staged.verse, verse))) { D.staged = { verse, look: look || null }; D.stageKey = null; }
-        D.staged.sent = true; markVerse();
+        D.staged.sent = true; markVerse(null, verse && verse.reference);
         syncPreviewFrame(); refresh();
         D.heldPending = false;
         releaseViewerFor(verse, false);   // a direct send is on screen at once
@@ -414,8 +435,13 @@
     }
     if (last.overlays) setOverlayLive(last.overlays);
     D.liveLookId = null;
-    // The verse goes back through the app's own "Back to the previous screen".
-    if (last.verse) document.getElementById('output-back-btn')?.click();
+    // The verse goes back through the app's own "Back to the previous screen", only when the
+    // server's latest screen change is this step's (verseUndoBlocked); otherwise it says why not.
+    if (last.verse) {
+      const why = verseUndoBlocked(last.verse);
+      if (why === null) { window.kairoProblemCleared?.('vd-undo'); document.getElementById('output-back-btn')?.click(); }
+      else if (why) window.kairoProblem?.(why, 'vd-undo');
+    }
     refresh();
   }
   // Space: send what is staged (the verse, and the Preview source when it differs).
@@ -444,8 +470,9 @@
     if (hadLook) { snapshot(); applyLook(hadLook); }
     const ps = programState();
     if (hadVerse) takeVerse();
+    const verseInfo = hadVerse && D.last && D.last.verse;   // a camera take below starts a new snapshot
     if (ps.on.length && D.previewId != null && D.previewId !== (ps.mixed ? undefined : (ps.id || null))) take(mode);
-    if (hadVerse) D.last = { ...(D.last || {}), verse: true };   // Undo takes the verse back too
+    if (hadVerse) D.last = { ...(D.last || {}), verse: verseInfo || verseStep() };   // Undo takes the verse back too
     if (hadLook) { D.last = { ...(D.last || {}), layers: D.lookSnap && D.lookSnap.layers, screen: D.lookSnap && D.lookSnap.screen }; D.liveLookId = hadLook.id; D.lookSnap = null; }
     syncPreviewFrame();
     refresh();
@@ -549,7 +576,7 @@
   // This is what the Clear buttons did; Undo (the app's Back) brings the previous screen back.
   function fadeToBlack() {
     if (programState().on.length) sendToProgram(null, 'fade'); else snapshot();
-    D.last = { ...(D.last || {}), verse: true };
+    D.last = { ...(D.last || {}), verse: verseStep() };
     document.getElementById('clear-all-layers-btn')?.click();
     refresh();
   }
