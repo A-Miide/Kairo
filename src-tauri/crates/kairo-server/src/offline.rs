@@ -147,7 +147,11 @@ pub fn recognizer(dir: &std::path::Path, decoding: &Decoding) -> Result<Arc<Onli
     }
     *l = None;
     let p = |f: &str| Some(dir.join(f).to_string_lossy().into_owned());
-    let threads = std::thread::available_parallelism().map_or(4, |n| n.get()).saturating_sub(2).clamp(1, 4) as i32;
+    // Two at most: measured on a 3-minute sermon under a full service's load (2026-10-16), 2
+    // threads decoded fastest; 4 took longer and twice the CPU (the runtime's idle threads
+    // spin), which is what a small laptop can't spare. KAIRO_ASR_THREADS overrides it.
+    let threads = std::env::var("KAIRO_ASR_THREADS").ok().and_then(|v| v.parse::<i32>().ok()).filter(|n| (1..=8).contains(n))
+        .unwrap_or_else(|| std::thread::available_parallelism().map_or(2, |n| n.get()).saturating_sub(2).clamp(1, 2) as i32);
     let mut cfg = OnlineRecognizerConfig {
         model_config: OnlineModelConfig {
             transducer: OnlineTransducerModelConfig { encoder: p("encoder.int8.onnx"), decoder: p("decoder.int8.onnx"), joiner: p("joiner.int8.onnx") },
