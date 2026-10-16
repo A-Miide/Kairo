@@ -1996,6 +1996,34 @@ async function applyMonitorLooks() {
 }
 window.applyMonitorLooks = applyMonitorLooks;
 
+// Themes and layers are nearly always changed together (adding or removing an output,
+// startup), and each used to be its own /api/look/apply request, so every display window
+// got two look-update messages and repainted twice. Pushes made in the same tick now leave
+// as ONE request: the server already sends themes, look and layers in a single look-update.
+// (Keying, modes, frames and monitors stay separate: the server takes only one of those per
+// request.) Resolves when the request is done, as the separate fetches did.
+let lookPush = null;
+function pushLook(part, what) {
+  if (!lookPush) {
+    const cur = lookPush = { body: {}, waiters: [] };
+    queueMicrotask(async () => {
+      lookPush = null;
+      try {
+        await fetch(`${SERVER}/api/look/apply`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(cur.body),
+        });
+      } catch (err) {
+        console.warn(`[Look] ${what} failed:`, err.message);
+      }
+      cur.waiters.forEach(done => done());
+    });
+  }
+  Object.assign(lookPush.body, part);
+  return new Promise(done => lookPush.waiters.push(done));
+}
+
 async function applyOutputThemes() {
   const map = outputThemeMap();
   const themes = {};
@@ -2011,15 +2039,7 @@ async function applyOutputThemes() {
   const primary = themes[displayOutputs()[0]?.id] || themes.external;
   if (primary) localStorage.setItem('kairo-active-look', JSON.stringify(primary));
 
-  try {
-    await fetch(`${SERVER}/api/look/apply`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ themes, look: primary || null }),
-    });
-  } catch (err) {
-    console.warn('[Look] per-output broadcast failed:', err.message);
-  }
+  await pushLook({ themes, look: primary || null }, 'per-output broadcast');
 
   // Whatever's already showing in the in-app preview only carries its own
   // look when the sent item had one — anything using the output-default
@@ -2159,15 +2179,7 @@ async function applyOutputLayers() {
   const map = outputLayerMap();
   localStorage.setItem('kairo-output-layers', JSON.stringify(map));
   localStorage.setItem('kairo-active-look-ts', Date.now().toString());
-  try {
-    await fetch(`${SERVER}/api/look/apply`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ layers: map }),
-    });
-  } catch (err) {
-    console.warn('[Look] per-output layer broadcast failed:', err.message);
-  }
+  await pushLook({ layers: map }, 'per-output layer broadcast');
 }
 
 
