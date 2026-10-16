@@ -104,10 +104,6 @@ function logVideoProblem(what, err) {
   window.kairoLog('video-problem', { what, name: err && err.name, message: String(err && err.message || err).slice(0, 300) });
 }
 
-function previewKey(source) {
-  return VSRC.resolveDevice(source, videoState.devices);
-}
-
 // Thumbnails and the properties preview take their stream from the hub: one
 // low-rate capture per device, shared with the director's Preview and Program.
 function releaseAllPreviews() {

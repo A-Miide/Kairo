@@ -369,7 +369,6 @@
   `;
   document.head.appendChild(style);
 
-  window.KairoStreamingPanel = { render };
   // Live status: redraw while the pane is open (not while a destination form is being typed in).
   const hook = () => { if (window.KairoStreaming) window.KairoStreaming.onChange(() => { if (!editingId && host() && host().offsetParent) render(); }); else setTimeout(hook, 500); };
   hook();

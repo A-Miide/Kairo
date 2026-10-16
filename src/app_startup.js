@@ -257,10 +257,6 @@ function comboFromEvent(e) {
 }
 
 const COMBO_SYMBOLS = { cmd: '⌘', shift: '⇧', alt: '⌥', ctrl: '⌃', arrowright: '→', arrowleft: '←', arrowup: '↑', arrowdown: '↓' };
-function comboDisplay(combo) {
-  if (!combo) return 'Not set';
-  return combo.split('+').map(p => COMBO_SYMBOLS[p] || p.toUpperCase()).join('');
-}
 
 let capturingHotkeyId = null;
 
