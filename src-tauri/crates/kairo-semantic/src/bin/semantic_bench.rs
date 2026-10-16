@@ -8,7 +8,7 @@
 //!
 //!   cargo run --release -p kairo-semantic --bin semantic_bench -- \
 //!     --embedder bench/embeddinggemma.json [--translations KJV,NLT] \
-//!     [--reranker bench/minilm.json] [--list]
+//!     [--reranker bench/minilm.json] [--cases eval/paraphrase_cases_hard.json] [--list]
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -223,7 +223,9 @@ fn kjv_copy(corpus: &Corpus) -> Translation {
 }
 
 fn load_cases(root: &Path, corpus: &Corpus) -> Result<(Vec<Case>, Vec<String>), Box<dyn std::error::Error>> {
-    let file: CaseFile = serde_json::from_slice(&std::fs::read(root.join("eval/paraphrase_cases.json"))?)?;
+    // `--cases <file>` (relative to the repo): another case set, e.g. eval/paraphrase_cases_hard.json.
+    let cases_path = std::env::args().collect::<Vec<_>>().windows(2).find(|w| w[0] == "--cases").map(|w| w[1].clone()).unwrap_or_else(|| "eval/paraphrase_cases.json".into());
+    let file: CaseFile = serde_json::from_slice(&std::fs::read(root.join(&cases_path))?)?;
     let parse = |s: &str| -> Option<VerseId> {
         let (book, cv) = s.rsplit_once(' ')?;
         let (c, v) = cv.split_once(':')?;
