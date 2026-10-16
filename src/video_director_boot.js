@@ -198,11 +198,14 @@
     window.__TAURI__.event.listen('menu-video-director', toggle);
   }
 
-  // ── What the outputs had before the first Layout of a Director session ──
+  // ── What a Layout changed on the outputs during a Director session ──
   // Kept in settings (not only in memory), so a crash or a quit with a Layout applied can't
   // leave the normal screen with, say, the Bible layer off: it is put back when the mode
-  // ends, or at the next start with the mode off. Shape: { layers: { outputId: {...} },
-  // overlays: { overlayId: live } }.
+  // ends, or at the next start with the mode off. Only what a Layout (or Director turning
+  // video on by itself) changed is listed, each with the value it had before (`was`) and the
+  // value Director set (`set`). Putting back touches a layer or overlay only while it still
+  // shows what Director set: one the operator changed by hand afterwards is theirs and stays.
+  // Shape: { layers: { outputId: { key: { was, set } } }, overlays: { overlayId: { was, set } } }.
   const readBaseline = () => {
     const b = settings.directorBaseline;
     return b && typeof b === 'object' ? b : null;
@@ -211,33 +214,43 @@
     settings.directorBaseline = b;
     if (typeof saveSettingsPatch === 'function') saveSettingsPatch({ directorBaseline: b });
   }
+  const isEntry = (e) => !!e && typeof e === 'object' && typeof e.was === 'boolean' && typeof e.set === 'boolean';
   window.KairoDirectorBaseline = {
-    // The first record wins: later Layouts in the same session keep the state from before any of them.
-    recordLayers(layers) {
+    // changes: { layers: [[outputId, key, was, set]], overlays: [[overlayId, was, set]] }.
+    // The first `was` wins (the state from before any Layout); `set` follows the latest change.
+    record(changes) {
+      const L = (changes && changes.layers) || [], O = (changes && changes.overlays) || [];
+      if (!L.length && !O.length) return;
       const b = readBaseline() || {};
-      if (b.layers) return;
-      writeBaseline({ ...b, layers });
+      const layers = { ...(b.layers && typeof b.layers === 'object' ? b.layers : {}) };
+      const overlays = { ...(b.overlays && typeof b.overlays === 'object' ? b.overlays : {}) };
+      for (const [id, k, was, set] of L) {
+        const ly = { ...(layers[id] && typeof layers[id] === 'object' ? layers[id] : {}) };
+        ly[k] = { was: isEntry(ly[k]) ? ly[k].was : !!was, set: !!set };
+        layers[id] = ly;
+      }
+      for (const [id, was, set] of O) overlays[id] = { was: isEntry(overlays[id]) ? overlays[id].was : !!was, set: !!set };
+      writeBaseline({ layers, overlays });
     },
-    recordOverlays(overlays) {
-      const b = readBaseline() || {};
-      if (b.overlays) return;
-      writeBaseline({ ...b, overlays });
-    },
-    restore() {
+    async restore() {
       const b = readBaseline();
       if (!b) return;
-      if (b.layers && typeof outputLayerMap === 'function' && typeof setOutputLayer === 'function') {
+      // Cleared first: a session started while the overlays load records a list of its own.
+      writeBaseline(null);
+      if (b.layers && typeof b.layers === 'object' && typeof outputLayerMap === 'function' && typeof setOutputLayer === 'function') {
         const now = outputLayerMap();
         for (const [id, ly] of Object.entries(b.layers)) {
-          if (!ly || typeof ly !== 'object') continue;
-          for (const k of Object.keys(ly)) if (now[id] && now[id][k] !== ly[k]) setOutputLayer(id, k, ly[k]);
+          if (!ly || typeof ly !== 'object' || !now[id]) continue;
+          for (const [k, e] of Object.entries(ly)) if (isEntry(e) && now[id][k] === e.set && e.set !== e.was) setOutputLayer(id, k, e.was);
         }
       }
-      if (b.overlays && typeof b.overlays === 'object') {
+      const ov = b.overlays && typeof b.overlays === 'object' ? Object.entries(b.overlays).filter(([, e]) => isEntry(e) && e.set !== e.was) : [];
+      if (ov.length && window.KairoOverlays && window.KairoOverlays.load) {
+        const items = await window.KairoOverlays.load();
+        const live = new Map(items.map(it => [it.id, !!it.live]));
         // A refused change is reported by the app's request watcher (problems.js).
-        for (const [id, live] of Object.entries(b.overlays)) fetch(`${SERVER}/api/overlays/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ live: !!live }) });
+        for (const [id, e] of ov) if (live.get(id) === e.set) fetch(`${SERVER}/api/overlays/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ live: e.was }) });
       }
-      writeBaseline(null);
     },
   };
 
@@ -257,7 +270,7 @@
     } catch {}
     if (settings.videoDirector) { await enable(false); return; }
     // Mode off: a Layout's layer and overlay changes left by a crash go back as they were.
-    try { window.KairoDirectorBaseline.restore(); } catch (err) { console.warn('[Video] could not restore the outputs from before a Layout:', err.message); }
+    window.KairoDirectorBaseline.restore().catch((err) => console.warn('[Video] could not restore the outputs from before a Layout:', err.message));
     // Mode off: no screen frame may be left around an output (a crash could have left one).
     try {
       if (settings.outputFrames && Object.keys(settings.outputFrames).length) { settings.outputFrames = {}; saveSettingsPatch({ outputFrames: {} }); if (typeof applyOutputFrames === 'function') applyOutputFrames(); }

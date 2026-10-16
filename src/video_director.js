@@ -472,32 +472,31 @@
     return { videoId: ps.mixed ? null : ps.id, layers, overlays, themeId: cur && cur.groupId === 'grp-screen' ? cur.id : null };
   }
   // Take: the Look's layers and overlays go onto the real outputs. Its video goes with the ordinary take.
-  // What the outputs had before the first Layout of this session, put back when Director mode ends.
-  // Kept in settings by video_director_boot.js, so it survives a crash.
-  function recordBaseline() {
-    const ly = outputLayerMap();
-    const layers = {};
-    for (const o of videoOutputs()) layers[o.id] = { ...(ly[o.id] || {}) };
-    window.KairoDirectorBaseline?.recordLayers(layers);
-  }
-  function restoreBaseline() { window.KairoDirectorBaseline?.restore(); }
+  // What a Layout changed on the outputs, put back when Director mode ends (only where it still shows
+  // what Director set). Kept in settings by video_director_boot.js, so it survives a crash.
+  const recordChanges = (changes) => window.KairoDirectorBaseline?.record(changes);
+  function restoreBaseline() { window.KairoDirectorBaseline?.restore().catch((err) => console.warn('[Video] could not put the outputs back:', err.message)); }
   const setOverlayLive = (map) => {
     for (const [id, live] of Object.entries(map)) fetch(`${SERVER}/api/overlays/${id}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ live: !!live }) }).catch(() => {});
   };
   function applyLook(look) {
     D.lookSnap = D.last;
     const step = D.last;   // this send's Undo step, kept for the overlays read below
-    recordBaseline();
     const targets = videoOutputs();
+    const changed = [];
     for (const o of targets) {
-      for (const k of ['bible', 'slide', 'media', 'timer']) { if (!o.monitor) setOutputLayerIf(o.id, k, look.layers[k]); }
-      setOutputLayerIf(o.id, 'video', look.layers.video);
+      for (const k of ['bible', 'slide', 'media', 'timer']) { if (!o.monitor) setOutputLayerIf(o.id, k, look.layers[k], changed); }
+      setOutputLayerIf(o.id, 'video', look.layers.video, changed);
     }
+    recordChanges({ layers: changed });
     if (Array.isArray(look.overlays) && window.KairoOverlays && window.KairoOverlays.load) {
       window.KairoOverlays.load().then(items => {
         const prev = {}; items.forEach(it => { prev[it.id] = !!it.live; });
-        window.KairoDirectorBaseline?.recordOverlays(prev);  // the state before any Layout (the first record wins)
         if (step) step.overlays = prev;                      // Undo puts the overlays back too (this step's, even if another came since)
+        return items;
+      }).then(items => {
+        // Only the overlays this Layout changes are put back when the mode ends.
+        recordChanges({ overlays: items.filter(it => !!it.live !== look.overlays.includes(it.id)).map(it => [it.id, !!it.live, look.overlays.includes(it.id)]) });
         return items;
       }).then(items => items.forEach(it => {
         const want = look.overlays.includes(it.id);
@@ -507,9 +506,13 @@
     applyScreenTheme(look.themeId || null);
     D.lookSent = true;   // Preview keeps holding the layout: it now matches the Output
   }
-  function setOutputLayerIf(id, key, val) {
+  // `changed` collects [id, key, was, set] for each layer actually changed.
+  function setOutputLayerIf(id, key, val, changed) {
     const cur = outputLayerMap()[id];
-    if (cur && cur[key] !== !!val) setOutputLayer(id, key, !!val);
+    if (cur && cur[key] !== !!val) {
+      if (changed) changed.push([id, key, cur[key], !!val]);
+      setOutputLayer(id, key, !!val);
+    }
   }
   // Esc: cancel what is staged and not yet sent. Something already sent stays held in Preview.
   function clearStaging() {
@@ -548,8 +551,10 @@
   function sendToProgram(id, mode) {
     let ps = programState();
     if (!ps.on.length) {
-      // Nothing is set to carry video yet: the primary display does.
+      // Nothing is set to carry video yet: the primary display does (put back off when the mode ends).
+      const was = !!(outputLayerMap()[PRIMARY_DISPLAY] || {}).video;
       setOutputLayer(PRIMARY_DISPLAY, 'video', true);
+      if (!was) recordChanges({ layers: [[PRIMARY_DISPLAY, 'video', false, true]] });
       ps = programState();
     }
     snapshot();
