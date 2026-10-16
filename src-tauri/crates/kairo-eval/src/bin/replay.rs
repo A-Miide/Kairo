@@ -16,6 +16,8 @@
 //! that the sermon never cites is a wrong send (verses of a chapter cited
 //! with no verse are exempt for 10 minutes); a miss offered in Possible
 //! Matches is counted separately; suggestions per hour measure busyness.
+//! A verse the preacher only paraphrased (`kind: "paraphrase"`) makes an
+//! offer right but isn't expected on screen: paraphrases are only offered.
 //!
 //! Only the dev sermons are replayed unless `--held-out` is given
 //! (docs/RUST_REWRITE_PLAN.md, "Evaluation split").
@@ -63,6 +65,8 @@ struct GroundTruth {
     keys: Vec<VerseId>,
     bare: Option<(Book, u16)>,
     at_ms: i64,
+    /// Said in the preacher's own words: right as an offer, not counted as found or missed.
+    paraphrase: bool,
 }
 
 #[derive(Default)]
@@ -120,7 +124,7 @@ fn ground_truth(k: &Knowledge, fixture: &Value) -> Vec<GroundTruth> {
             Vec::new()
         };
         let bare = keys.is_empty().then_some((book, ch));
-        out.push(GroundTruth { keys, bare, at_ms });
+        out.push(GroundTruth { keys, bare, at_ms, paraphrase: g["kind"] == "paraphrase" });
     }
     out
 }
@@ -130,7 +134,7 @@ fn score(k: &Knowledge, gt: &[GroundTruth], decisions: &[Decision], last_ms: i64
     let mut s = Score { hours: (last_ms.max(1) as f64 / 3_600_000.0).max(1.0), ..Default::default() };
     let mut used: HashSet<usize> = HashSet::new();
     let mut missed: Vec<&GroundTruth> = Vec::new();
-    for g in gt.iter().filter(|g| !g.keys.is_empty()) {
+    for g in gt.iter().filter(|g| !g.keys.is_empty() && !g.paraphrase) {
         s.total += 1;
         let hit = screen.iter().enumerate().find(|(i, d)| !used.contains(i) && g.keys.contains(&d.verses[0]) && (d.at_ms - g.at_ms).abs() <= MATCH_WINDOW_MS);
         match hit {
@@ -321,7 +325,16 @@ fn replay(k: &Arc<Knowledge>, golden: &Value, audio: bool, m: Option<&MeaningSer
                 let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path).unwrap();
                 writeln!(f, "{line}").unwrap();
             }
-            let o = engine.handle(Event::Answer(answer(m, &r)), t);
+            let a = answer(m, &r);
+            // `MEANING_LOG=<file>`: every meaning search and what it found, one JSON line each.
+            if let (Ok(path), kairo_detect::engine::Request::Paraphrase { windows, .. }, kairo_detect::engine::Answer::Paraphrase { candidates, .. }) = (std::env::var("MEANING_LOG"), &r, &a) {
+                use std::io::Write;
+                let hits: Vec<Value> = candidates.iter().map(|h| json!({ "verse": label(k, h.verse), "cos": h.cos, "rr": h.rerank, "rrm": h.rerank_modern, "window": h.window })).collect();
+                let line = json!({ "sermon": golden["source"].as_str().unwrap_or(""), "t": t, "windows": windows, "hits": hits });
+                let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path).unwrap();
+                writeln!(f, "{line}").unwrap();
+            }
+            let o = engine.handle(Event::Answer(a), t);
             if traced {
                 for n in &o.notes {
                     println!("      .. {n}");

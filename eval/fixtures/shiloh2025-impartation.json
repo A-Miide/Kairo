@@ -4418,6 +4418,14 @@
     {
       "book": "Isaiah",
       "chapter": 60,
+      "verse": 1,
+      "kind": "paraphrase",
+      "startMs": 1195035,
+      "addedBy": "read against the transcript (2026-10-16): \"arise, shine, your light is come\""
+    },
+    {
+      "book": "Isaiah",
+      "chapter": 60,
       "verse": 3,
       "kind": "quote",
       "startMs": 1201800,
@@ -4430,6 +4438,14 @@
       "kind": "quote",
       "startMs": 1207960,
       "unverified": true
+    },
+    {
+      "book": "Micah",
+      "chapter": 4,
+      "verse": 2,
+      "kind": "paraphrase",
+      "startMs": 1368660,
+      "addedBy": "read against the transcript (2026-10-16): \"come let us go up to the mountain of the house of the lord\"; Isaiah 2:3 shares the wording"
     },
     {
       "book": "Haggai",
@@ -4682,6 +4698,38 @@
       "verse": 8
     },
     {
+      "book": "Daniel",
+      "chapter": 11,
+      "verse": 32,
+      "kind": "paraphrase",
+      "startMs": 2865480,
+      "addedBy": "read against the transcript (2026-10-16): \"do know their god\"; said again, first labelled at 8.2m"
+    },
+    {
+      "book": "Daniel",
+      "chapter": 3,
+      "verse": 17,
+      "kind": "paraphrase",
+      "startMs": 2901420,
+      "addedBy": "read against the transcript (2026-10-16): \"deliver you from the fiery furnace\"; a phrase of the verse in passing"
+    },
+    {
+      "book": "Hebrews",
+      "chapter": 11,
+      "verse": 33,
+      "kind": "paraphrase",
+      "startMs": 2914585,
+      "addedBy": "read against the transcript (2026-10-16): \"stop the mouth of lions\"; a phrase of the verse in passing"
+    },
+    {
+      "book": "Matthew",
+      "chapter": 26,
+      "verse": 75,
+      "kind": "paraphrase",
+      "startMs": 3107335,
+      "addedBy": "read against the transcript (2026-10-16): \"wept bitterly\"; Luke 22:62 shares the wording"
+    },
+    {
       "book": "Matthew",
       "chapter": 26,
       "kind": "citation",
@@ -4717,6 +4765,14 @@
       "similarity": 0.41244434129368734
     },
     {
+      "book": "Galatians",
+      "chapter": 5,
+      "verse": 22,
+      "kind": "paraphrase",
+      "startMs": 3439735,
+      "addedBy": "read against the transcript (2026-10-16): \"fruit of the spirit has nine\"; the passage named"
+    },
+    {
       "book": "2 Corinthians",
       "chapter": 5,
       "verse": 17,
@@ -4731,6 +4787,14 @@
       "kind": "quote",
       "startMs": 3750210,
       "note": "2026-09-27 audit round 5: \"It shall come to pass. That was our call upon the name of the Lord shall be saved.\" — Acts 2:21 wording (\"it shall come to pass… shall be saved\"); replaces an unverified Romans 10:13 at 3777s, which was a prayer"
+    },
+    {
+      "book": "Romans",
+      "chapter": 10,
+      "verse": 13,
+      "kind": "paraphrase",
+      "startMs": 3750210,
+      "addedBy": "read against the transcript (2026-10-16): \"call upon the name of the lord shall be saved\""
     }
   ]
 }

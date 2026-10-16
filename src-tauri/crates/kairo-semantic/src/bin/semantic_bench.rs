@@ -7,7 +7,7 @@
 //! `eval/paraphrase_bench.js` selects them.
 //!
 //!   cargo run --release -p kairo-semantic --bin semantic_bench -- \
-//!     --embedder bench/embeddinggemma.json [--translations KJV,NLT] \
+//!     --embedder bench/embeddinggemma.json [--translations KJV,NLT [--separate]] \
 //!     [--reranker bench/minilm.json] [--cases eval/paraphrase_cases_hard.json] [--list]
 
 use std::collections::HashMap;
@@ -96,24 +96,33 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     eprintln!("[bench] {} loaded in {:.1}s ({} dims)", embedder.config().name, t.elapsed().as_secs_f32(), embedder.dims());
 
     let cache_dir = root.join("eval-results/semantic-cache");
-    let index_path = cache_dir.join(format!("{}.{}.kvx", embedder.config().name, codes.join("+")));
-    let index = match VerseIndex::load(&index_path) {
-        Ok(i) => i,
-        Err(_) => {
-            let builder = Builder { embedder: &embedder, corpus: &corpus, cache_dir: cache_dir.clone() };
-            let refs: Vec<&Translation> = translations.iter().collect();
-            let t = Instant::now();
-            let mut last = Instant::now();
-            let idx = builder.build(&refs, |code, done, total| {
-                if last.elapsed().as_secs() >= 15 || done == total {
-                    last = Instant::now();
-                    let rate = done as f32 / t.elapsed().as_secs_f32().max(0.001);
-                    eprintln!("[embed {code}] {done}/{total} ({rate:.0}/s)");
-                }
-            })?;
-            idx.save(&index_path)?;
-            idx
+    let load_or_build = |group: &[&Translation]| -> Result<VerseIndex, Box<dyn std::error::Error>> {
+        let name: Vec<&str> = group.iter().map(|t| t.code.as_str()).collect();
+        let index_path = cache_dir.join(format!("{}.{}.kvx", embedder.config().name, name.join("+")));
+        if let Ok(i) = VerseIndex::load(&index_path) {
+            return Ok(i);
         }
+        let builder = Builder { embedder: &embedder, corpus: &corpus, cache_dir: cache_dir.clone() };
+        let t = Instant::now();
+        let mut last = Instant::now();
+        let idx = builder.build(group, |code, done, total| {
+            if last.elapsed().as_secs() >= 15 || done == total {
+                last = Instant::now();
+                let rate = done as f32 / t.elapsed().as_secs_f32().max(0.001);
+                eprintln!("[embed {code}] {done}/{total} ({rate:.0}/s)");
+            }
+        })?;
+        idx.save(&index_path)?;
+        Ok(idx)
+    };
+    // `--separate`: one index per translation, a verse scoring as its best match in any of them,
+    // instead of one index of fused vectors.
+    let separate = args.iter().any(|a| a == "--separate");
+    let refs: Vec<&Translation> = translations.iter().collect();
+    let indexes: Vec<VerseIndex> = if separate {
+        refs.iter().map(|t| load_or_build(&[*t])).collect::<Result<_, _>>()?
+    } else {
+        vec![load_or_build(&refs)?]
     };
 
     let reranker = match arg("--reranker") {
@@ -152,7 +161,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
         // verse → (best score, the query text that found it)
         let mut best: HashMap<VerseId, (f32, usize)> = HashMap::new();
         for (qi, q) in embedded.iter().enumerate() {
-            for h in index.search(q, SHORTLIST) {
+            for h in indexes.iter().flat_map(|index| index.search(q, SHORTLIST)) {
                 let e = best.entry(h.verse).or_insert((f32::NEG_INFINITY, qi));
                 if h.score > e.0 {
                     *e = (h.score, qi);
@@ -219,7 +228,7 @@ fn run() -> Result<(), Box<dyn std::error::Error>> {
     let th_vec = budget_threshold(&neg_vec);
     let th_rr = budget_threshold(&neg_rr);
 
-    println!("\n== {} | fused: {} | reranker: {} ==", embedder.config().name, codes.join("+"), reranker.as_ref().map_or("none", |r| r.config().name.as_str()));
+    println!("\n== {} | {}: {} | reranker: {} ==", embedder.config().name, if separate { "separate" } else { "fused" }, codes.join("+"), reranker.as_ref().map_or("none", |r| r.config().name.as_str()));
     println!("{:<9} {:>4}  {:>6} {:>6} {:>6} {:>6}  {:>9}   {:>6} {:>6}  {:>9}", "group", "n", "vec@1", "vec@3", "vec@10", "MRR", "offered*", "rr@1", "rr@3", "offered*");
     let mut total = (0usize, 0.0f64, 0.0f64, 0.0f64, 0.0f64);
     for group in ["written", "gapped", "real"] {
