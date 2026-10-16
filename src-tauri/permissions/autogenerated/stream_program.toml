@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-stream-program"
+description = "Enables the stream_program command without any pre-configured scope."
+commands.allow = ["stream_program"]
+
+[[permission]]
+identifier = "deny-stream-program"
+description = "Denies the stream_program command without any pre-configured scope."
+commands.deny = ["stream_program"]

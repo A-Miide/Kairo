@@ -1,5 +1,6 @@
 // Going live (src-tauri stream.rs): the Go live button in the top bar and on Settings →
-// Streaming, and the live status both show.
+// Streaming, and the live status both show. Recording (the Record button) is the same
+// engine writing an MP4 instead (lib.rs record_*), and starts and stops on its own.
 //
 // Each output being streamed gets a hidden capture window (output_capture.js,
 // `kairo-cap-stream-<output>`, display.html?stream=1): Kairo's graphics for that output,
@@ -23,7 +24,46 @@
   const cfg = () => (typeof settings === 'object' && settings && settings.stream) || {};
   const ready = (d) => d && d.enabled !== false && /^rtmps?:\/\/[^/\s:]+/i.test(String(d.url || '').trim());
 
-  function notify() { listeners.forEach(fn => { try { fn(); } catch {} }); renderTopButton(); }
+  function notify() { listeners.forEach(fn => { try { fn(); } catch {} }); renderTopButton(); renderRecordButton(); }
+
+  // The stream and a recording of the same output share its capture window: it closes when
+  // neither uses it any more.
+  const captureUsers = {};
+  async function useCapture(output, who, w, h) {
+    (captureUsers[output] = captureUsers[output] || new Set()).add(who);
+    try { await window.KairoCapture?.open(`stream-${output}`, w, h, { output, stream: true }); } catch {}
+  }
+  function dropCapture(output, who) {
+    const u = captureUsers[output];
+    if (u) u.delete(who);
+    if (!u || !u.size) { delete captureUsers[output]; window.KairoCapture?.close(`stream-${output}`); }
+  }
+
+  // What each pipeline is made of besides where it goes: size, cameras, zones, sound.
+  async function pipelineBase(output, videoKbps) {
+    const c = cfg();
+    const [w, h] = SIZES[(c.video || {}).resolution] || SIZES['1080p'];
+    const fps = Number((c.video || {}).fps) || 30;
+    // Cameras belong to Director mode; placeholders (no device yet) can't be opened.
+    const director = !!(typeof settings === 'object' && settings && settings.videoDirector);
+    const cameras = director ? readJson('kairo-video-sources', [])
+      .filter(s => s && s.enabled !== false && (s.deviceId || s.label) && s.label)
+      .map(s => ({ id: s.id, label: s.label })) : [];
+    // Every video zone the screen themes have: the engine prepares the camera for each.
+    const zones = director && typeof looks !== 'undefined' && Array.isArray(looks)
+      ? looks.filter(l => l && l.groupId === 'grp-screen').flatMap(l => (l.layers || []).filter(x => x.type === 'videozone' && x.visible !== false && x.pos).map(x => ({ x: x.pos.x, y: x.pos.y, w: x.pos.w, h: x.pos.h })))
+      : [];
+    const liveMap = readJson('kairo-video-live', {});
+    const layers = readJson('kairo-output-layers', {});
+    const audioInput = (c.audio || {}).input === false ? null : ((await audioLabel()) || null);
+    return {
+      output, width: w, height: h, fps,
+      videoKbps, audioKbps: Number((c.audio || {}).bitrate) || 160,
+      destinations: [], cameras,
+      program: (layers[output] && layers[output].video && liveMap[output]) || null,
+      zone: null, zones, audioInput,
+    };
+  }
 
   // The audio input chosen under Settings → Audio, by its name (FFmpeg finds devices by name).
   async function audioLabel() {
@@ -44,39 +84,18 @@
     if (!dests.length) { alertMsg('Add a destination and switch it on under Settings → Streaming first.'); return; }
     const noKey = dests.filter(d => !String(d.key || '').trim());
     if (noKey.length && !(await ask(`${noKey.map(d => d.name || d.url).join(', ')} ${noKey.length > 1 ? 'have' : 'has'} no stream key. Go live anyway?`, 'Go live'))) return;
-    const [w, h] = SIZES[(c.video || {}).resolution] || SIZES['1080p'];
-    const fps = Number((c.video || {}).fps) || 30;
-    // Cameras belong to Director mode; placeholders (no device yet) can't be opened.
-    const director = !!(typeof settings === 'object' && settings && settings.videoDirector);
-    const cameras = director ? readJson('kairo-video-sources', [])
-      .filter(s => s && s.enabled !== false && (s.deviceId || s.label) && s.label)
-      .map(s => ({ id: s.id, label: s.label })) : [];
-    // Every video zone the screen themes have: the stream prepares the camera for each.
-    const zones = director && typeof looks !== 'undefined' && Array.isArray(looks)
-      ? looks.filter(l => l && l.groupId === 'grp-screen').flatMap(l => (l.layers || []).filter(x => x.type === 'videozone' && x.visible !== false && x.pos).map(x => ({ x: x.pos.x, y: x.pos.y, w: x.pos.w, h: x.pos.h })))
-      : [];
-    const audioInput = await audioLabel();
-    const liveMap = readJson('kairo-video-live', {});
-    const layers = readJson('kairo-output-layers', {});
     const byOutput = new Map();
     dests.forEach(d => { const o = d.output || primary(); if (!byOutput.has(o)) byOutput.set(o, []); byOutput.get(o).push(d); });
-    const pipelines = [...byOutput].map(([output, ds]) => ({
-      output, width: w, height: h, fps,
-      videoKbps: Number((c.video || {}).bitrate) || 6000,
-      audioKbps: Number((c.audio || {}).bitrate) || 160,
-      destinations: ds.map(d => ({ id: d.id, name: d.name || '', url: String(d.url).trim(), key: String(d.key || '').trim() })),
-      cameras,
-      program: (layers[output] && layers[output].video && liveMap[output]) || null,
-      zone: null,
-      zones,
-      audioInput: (c.audio || {}).input === false ? null : (audioInput || null),
-    }));
+    const pipelines = [];
+    for (const [output, ds] of byOutput) {
+      const p = await pipelineBase(output, Number((c.video || {}).bitrate) || 6000);
+      p.destinations = ds.map(d => ({ id: d.id, name: d.name || '', url: String(d.url).trim(), key: String(d.key || '').trim() }));
+      pipelines.push(p);
+    }
     // The pictures first, so the stream starts with Kairo's graphics on it.
     captureOk = !!(window.KairoCapture && await window.KairoCapture.isSupported());
     if (!captureOk && !(await ask('This computer can\'t capture Kairo\'s graphics for the stream yet, so it would carry the camera and sound only. Go live anyway?', 'Go live'))) return;
-    for (const p of pipelines) {
-      try { await window.KairoCapture?.open(`stream-${p.output}`, w, h, { output: p.output, stream: true }); } catch {}
-    }
+    for (const p of pipelines) await useCapture(p.output, 'stream', p.width, p.height);
     try {
       await invoke('stream_start', { pipelines });
       live = true;
@@ -87,7 +106,7 @@
       if (!captureOk) watchProgramWithoutCapture();
     } catch (e) {
       alertMsg(String(e && e.message || e));
-      pipelines.forEach(p => window.KairoCapture?.close(`stream-${p.output}`));
+      pipelines.forEach(p => dropCapture(p.output, 'stream'));
     }
     notify();
   }
@@ -95,7 +114,7 @@
   async function stop(confirmFirst = true) {
     if (confirmFirst && !(await ask('Stop the live stream on every destination?', 'Stop stream', true))) return;
     try { await invoke?.('stream_stop'); } catch {}
-    Object.keys(status).forEach(o => window.KairoCapture?.close(`stream-${o}`));
+    Object.keys(status).forEach(o => dropCapture(o, 'stream'));
     Object.keys(status).forEach(o => delete status[o]);
     live = false;
     notify();
@@ -129,6 +148,88 @@
     return { state, uptime: up, warnings, errors: all.map(s => s.error).filter(Boolean) };
   }
   const clock = (secs) => { const h = Math.floor(secs / 3600), m = Math.floor(secs / 60) % 60, s = secs % 60; return (h ? `${h}:` : '') + `${String(m).padStart(h ? 2 : 1, '0')}:${String(s).padStart(2, '0')}`; };
+
+  // ── Recording ──
+  const recStatus = {};        // output → the recorder's status for it
+  const recRuns = {};
+  let recording = false;
+  let lastFiles = [];          // the newest recording's files, for "Show in Finder"
+  const rcfg = () => cfg().record || {};
+  const stamp = () => { const d = new Date(), p = (n) => String(n).padStart(2, '0'); return `Kairo ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}-${p(d.getMinutes())}`; };
+
+  async function startRecording() {
+    if (!invoke) { alertMsg('Recording needs the Kairo app; it does not work in a browser.'); return; }
+    if (recording) return;
+    const r = rcfg();
+    const known = typeof displayOutputs === 'function' ? displayOutputs().map(o => o.id) : [];
+    const outputs = [known.includes(r.output) ? r.output : primary()];
+    const pipelines = [];
+    for (const o of outputs) pipelines.push(await pipelineBase(o, Number(r.bitrate) || 12000));
+    captureOk = !!(window.KairoCapture && await window.KairoCapture.isSupported());
+    if (!captureOk && !(await ask('This computer can\'t capture Kairo\'s graphics yet, so the recording would have the camera and sound only. Record anyway?', 'Record'))) return;
+    for (const p of pipelines) await useCapture(p.output, 'record', p.width, p.height);
+    try {
+      lastFiles = await invoke('record_start', { pipelines, folder: r.folder || null, name: stamp() }) || [];
+      recording = true;
+      const now = await invoke('record_status').catch(() => []);
+      (now || []).forEach(takeRec);
+      pipelines.forEach(p => { if (!recStatus[p.output]) recStatus[p.output] = { output: p.output, state: 'starting', files: lastFiles }; });
+      if (!captureOk) watchProgramWithoutCapture();
+    } catch (e) {
+      alertMsg(String(e && e.message || e));
+      pipelines.forEach(p => dropCapture(p.output, 'record'));
+    }
+    notify();
+  }
+  async function stopRecording(confirmFirst = true) {
+    if (confirmFirst && !(await ask('Stop recording? What has been recorded so far is kept.', 'Stop recording', true))) return;
+    try { await invoke?.('record_stop'); } catch {}
+    Object.keys(recStatus).forEach(o => { lastFiles = recStatus[o].files && recStatus[o].files.length ? recStatus[o].files : lastFiles; dropCapture(o, 'record'); delete recStatus[o]; });
+    recording = false;
+    notify();
+    if (lastFiles.length && typeof showToast === 'function') showToast(`Recording saved: ${lastFiles[lastFiles.length - 1].split(/[\\/]/).pop()}`, 'success');
+  }
+  function takeRec(s) {
+    if (!s || !s.output) return;
+    if ((recRuns[s.output] || 0) > (s.run || 0)) return;
+    recRuns[s.output] = s.run || 0;
+    if (s.files && s.files.length) lastFiles = s.files;
+    if (s.state === 'stopped') delete recStatus[s.output]; else recStatus[s.output] = s;
+  }
+  function recOverall() {
+    const all = Object.values(recStatus);
+    if (!all.length) return { state: 'off', files: lastFiles };
+    const states = all.map(s => s.state);
+    const state = states.includes('live') ? 'live' : states.includes('retrying') ? 'retrying' : states.every(s => s === 'failed') ? 'failed' : 'starting';
+    const warnings = all.flatMap(s => s.warnings || []);
+    if (!captureOk) warnings.push('Kairo\'s graphics are not in the recording on this computer: camera and sound only.');
+    return { state, uptime: Math.max(0, ...all.map(s => s.uptimeSecs || 0)), warnings, errors: all.map(s => s.error).filter(Boolean), files: lastFiles };
+  }
+  // The Record button: shown in Director mode, when switched on under Settings → Streaming,
+  // or while recording.
+  let recBtn = null;
+  function renderRecordButton() {
+    const listen = document.getElementById('listen-btn');
+    if (!listen) return;
+    if (!recBtn) {
+      recBtn = document.createElement('button');
+      recBtn.id = 'record-btn';
+      recBtn.type = 'button';
+      recBtn.className = 'tb-stream-btn tb-record-btn';
+      recBtn.addEventListener('click', () => (recording ? stopRecording() : startRecording()));
+      listen.parentNode.insertBefore(recBtn, document.getElementById('stream-btn') || listen);
+    }
+    const director = !!(typeof settings === 'object' && settings && settings.videoDirector);
+    recBtn.hidden = !recording && !(director || rcfg().button === true);
+    const o = recOverall();
+    recBtn.classList.toggle('is-live', recording && o.state === 'live');
+    recBtn.classList.toggle('is-trouble', recording && (o.state === 'retrying' || o.state === 'failed'));
+    recBtn.textContent = !recording ? 'Record'
+      : o.state === 'live' ? `● REC ${clock(o.uptime || 0)}`
+      : o.state === 'retrying' ? '● REC restarting…' : o.state === 'failed' ? '● Recording failed' : '● REC…';
+    recBtn.title = recording ? 'Click to stop recording' : 'Record what the output shows to a video file';
+  }
+  const reveal = (path) => invoke?.('record_reveal', { path }).catch(e => alertMsg(String(e && e.message || e)));
 
   // ── The top-bar button ──
   function renderTopButton() {
@@ -167,7 +268,7 @@
     watching = true;
     const send = () => {
       const liveMap = readJson('kairo-video-live', {}), layers = readJson('kairo-output-layers', {});
-      Object.keys(status).forEach(o => invoke('stream_program', { output: o, program: (layers[o] && layers[o].video && liveMap[o]) || null, zone: null }).catch(() => {}));
+      [...new Set([...Object.keys(status), ...Object.keys(recStatus)])].forEach(o => invoke('stream_program', { output: o, program: (layers[o] && layers[o].video && liveMap[o]) || null, zone: null }).catch(() => {}));
     };
     window.addEventListener('storage', (e) => { if (e.key === 'kairo-video-live' || e.key === 'kairo-output-layers') send(); });
     setInterval(send, 2000);
@@ -179,6 +280,16 @@
       live = Object.keys(status).length > 0;
       notify();
     });
+    T.event.listen('record-status', (e) => {
+      takeRec(e && e.payload);
+      recording = Object.keys(recStatus).length > 0;
+      notify();
+    });
+    invoke('record_status').then(list => {
+      (list || []).forEach(takeRec);
+      recording = Object.keys(recStatus).length > 0;
+      notify();
+    }).catch(() => {});
     // A reload of this window while streaming: pick the state up again.
     invoke('stream_status').then(list => {
       (list || []).forEach(take);
@@ -194,14 +305,17 @@
     .tb-stream-btn[hidden] { display: none; }
     .tb-stream-btn.is-live { border-color: #b5532c; background: #5a2414; color: #ffe9e0; font-variant-numeric: tabular-nums; }
     .tb-stream-btn.is-trouble { border-color: #b5832c; background: #4a3512; color: #ffeccc; }
+    .tb-record-btn.is-live { border-color: #8f3d1f; background: #3a1a12; }
   `;
   document.head.appendChild(style);
 
   window.KairoStreaming = {
     start, stop, isLive: () => live, overall, destStatus, available: !!invoke,
+    startRecording, stopRecording, isRecording: () => recording, recOverall, reveal,
     onChange(fn) { listeners.push(fn); },
   };
-  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', renderTopButton); else renderTopButton();
-  // Destinations are added or switched on in Settings: show the button then.
-  setInterval(renderTopButton, 1000);
+  const renderButtons = () => { renderTopButton(); renderRecordButton(); };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', renderButtons); else renderButtons();
+  // Destinations are added or switched on in Settings, Director mode turned on: show the buttons then.
+  setInterval(renderButtons, 1000);
 })();

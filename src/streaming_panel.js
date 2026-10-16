@@ -5,7 +5,8 @@
 // Everything is saved in settings.stream:
 //   { destinations: [{ id, name, preset, url, key, enabled }],
 //     video: { resolution: '1080p', fps: 30, bitrate: 6000 },
-//     audio: { bitrate: 160, music: true, input: true } }
+//     audio: { bitrate: 160, music: true, input: true },
+//     record: { output, bitrate: 12000, folder: null (Movies/Kairo), button: false } }
 // Stream keys stay on this computer (they are saved in Kairo's own settings file and are
 // never put in a log, an export or a link).
 (function () {
@@ -19,6 +20,7 @@
   const FPS = [30, 60];
   const VIDEO_BITRATES = [[2500, '2.5 Mbps · weak internet'], [4500, '4.5 Mbps'], [6000, '6 Mbps · recommended 1080p'], [9000, '9 Mbps · 1080p60']];
   const AUDIO_BITRATES = [128, 160, 192];
+  const RECORD_BITRATES = [[8000, '8 Mbps · smaller files'], [12000, '12 Mbps · recommended'], [20000, '20 Mbps · best']];
   const DEFAULTS = {
     destinations: [],
     video: { resolution: '1080p', fps: 30, bitrate: 6000 },
@@ -261,13 +263,62 @@
     audio.appendChild(ab);
     h.appendChild(audio);
 
+    // Recording
+    const S3 = window.KairoStreaming;
+    const r = c.record || {};
+    const setRec = (patch) => save({ ...cfg(), record: { ...(cfg().record || {}), ...patch } });
+    const rec = el('div', 'st-card');
+    const rHead = el('div', 'st-card-head');
+    rHead.appendChild(el('div', 'st-card-title', 'Recording'));
+    if (S3) {
+      const on = S3.isRecording();
+      const rb = el('button', 'modal-btn secondary', on ? 'Stop recording' : 'Record'); rb.type = 'button';
+      rb.disabled = !S3.available;
+      if (!S3.available) rb.title = 'Recording needs the Kairo app';
+      rb.addEventListener('click', () => (on ? S3.stopRecording() : S3.startRecording()));
+      rHead.appendChild(rb);
+    }
+    rec.appendChild(rHead);
+    const rbBody = el('div', 'st-card-body');
+    const outs = typeof displayOutputs === 'function' ? displayOutputs() : [];
+    const folderCtl = el('div', 'st-folder');
+    const folderName = el('span', 'st-folder-name', r.folder || 'Movies → Kairo');
+    folderName.title = r.folder || '';
+    const pick = el('button', 'modal-btn secondary', 'Change…'); pick.type = 'button';
+    const dialog = window.__TAURI__ && window.__TAURI__.dialog;
+    pick.disabled = !(dialog && dialog.open);
+    pick.addEventListener('click', async () => {
+      try { const f = await dialog.open({ directory: true, multiple: false, title: 'Where recordings go' }); if (typeof f === 'string' && f) setRec({ folder: f }); } catch {}
+    });
+    folderCtl.append(folderName, pick);
+    if (r.folder) { const reset = el('button', 'modal-btn secondary', 'Use Movies'); reset.type = 'button'; reset.addEventListener('click', () => setRec({ folder: null })); folderCtl.appendChild(reset); }
+    rbBody.append(
+      ...(outs.length > 1 ? [row('Records', 'Which output is recorded', select(outs.map(o => [o.id, o.name]), r.output || outs[0].id, (v) => setRec({ output: v })))] : []),
+      row('Quality', 'Same size and frame rate as the stream', select(RECORD_BITRATES, r.bitrate || 12000, (v) => setRec({ bitrate: Number(v) }))),
+      row('Folder', 'Each recording is an MP4 named by its date and time', folderCtl),
+      row('Top-bar button', 'Shows Record in the top bar; always there in Director mode', toggle(r.button === true, '', (on) => setRec({ button: on }))),
+    );
+    const ro = S3 ? S3.recOverall() : { state: 'off', files: [] };
+    if (ro.files && ro.files.length) {
+      const last = el('div', 'st-folder');
+      const file = ro.files[ro.files.length - 1];
+      last.append(el('span', 'st-folder-name', file.split(/[\\/]/).pop()));
+      const show = el('button', 'modal-btn secondary', 'Show'); show.type = 'button';
+      show.addEventListener('click', () => S3.reveal(file));
+      last.appendChild(show);
+      rbBody.appendChild(row(ro.state === 'off' ? 'Last recording' : 'Recording to', ro.files.length > 1 ? `In ${ro.files.length} parts: it restarted after trouble` : null, last));
+    }
+    if (ro.state !== 'off') (ro.warnings || []).concat(ro.errors || []).forEach(t => rbBody.appendChild(el('p', 'st-result bad', t)));
+    rec.appendChild(rbBody);
+    h.appendChild(rec);
+
     const S2 = window.KairoStreaming;
     const o = S2 ? S2.overall() : { state: 'off' };
     if (o.state !== 'off') {
       (o.warnings || []).concat(o.errors || []).forEach(t => h.appendChild(el('p', 'st-result bad st-foot', t)));
     }
     if (S2 && S2.isLive()) h.insertBefore(el('p', 'st-result st-foot', 'Changes here take effect the next time you go live.'), h.firstChild);
-    const note = el('p', 'setting-hint st-foot', 'The stream is what the output shows: scripture, slides, the layout, overlays and the camera on air in Director mode, with the sound of the audio input chosen under Audio (music played inside Kairo is not in the stream). Your stream keys stay on this computer.');
+    const note = el('p', 'setting-hint st-foot', 'The stream and recordings are what the output shows: scripture, slides, the layout, overlays and the camera on air in Director mode, with the sound of the audio input chosen under Audio (music played inside Kairo is not in them). Your stream keys stay on this computer.');
     h.appendChild(note);
   }
 
@@ -308,6 +359,8 @@
     .st-form-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
     .st-delete { margin-right: auto; }
     .st-foot { margin: 2px 2px 0; }
+    .st-folder { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+    .st-folder-name { font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; max-width: 100%; }
   `;
   document.head.appendChild(style);
 

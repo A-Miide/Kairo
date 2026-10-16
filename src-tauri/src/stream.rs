@@ -95,6 +95,10 @@ pub struct PipelineConfig {
     /// change only switches between ready pictures (resizing while running isn't reliable).
     #[serde(default)]
     pub zones: Vec<Zone>,
+    /// Recording (the top bar's Record): the file written instead of streaming. A restart
+    /// after trouble writes the next part beside it ("… part 2.mp4"), never over it.
+    #[serde(default)]
+    pub record_to: Option<String>,
 }
 
 #[derive(Serialize, Clone, Debug, Default)]
@@ -124,6 +128,8 @@ pub struct PipelineStatus {
     pub error: Option<String>,
     /// Things that work but not as asked (a camera FFmpeg can't find, no audio input…).
     pub warnings: Vec<String>,
+    /// A recording's files so far (more than one when it had to restart).
+    pub files: Vec<String>,
 }
 
 // ── FFmpeg: which one, its encoders, its devices ─────────────────────────────
@@ -477,9 +483,24 @@ pub fn ffmpeg_args(cfg: &PipelineConfig, enc: &str, inputs: &Inputs, selected: u
         "-ar".into(), "48000".into(), "-ac".into(), "2".into(),
         "-flags".into(), "+global_header".into(),
     ]);
+    if let Some(path) = cfg.record_to.as_ref() {
+        // Fragmented MP4, each piece written out as it is made: everything recorded so far
+        // plays even if Kairo or the computer stops.
+        a.extend(["-movflags".into(), "+frag_keyframe+empty_moov+default_base_moof".into(), "-flush_packets".into(), "1".into(), "-f".into(), "mp4".into(), path.clone()]);
+        return a;
+    }
     let slaves: Vec<String> = cfg.destinations.iter().map(slave).collect();
     a.extend(["-f".into(), "tee".into(), slaves.join("|")]);
     a
+}
+
+/// A recording's file for each start: the file asked for, then "… part 2", "… part 3".
+pub fn record_part(base: &str, part: u32) -> String {
+    if part <= 1 { return base.to_string(); }
+    let p = Path::new(base);
+    let stem = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let ext = p.extension().map(|e| format!(".{}", e.to_string_lossy())).unwrap_or_default();
+    p.with_file_name(format!("{stem} part {part}{ext}")).to_string_lossy().to_string()
 }
 
 /// FFmpeg commands that put another camera on air and/or show it in another zone: switches
@@ -565,7 +586,10 @@ impl Pipeline {
             output: cfg.output.clone(),
             run,
             state: "starting".into(),
-            destinations: cfg.destinations.iter().map(|d| DestStatus { id: d.id.clone(), name: d.name.clone(), state: "connecting".into(), error: None }).collect(),
+            destinations: match cfg.record_to.as_ref() {
+                Some(path) => vec![DestStatus { id: "recording".into(), name: Path::new(path).file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default(), state: "connecting".into(), error: None }],
+                None => cfg.destinations.iter().map(|d| DestStatus { id: d.id.clone(), name: d.name.clone(), state: "connecting".into(), error: None }).collect(),
+            },
             ..Default::default()
         };
         let shared = Arc::new(Shared {
@@ -702,9 +726,19 @@ fn supervise(ffmpeg: PathBuf, shared: Arc<Shared>, on_status: OnStatus) {
     };
     let mut backoff = 2u64;
     let mut skip: HashSet<String> = HashSet::new();
+    let mut part = 0u32;
     while !shared.stop.load(Ordering::SeqCst) {
         let started = Instant::now();
-        let cfg = match shared.cfg.lock() { Ok(c) => c.clone(), Err(_) => return };
+        let mut cfg = match shared.cfg.lock() { Ok(c) => c.clone(), Err(_) => return };
+        if let Some(base) = cfg.record_to.clone() {
+            // Never over a file already there (an earlier part, or someone else's).
+            part += 1;
+            while Path::new(&record_part(&base, part)).exists() { part += 1; }
+            let file = record_part(&base, part);
+            cfg.record_to = Some(file.clone());
+            let name = Path::new(&file).file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default();
+            set_status(&shared, &on_status, |s| { s.files.push(file); if let Some(d) = s.destinations.first_mut() { d.name = name; } });
+        }
         // Listed again each time: a camera plugged in since is found.
         let (video_names, audio_names) = list_devices(&ffmpeg);
         let port = match TcpListener::bind("127.0.0.1:0").and_then(|l| l.local_addr()) { Ok(a) => a.port(), Err(e) => {
@@ -967,7 +1001,7 @@ impl StreamState {
         for p in old { p.join(Duration::from_secs(4)); }
         let mut p = self.pipelines.lock().map_err(|e| e.to_string())?;
         for cfg in configs {
-            if cfg.destinations.is_empty() { continue; }
+            if cfg.destinations.is_empty() && cfg.record_to.is_none() { continue; }
             p.push(Pipeline::start(ffmpeg.clone(), cfg, on_status.clone()));
         }
         if p.is_empty() { return Err("No destination is switched on.".into()); }
@@ -1022,7 +1056,22 @@ mod tests {
             cameras: vec![Camera { id: "cam1".into(), label: "FaceTime HD Camera (Built-in)".into() }, Camera { id: "cam2".into(), label: "Missing".into() }],
             program: Some("cam1".into()), zone: None, audio_input: Some("MacBook Pro Microphone (Built-in)".into()),
             zones: vec![Zone { x: 60.0, y: 120.0, w: 640.0, h: 840.0 }],
+            record_to: None,
         }
+    }
+
+    #[test]
+    fn recording_writes_a_file_and_never_over_one() {
+        assert_eq!(record_part("/m/Kairo 2026-10-15 19-30.mp4", 1), "/m/Kairo 2026-10-15 19-30.mp4");
+        assert_eq!(record_part("/m/Kairo 2026-10-15 19-30.mp4", 3), "/m/Kairo 2026-10-15 19-30 part 3.mp4");
+        let mut c = cfg();
+        c.record_to = Some("/m/Kairo.mp4".into());
+        let inputs = build_inputs(&c, 5000, &[], &[], &HashSet::new());
+        let a = ffmpeg_args(&c, "libx264", &inputs, 0, &zone_list(&c), 0);
+        assert_eq!(a.last().map(String::as_str), Some("/m/Kairo.mp4"));
+        assert!(!a.iter().any(|x| x == "tee"), "a recording sends nowhere");
+        assert!(a.windows(2).any(|w| w[0] == "-movflags" && w[1].contains("frag_keyframe")), "plays even if cut off");
+        assert!(a.windows(2).any(|w| w[0] == "-flush_packets" && w[1] == "1"), "written out as it goes");
     }
 
     #[test]
@@ -1197,5 +1246,37 @@ mod tests {
         let _ = Command::new(&ffmpeg).args(["-hide_banner", "-loglevel", "error", "-y", "-sseof", "-1", "-i"]).arg(dir.join("a.flv"))
             .args(["-frames:v", "1"]).arg(dir.join("a.png")).status();
         println!("frames in {}", dir.display());
+    }
+
+    /// Records ~4 s to a file with test sources and checks it plays, even cut off by a kill:
+    /// `KAIRO_STREAM_E2E=1 cargo test -p kairo --lib record_e2e -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn record_e2e() {
+        if std::env::var("KAIRO_STREAM_E2E").is_err() { return; }
+        std::env::set_var("KAIRO_STREAM_TEST_DEVICES", "1");
+        let ffmpeg = PathBuf::from(std::env::var("KAIRO_FFMPEG").unwrap_or_else(|_| "ffmpeg".into()));
+        let dir = std::env::temp_dir().join(format!("kairo-record-e2e-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("Kairo test.mp4");
+        std::fs::write(&file, b"someone else's").unwrap();
+        let mut c = cfg();
+        c.width = 640; c.height = 360; c.destinations.clear(); c.program = None;
+        c.record_to = Some(file.to_string_lossy().to_string());
+        let p = Pipeline::start(ffmpeg.clone(), c, Arc::new(|_| {}));
+        p.push_frame(Arc::new(Frame { width: 640, height: 360, bgra: vec![90u8; 640 * 360 * 4] }), 0);
+        thread::sleep(Duration::from_secs(5));
+        let live = p.status();
+        p.kill();
+        p.join(Duration::from_secs(2));
+        println!("status: {live:?}");
+        assert_eq!(live.state, "live", "{live:?}");
+        assert_eq!(std::fs::read(&file).unwrap(), b"someone else's", "an existing file is never written over");
+        let written = dir.join("Kairo test part 2.mp4");
+        assert_eq!(live.files, vec![written.to_string_lossy().to_string()]);
+        let probe = Command::new(&ffmpeg).args(["-hide_banner", "-i"]).arg(&written).output().unwrap();
+        let info = String::from_utf8_lossy(&probe.stderr).to_string();
+        println!("{}", info.lines().filter(|l| l.contains("Stream #") || l.contains("Duration")).collect::<Vec<_>>().join(" | "));
+        assert!(info.contains("Video: h264") && info.contains("Audio: aac"), "{info}");
     }
 }

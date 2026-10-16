@@ -495,10 +495,58 @@
           "markdownDescription": "Enables the output_video command without any pre-configured scope."
         },
         {
+          "description": "Enables the record_reveal command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-record-reveal",
+          "markdownDescription": "Enables the record_reveal command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the record_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-record-start",
+          "markdownDescription": "Enables the record_start command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the record_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-record-status",
+          "markdownDescription": "Enables the record_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the record_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-record-stop",
+          "markdownDescription": "Enables the record_stop command without any pre-configured scope."
+        },
+        {
           "description": "Enables the signal_main_ready command without any pre-configured scope.",
           "type": "string",
           "const": "allow-signal-main-ready",
           "markdownDescription": "Enables the signal_main_ready command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stream_program command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stream-program",
+          "markdownDescription": "Enables the stream_program command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stream_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stream-start",
+          "markdownDescription": "Enables the stream_start command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stream_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stream-status",
+          "markdownDescription": "Enables the stream_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stream_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stream-stop",
+          "markdownDescription": "Enables the stream_stop command without any pre-configured scope."
         },
         {
           "description": "Enables the syphon_available command without any pre-configured scope.",
@@ -645,10 +693,58 @@
           "markdownDescription": "Denies the output_video command without any pre-configured scope."
         },
         {
+          "description": "Denies the record_reveal command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-record-reveal",
+          "markdownDescription": "Denies the record_reveal command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the record_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-record-start",
+          "markdownDescription": "Denies the record_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the record_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-record-status",
+          "markdownDescription": "Denies the record_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the record_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-record-stop",
+          "markdownDescription": "Denies the record_stop command without any pre-configured scope."
+        },
+        {
           "description": "Denies the signal_main_ready command without any pre-configured scope.",
           "type": "string",
           "const": "deny-signal-main-ready",
           "markdownDescription": "Denies the signal_main_ready command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stream_program command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stream-program",
+          "markdownDescription": "Denies the stream_program command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stream_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stream-start",
+          "markdownDescription": "Denies the stream_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stream_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stream-status",
+          "markdownDescription": "Denies the stream_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stream_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stream-stop",
+          "markdownDescription": "Denies the stream_stop command without any pre-configured scope."
         },
         {
           "description": "Denies the syphon_available command without any pre-configured scope.",
