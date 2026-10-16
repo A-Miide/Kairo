@@ -399,11 +399,16 @@ impl Engine {
                 let (s_rr, s_cos, s_lex, s_margin) = t.send;
                 let margin = second.map_or(1.0, |s| rr - rr_of(s).max(0.0));
                 let sendable = rr >= s_rr && top.hit.cos >= s_cos && top.lex >= s_lex;
+                // Even the surest paraphrase is offered, never put up by itself: a paraphrase is
+                // the preacher's own words, not the verse cited or read, and the owner's rule is
+                // that only those go on screen unasked. Measured 2026-10-16 (replay, meaning on,
+                // dev): paraphrase-to-screen was 8 right and 2 wrong, and live a passing "thank God
+                // victory is here" put 1 Corinthians 15:57 up. Sure ones head Possible Matches.
                 if sendable && margin >= s_margin {
-                    return out(Target::Screen, SEND_SCORE);
+                    return out(Target::Suggestions, SEND_SCORE);
                 }
                 if sendable && second.is_some_and(|s| affinity(top.hit.verse) >= 2.0 && affinity(s.hit.verse) < 2.0) {
-                    return out(Target::Screen, SEND_SCORE);
+                    return out(Target::Suggestions, SEND_SCORE);
                 }
                 let (o_rr, o_cos, o_lex) = if affinity(top.hit.verse) >= 2.0 { t.offer_in_play } else { t.offer };
                 if rr >= o_rr && top.hit.cos >= o_cos && top.lex >= o_lex {
