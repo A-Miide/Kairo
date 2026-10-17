@@ -80,7 +80,7 @@ tar -xJf "$WORK/ffmpeg.tar.xz" -C "$WORK/ff-src" --strip-components=1
     --enable-bsf=aac_adtstoasc,extract_extradata \
     "${FF_PLATFORM[@]+"${FF_PLATFORM[@]}"}" >"$WORK/ff-configure.log" 2>&1 \
     || { tail -40 "$WORK/ff-configure.log" >&2; exit 1; }
-  make -j"$(nproc)" ffmpeg >"$WORK/ff-make.log" 2>&1 || { tail -40 "$WORK/ff-make.log" >&2; exit 1; } )
+  make -j"$(nproc)" "$BIN" >"$WORK/ff-make.log" 2>&1 || { tail -40 "$WORK/ff-make.log" >&2; exit 1; } )
 
 cp "$WORK/ff-build/$BIN" "$OUT/$BIN"
 "${CROSS}strip" "$OUT/$BIN" 2>/dev/null || strip "$OUT/$BIN" 2>/dev/null || true
