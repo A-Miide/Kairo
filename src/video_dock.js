@@ -3,16 +3,15 @@
 // Playlist (left): only the playlist: its switcher and New button and the list
 // of items, the same list as the sidebar on the normal screen (moved here while
 // the mode is on). Choosing an item selects it instead of opening it.
-// Media bin (right): toggles for Slides, Songs and then one for each media
-// folder in the Media library (the bin itself and each folder, by its own
-// name). Several can be on at once, Slides is on to begin with, and the choice
-// is remembered. Everything shows in one grid of equal tiles that fills the
-// width (the size slider sets the smallest tile) and scrolls when there are
-// more than fit.
-//   Slides / Songs: the selected playlist item's slides, as the playlist's own
-//   slide cards (so a click sends and a right-click edits exactly as on the
-//   normal screen), painted only as they scroll into view.
-//   A folder: its images and videos, as the Media Bin's own cards.
+// Media bin (right): one selector, Slides or Media Bin (owner, 2026-10-17: not
+// toggles), remembered. Media Bin has a folder menu like the normal screen's: all
+// media, the bin's own items, then each folder. Everything shows in one grid of
+// equal tiles that fills the width (the size slider sets the smallest tile) and
+// scrolls when there are more than fit.
+//   Slides: the selected playlist item's slides (a deck or a song), as the
+//   playlist's own slide cards (so a click sends and a right-click edits exactly
+//   as on the normal screen), painted only as they scroll into view.
+//   Media Bin: the chosen folder's images and videos, as the Media Bin's own cards.
 // A click stages a slide or media item on Preview, as everywhere in Director mode;
 // a double-click sends it at once.
 'use strict';
@@ -20,26 +19,23 @@
   const K = {
     mounted: false, root: null,
     pl: { body: null, obs: null, headHome: null, listHome: null, click: null },
-    md: { chips: null, body: null, kinds: new Set(['slides']), folders: [], binCount: 0, fetched: 0, fetching: false },
+    md: { chips: null, body: null, view: 'slides', folder: 'all', folders: [], binCount: 0, fetched: 0, fetching: false },
     selId: null,                // the playlist item whose slides the toggles show
   };
 
   const svc = () => window.KairoService;
-  const KINDS_KEY = 'kairo-vd-media-kinds2';
-  function loadKinds() {
-    try { const v = JSON.parse(localStorage.getItem(KINDS_KEY) || 'null'); if (Array.isArray(v)) return new Set(v.filter(k => typeof k === 'string')); } catch {}
-    return new Set(['slides']);
-  }
-  function saveKinds() { try { localStorage.setItem(KINDS_KEY, JSON.stringify([...K.md.kinds])); } catch {} }
+  const VIEW_KEY = 'kairo-vd-media-view', FOLDER_KEY = 'kairo-vd-media-folder';
+  const readPref = (k, d) => { try { return localStorage.getItem(k) || d; } catch { return d; } };
+  const writePref = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
+  function setView(view) { K.md.view = view === 'media' ? 'media' : 'slides'; writePref(VIEW_KEY, K.md.view); }
   const TILE_KEY = 'kairo-vd-tile';
   function loadTile() { try { const n = Number(localStorage.getItem(TILE_KEY)); return n >= 90 && n <= 240 ? n : 120; } catch { return 120; } }
   function applyTile(n) { if (K.md.body) K.md.body.style.setProperty('--vd-tile', n + 'px'); }
 
-  // For the Slides and Media tabs in the top bar: turn that toggle on.
+  // For the Slides and Media tabs in the top bar: show that view.
   function show(id) {
     if (!K.mounted) return;
-    const kind = id === 'slides' ? 'slides' : null;
-    if (kind) { K.md.kinds.add(kind); saveKinds(); renderMedia(); }
+    if (id === 'slides' || id === 'media') { setView(id); renderMedia(); }
   }
 
   // ── Playlist: selection ──────────────────────────────────────────────────
@@ -53,9 +49,7 @@
   function select(id) {
     K.selId = id;
     markSelected();
-    const it = items().find(i => i.id === id);
-    const need = it && it.type === 'song' ? 'songs' : 'slides';
-    if (!K.md.kinds.has(need)) { K.md.kinds.add(need); saveKinds(); }
+    setView('slides');   // choosing an item shows its slides
     renderMedia();
   }
 
@@ -100,26 +94,28 @@
     } finally { K.md.fetching = false; }
     if (K.mounted) renderMedia();
   }
-  // The toggles for media: the bin (when it has something) and every folder.
-  const mediaToggles = () => {
-    const list = K.md.folders.map(f => ({ id: 'folder:' + f.id, label: f.name, source: f.id }));
-    if (K.md.folders.length || K.md.binCount) list.unshift({ id: 'folder:bin', label: 'Media Bin', source: 'bin' });
-    return list;
-  };
+  // The folder menu: all media, the bin's own items, then each folder (as on the normal screen).
+  const folderOptions = () => [['all', 'All media'], ['bin', 'Media Bin'], ...K.md.folders.map(f => [f.id, f.name])];
 
   // ── Media bin group ──────────────────────────────────────────────────────
   function toggleRow() {
     K.md.chips.replaceChildren();
-    const all = [{ id: 'slides', label: 'Slides' }, { id: 'songs', label: 'Songs' }].concat(mediaToggles());
-    all.forEach(({ id, label }) => {
-      const on = K.md.kinds.has(id);
-      const b = vBtn(label, `${on ? 'Hide' : 'Show'} ${label}`, () => {
-        if (K.md.kinds.has(id)) K.md.kinds.delete(id); else K.md.kinds.add(id);
-        saveKinds(); renderMedia();
-      }, 'vd-chip' + (on ? ' is-on' : ''));
-      b.setAttribute('aria-pressed', String(on));
+    // Slides or Media Bin: one or the other.
+    [['slides', 'Slides'], ['media', 'Media Bin']].forEach(([view, label]) => {
+      const on = K.md.view === view;
+      const b = vBtn(label, `Show ${label}`, () => { if (K.md.view !== view) { setView(view); renderMedia(); } }, 'vd-chip' + (on ? ' is-on' : ''));
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-checked', String(on));
       K.md.chips.appendChild(b);
     });
+    if (K.md.view !== 'media') return;
+    const sel = vEl('select', 'media-bin-folder vd-folder');
+    sel.title = 'Show one folder'; sel.setAttribute('aria-label', 'Folder');
+    const opts = folderOptions();
+    opts.forEach(([v, label]) => { const o = document.createElement('option'); o.value = v; o.textContent = label; sel.appendChild(o); });
+    sel.value = opts.some(([v]) => v === K.md.folder) ? K.md.folder : 'all';
+    sel.addEventListener('change', () => { K.md.folder = sel.value; writePref(FOLDER_KEY, sel.value); renderMedia(); });
+    K.md.chips.appendChild(sel);
   }
 
   function slideCards(grid, wantSong) {
@@ -148,11 +144,11 @@
     let all = [];
     try { all = await svc().loadMediaBinItems(); } catch {}
     if (token !== K.token || !K.mounted) return;
-    all.filter(it => it.binSource === source).forEach(it => grid.appendChild(svc().buildMediaBinCard(it)));   // the bin's own card: click sends, right-click sets the fit
-    emptyNote(grid);
+    (source === 'all' ? all : all.filter(it => it.binSource === source)).forEach(it => grid.appendChild(svc().buildMediaBinCard(it)));   // the bin's own card: click sends, right-click sets the fit
+    emptyNote(grid, all.length ? 'Nothing in this folder yet.' : 'No media yet: add some from the Media tab.');
   }
-  function emptyNote(grid) {
-    if (grid.isConnected && !grid.children.length) grid.appendChild(vEl('p', 'vd-empty', 'Switch on what you want to see, or choose an item in the playlist.'));
+  function emptyNote(grid, text) {
+    if (grid.isConnected && !grid.children.length) grid.appendChild(vEl('p', 'vd-empty', text || 'Choose an item in the playlist to see its slides.'));
   }
 
   function renderMedia() {
@@ -164,15 +160,16 @@
     const grid = vEl('div', 'vd-grid');
     body.appendChild(grid);
     const token = K.token = (K.token || 0) + 1;
-    if (K.md.kinds.has('slides')) slideCards(grid, false);
-    if (K.md.kinds.has('songs')) slideCards(grid, true);
-    const folderIds = [...K.md.kinds].filter(k => k.startsWith('folder:') && mediaToggles().some(t => t.id === k)).map(k => k.slice(7));
-    if (folderIds.length) {
-      (async () => { for (const id of folderIds) await folderCards(grid, id, token); })();
+    if (K.md.view === 'media') {
+      const source = folderOptions().some(([v]) => v === K.md.folder) ? K.md.folder : 'all';
+      folderCards(grid, source, token);
       // A folder may have changed since it was last read.
       if (Date.now() - K.md.fetched > 8000) loadFolders();
+      return;
     }
-    if (!folderIds.length) emptyNote(grid);
+    slideCards(grid, false);   // a deck's slides
+    slideCards(grid, true);    // or a song's
+    emptyNote(grid);
   }
 
   // ── Mount / unmount ──────────────────────────────────────────────────────
@@ -208,18 +205,18 @@
     list && list.addEventListener('click', K.pl.click, true);
 
     const md = group('Media bin');
-    // One header row: the title, the toggles beside it, the tile size at the far right.
+    // One header row: Slides or Media Bin (and the folder menu), the tile size at the far right.
     const mdHead = vEl('div', 'vd-gh');
-    mdHead.appendChild(vEl('span', 'vd-label vd-gh-title', 'Media bin'));
     K.md.chips = vEl('div', 'vd-chips vd-gh-ctl vd-gh-start');
-    K.md.chips.setAttribute('role', 'group'); K.md.chips.setAttribute('aria-label', 'Media filter');
+    K.md.chips.setAttribute('role', 'radiogroup'); K.md.chips.setAttribute('aria-label', 'Show');
     const size = vEl('input', 'vd-size'); size.type = 'range'; size.min = '90'; size.max = '240'; size.step = '10';
     size.value = String(loadTile()); size.title = 'Smallest tile size'; size.setAttribute('aria-label', 'Tile size');
     size.addEventListener('input', () => { applyTile(Number(size.value)); });
     size.addEventListener('change', () => { try { localStorage.setItem(TILE_KEY, size.value); } catch {} repaintThumbs(); });
     mdHead.append(K.md.chips, size);
     K.md.body = vEl('div', 'vd-media-body');
-    K.md.kinds = loadKinds();
+    K.md.view = readPref(VIEW_KEY, 'slides') === 'media' ? 'media' : 'slides';
+    K.md.folder = readPref(FOLDER_KEY, 'all');
     applyTile(loadTile());
     md.append(mdHead, K.md.body);
 
@@ -229,7 +226,7 @@
     renderMedia();
     loadFolders();
     // The playlist changes while the mode is on: items added or removed, slides edited.
-    if (list) { K.pl.obs = new MutationObserver(() => { markSelected(); if (K.md.kinds.has('slides') || K.md.kinds.has('songs')) renderMedia(); }); K.pl.obs.observe(list, { childList: true }); }
+    if (list) { K.pl.obs = new MutationObserver(() => { markSelected(); if (K.md.view === 'slides') renderMedia(); }); K.pl.obs.observe(list, { childList: true }); }
   }
 
   function unmount() {
