@@ -788,6 +788,7 @@
       onProgram: (id) => sendToProgram(id),
       onPreview: setPreview,
       onPlaceholder: (source, el) => openDevicePicker(source.id, el),
+      onSettings: (id, el) => openInputSettings(id, el),   // right-click
       onAdd: (el) => openAddInputPanel(el),
       grid: settings.videoGridOn !== false,
       onGrid: (on) => { settings.videoGridOn = on; saveSettingsPatch({ videoGridOn: on }); },

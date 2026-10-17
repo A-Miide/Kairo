@@ -333,6 +333,53 @@ function openDevicePicker(sourceId, anchor) {
   });
 }
 
+// Right-click on an input in Director mode: its settings in a small panel, the same ones as
+// on the Video Sources page (name, on/off, device, resolution, frame rate, remove).
+function openInputSettings(sourceId, anchor) {
+  const src0 = videoSourceList().find(x => x.id === sourceId);
+  if (!src0) return;
+  openVideoPanel(anchor, `${src0.name} settings`, (close) => {
+    const box = vEl('div', 'vsrc-det vsrc-props');
+    const src = () => videoSourceList().find(x => x.id === sourceId) || src0;
+    const field = (label, control) => { const r = vEl('label', 'vsrc-prop'); r.append(vEl('span', 'vsrc-prop-label', label), control); box.appendChild(r); };
+
+    const name = vEl('input', 'setting-input vsrc-name'); name.type = 'text'; name.value = src().name; name.maxLength = 60;
+    name.addEventListener('change', () => saveVideoSources(VSRC.renameSource(videoSourceList(), sourceId, name.value)));
+    field('Name', name);
+
+    const devices = videoState.devices;
+    const st = VSRC.stateOf(src(), devices);
+    const devOpts = [['', 'No device yet']].concat(devices.map((d, k) => [d.deviceId, d.label || `Camera ${k + 1}`]));
+    if (st === 'missing') devOpts.push(['__gone', `${src().label || 'Saved device'} (not connected)`]);
+    const dev = vSelect(devOpts, st === 'missing' ? '__gone' : (VSRC.resolveDevice(src(), devices) || ''), (v) => {
+      if (v === '__gone') return;
+      saveVideoSources(VSRC.assignDevice(videoSourceList(), sourceId, devices.find(x => x.deviceId === v) || null));
+    });
+    field('Device', dev);
+
+    const resValue = `${src().width}x${src().height}`;
+    const resOpts = VSRC.RESOLUTIONS.map(r => [r.value, r.label]);
+    field('Resolution', vSelect(resOpts, resOpts.some(o => o[0] === resValue) ? resValue : '0x0', (v) => {
+      const r = VSRC.RESOLUTIONS.find(x => x.value === v);
+      saveVideoSources(VSRC.updateSource(videoSourceList(), sourceId, { width: r.width, height: r.height }));
+    }));
+    field('Frame rate', vSelect(VSRC.FPS_OPTIONS.map(f => [String(f), f ? `${f} fps` : 'Automatic rate']), String(src().fps), (v) => {
+      saveVideoSources(VSRC.updateSource(videoSourceList(), sourceId, { fps: Number(v) }));
+    }));
+
+    const actions = vEl('div', 'vsrc-prop-actions');
+    actions.appendChild(vBtn('Switch off', 'Hide this input in Director mode (it goes off air)', () => {
+      saveVideoSources(VSRC.setEnabled(videoSourceList(), sourceId, false));
+      const live = videoLiveMap(); const ids = Object.keys(live).filter(k => live[k] === sourceId);
+      if (ids.length) setVideoLiveFor(ids, null);
+      close();
+    }, 'vd-mini'));
+    actions.appendChild(vBtn('Remove', `Remove ${src().name}`, () => { saveVideoSources(VSRC.removeSource(videoSourceList(), sourceId)); close(); }, 'vd-mini vsrc-remove'));
+    box.appendChild(actions);
+    return box;
+  });
+}
+
 // ── The Video Sources page ────────────────────────────────────────────────
 function renderVideoSources() {
   if (window.KairoVideoDirector) window.KairoVideoDirector.refresh();

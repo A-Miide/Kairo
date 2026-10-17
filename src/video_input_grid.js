@@ -67,6 +67,7 @@
       t.appendChild(h('span', 'vg-state', why));
       const go = () => { if (opts.onPlaceholder) opts.onPlaceholder(source, t); };
       t.addEventListener('click', go);
+      t.addEventListener('contextmenu', (e) => { if (!opts.onSettings) return; e.preventDefault(); opts.onSettings(source.id, t); });
       t.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } });
       return t;
     }
@@ -127,7 +128,7 @@
       t.tabIndex = 0;
       t.setAttribute('role', 'button');
       t.setAttribute('aria-label', `${source.name}${onAir ? ', on air' : staged ? ', on Preview' : ''}. Click to send to Program, Shift-click for Preview`);
-      t.title = `Click: on air. Shift-click: Preview.${index < 9 ? ` Key ${index + 1}, Shift+${index + 1} for Preview.` : ''}`;
+      t.title = `Click: on air. Shift-click: Preview. Right-click: settings.${index < 9 ? ` Key ${index + 1}, Shift+${index + 1} for Preview.` : ''}`;
       const v = h('video'); v.muted = true; v.playsInline = true; v.setAttribute('aria-hidden', 'true');
       t.appendChild(v);
       const devId = V.resolveDevice(source, opts.getDevices());
@@ -143,6 +144,8 @@
       t.appendChild(pv);
       const go = (e) => (e.shiftKey ? opts.onPreview(source.id) : opts.onProgram(source.id));
       t.addEventListener('click', go);
+      // Right-click: this input's settings.
+      t.addEventListener('contextmenu', (e) => { if (!opts.onSettings) return; e.preventDefault(); opts.onSettings(source.id, t); });
       // Enter sends it; Space is the Take key of the whole screen.
       t.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go(e); } });
       // Drag it onto Preview or Output. Draggable only while pressed, as elsewhere in the app.
