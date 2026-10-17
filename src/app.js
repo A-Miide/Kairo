@@ -1395,6 +1395,41 @@ function showInSuggestions(verses, method) {
   updateSuggestionCount();
 }
 
+// A slide being read from a deck that isn't live, found in any playlist
+// (service.js refreshSlideFinder, slide_finder.js). Offered like a verse;
+// sending opens the deck where it lives, rings the slide and sends it (owner,
+// 2026-10-17: "clicking to send can autoroute the ui to where that slide is").
+window.KairoSlideOffer = function (o) {
+  if (!queueList || !o) return;
+  const ref = `slide:${o.itemId}:${o.index}`;
+  if (queueList.querySelector(`[data-ref="${CSS.escape(ref)}"]`)) return;
+  queueList.querySelector('.display-empty')?.remove();
+  const card = document.createElement('div');
+  card.className = 'cand-card cand-slide';
+  card.dataset.ref = ref;
+  card.dataset.at = String(Date.now());
+  card.innerHTML = `
+    <div class="cand-row">
+      <span class="cand-ref">${escapeHtml(`${o.itemTitle} · Slide ${o.index + 1}`)}</span>
+      <span class="cand-badge conf-good" title="The playlist this slide is in">${escapeHtml(o.playlistName || 'Playlist')}</span>
+    </div>
+    <div class="cand-text">${escapeHtml(String(o.text || '').replace(/\s+/g, ' ').trim())}</div>
+    <div class="cand-actions">
+      <button class="cand-send" title="Open this slide in its playlist and send it">Open and send</button>
+    </div>
+  `;
+  const send = async () => {
+    const ok = await window.KairoService?.openFound?.({ kind: 'slide', playlistId: o.playlistId, itemId: o.itemId, index: o.index }, { send: true });
+    if (ok === false) window.kairoProblem?.(`${o.itemTitle} · Slide ${o.index + 1} is no longer in ${o.playlistName || 'its playlist'}.`);
+    card.remove();
+    updateSuggestionCount();
+  };
+  card.querySelector('.cand-send')?.addEventListener('click', send);
+  wireDoubleClickSend(card, send);
+  queueList.insertBefore(card, queueList.firstChild);
+  updateSuggestionCount();
+};
+
 // Purpose-built compact card for the Candidates panel
 // Native 'dblclick' requires both clicks to land within the platform's own
 // tight time+distance window — reliable in a plain browser tab, but real
