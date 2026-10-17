@@ -296,8 +296,20 @@ pub(crate) struct MeaningState {
     /// The scoped search in flight, and the verses the full search already found.
     scoped: Option<(u32, Vec<VerseId>)>,
     /// The previous search's decision: a match must hold for two searches running.
-    prev: Option<VerseId>,
+    prev: Option<Decision>,
+    /// The previous search's cross-encoder top, when it nearly made a decision.
+    prev_near: Option<VerseId>,
 }
+
+/// A paraphrase decision: (verse, where, score, cross-encoder, shared wording).
+type Decision = (VerseId, Target, f32, Option<f32>, f32);
+
+/// The second search of a pair may confirm with its cross-encoder top at this,
+/// short of the offer's own bar, if the offer's similarity and wording floors
+/// still hold. Measured 2026-10-17 (replay, meaning on, dev): John 3:16 topped
+/// three searches running at 0.990, 0.977, 0.974 and Psalms 81:14 at 0.979 then
+/// 1.000, and neither was offered; at 0.95 three noise offers came in too.
+const NEAR_REPEAT_RR: f32 = 0.97;
 
 /// A meaning match with the wording it shares with its window.
 struct Weighed {
@@ -361,9 +373,15 @@ impl Engine {
         let found: Vec<VerseId> = hits.iter().map(|h| h.verse).collect();
         let weighed: Vec<Weighed> = hits.into_iter().map(|hit| Weighed { lex: self.shared_identifying_weight(windows.get(hit.window).map_or("", String::as_str), hit.verse), hit }).collect();
         let decision = self.decide_paraphrase(&weighed, now);
-        let repeated = decision.is_some() && decision.map(|d| d.0) == self.meaning.prev;
-        self.meaning.prev = decision.map(|d| d.0);
-        if let (true, Some((v, target, score, rr, lex))) = (repeated, decision) {
+        let near = self.near_top(&weighed);
+        let held = match (decision, self.meaning.prev) {
+            (Some(d), prev) if prev.map(|p| p.0) == Some(d.0) || self.meaning.prev_near == Some(d.0) => Some(d),
+            (None, Some(p)) if near == Some(p.0) => Some(p),
+            _ => None,
+        };
+        self.meaning.prev = decision;
+        self.meaning.prev_near = near;
+        if let Some((v, target, score, rr, lex)) = held {
             let target = if just_cited { Target::Suggestions } else { target };
             let on_screen = self.screen.last_detected.map(|(d, _, _)| d) == Some(v);
             let r = self.r(v);
@@ -407,8 +425,15 @@ impl Engine {
         }
     }
 
-    /// The paraphrase decision: (verse, where, score, cross-encoder, shared wording) or nothing.
-    fn decide_paraphrase(&self, results: &[Weighed], now: u64) -> Option<(VerseId, Target, f32, Option<f32>, f32)> {
+    /// The cross-encoder's top verse, when it clears NEAR_REPEAT_RR and the offer's floors.
+    fn near_top(&self, results: &[Weighed]) -> Option<VerseId> {
+        let (_, cos, lex) = self.cfg.meaning_thresholds.offer;
+        let top = results.iter().filter(|w| w.hit.rerank.is_some()).max_by(|a, b| a.hit.rerank.unwrap_or(0.0).total_cmp(&b.hit.rerank.unwrap_or(0.0)))?;
+        (top.hit.rerank.unwrap_or(0.0) >= NEAR_REPEAT_RR && top.hit.cos >= cos && top.lex >= lex).then_some(top.hit.verse)
+    }
+
+    /// The paraphrase decision, or nothing.
+    fn decide_paraphrase(&self, results: &[Weighed], now: u64) -> Option<Decision> {
         let t = self.cfg.meaning_thresholds;
         let rr_of = |w: &Weighed| w.hit.rerank.unwrap_or(-1.0);
         let mut ranked: Vec<&Weighed> = results.iter().collect();
