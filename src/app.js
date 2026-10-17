@@ -25,7 +25,14 @@ const PRIMARY_DISPLAY = 'display-1';
 // Wrap fetch so every call automatically carries the token. All existing
 // `fetch(${SERVER}/api/...)` call sites work unchanged.
 const _origFetch = window.fetch.bind(window);
-const _authFetch = (input, init = {}) => {
+const _authFetch = async (input, init = {}) => {
+  // A request to Kairo's own server made before the token has loaded waits for it.
+  if (!AUTH_TOKEN && window.kairoAuthReady) {
+    const url = typeof input === 'string' ? input : (input && input.url) || '';
+    if (!/^[a-z]+:/i.test(url) || url.startsWith(location.origin)) {
+      await Promise.race([window.kairoAuthReady, new Promise(r => setTimeout(r, 5000))]);
+    }
+  }
   if (!AUTH_TOKEN) return _origFetch(input, init);
   const headers = new Headers(init.headers || (typeof input !== 'string' && input?.headers) || {});
   if (!headers.has('Authorization')) headers.set('Authorization', `Bearer ${AUTH_TOKEN}`);
@@ -36,6 +43,17 @@ const _authFetch = (input, init = {}) => {
 window.__kairoRawFetch = _authFetch;
 window.fetch = window.kairoWatchFetch ? window.kairoWatchFetch(_authFetch) : _authFetch;
 
+
+// A web link (target="_blank") opens in the computer's browser: inside the app's window it
+// did nothing ("Get a free key" in the welcome tour, owner 2026-10-17).
+document.addEventListener('click', (e) => {
+  const a = e.target.closest && e.target.closest('a[target="_blank"][href^="http"]');
+  if (!a) return;
+  const invoke = window.__TAURI__?.core?.invoke;
+  if (!invoke) return;   // a plain browser opens it itself
+  e.preventDefault();
+  invoke('plugin:shell|open', { path: a.href }).catch(err => window.kairoProblem?.(`Couldn't open ${a.href} in your browser (${err?.message || err}).`));
+});
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
