@@ -49,6 +49,11 @@ fn distinctive_wording(c: &Candidate) -> bool {
 
 /// Cross-encoder score from which a paraphrase offer needs no support from the sermon's context.
 const PARAPHRASE_STANDS_ALONE: f32 = 0.995;
+/// …and only when it shares this much of the verse's identifying wording. Measured
+/// 2026-10-16 (replay, meaning on, dev): the near-certain offers with less were
+/// congregational instructions ("lift up your right hand", "stand to your feet");
+/// every right one that relied on standing alone shared 15 or more but one.
+const PARAPHRASE_STANDS_ALONE_LEX: f32 = 13.0;
 
 impl Engine {
     /// Decides a candidate and applies the decision. Returns where it landed.
@@ -288,7 +293,7 @@ impl Engine {
             // A paraphrase is the preacher's own words, so the sermon must point at it too —
             // unless the cross-encoder is nearly certain: that rule hid more right offers than
             // wrong ones (measured on the dev sermons: 15 of 26 dropped were right).
-            Method::Paraphrase => e.rerank.unwrap_or(0.0) < PARAPHRASE_STANDS_ALONE,
+            Method::Paraphrase => e.rerank.unwrap_or(0.0) < PARAPHRASE_STANDS_ALONE || e.matched_idf.unwrap_or(0.0) < PARAPHRASE_STANDS_ALONE_LEX,
             _ => false,
         }
     }

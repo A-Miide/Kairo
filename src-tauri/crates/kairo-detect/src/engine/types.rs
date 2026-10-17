@@ -81,7 +81,8 @@ pub enum Target {
 pub struct Evidence {
     /// The method's own 0–1 score (verbatim coverage, fingerprint coverage, cosine).
     pub similarity: Option<f32>,
-    /// Identifying weight of a matched run (verbatim, confirmed stream).
+    /// Identifying weight of a matched run (verbatim, confirmed stream), or of the
+    /// verse's wording a paraphrase window shares.
     pub matched_idf: Option<f32>,
     pub confidence: Option<Confidence>,
     /// A stream alignment that reached confirmation.
