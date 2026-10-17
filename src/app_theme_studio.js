@@ -7868,6 +7868,8 @@ function confirmProthemeSizeConversion(bundleName, sizes) {
 }
 
 const importLookFile = document.getElementById('import-look-file');
+// Back leaves Theme Studio for the dashboard (the header's Themes label made way for it).
+document.getElementById('ts-back-btn')?.addEventListener('click', () => closeThemeStudio());
 document.getElementById('import-look-btn')?.addEventListener('click', () => importLookFile?.click());
 importLookFile?.addEventListener('change', async () => {
   const file = importLookFile.files?.[0];
