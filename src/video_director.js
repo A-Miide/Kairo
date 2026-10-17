@@ -808,7 +808,12 @@
     const pvwHead = vEl('div', 'vd-screen-head');
     pvwHead.appendChild(vEl('span', 'vd-tag vd-tag-pvw', 'Preview'));
     D.ui.pvwRef = vEl('span', 'vd-ref');
-    pvwHead.append(D.ui.pvwRef);
+    // Drops only the staged verse or slide: the Preview camera and a waiting
+    // Layout stay (Esc clears all of them).
+    D.ui.clearStage = vBtn('×', 'Clear the staged verse (the Preview camera stays)', clearStage, 'vd-mini vd-clear-stage');
+    D.ui.clearStage.setAttribute('aria-label', 'Clear the staged verse');
+    D.ui.clearStage.hidden = true;
+    pvwHead.append(D.ui.pvwRef, D.ui.clearStage);
     pvw.append(pvwHead, buildFrame('pvw'));
     if (window.KairoVideoLooks) {
       D.looks = window.KairoVideoLooks.create({
@@ -1051,6 +1056,7 @@
     if (staged) bits.push(staged);
     if (D.pendingLook) bits.push(`Layout: ${D.pendingLook.name}`);
     D.ui.pvwRef.textContent = bits.length ? bits.join(' · ') : 'Same as output';
+    if (D.ui.clearStage) D.ui.clearStage.hidden = !(D.staged && !D.staged.sent);
     // The empty-picture label sits inside the video zone when the layout has one, not over the frame.
     if (D.frames.pvw) D.frames.pvw.box.classList.toggle('has-zone', hasZone(pvwFrameTheme()));
     if (D.frames.pgm) D.frames.pgm.box.classList.toggle('has-zone', hasZone(liveFrameTheme()));
@@ -1177,7 +1183,10 @@
       return;
     }
     if (e.code === 'Space') {
-      if (t && t.closest && t.closest('button')) return;       // a focused button keeps its own Space
+      // A button reached by keyboard keeps its own Space; one just clicked
+      // doesn't (Windows' web view leaves focus on it, so Space re-clicked it).
+      const btn = t && t.closest && t.closest('button');
+      if (btn && btn.matches(':focus-visible')) return;
       e.preventDefault();
       takeStaged();
       return;
@@ -1313,4 +1322,18 @@
       refresh();
     },
   };
+
+  // An output window couldn't show the camera put on air (it wouldn't open, or
+  // was unplugged): the tile still says On air, so say what the screen really
+  // shows. display_video.js reports it under kairo-video-showing:<output>.
+  window.addEventListener('storage', (e) => {
+    if (!e.key || !e.key.startsWith('kairo-video-showing:')) return;
+    let r; try { r = JSON.parse(e.newValue || 'null'); } catch { return; }
+    if (!r || !r.output) return;
+    const key = `video-showing-${r.output}`;
+    if (!r.want || !r.error) { window.kairoProblemCleared?.(key); return; }
+    const name = (id) => { const s = videoSourceList().find(x => x.id === id); return (s && s.name) || 'A camera'; };
+    const why = r.error === 'disconnected' ? 'It was disconnected.' : VSRC.describeCaptureError({ name: r.error });
+    window.kairoProblem?.(`${name(r.want)} isn't on the screen. ${why} The screen shows ${r.showing ? name(r.showing) : 'no camera'}; Kairo keeps trying.`, key);
+  });
 })();

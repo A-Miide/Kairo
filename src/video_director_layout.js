@@ -214,7 +214,9 @@
       if (typeof saveSettingsPatch === 'function') saveSettingsPatch({ autoSend: next });
       sync();
     };
-    const onClick = (e) => { e.preventDefault(); flip(); };
+    // A mouse click mustn't leave the switch focused: Space would flip it back
+    // instead of sending the staged verse (e.detail is 0 for a keyboard click).
+    const onClick = (e) => { e.preventDefault(); flip(); if (e.detail > 0) badge.blur(); };
     const onKey = (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); flip(); } };
     badge.setAttribute('role', 'switch');
     badge.setAttribute('tabindex', '0');
