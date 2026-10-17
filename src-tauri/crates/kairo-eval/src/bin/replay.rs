@@ -48,6 +48,10 @@ const SUGGESTION_RIGHT_MS: i64 = 60_000;
 const PASSAGE_MS: i64 = 180_000;
 const PASSAGE_VERSES: u16 = 5;
 const BARE_CHAPTER_EXEMPT_MS: i64 = 10 * 60 * 1000;
+/// Possible Matches hides anything scored under this (app.js SUGGESTION_DISPLAY_MIN,
+/// PARAPHRASE_DISPLAY_MIN), so the operator only sees offers at or above it.
+const DISPLAY_MIN: f32 = 0.80;
+const PARAPHRASE_DISPLAY_MIN: f32 = 0.695;
 /// Speaking pace assumed where a recording has no audio times (live runs).
 const MS_PER_WORD: u64 = 400;
 
@@ -88,6 +92,8 @@ struct Score {
     suggestions_right: usize,
     /// …or a verse of the passage being cited or read then.
     suggestions_in_passage: usize,
+    /// Of the suggestions, those Possible Matches shows; of them, right; of them, noise.
+    shown: (usize, usize, usize),
     noise_list: Vec<String>,
 }
 
@@ -180,11 +186,17 @@ fn score(k: &Knowledge, gt: &[GroundTruth], decisions: &[Decision], last_ms: i64
         if std::env::var("OFFERS").is_ok_and(|m| m == d.method) {
             println!("    offer {} {:.3} {:>6.1}m {}", if right { "RIGHT" } else { "noise" }, d.score, d.at_ms as f64 / 60_000.0, label(k, d.verses[0]));
         }
+        let shown = d.score >= if d.method == "paraphrase" { PARAPHRASE_DISPLAY_MIN } else { DISPLAY_MIN };
+        if shown {
+            s.shown.0 += 1;
+        }
         if right {
             e.1 += 1;
             s.suggestions_right += 1;
+            s.shown.1 += shown as usize;
         } else if !in_passage {
-            s.noise_list.push(format!("{:>6.1}m {} ({})", d.at_ms as f64 / 60_000.0, label(k, d.verses[0]), d.method));
+            s.shown.2 += shown as usize;
+            s.noise_list.push(format!("{:>6.1}m {} ({}, {:.2}{})", d.at_ms as f64 / 60_000.0, label(k, d.verses[0]), d.method, d.score, if shown { "" } else { ", hidden" }));
         }
     }
     for g in &missed {
@@ -473,6 +485,9 @@ fn main() {
                     t.hours += s.hours;
                     t.suggestions_right += s.suggestions_right;
                     t.suggestions_in_passage += s.suggestions_in_passage;
+                    t.shown.0 += s.shown.0;
+                    t.shown.1 += s.shown.1;
+                    t.shown.2 += s.shown.2;
                     for (m, (n, r)) in s.offered_by {
                         let e = t.offered_by.entry(m).or_default();
                         e.0 += n;
@@ -562,6 +577,13 @@ fn main() {
             pct(s.suggestions_in_passage, s.suggestions),
             (s.suggestions - s.suggestions_in_passage) as f64 / s.hours,
             s.offered_by.iter().map(|(m, (n, r))| format!("{m} {n}/{r}")).collect::<Vec<_>>().join(", ")
+        );
+        println!(
+            "{who} Possible Matches shown (score >= {DISPLAY_MIN:.2}, paraphrase {PARAPHRASE_DISPLAY_MIN:.2}): {} offered, {} the verse cited, {} noise ({:.1}/hour)",
+            s.shown.0,
+            s.shown.1,
+            s.shown.2,
+            s.shown.2 as f64 / s.hours.max(1e-9)
         );
     }
     if parity {
