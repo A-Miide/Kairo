@@ -30,6 +30,17 @@
     };
   }
   const stop = (s) => { try { s && s.getTracks().forEach(t => t.stop()); } catch {} };
+  // A camera that can't meet the size or the frame-rate cap (a built-in camera that won't go
+  // down to 15 fps: OverconstrainedError) is opened as it is rather than not at all — its tile
+  // said "Unavailable" with access allowed (owner, 2026-10-17).
+  async function open(id, profile) {
+    try { return await navigator.mediaDevices.getUserMedia(constraints(id, profile)); }
+    catch (err) {
+      if (!err || (err.name !== 'OverconstrainedError' && err.name !== 'NotReadableError')) throw err;
+      try { window.kairoLog?.('video-problem', { what: 'camera-constraints', name: err.name, constraint: err.constraint || null }); } catch {}
+      return navigator.mediaDevices.getUserMedia({ audio: false, video: { deviceId: { exact: id } } });
+    }
+  }
   function needed(entry) {
     let best = null;
     for (const l of entry.leases) if (!best || PROFILES[l.profile].rank > PROFILES[best].rank) best = l.profile;
@@ -59,7 +70,7 @@
           return;
         }
         if (!entry.stream || entry.profile !== need) {
-          const next = await navigator.mediaDevices.getUserMedia(constraints(id, need));
+          const next = await open(id, need);
           // releaseAll() (Director mode ended) while this was opening: close it at once, the light must go out.
           if (entry.dead || entries.get(id) !== entry) { stop(next); return; }
           const prev = entry.stream;
@@ -72,6 +83,8 @@
         }
       } while (entry.again);
     } catch (err) {
+      // A camera that won't open shows "Unavailable" on its tile; the reason goes to the debug log.
+      try { window.kairoLog?.('video-problem', { what: 'camera-open', name: err && err.name, message: String(err && err.message || err).slice(0, 200) }); } catch {}
       const failed = [...entry.leases];
       entries.delete(id);
       stop(entry.stream);
