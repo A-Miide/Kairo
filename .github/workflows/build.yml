@@ -100,8 +100,9 @@ jobs:
         if: steps.cache.outputs.cache-hit != 'true' && matrix.runs-on == 'ubuntu-24.04'
         run: |
           sudo apt-get update
-          sudo apt-get install -y build-essential nasm pkg-config
-          if [ "${{ matrix.name }}" = "windows" ]; then sudo apt-get install -y mingw-w64; fi
+          sudo apt-get install -y build-essential nasm pkg-config zlib1g-dev
+          # zlib for the mingw-w64 cross-compiler: ffmpeg is configured with --enable-zlib.
+          if [ "${{ matrix.name }}" = "windows" ]; then sudo apt-get install -y mingw-w64 libz-mingw-w64-dev; fi
 
       - name: Build ffmpeg
         if: steps.cache.outputs.cache-hit != 'true'
