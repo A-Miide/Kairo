@@ -57,6 +57,9 @@ jobs:
         run: |
           if ! find src-tauri/target/sherpa-onnx-prebuilt -name '*sherpa-onnx-c-api*' 2>/dev/null | grep -q .; then
             echo "sherpa-onnx libraries missing: rebuilding sherpa-onnx-sys"
+            # Its build script downloads only when the lib folder is absent, and
+            # the cache can bring the folder back empty.
+            rm -rf src-tauri/target/sherpa-onnx-prebuilt
             find src-tauri/target -type d -path '*/build/sherpa-onnx-sys-*' -prune -exec rm -rf {} + 2>/dev/null || true
             find src-tauri/target \( -name 'libsherpa_onnx_sys-*' -o -name 'sherpa_onnx_sys-*' \) -delete 2>/dev/null || true
           fi
@@ -201,6 +204,9 @@ jobs:
         run: |
           if ! find src-tauri/target/sherpa-onnx-prebuilt -name '*sherpa-onnx-c-api*' 2>/dev/null | grep -q .; then
             echo "sherpa-onnx libraries missing: rebuilding sherpa-onnx-sys"
+            # Its build script downloads only when the lib folder is absent, and
+            # the cache can bring the folder back empty.
+            rm -rf src-tauri/target/sherpa-onnx-prebuilt
             find src-tauri/target -type d -path '*/build/sherpa-onnx-sys-*' -prune -exec rm -rf {} + 2>/dev/null || true
             find src-tauri/target \( -name 'libsherpa_onnx_sys-*' -o -name 'sherpa_onnx_sys-*' \) -delete 2>/dev/null || true
           fi
