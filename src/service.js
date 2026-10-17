@@ -1144,8 +1144,9 @@
   // pool's other real input (the live item is excluded from its own
   // candidates) without needing to hook every liveSlideKey assignment site.
   let lookupCandidatesDirty = true;
+  let slideFinder = null, finderDirty = true, finderLiveId, finderPlaylistId;   // refreshSlideFinder
   let lookupCandidatesLiveId; // undefined sentinel forces the first build
-  function markLookupCandidatesDirty() { lookupCandidatesDirty = true; }
+  function markLookupCandidatesDirty() { lookupCandidatesDirty = true; finderDirty = true; }
   // Owner: songs scrapped from auto-detect ("not viable") — the whole
   // premise leaned on what's actually being SUNG matching a song's opening,
   // and STT reliably transcribing singing is the same architectural dead
@@ -1163,6 +1164,42 @@
     lookupCandidatesLiveId = liveId;
     const playlistPool = service.items.filter(i => i.id !== liveId && i.type === 'slides');
     contentLookup.setCandidates(playlistPool);
+  }
+
+  // Every slide of every deck in every playlist (slide_finder.js): one being
+  // read from somewhere else (mid-deck, another playlist) is offered in
+  // Possible Matches; clicking it opens it where it lives and sends it (owner,
+  // 2026-10-17). Never sent by itself. The live playlist's slides come first,
+  // so a deck copied into several playlists is offered from the live one.
+  function refreshSlideFinder() {
+    const SF = window.KairoSlideFinder;
+    if (!SF) return null;
+    if (!slideFinder) {
+      slideFinder = new SF.SlideFinder({
+        onOffer: (o) => {
+          debugLog('slide-finder-offer', { itemId: o.itemId, index: o.index, playlistId: o.playlistId, confidence: o.confidence });
+          window.KairoSlideOffer?.(o);
+        },
+      });
+    }
+    if (finderDirty || finderPlaylistId !== activePlaylistId) {
+      finderDirty = false;
+      finderPlaylistId = activePlaylistId;
+      const ordered = [...playlists].sort((a, b) => (b.id === activePlaylistId) - (a.id === activePlaylistId));
+      const slides = [];
+      for (const p of ordered) {
+        for (const it of p.items || []) {
+          if (it.type !== 'slides') continue;
+          (it.blocks || []).forEach((b, i) => {
+            if (b && b.text) slides.push({ playlistId: p.id, playlistName: p.name, itemId: it.id, itemTitle: it.title || 'Slides', index: i, text: b.text });
+          });
+        }
+      }
+      slideFinder.setSlides(slides);
+    }
+    const liveId = liveSlideKey ? liveSlideKey.split(':')[0] : null;
+    if (liveId !== finderLiveId) { finderLiveId = liveId; slideFinder.setExclude(liveId ? [liveId] : []); }
+    return slideFinder;
   }
 
   function onTranscript(msg) {
@@ -1191,6 +1228,7 @@
         refreshLookupCandidates();
         contentLookup.ingest(text, meta);
       }
+      refreshSlideFinder()?.ingest(text, meta);
     }
   }
   function setAutoFollow(on) {
