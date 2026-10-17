@@ -251,6 +251,8 @@
       setActive(true);
       if (old) release(old.slot, old.stream, plan.ms);
       report(want.id, null);
+      // Logged so a problem right after (the listening input going silent) can be lined up with it.
+      window.kairoLog?.('video-open', { output: lastArgs && lastArgs.outputKey, source: want.id });
 
       watch(opened);
     }
