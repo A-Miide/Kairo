@@ -1953,6 +1953,7 @@ let lastNonZeroAudioAt = 0;   // any non-zero sample at all (a real mic always h
 // this session (never reset by a rebuild), the spell already reopened once,
 // and the reopen still waiting to hear whether sound came back.
 let lastHeardSignalAt = 0;
+let _inputSilentShown = false;   // the "gone silent" warning is up
 let _silentReopenFor = 0;
 let _silentReopenPending = null;
 let _lastLevelLogAt = 0;
@@ -2042,6 +2043,7 @@ function noteCaptureLevel(peak, bufferLength, gain = 1, clipped = false) {
   if (peak > 0) rememberInputGain(mediaStream?.getAudioTracks?.()[0]?.label || '', gain);
   if (peak > 0) {
     lastNonZeroAudioAt = lastHeardSignalAt = now;
+    if (_inputSilentShown) { _inputSilentShown = false; window.kairoProblemCleared?.('input-silent'); }
     if (_silentReopenPending) {
       _healLog('sound came back after reopening the silent input', { input: _silentReopenPending.input, afterMs: now - _silentReopenPending.at });
       _silentReopenPending = null;
@@ -2416,6 +2418,9 @@ function checkAudioSilence() {
       if (_silentReopenPending !== pending) return;
       _healLog('still silent after reopening the input — nothing is reaching it', { input });
       _silentReopenPending = null;
+      // Said on screen, not only in the log: detection looked as if it had stopped (owner, 2026-10-17).
+      _inputSilentShown = true;
+      window.kairoProblem?.(`${input || 'The sound input'} has gone silent: nothing is reaching it. Check that your player is still playing and sending its sound to ${input || 'it'}. Kairo is still listening.`, 'input-silent');
     }, 30000);
     return;
   }
