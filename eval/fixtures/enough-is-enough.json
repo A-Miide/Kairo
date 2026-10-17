@@ -4253,6 +4253,14 @@
       "addedBy": "read against the transcript (2026-10-16): \"i am that i am\""
     },
     {
+      "book": "Romans",
+      "chapter": 8,
+      "verse": 28,
+      "kind": "quote",
+      "startMs": 312040,
+      "addedBy": "read against the transcript (2026-10-17): \"we know that all things work together for God ... To them that love God\""
+    },
+    {
       "book": "Acts",
       "chapter": 10,
       "verse": 34,
@@ -4293,6 +4301,14 @@
       "kind": "quote",
       "startMs": 1257555,
       "unverified": true
+    },
+    {
+      "book": "Hebrews",
+      "chapter": 10,
+      "verse": 35,
+      "kind": "quote",
+      "startMs": 1554530,
+      "addedBy": "read against the transcript (2026-10-17): \"Cast not therefore away your confidence\""
     },
     {
       "book": "Romans",
