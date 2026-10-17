@@ -846,6 +846,116 @@ DEFAULT_LOOKS.push(
       monitorText('timer', 'Countdown', 'timer', { x: 1243, y: 975, w: 600, h: 80 }, 56, { weight: 800, align: 'right' }),
     ] },
 );
+// A boxed Monitor (owner's reference photo, 2026-10-17): time and countdown small across
+// the top, the booth's message in its own box top right, the words now in a ruled box
+// and the next line in the box under it. Every part is a layer: move or resize any of
+// them in Theme Studio to put the message (or anything) somewhere else.
+// A ruled box: a light shape, and the box's own colour 4 px inside it (two shapes, so
+// the rule's width and colour are edited like any shape).
+function monitorBox(id, name, pos, color) {
+  const shape = (sid, sname, c, p) => ({ id: sid, type: 'background', name: sname, visible: true, fill: 'solid', color: c, color2: c, opacity: 100, angle: 0, radius: 0, pos: p });
+  return [
+    shape(`${id}-rule`, `${name} rule`, '#e8ecf5', pos),
+    shape(id, name, color, { x: pos.x + 4, y: pos.y + 4, w: pos.w - 8, h: pos.h - 8 }),
+  ];
+}
+DEFAULT_LOOKS.push(
+  { id: 'monitor-boxed', name: 'Monitor — Boxed', layout: 'fullscreen', animation: 'cut', ...MONITOR_GROUP,
+    layers: [
+      { ...monitorCanvas(), color: '#0d1530', color2: '#0d1530' },
+      monitorText('clock-label', 'Time label', 'custom', { x: 60, y: 28, w: 520, h: 30 }, 22, { weight: 800, spacing: 3, transform: 'uppercase', opacity: 60, text: 'Time of day' }),
+      monitorText('clock', 'Time', 'mon-clock', { x: 60, y: 62, w: 520, h: 80 }, 56, { weight: 800 }),
+      monitorText('timer-label', 'Countdown label', 'custom', { x: 620, y: 28, w: 520, h: 30 }, 22, { weight: 800, spacing: 3, transform: 'uppercase', opacity: 60, text: 'Segment countdown' }),
+      monitorText('timer', 'Countdown', 'timer', { x: 620, y: 62, w: 520, h: 80 }, 56, { weight: 800 }),
+      ...monitorBox('message-box', 'Message box', { x: 1180, y: 24, w: 680, h: 136 }, '#3b4fb8'),
+      monitorText('message', 'Message', 'mon-message', { x: 1204, y: 40, w: 632, h: 104 }, 40, { weight: 800, align: 'center' }),
+      ...monitorBox('now-box', 'Now box', { x: 60, y: 184, w: 1800, h: 560 }, '#0d1530'),
+      monitorText('verse', 'On screen now', 'verse', { x: 96, y: 210, w: 1728, h: 510 }, 104, { weight: 700, align: 'center', lineHeight: 1.12 }),
+      ...monitorBox('next-box', 'Next box', { x: 60, y: 744, w: 1800, h: 300 }, '#0d1530'),
+      monitorText('next-ref', 'Next (reference)', 'mon-next-ref', { x: 96, y: 760, w: 1728, h: 36 }, 24, { weight: 800, spacing: 3, transform: 'uppercase', opacity: 55 }),
+      monitorText('next', 'Next', 'mon-next', { x: 96, y: 800, w: 1728, h: 220 }, 76, { weight: 600, align: 'center', opacity: 85 }),
+    ] },
+);
+
+// Warm (owner, 2026-10-17: "same colors" as a set of warm church slides): cream, amber,
+// burnt orange and deep brown. Original layouts built from layers, every shape, size,
+// colour and font editable in Theme Studio. Titles are custom text: type your own.
+const WARM = { cream: '#fbf1de', sand: '#f3d6a4', amber: '#f2a03d', orange: '#d9661f', rust: '#a8401a', brown: '#3a1d0c', night: '#1f0f06' };
+const WARM_GROUP = { groupId: 'grp-warm', groupName: 'Warm' };
+function warmCanvas(stops, angle) {
+  return { id: 'bg', type: 'background', name: 'Canvas', visible: true, fill: 'gradient', color: stops[0], color2: stops[stops.length - 1],
+    opacity: 100, angle, gradientStops: stops.map((c, i) => ({ pos: Math.round(i * 100 / (stops.length - 1)), color: c })) };
+}
+// A bundled photo (src/backgrounds) as its own layer, under a warm tint layer: swap the
+// picture or change the tint's strength in Theme Studio.
+function warmPhoto(id, name, photo, pos) {
+  return { id, type: 'background', name, visible: true, fill: 'image', src: `backgrounds/${photo}.jpg`, color: poolColor(photo), color2: '#1c1c30', opacity: 100, angle: 0, radius: 0,
+    ...(pos ? { pos } : {}) };
+}
+function warmShape(id, name, pos, from, to, angle = 90, opacity = 100) {
+  return { id, type: 'background', name, visible: true, fill: from === to ? 'solid' : 'gradient', color: from, color2: to, opacity, angle, radius: 0,
+    ...(from === to ? {} : { gradientStops: [{ pos: 0, color: from }, { pos: 100, color: to }] }), pos };
+}
+function warmText(id, name, binding, pos, family, size, weight, color, opts = {}) {
+  return { id, type: 'text', name, visible: true, binding, customText: opts.text || '', ...(opts.follows ? { follows: opts.follows } : {}),
+    pos, font: { family, size, weight, italic: false, lineHeight: opts.lineHeight || 1.15, letterSpacing: opts.spacing || 0, transform: opts.transform || 'none' },
+    color, opacity: opts.opacity || 100, align: opts.align || 'left',
+    shadow: opts.shadow ? { ...TXT_SHADOW_SOFT } : { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } };
+}
+DEFAULT_LOOKS.push(
+  { id: 'warm-title-dark', name: 'Warm — Title, dark', layout: 'fullscreen', animation: 'fade', ...WARM_GROUP,
+    layers: [
+      warmCanvas([WARM.night, WARM.brown, WARM.rust], 135),
+      warmPhoto('photo', 'Photo', 'stage', { x: 0, y: 0, w: 1920, h: 1080 }),
+      { ...warmShape('tint', 'Warm tint', { x: 0, y: 0, w: 1920, h: 1080 }, WARM.rust, WARM.amber, 120, 100), blendMode: 'Multiply' },
+      warmShape('shade', 'Text shade', { x: 0, y: 0, w: 1920, h: 1080 }, WARM.night, WARM.night, 0, 25),
+      warmShape('rule', 'Accent rule', { x: 140, y: 300, w: 120, h: 10 }, WARM.amber, WARM.amber),
+      warmText('title', 'Title', 'custom', { x: 140, y: 330, w: 1400, h: 260 }, 'Bebas Neue', 230, 400, WARM.sand, { text: 'WELCOME', lineHeight: 0.95, spacing: 2 }),
+      warmText('subtitle', 'Subtitle', 'custom', { x: 146, y: 600, w: 1400, h: 60 }, 'Montserrat', 40, 600, WARM.cream, { text: "We're glad you're here", transform: 'uppercase', spacing: 6, opacity: 85 }),
+      warmText('body', 'Slide words', 'verse', { x: 146, y: 720, w: 1300, h: 220 }, 'Montserrat', 34, 500, WARM.cream, { opacity: 75, lineHeight: 1.4 }),
+    ] },
+  { id: 'warm-title-light', name: 'Warm — Title, light', layout: 'fullscreen', animation: 'fade', ...WARM_GROUP,
+    layers: [
+      warmCanvas([WARM.cream, WARM.sand, WARM.amber], 160),
+      warmText('title', 'Title', 'custom', { x: 140, y: 300, w: 1700, h: 190 }, 'Bebas Neue', 170, 400, WARM.rust, { text: 'SERVICE BEGINS', lineHeight: 0.95, spacing: 2 }),
+      warmText('subtitle', 'Subtitle', 'custom', { x: 146, y: 500, w: 1400, h: 60 }, 'Montserrat', 44, 600, WARM.brown, { text: 'In a moment', transform: 'uppercase', spacing: 6 }),
+      warmText('body', 'Slide words', 'verse', { x: 146, y: 620, w: 1400, h: 220 }, 'Montserrat', 34, 500, WARM.brown, { opacity: 80, lineHeight: 1.4 }),
+    ] },
+  { id: 'warm-split', name: 'Warm — Split panel', layout: 'fullscreen', animation: 'fade', ...WARM_GROUP,
+    layers: [
+      warmCanvas([WARM.cream, WARM.sand], 180),
+      warmPhoto('photo', 'Panel photo', 'stage', { x: 0, y: 0, w: 860, h: 1080 }),
+      { ...warmShape('panel', 'Panel tint', { x: 0, y: 0, w: 860, h: 1080 }, WARM.rust, WARM.amber, 160, 100), blendMode: 'Multiply' },
+      warmShape('panel-shade', 'Text shade', { x: 0, y: 0, w: 860, h: 1080 }, WARM.night, WARM.night, 0, 25),
+      warmShape('edge', 'Panel edge', { x: 860, y: 0, w: 14, h: 1080 }, WARM.amber, WARM.orange, 180),
+      warmText('title', 'Title', 'custom', { x: 100, y: 330, w: 700, h: 360 }, 'Bebas Neue', 170, 400, WARM.sand, { text: 'FIRST TIME WITH US?', lineHeight: 0.95, spacing: 2 }),
+      warmText('body', 'Slide words', 'verse', { x: 980, y: 300, w: 840, h: 480 }, 'Montserrat', 46, 600, WARM.brown, { lineHeight: 1.35 }),
+      warmText('ref', 'Reference', 'reference', { x: 980, y: 800, w: 840, h: 50 }, 'Montserrat', 28, 700, WARM.rust, { transform: 'uppercase', spacing: 4, follows: 'verse' }),
+    ] },
+  { id: 'warm-scripture', name: 'Warm — Scripture', layout: 'fullscreen', animation: 'fade', ...WARM_GROUP,
+    layers: [
+      warmCanvas([WARM.cream, WARM.sand, WARM.amber], 170),
+      warmText('verse', 'Verse', 'verse', { x: 210, y: 220, w: 1500, h: 560 }, 'Bebas Neue', 96, 400, WARM.rust, { align: 'center', lineHeight: 1.08, spacing: 1 }),
+      warmText('ref', 'Reference', 'reference', { x: 210, y: 820, w: 1500, h: 50 }, 'Montserrat', 32, 700, WARM.brown, { align: 'center', transform: 'uppercase', spacing: 5, follows: 'verse' }),
+    ] },
+  { id: 'warm-lower-third', name: 'Warm — Lower third', layout: 'lower-third', animation: 'slide-up', ...WARM_GROUP,
+    layers: [
+      { id: 'bg', type: 'background', name: 'Canvas', visible: true, fill: 'transparent', fillBefore: 'solid', color: '#000000', opacity: 100, color2: '#000000', angle: 0 },
+      warmShape('band-verse', 'Verse band', { x: 0, y: 770, w: 1920, h: 200 }, WARM.brown, WARM.rust, 90, 94),
+      warmShape('band-ref', 'Reference band', { x: 0, y: 970, w: 1920, h: 70 }, WARM.amber, WARM.orange, 90),
+      warmText('verse', 'Verse', 'verse', { x: 96, y: 796, w: 1728, h: 150 }, 'Montserrat', 42, 600, WARM.cream, { align: 'center', lineHeight: 1.3 }),
+      warmText('ref', 'Reference', 'reference', { x: 96, y: 988, w: 1728, h: 0 }, 'Montserrat', 24, 800, WARM.night, { align: 'center', transform: 'uppercase', spacing: 6, follows: 'verse' }),
+    ] },
+  { id: 'warm-lyrics', name: 'Warm — Lyrics', layout: 'fullscreen', animation: 'fade', ...WARM_GROUP,
+    layers: [
+      warmCanvas([WARM.night, WARM.brown, WARM.orange], 160),
+      warmPhoto('photo', 'Photo', 'golden-bokeh', { x: 0, y: 0, w: 1920, h: 1080 }),
+      { ...warmShape('tint', 'Warm tint', { x: 0, y: 0, w: 1920, h: 1080 }, WARM.rust, WARM.amber, 160, 100), blendMode: 'Multiply' },
+      warmShape('shade', 'Text shade', { x: 0, y: 0, w: 1920, h: 1080 }, WARM.night, WARM.night, 0, 20),
+      warmText('verse', 'Lyrics', 'verse', { x: 160, y: 260, w: 1600, h: 560 }, 'Montserrat', 76, 700, WARM.cream, { align: 'center', lineHeight: 1.25, shadow: true }),
+    ] },
+);
+
 // Sample words for the Monitor-only bindings, in Theme Studio and thumbnails.
 const MONITOR_SAMPLES = { 'mon-next': 'And the next slide waits here', 'mon-next-ref': 'Next · Verse 2', 'mon-clock': '10:42', 'mon-message': 'Five minutes left' };
 window.KAIRO_MONITOR_SAMPLES = MONITOR_SAMPLES;
@@ -5837,6 +5947,16 @@ function openThemeStudio() {
   // Render after layout settles so the stage has real dimensions — the preview
   // scale and verse auto-fit both measure the stage.
   requestAnimationFrame(() => renderPreview());
+}
+
+// Theme Studio opened on one theme (Director mode's Preview "Edit"): its group
+// open and the theme selected, ready to change down to each shape.
+function openThemeStudioOn(themeId) {
+  openThemeStudio();
+  const look = themeId && looks.find(l => l.id === themeId);
+  if (!look) return;
+  if (look.groupId) collapsedThemeGroups.delete(look.groupId);
+  selectLook(look);
 }
 
 function closeThemeStudio() {
