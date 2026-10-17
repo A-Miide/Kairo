@@ -657,8 +657,10 @@
     D.top.style.gridTemplateColumns = `${c1px}px 8px minmax(0, 1fr) 8px ${c3px}px`;
     D.top.style.flexGrow = String(top);
     D.bottomWrap.style.flexGrow = String(1 - top);
-    // The playlist group is about the width of the normal screen's sidebar; the media bin takes the rest.
-    D.bottomHost.style.gridTemplateColumns = `minmax(0, ${D.layout.bl}fr) 8px minmax(0, ${1 - D.layout.bl}fr)`;
+    // The playlist sits under Inputs, exactly as wide, and the media bin under the displays and
+    // sends: one line between the columns, top to bottom (owner, 2026-10-17).
+    D.bottomHost.style.gridTemplateColumns = `${c1px}px 8px minmax(0, 1fr)`;
+    D.bottomHost.style.columnGap = '0px';   // as the top row: the splitter is the gap
     fitScreens();
   }
 
@@ -1234,11 +1236,12 @@
     window.KairoVideoLayout?.fillSends(D.sendsHost);
     window.KairoVideoDock?.mount(D.bottomHost);
     if (D.bottomHost.children.length === 2) {
+      // The same line as the one between Inputs and the displays: moving either moves both.
       const bsplit = splitter('v', (x, y, step) => {
-        if (step) { D.layout.bl = clamp(D.layout.bl + step, 0.14, 0.5, D.layout.bl); return; }
-        const r = D.bottomHost.getBoundingClientRect();
-        D.layout.bl = clamp((x - r.left) / r.width, 0.14, 0.5, D.layout.bl);
-      }, 'Resize the playlist and the media bin');
+        if (step) { D.layout.c1 = clamp(D.layout.c1 + step, 0.14, 0.40, D.layout.c1); return; }
+        const r = D.top.getBoundingClientRect();
+        D.layout.c1 = clamp((x - r.left) / r.width, 0.14, 0.40, D.layout.c1);
+      }, 'Resize the inputs and playlist column');
       D.bottomHost.insertBefore(bsplit, D.bottomHost.children[1]);
     }
     applyLayout();
