@@ -4289,6 +4289,14 @@
     {
       "book": "Deuteronomy",
       "chapter": 28,
+      "verse": 47,
+      "kind": "quote",
+      "startMs": 1083000,
+      "addedBy": "read against the transcript (2026-10-17): \"because you serve not the Lord your go with joyfulness and GL of heart\""
+    },
+    {
+      "book": "Deuteronomy",
+      "chapter": 28,
       "verse": 48,
       "kind": "citation",
       "startMs": 1091000,
@@ -5191,6 +5199,14 @@
       "verseEnd": 24,
       "kind": "citation",
       "startMs": 7352000
+    },
+    {
+      "book": "1 Corinthians",
+      "chapter": 5,
+      "verse": 7,
+      "kind": "citation",
+      "startMs": 7494000,
+      "addedBy": "read against the transcript (2026-10-17): \"1 Corinthians 57 PGE out therefore the old Le\""
     },
     {
       "book": "Revelation",
