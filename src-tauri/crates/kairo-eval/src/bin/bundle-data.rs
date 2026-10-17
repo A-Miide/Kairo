@@ -38,6 +38,26 @@ const FILES: &[File] = &[
     File { repo: MINILM, revision: MINILM_REV, path: "onnx/model_int8.onnx", local: "reranker_model/Xenova/ms-marco-MiniLM-L-12-v2/onnx/model_int8.onnx", size: 33940752, sha256: "4509e8d29fce1db0ecdf9413c4269ccd7787fc925ecd2bdd3fd2fe99bc9b6b6f" },
 ];
 
+/// The verse index, built once from these models and this KJV and kept as a
+/// release file: a fresh build machine downloads it in seconds instead of
+/// embedding 31,102 verses. Checked by its checksum and its verse count;
+/// anything else, and it's built here.
+const PREBUILT_INDEX: &str = "https://github.com/miide-Adeyemi/Kairo/releases/download/bundle-data-v1/verse_index.bge-small.kvx";
+const PREBUILT_INDEX_SHA256: &str = "da8fab69c2f2fc3a0b92f45c99fda1d3f6896e429c5808fc5c5211cb41ea8dcc";
+
+fn fetch_prebuilt_index(target: &Path, verses: usize) -> bool {
+    let partial = target.with_extension("part");
+    let ok = Command::new("curl").args(["-fsSL", "--retry", "3", "-o"]).arg(&partial).arg(PREBUILT_INDEX).status().is_ok_and(|s| s.success())
+        && sha256(&partial).as_deref() == Some(PREBUILT_INDEX_SHA256)
+        && kairo_semantic::VerseIndex::load(&partial).is_ok_and(|i| i.len() == verses);
+    if ok {
+        std::fs::rename(&partial, target).is_ok()
+    } else {
+        let _ = std::fs::remove_file(&partial);
+        false
+    }
+}
+
 fn sha256(path: &Path) -> Option<String> {
     let mut f = std::fs::File::open(path).ok()?;
     let mut h = Sha256::new();
@@ -90,8 +110,11 @@ fn main() {
         println!("verse index present: {}", target.display());
         return;
     }
-    // Builds (or reuses) the cached index, then copies it into place: a few
-    // minutes for 31,102 verses with bge-small, so no prebuilt copy is kept.
+    if fetch_prebuilt_index(&target, verses) {
+        println!("verse index downloaded and verified: {}", target.display());
+        return;
+    }
+    // Builds (or reuses) the cached index, then copies it into place.
     let _ = meaning("bge-small.json", None, &["KJV"]);
     let cached = root().join("eval-results/semantic-cache/bge-small.KJV.kvx");
     std::fs::copy(&cached, &target).expect("copy verse index");
