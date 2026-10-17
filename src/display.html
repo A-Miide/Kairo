@@ -1515,6 +1515,11 @@
                 // The director's fade length (ms), else this output's own speed.
                 speed: (() => { const ms = Number(readJson('kairo-video-fade', 0)); return ms > 0 ? ms / 300 : outputAnimationSpeed; })(),
             }),
+            // A real output window says which camera it shows (video_director.js warns on a mismatch).
+            onShowing: PREVIEW || MONITOR || CAPTURE || videoProvider() ? null : (r) => {
+                if (!r.output) return;
+                try { localStorage.setItem(`kairo-video-showing:${r.output}`, JSON.stringify({ ...r, at: Date.now() })); } catch {}
+            },
             onActive: (on) => {
                 videoOn = on;
                 document.body.classList.toggle('has-video', on);

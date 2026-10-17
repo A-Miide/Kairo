@@ -16,6 +16,7 @@
   const runs = {};            // output → the newest run seen (a Go live after a Stop is a new run)
   let captureOk = true;       // can this computer capture the outputs' graphics?
   let live = false;
+  let preparing = false;   // Go live pressed, checks still running
   let listeners = [];
   let topBtn = null;
 
@@ -99,6 +100,11 @@
     if (!dests.length) { alertMsg('Add a destination and switch it on under Settings → Streaming first.'); return; }
     const noKey = dests.filter(d => !String(d.key || '').trim());
     if (noKey.length && !(await ask(`${noKey.map(d => d.name || d.url).join(', ')} ${noKey.length > 1 ? 'have' : 'has'} no stream key. Go live anyway?`, 'Go live'))) return;
+    // The camera, capture and FFmpeg checks take a few seconds: say so.
+    preparing = true; renderTopButton();
+    try { await startPrepared(c, dests); } finally { preparing = false; renderTopButton(); }
+  }
+  async function startPrepared(c, dests) {
     const byOutput = new Map();
     dests.forEach(d => { const o = d.output || primary(); if (!byOutput.has(o)) byOutput.set(o, []); byOutput.get(o).push(d); });
     const pipelines = [];
@@ -274,8 +280,11 @@
     topBtn.hidden = !anyDest && !live;
     const o = overall();
     topBtn.classList.toggle('is-live', live && o.state === 'live');
-    topBtn.classList.toggle('is-trouble', live && (o.state === 'retrying' || o.state === 'failed'));
-    topBtn.textContent = !live ? 'Go live'
+    // Live but a destination isn't receiving it: still LIVE, marked as trouble.
+    const destDown = Object.values(status).some(s => s.state === 'live' && (s.destinations || []).some(d => d.state !== 'live'));
+    topBtn.classList.toggle('is-trouble', live && (o.state === 'retrying' || o.state === 'failed' || destDown));
+    topBtn.disabled = preparing && !live;
+    topBtn.textContent = preparing && !live ? '● Starting…' : !live ? 'Go live'
       : o.state === 'live' ? `● LIVE ${clock(o.uptime || 0)}`
       : o.state === 'retrying' ? '● Reconnecting…' : o.state === 'failed' ? '● Stream failed' : '● Starting…';
     topBtn.title = live ? 'Click to stop the stream' : 'Start streaming to the destinations under Settings → Streaming';
@@ -287,6 +296,32 @@
     if ((runs[s.output] || 0) > (s.run || 0)) return;
     runs[s.output] = s.run || 0;
     if (s.state === 'stopped') delete status[s.output]; else status[s.output] = s;
+    health();
+  }
+
+  // While live, a destination reconnecting and every engine warning reach the
+  // problem strip, so they're seen from the Director screen, not only in
+  // Settings → Streaming. Raised once on the way into trouble, cleared on the way out.
+  const raised = new Set();
+  function health() {
+    const now = new Set();
+    for (const s of Object.values(status)) {
+      if (s.state !== 'live') continue;
+      for (const d of s.destinations || []) {
+        if (d.state === 'live') continue;
+        const key = `stream-dest-${d.id}`;
+        now.add(key);
+        if (!raised.has(key)) window.kairoProblem?.(`${d.name || 'A stream destination'} isn't receiving the stream: ${d.state === 'reconnecting' ? 'reconnecting' : 'connecting'}${d.error ? ` (${d.error})` : ''}.`, key);
+      }
+    }
+    for (const w of overall().warnings || []) {
+      const key = `stream-warn-${w}`;
+      now.add(key);
+      if (!raised.has(key)) window.kairoProblem?.(w, key);
+    }
+    for (const key of raised) if (!now.has(key)) window.kairoProblemCleared?.(key);
+    raised.clear();
+    now.forEach(k => raised.add(k));
   }
   // Without a capture window, the main window tells the engine which camera is on air.
   let watching = false;

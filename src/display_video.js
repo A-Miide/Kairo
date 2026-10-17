@@ -86,17 +86,23 @@
       });
     }
 
+    // What this window really shows, for the operator window to compare with
+    // what it put on air: the source wanted, the one showing, and why not.
+    const report = (want, error) => { try { opts.onShowing && opts.onShowing({ output: lastArgs && lastArgs.outputKey, want: want || null, showing: current ? current.sourceId : null, error: error || null }); } catch {} };
+
     // The device went away (unplugged): drop it and keep trying.
     function watch(opened) {
       const track = opened.stream.getVideoTracks()[0];
       if (track) track.addEventListener('ended', () => {
         if (!current || current.stream !== opened.stream) return;
+        const lost = current.sourceId;
         const slot = front;
         front = -1; current = null;
         fadeStyle(slots[slot], 200);
         slots[slot].style.opacity = '0';
         setActive(false);
         release(slot, { release: opened.release }, 200);
+        report(lost, 'disconnected');
         retryTimer = setTimeout(() => sync(lastArgs), 2000);
       }, { once: true });
     }
@@ -161,6 +167,7 @@
 
       if (!want) {   // nothing to show: fade out, then let go of the camera
         cancelManual();
+        report(null, null);
         if (front >= 0) {
           const plan = V.switchPlan(opts.getTransition().animation, opts.getTransition().speed, true);
           const old = { slot: front, stream: current };
@@ -199,6 +206,7 @@
       try { opened = await open(want); } catch (err) {
         if (myGen !== gen) return;
         console.warn('[Video] could not open', want.name, err && err.name);
+        report(want.id, (err && err.name) || 'Error');
         // Keep what is showing; try again shortly (a replug, or a camera another app released).
         retryTimer = setTimeout(() => sync(lastArgs), 3000);
         return;
@@ -221,6 +229,7 @@
       current = { stream: opened.stream, release: opened.release, sourceId: want.id, settings: [want.width, want.height, want.fps].join('x'), key: sourceKey(want, opened.deviceId) };
       setActive(true);
       if (old) release(old.slot, old.stream, plan.ms);
+      report(want.id, null);
 
       watch(opened);
     }
