@@ -363,7 +363,7 @@ impl Engine {
         let decision = self.decide_paraphrase(&weighed, now);
         let repeated = decision.is_some() && decision.map(|d| d.0) == self.meaning.prev;
         self.meaning.prev = decision.map(|d| d.0);
-        if let (true, Some((v, target, score, rr))) = (repeated, decision) {
+        if let (true, Some((v, target, score, rr, lex))) = (repeated, decision) {
             let target = if just_cited { Target::Suggestions } else { target };
             let on_screen = self.screen.last_detected.map(|(d, _, _)| d) == Some(v);
             let r = self.r(v);
@@ -375,7 +375,7 @@ impl Engine {
                     }));
             if !(target == Target::Suggestions && (on_screen || in_cited_chapter)) {
                 let mut c = Candidate::new(vec![v], Method::Paraphrase, score, target)
-                    .evidence(Evidence { paraphrase_score: Some(score), rerank: rr, similarity: Some(score), ..Default::default() })
+                    .evidence(Evidence { paraphrase_score: Some(score), rerank: rr, similarity: Some(score), matched_idf: Some(lex), ..Default::default() })
                     .from_text(&windows[0]);
                 c.cap = target == Target::Suggestions;
                 self.decide(c, now);
@@ -407,8 +407,8 @@ impl Engine {
         }
     }
 
-    /// The paraphrase decision: (verse, where, score, cross-encoder) or nothing.
-    fn decide_paraphrase(&self, results: &[Weighed], now: u64) -> Option<(VerseId, Target, f32, Option<f32>)> {
+    /// The paraphrase decision: (verse, where, score, cross-encoder, shared wording) or nothing.
+    fn decide_paraphrase(&self, results: &[Weighed], now: u64) -> Option<(VerseId, Target, f32, Option<f32>, f32)> {
         let t = self.cfg.meaning_thresholds;
         let rr_of = |w: &Weighed| w.hit.rerank.unwrap_or(-1.0);
         let mut ranked: Vec<&Weighed> = results.iter().collect();
@@ -417,7 +417,7 @@ impl Engine {
         let second = ranked.iter().find(|r| r.hit.verse != top.hit.verse);
         let named = book_mentions_recent(self);
         let affinity = |v: VerseId| self.passage_affinity(v, now).max(if named.contains(&self.r(v).book) { 2.0 } else { 0.0 });
-        let out = |target: Target, score: f32| Some((top.hit.verse, target, score, top.hit.rerank));
+        let out = |target: Target, score: f32| Some((top.hit.verse, target, score, top.hit.rerank, top.lex));
         match top.hit.rerank {
             Some(rr) => {
                 let (s_rr, s_cos, s_lex, s_margin) = t.send;
@@ -445,11 +445,11 @@ impl Engine {
                 let m_second = by_modern.iter().find(|r| r.hit.verse != m_top.hit.verse).and_then(|r| r.hit.rerank_modern).unwrap_or(0.0);
                 let m = m_top.hit.rerank_modern.unwrap_or(0.0);
                 (m >= m_rr && m_top.hit.cos >= m_cos && m_top.lex >= m_lex && m - m_second.max(0.0) >= m_margin)
-                    .then_some((m_top.hit.verse, Target::Suggestions, OFFER_SCORE, m_top.hit.rerank))
+                    .then_some((m_top.hit.verse, Target::Suggestions, OFFER_SCORE, m_top.hit.rerank, m_top.lex))
             }
             None => {
                 let (n_cos, n_lex) = t.offer_no_rerank;
-                (top.hit.cos >= n_cos && top.lex >= n_lex).then_some((top.hit.verse, Target::Suggestions, OFFER_SCORE, None))
+                (top.hit.cos >= n_cos && top.lex >= n_lex).then_some((top.hit.verse, Target::Suggestions, OFFER_SCORE, None, top.lex))
             }
         }
     }

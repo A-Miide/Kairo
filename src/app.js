@@ -1351,6 +1351,12 @@ function dropSuggestionsCoveredByQueue() {
 // undo those tonight's earlier fixes were built for. This only hides them
 // from the list; they're still detected and still logged.
 const SUGGESTION_DISPLAY_MIN = 0.80;
+// A paraphrase's score isn't a similarity: every offer gets the same 0.70 (the
+// sure ones 0.90), so the 80 floor hid every ordinary paraphrase offer however
+// good. Owner, 2026-10-16: show paraphrase cards from 70. Measured on the dev
+// sermons with the wording rule (decide.rs PARAPHRASE_STANDS_ALONE_LEX). Just
+// under 0.70: the server's f32 0.70 arrives here as 0.6999999881.
+const PARAPHRASE_DISPLAY_MIN = 0.695;
 
 function showInSuggestions(verses, method) {
   if (!queueList) return;
@@ -1358,8 +1364,9 @@ function showInSuggestions(verses, method) {
 
   const frag = document.createDocumentFragment();
   const queued = queuedVerses(), now = Date.now();
+  const displayMin = method === 'paraphrase' ? PARAPHRASE_DISPLAY_MIN : SUGGESTION_DISPLAY_MIN;
   for (const v of verses) {
-    if (v.similarity != null && v.similarity < SUGGESTION_DISPLAY_MIN) continue;
+    if (v.similarity != null && v.similarity < displayMin) continue;
     if (queueList.querySelector(`[data-ref="${CSS.escape(v.reference)}"]`)) continue;
     // Already live in the Live Queue (showInViewer's own dedup, lines above,
     // only removes an EXISTING candidate card when something NEW goes live —

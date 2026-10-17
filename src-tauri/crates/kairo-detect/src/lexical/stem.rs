@@ -18,7 +18,7 @@ use std::sync::LazyLock;
 
 static SPELLING: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
     [
-        ("oh", "o"), ("unto", "to"),
+        ("oh", "o"), ("unto", "to"), ("yeah", "yea"),
         ("shew", "show"), ("shewed", "showed"), ("sheweth", "showeth"), ("shewing", "showing"), ("shewn", "shown"), ("shewest", "showest"),
         ("honour", "honor"), ("honours", "honors"), ("honoured", "honored"), ("honoureth", "honoreth"), ("honourable", "honorable"),
         ("favour", "favor"), ("favours", "favors"), ("favoured", "favored"), ("favoureth", "favoreth"),
