@@ -1328,7 +1328,7 @@
                          sees Settings; this panel is the manual fallback. -->
                     <div class="setting-group" id="offline-installer-group" style="display:none;">
                         <label class="setting-label">Offline Model</label>
-                        <div id="offline-status-line" style="font-size:12px;color:var(--text-3);margin-bottom:8px;">Checking…</div>
+                        <div id="offline-status-line" class="setting-status" style="font-size:12px;color:var(--text-3);margin-bottom:8px;">Checking…</div>
                         <button id="offline-install-btn" class="setting-input btn-brand" style="cursor:pointer;display:none;">Download offline model (~465MB)</button>
                         <div id="offline-progress-wrap" style="display:none;margin-top:6px;">
                             <div style="background:var(--surface-2);height:6px;border-radius:3px;overflow:hidden;">
@@ -1343,7 +1343,7 @@
                          needed only when the Spoken language isn't English. -->
                     <div class="setting-group" id="offline-multi-installer-group" style="display:none;">
                         <label class="setting-label">Offline Model</label>
-                        <div id="offline-multi-status-line" style="font-size:12px;color:var(--text-3);margin-bottom:8px;">Checking…</div>
+                        <div id="offline-multi-status-line" class="setting-status" style="font-size:12px;color:var(--text-3);margin-bottom:8px;">Checking…</div>
                         <button id="offline-multi-install-btn" class="setting-input btn-brand" style="cursor:pointer;display:none;">Download offline model for other languages (~475MB)</button>
                         <div id="offline-multi-progress-wrap" style="display:none;margin-top:6px;">
                             <div style="background:var(--surface-2);height:6px;border-radius:3px;overflow:hidden;">
@@ -1357,6 +1357,7 @@
                     <div class="setting-group" id="deepgram-key-group">
                         <label class="setting-label">Deepgram API Key</label>
                         <input type="password" id="deepgram-key" class="setting-input" placeholder="dg_...">
+                        <p class="setting-hint">No key yet? <a href="https://console.deepgram.com/signup" target="_blank" rel="noopener">Get a free key &rarr;</a> ($200 of free credit to start).</p>
                     </div>
 
                     </div>

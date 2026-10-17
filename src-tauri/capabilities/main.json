@@ -16,6 +16,7 @@
     "updater:default",
     "dialog:allow-open",
     "clipboard-manager:allow-read-text",
+    "shell:allow-open",
     "core:window:allow-create",
     "core:window:allow-show",
     "core:window:allow-hide",

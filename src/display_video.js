@@ -88,7 +88,15 @@
 
     // What this window really shows, for the operator window to compare with
     // what it put on air: the source wanted, the one showing, and why not.
-    const report = (want, error) => { try { opts.onShowing && opts.onShowing({ output: lastArgs && lastArgs.outputKey, want: want || null, showing: current ? current.sourceId : null, error: error || null }); } catch {} };
+    // Only a change is reported: a retry every few seconds isn't news.
+    let lastReport = '';
+    const report = (want, error) => {
+      const r = { output: lastArgs && lastArgs.outputKey, want: want || null, showing: current ? current.sourceId : null, error: error || null };
+      const sig = JSON.stringify(r);
+      if (sig === lastReport) return;
+      lastReport = sig;
+      try { opts.onShowing && opts.onShowing(r); } catch {}
+    };
 
     // The device went away (unplugged): drop it and keep trying.
     function watch(opened) {

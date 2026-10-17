@@ -51,8 +51,14 @@ window.kairoLog = kairoLog;
 // A page that never loads the token (or a token that never comes) still gets its lines out.
 setTimeout(_kairoLogFlush, 8000);
 
+// Settles once loadAuthToken has its answer (a token, or none after its retries):
+// a request made before then waits for it (app.js _authFetch) instead of going out
+// without the token and being refused. The Media Bin's first load at startup was
+// refused this way (HTTP 401, owner's screenshot 2026-10-17).
+let _kairoAuthDone;
+window.kairoAuthReady = new Promise(r => { _kairoAuthDone = r; });
 async function loadAuthToken(attempts = 5, delayMs = 200) {
-  try { await _loadAuthToken(attempts, delayMs); } finally { _kairoLogFlush(); }
+  try { await _loadAuthToken(attempts, delayMs); } finally { _kairoLogFlush(); _kairoAuthDone(); }
 }
 async function _loadAuthToken(attempts, delayMs) {
   if (window.parent !== window) {

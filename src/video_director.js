@@ -928,6 +928,7 @@
     const helpBtn = vBtn('?', 'Keyboard shortcuts', (e) => toggleKeyHelp(e.currentTarget), 'vd-mini vd-help-btn');
     helpBtn.setAttribute('aria-label', 'Keyboard shortcuts'); helpBtn.setAttribute('aria-haspopup', 'dialog');
     dctl.append(D.ui.detChip, D.ui.looksChip, looksBtn, helpBtn);
+    D.ui.dctl = dctl;
     dhead.appendChild(dctl);
     displays.append(dhead, band);
 
@@ -1067,6 +1068,7 @@
     if (D.pendingLook) bits.push(`Layout: ${D.pendingLook.name}`);
     D.ui.pvwRef.textContent = bits.length ? bits.join(' · ') : 'Same as output';
     if (D.ui.clearStage) D.ui.clearStage.hidden = !(D.staged && !D.staged.sent);
+    dockTopButtons(true);
     // The empty-picture label sits inside the video zone when the layout has one, not over the frame.
     if (D.frames.pvw) D.frames.pvw.box.classList.toggle('has-zone', hasZone(pvwFrameTheme()));
     if (D.frames.pgm) D.frames.pgm.box.classList.toggle('has-zone', hasZone(liveFrameTheme()));
@@ -1205,9 +1207,17 @@
   }
 
   async function start() {
-    if (D.active) return;
+    if (D.active || D.starting) return;
+    // Camera access is asked (and answered) before the page changes: the layout used to
+    // switch over half-built behind the system's permission prompt (owner, 2026-10-17).
+    // Denied or not, Director mode then opens; without access it simply has no cameras.
+    D.starting = true;
+    try { if (typeof refreshVideoDevices === 'function') await refreshVideoDevices(false); } catch {}
+    D.starting = false;
     if (!build()) return;
     D.active = true;
+    drawShowing();
+    dockTopButtons(true);
     document.addEventListener('keydown', onKey);
     document.addEventListener('dblclick', onDblClick, true);
     document.addEventListener('click', trackClick, true);
@@ -1255,6 +1265,8 @@
   function stop() {
     if (!D.active) return;
     D.active = false;
+    drawShowing();   // camera warnings belong to Director mode
+    dockTopButtons(false);
     document.removeEventListener('keydown', onKey);
     document.removeEventListener('dblclick', onDblClick, true);
     unwrapSend();
@@ -1336,14 +1348,46 @@
   // An output window couldn't show the camera put on air (it wouldn't open, or
   // was unplugged): the tile still says On air, so say what the screen really
   // shows. display_video.js reports it under kairo-video-showing:<output>.
+  // Director mode: Replay and Record sit with Preview and Output (owner, 2026-10-17), in the
+  // Displays header beside Layouts; back in the top bar when Director mode ends. Each button
+  // is made by its own module on first use, so this runs again on every refresh until both are in.
+  function dockTopButtons(on) {
+    const btns = [document.querySelector('.tb-replay-btn'), document.getElementById('record-btn')].filter(Boolean);
+    if (on && D.active && D.ui.dctl) {
+      const before = D.ui.looksBtn || null;
+      btns.forEach(b => { if (b.parentNode !== D.ui.dctl) D.ui.dctl.insertBefore(b, before); b.classList.add('vd-docked'); });
+      return;
+    }
+    if (on) return;
+    const listen = document.getElementById('listen-btn');
+    if (!listen) return;
+    btns.forEach(b => { b.classList.remove('vd-docked'); listen.parentNode.insertBefore(b, document.getElementById('stream-btn') || listen); });
+  }
+
+  // One warning per camera, however many outputs carry it, and only in Director mode (where
+  // cameras go on air); it clears when every output shows it again or Director mode ends.
+  const failing = new Map();   // output → its report, while that output can't show its camera
+  function drawShowing() {
+    const bySource = new Map();
+    if (D.active) for (const r of failing.values()) if (!bySource.has(r.want)) bySource.set(r.want, r);
+    const name = (id) => { const s = videoSourceList().find(x => x.id === id); return (s && s.name) || 'A camera'; };
+    const shown = drawShowing.shown || (drawShowing.shown = new Map());   // key → message on the strip
+    for (const key of [...shown.keys()]) if (!bySource.has(key.slice('video-showing-'.length))) { window.kairoProblemCleared?.(key); shown.delete(key); }
+    for (const [src, r] of bySource) {
+      const key = `video-showing-${src}`;
+      const why = r.error === 'disconnected' ? 'It was disconnected.' : VSRC.describeCaptureError({ name: r.error });
+      const msg = `${name(src)} isn't on the screen. ${why} The screen shows ${r.showing ? name(r.showing) : 'no camera'}; Kairo keeps trying.`;
+      if (shown.get(key) === msg) continue;   // already says so
+      shown.set(key, msg);
+      window.kairoProblem?.(msg, key);
+    }
+  }
   window.addEventListener('storage', (e) => {
     if (!e.key || !e.key.startsWith('kairo-video-showing:')) return;
     let r; try { r = JSON.parse(e.newValue || 'null'); } catch { return; }
     if (!r || !r.output) return;
-    const key = `video-showing-${r.output}`;
-    if (!r.want || !r.error) { window.kairoProblemCleared?.(key); return; }
-    const name = (id) => { const s = videoSourceList().find(x => x.id === id); return (s && s.name) || 'A camera'; };
-    const why = r.error === 'disconnected' ? 'It was disconnected.' : VSRC.describeCaptureError({ name: r.error });
-    window.kairoProblem?.(`${name(r.want)} isn't on the screen. ${why} The screen shows ${r.showing ? name(r.showing) : 'no camera'}; Kairo keeps trying.`, key);
+    const was = failing.get(r.output);
+    if (r.want && r.error) failing.set(r.output, r); else failing.delete(r.output);
+    if (JSON.stringify(was) !== JSON.stringify(failing.get(r.output))) drawShowing();
   });
 })();

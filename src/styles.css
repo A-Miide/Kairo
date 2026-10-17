@@ -8499,6 +8499,10 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
     align-items: start;
   }
   .settings-pane:not([data-pane="help"]):not([data-pane="outputs"]) .setting-group[data-arranged] > .setting-copy .setting-label { padding-top: 9px; }
+  /* A row whose value is a line of text (a status), not a box: the label lines up
+     with that text, not with the middle of an input (Offline Model sat below its
+     "installed" line). */
+  .settings-pane:not([data-pane="help"]):not([data-pane="outputs"]) .setting-group[data-arranged]:has(> .setting-control > .setting-status:first-child) > .setting-copy .setting-label { padding-top: 0; }
 }
 .setting-copy { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .setting-copy .setting-hint { margin: 0; }
