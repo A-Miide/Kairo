@@ -1219,6 +1219,7 @@
     D.starting = false;
     if (!build()) return;
     D.active = true;
+    window.kairoLog?.('director', { on: true });   // so a problem after a switch can be lined up with it
     drawShowing();
     dockTopButtons(true);
     document.addEventListener('keydown', onKey);
@@ -1269,6 +1270,7 @@
   function stop() {
     if (!D.active) return;
     D.active = false;
+    window.kairoLog?.('director', { on: false });
     drawShowing();   // camera warnings belong to Director mode
     dockTopButtons(false);
     document.removeEventListener('keydown', onKey);
