@@ -121,6 +121,7 @@
     post('pvw', { type: 'vd-source', sourceId: src });
     post('pvw', { type: 'vd-layers', layers: D.pendingLook ? D.pendingLook.layers : null });
     post('pvw', { type: 'vd-frame', look: pvwFrameTheme() });
+    if (liveOverlays) post('pvw', liveOverlays);
     if (D.staged && D.staged.media) {
       const m = D.staged.media;
       post('pvw', { type: 'clear' });
@@ -137,7 +138,11 @@
     }
   }
   // What the Output is showing, from the server's broadcasts (app.js hands them over).
+  // The overlays live on the Output (logo, lower-thirds), kept even while Director mode is off so
+  // Preview has them the moment it opens: Preview shows the Output's overlays as they are.
+  let liveOverlays = null;
   function onServerMessage(msg) {
+    if (msg && msg.type === 'overlays') { liveOverlays = msg; if (D.active) post('pvw', msg); return; }
     if (!D.active || !msg) return;
     let changed = false;
     if (msg.type === 'detection' && msg.target === 'viewer' && msg.verses && msg.verses.length && !msg.retranslated) { D.liveMsg = msg; D.outSeq++; changed = true; }
@@ -813,7 +818,12 @@
     D.ui.clearStage = vBtn('×', 'Clear the staged verse (the Preview camera stays)', clearStage, 'vd-mini vd-clear-stage');
     D.ui.clearStage.setAttribute('aria-label', 'Clear the staged verse');
     D.ui.clearStage.hidden = true;
-    pvwHead.append(D.ui.pvwRef, D.ui.clearStage);
+    // Edit what Preview shows in Theme Studio: every layer, shape size, fill and font.
+    D.ui.editLook = vBtn('Edit', 'Edit the theme Preview shows in Theme Studio', () => {
+      const t = pvwFrameTheme() || (D.staged && D.staged.look) || (D.liveMsg && D.liveMsg.look) || null;
+      if (typeof openThemeStudioOn === 'function') openThemeStudioOn(t && t.id); else if (typeof openThemeStudio === 'function') openThemeStudio();
+    }, 'vd-mini vd-edit-look');
+    pvwHead.append(D.ui.pvwRef, D.ui.clearStage, D.ui.editLook);
     pvw.append(pvwHead, buildFrame('pvw'));
     if (window.KairoVideoLooks) {
       D.looks = window.KairoVideoLooks.create({
