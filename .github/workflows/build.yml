@@ -48,6 +48,19 @@ jobs:
           cache-directories: src-tauri/target/sherpa-onnx-prebuilt
           key: with-sherpa-libs
 
+      # A partial cache match can bring back sherpa-onnx's build-script output
+      # without the libraries it points at (v4.1.2's macOS build: "could not find
+      # native static library sherpa-onnx-c-api"). Then forget that output, so
+      # the build script runs again and downloads them.
+      - name: Speech engine libraries present
+        shell: bash
+        run: |
+          if ! find src-tauri/target/sherpa-onnx-prebuilt -name '*sherpa-onnx-c-api*' 2>/dev/null | grep -q .; then
+            echo "sherpa-onnx libraries missing: rebuilding sherpa-onnx-sys"
+            find src-tauri/target -type d -path '*/build/sherpa-onnx-sys-*' -prune -exec rm -rf {} + 2>/dev/null || true
+            find src-tauri/target \( -name 'libsherpa_onnx_sys-*' -o -name 'sherpa_onnx_sys-*' \) -delete 2>/dev/null || true
+          fi
+
       - name: Build dependencies
         if: steps.cache.outputs.cache-hit != 'true'
         run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config
@@ -178,6 +191,19 @@ jobs:
           # (otherwise a warm cache links against a folder that's gone).
           cache-directories: src-tauri/target/sherpa-onnx-prebuilt
           key: with-sherpa-libs
+
+      # A partial cache match can bring back sherpa-onnx's build-script output
+      # without the libraries it points at (v4.1.2's macOS build: "could not find
+      # native static library sherpa-onnx-c-api"). Then forget that output, so
+      # the build script runs again and downloads them.
+      - name: Speech engine libraries present
+        shell: bash
+        run: |
+          if ! find src-tauri/target/sherpa-onnx-prebuilt -name '*sherpa-onnx-c-api*' 2>/dev/null | grep -q .; then
+            echo "sherpa-onnx libraries missing: rebuilding sherpa-onnx-sys"
+            find src-tauri/target -type d -path '*/build/sherpa-onnx-sys-*' -prune -exec rm -rf {} + 2>/dev/null || true
+            find src-tauri/target \( -name 'libsherpa_onnx_sys-*' -o -name 'sherpa_onnx_sys-*' \) -delete 2>/dev/null || true
+          fi
 
       - name: Install Linux deps
         if: matrix.platform == 'ubuntu-24.04'
