@@ -16,6 +16,15 @@ rustflags = ["-C", "target-feature=+crt-static"]
 [target.aarch64-pc-windows-msvc.onnxruntime]
 rustc-link-lib = []
 
+# Linux: the speech engine's static library already carries ONNX Runtime, and
+# linking ort's prebuilt copy beside it failed with duplicate symbols (abseil,
+# re2) in the 4.1.1 release build. ort uses the speech engine's copy instead.
+[target.x86_64-unknown-linux-gnu.onnxruntime]
+rustc-link-lib = []
+
+[target.aarch64-unknown-linux-gnu.onnxruntime]
+rustc-link-lib = []
+
 # Intel Macs: ort publishes no prebuilt ONNX Runtime for x86_64-apple-darwin.
 # The offline speech engine already links ONNX Runtime (1.28.2, the same
 # release ort expects), so ort uses that copy instead of linking its own.
