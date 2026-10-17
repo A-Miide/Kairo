@@ -1484,7 +1484,8 @@
             return;
         }
         if (CAPTURE || (MONITOR && !SHARED)) return;
-        const layers = PREVIEW ? { ...outputLayers, video: previewVideoOn } : outputLayers;
+        // A Monitor output (the confidence view) is words only: it never opens a camera.
+        const layers = PREVIEW ? { ...outputLayers, video: previewVideoOn } : outputMode === 'confidence' ? { ...outputLayers, video: false } : outputLayers;
         const live = PREVIEW ? { [OUTPUT_KEY]: previewSourceId } : readJson('kairo-video-live', {});
         // Nothing live and nothing showing: nothing to load or start.
         if (!videoLayer && !(layers.video && live[OUTPUT_KEY])) return;

@@ -17,8 +17,21 @@
   // camera is captured once.
   const directProvider = {
     async open(source) {
-      const devices = await navigator.mediaDevices.enumerateDevices();
-      const deviceId = V.resolveDevice(source, devices);
+      let devices = await navigator.mediaDevices.enumerateDevices();
+      let deviceId = V.resolveDevice(source, devices);
+      // A page sees the cameras' ids and names only after it has opened a camera itself
+      // (WebKit), even with the app's camera access already allowed. An output window never
+      // had, so the saved camera never matched: "This device is not connected" for a
+      // FaceTime camera that was right there (owner, 2026-10-17). Open one once to unlock
+      // the list, then match again.
+      if (!deviceId && devices.some(d => d.kind === 'videoinput' && !d.label)) {
+        try {
+          const s = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+          s.getTracks().forEach(t => t.stop());
+          devices = await navigator.mediaDevices.enumerateDevices();
+          deviceId = V.resolveDevice(source, devices);
+        } catch {}
+      }
       if (!deviceId) { const e = new Error('device missing'); e.name = 'NotFoundError'; throw e; }
       // Never more than this window can show (a capture window's own size, else its screen's).
       const q = new URLSearchParams(location.search);
