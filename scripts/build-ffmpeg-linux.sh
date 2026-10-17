@@ -42,7 +42,9 @@ CROSS=""; VPX_TARGET=""; FF_PLATFORM=()
 if [[ "$TARGET" == windows ]]; then
   CROSS="x86_64-w64-mingw32-"
   VPX_TARGET="--target=x86_64-win64-gcc"
-  FF_PLATFORM=(--target-os=mingw32 --arch=x86_64 --cross-prefix="$CROSS" --enable-mediafoundation --enable-encoder=h264_mf
+  # d3d11va: FFmpeg 9's Media Foundation encoder (mfenc.c) uses D3D11 types
+  # unconditionally, and --disable-autodetect leaves it off.
+  FF_PLATFORM=(--target-os=mingw32 --arch=x86_64 --cross-prefix="$CROSS" --enable-mediafoundation --enable-d3d11va --enable-encoder=h264_mf
                --enable-schannel --enable-protocol=tls,rtmps --enable-indev=dshow
                --extra-ldflags=-static)
 fi
