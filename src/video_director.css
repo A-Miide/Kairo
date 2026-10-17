@@ -752,3 +752,10 @@ body.video-director .svc-slide.live.is-staged, body.video-director .media-card.i
 /* Replay and Record, docked in the Displays header in Director mode: sized like its other buttons. */
 .vd-gh-ctl .tb-stream-btn.vd-docked { height: 22px; padding: 0 8px; font-size: 10.5px; font-weight: 600; border-radius: var(--radius-sm); }
 .vd-gh-ctl .tb-stream-btn.vd-docked[hidden] { display: none; }
+
+/* An input's settings (right-click a tile): label and control on one line each. */
+.vsrc-props { display: flex; flex-direction: column; gap: 8px; }
+.vsrc-prop { display: grid; grid-template-columns: 84px minmax(0, 1fr); align-items: center; gap: 10px; }
+.vsrc-prop-label { font-size: 11px; color: var(--text-3); }
+.vsrc-prop .setting-input, .vsrc-prop select { width: 100%; min-width: 0; }
+.vsrc-prop-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 4px; }
