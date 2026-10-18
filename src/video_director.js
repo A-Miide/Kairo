@@ -221,8 +221,12 @@
     const sent = slide && window.KairoService ? window.KairoService.sendSlide(slide.item, slide.index, { direct: true })
       : media && window.KairoService ? window.KairoService.sendMedia(media.item, media.fit, true)
       : D.origSend(verse, look);
+    // The slide's own send has already marked it live: the tiles (LIVE badge, staged outline) catch up now,
+    // not only on the next refresh (they were drawn just above, before it was live).
+    refresh();
     // It didn't reach the screen: Preview no longer claims to match the Output, so Send can try again.
     Promise.resolve(sent).then((ok) => {
+      refresh();
       if (ok === false) { if (D.staged === staged) { staged.sent = false; refresh(); } return; }
       // On screen now: the live preview, Live Queue and notes catch up.
       if (!slide && !media) releaseViewerFor(verse, staged && staged.fromDetection);
