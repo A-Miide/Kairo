@@ -2653,7 +2653,7 @@ body > .lyric-follow-hud { position: fixed; left: 14px; bottom: 14px; z-index: 4
 }
 .svc-flow-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;   /* Send and Delete sit level with the middle of the slide (owner, 2026-10-18) */
   gap: var(--space-2);
   padding: var(--space-2);
   border: 1px solid var(--border);
@@ -8647,3 +8647,7 @@ body.video-director #ts-add-videozone-btn, body.video-director #ts-add-contentzo
 .ts-nav-back:hover svg { transform: translateX(-2px); }
 .ts-nav-back:active { background: var(--bg-card); }
 .ts-nav-back:focus-visible { outline: 2px solid var(--selected-border); outline-offset: 1px; }
+
+/* Quick edit rows: Send and Delete centred on the slide, not pinned to its first line. */
+.svc-flow-row .svc-flow-send, .svc-flow-row .svc-flow-del { margin-top: 0; }
+.svc-flow-del { padding: 0 6px; }
