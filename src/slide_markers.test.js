@@ -53,3 +53,35 @@ test('a spoken "verse 50" moves the deck to the slide marked 50, not just any sl
   // already on the slide that carries it: nothing moves
   assert.equal(f.noteVerse({ book: 'John', chapter: 6, verse: 50 }), false);
 });
+
+const { indexCall } = require('./slide_follow.js');
+
+test('a numbered point is heard; a citation, a book or a bare number is not', () => {
+  assert.equal(indexCall('so point three is that God is faithful'), 3);
+  assert.equal(indexCall('step 4 is to pray'), 4);
+  assert.equal(indexCall('reason twenty one'), 21);
+  assert.equal(indexCall('number six verse 24'), null);          // the book of Numbers
+  assert.equal(indexCall('Numbers 6 says'), null);
+  assert.equal(indexCall('a number of people came'), null);
+  assert.equal(indexCall('three people came'), null);
+  assert.equal(indexCall('slide three of chapter five'), null);   // "of": not a point call
+});
+
+test('"point three" moves the deck to the slide numbered 3, forward only, and never while scripture is read', () => {
+  const texts = ['Welcome', '1.\nGod is good', '2.\nGod is near', '3.\nGod is faithful', '4.\nGod is able'];
+  const moves = [];
+  const mk = () => { const f = new SlideFollower({ slides: texts }, { onAdvance: (e) => moves.push([e.toIndex, e.by]), onPosition: () => {} }); f.resync(0); return f; };
+  let f = mk();
+  f.ingest('so the third thing, point three, is', { isFinal: true, now: 1000 });
+  assert.deepEqual(moves, [[3, 'index']]);
+  // not backwards
+  f.ingest('remember point one', { isFinal: true, now: 20000 });
+  assert.equal(moves.length, 1);
+  // scripture in progress: a number is a verse
+  moves.length = 0; f = mk();
+  f.ingest('point three', { isFinal: true, now: 1000, scriptureActive: true });
+  assert.equal(moves.length, 0);
+  // not on a partial transcript
+  f.ingest('point three', { isFinal: false, now: 2000 });
+  assert.equal(moves.length, 0);
+});

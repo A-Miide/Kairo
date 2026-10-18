@@ -63,6 +63,29 @@
     return out;
   }
 
+  // "point three", "slide 3", "step two": the number a speaker puts on a point in their talk, or
+  // null. Not "numbers 6" (the book), not "number six verse 24" (a citation: "verse"/"chapter" after
+  // it), and a bare number or ordinal alone is never one.
+  const INDEX_WORDS = new Set(['point', 'number', 'step', 'reason', 'slide', 'item', 'principle', 'key', 'thing', 'lesson', 'secret']);
+  function indexCall(text) {
+    const ws = String(text || '').toLowerCase().replace(/[’']/g, '').split(/[^a-z0-9]+/).filter(Boolean);
+    for (let i = 0; i + 1 < ws.length; i++) {
+      if (!INDEX_WORDS.has(ws[i])) continue;
+      if (i > 0 && /^(the|a|of)$/.test(ws[i - 1]) && ws[i] === 'number') continue;   // "the number of", "a number of"
+      let n = null, used = 1;
+      const w = ws[i + 1];
+      if (/^\d{1,2}$/.test(w)) n = Number(w);
+      else if (TENS[w] != null) { n = TENS[w]; if (UNITS[ws[i + 2]] > 0 && UNITS[ws[i + 2]] < 10) { n += UNITS[ws[i + 2]]; used = 2; } }
+      else if (UNITS[w] != null && UNITS[w] > 0) n = UNITS[w];
+      else if (ORDINAL[w] != null) n = ORDINAL[w];
+      if (n == null) continue;
+      const after = ws[i + 1 + used];
+      if (after === 'verse' || after === 'verses' || after === 'chapter' || after === 'of') continue;
+      return n;
+    }
+    return null;
+  }
+
   function keysOf(text) {
     return numberize(words(text)).map((w) => (/^\d+$/.test(w) ? w : tokenizeKeys(w)[0])).filter(Boolean);
   }
@@ -240,9 +263,33 @@
     return false;
   };
 
+  // The speaker numbered a point ("point three"): the deck moves to the slide that carries that
+  // number as its own index. Forward only, like everything the follower does on its own.
+  SlideFollower.prototype.noteIndex = function (n, now) {
+    if (!this.enabled || !(n > 0)) return false;
+    now = now || Date.now();
+    for (let k = this.index + 1; k < this.slides.length; k++) {
+      const s = this.slides[k];
+      if (s.markerKind !== 'index' || s.marker !== n) continue;
+      this.index = k;
+      this._lastAdvanceAt = now;
+      this._consumed = this._finalBase + this._final.length + this._interim.length;
+      this.confidence = 1;
+      this.onAdvance({ toIndex: k, confidence: 1, by: 'index' });
+      return true;
+    }
+    return false;
+  };
+
   SlideFollower.prototype.ingest = function (text, meta) {
     if (!this.enabled) return;
     const now = (meta && meta.now) || Date.now();
+    // A numbered point is only acted on once the sentence is final, and never while scripture is
+    // being read (then a number is a verse, not a point).
+    if (meta && meta.isFinal && !meta.scriptureActive && this.slides.some((s) => s.markerKind === 'index')) {
+      const n = indexCall(text);
+      if (n != null && this.noteIndex(n, now)) return;
+    }
     const keys = keysOf(text);
     if (meta && meta.isFinal) {
       this._final.push(...keys);
@@ -295,7 +342,7 @@
     this.onAdvance({ toIndex: pick.k, confidence: this.confidence, by: 'words', heard: win.slice(pick.mt.first, pick.mt.last + 1) });
   };
 
-  const API = { SlideFollower, keysOf, DEFAULTS };
+  const API = { SlideFollower, keysOf, indexCall, DEFAULTS };
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   if (root) root.KairoSlideFollow = API;
 
