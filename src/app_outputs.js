@@ -883,17 +883,28 @@ function renderAudioOutputDetail(host) {
     try {
       const ctx = new (window.AudioContext || window.webkitAudioContext)();
       const dest = ctx.createMediaStreamDestination();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      gain.gain.value = 0.15;
-      osc.frequency.value = 440;
-      osc.connect(gain).connect(dest);
       const el = new Audio();
       el.srcObject = dest.stream;
       if (sel.value && el.setSinkId) await el.setSinkId(sel.value);
-      osc.start();
+      // A soft two-note chime (C then G, each with a gentle attack and a long fade), not a flat
+      // beep: pleasant at a desk, and clear enough to hear on a far speaker.
+      const t0 = ctx.currentTime + 0.05;
+      [[523.25, 0], [783.99, 0.3]].forEach(([freq, at]) => {
+        [[1, 0.2], [2, 0.05]].forEach(([mult, level]) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.value = freq * mult;
+          gain.gain.setValueAtTime(0, t0 + at);
+          gain.gain.linearRampToValueAtTime(level, t0 + at + 0.02);
+          gain.gain.exponentialRampToValueAtTime(0.0005, t0 + at + 0.95);
+          osc.connect(gain).connect(dest);
+          osc.start(t0 + at);
+          osc.stop(t0 + at + 1);
+        });
+      });
       await el.play();
-      setTimeout(() => { osc.stop(); el.pause(); ctx.close(); }, 900);
+      setTimeout(() => { el.pause(); ctx.close(); }, 1500);
     } catch (err) {
       note.textContent = `Couldn\u2019t play to that device: ${String(err && err.message || err)}`;
     }
