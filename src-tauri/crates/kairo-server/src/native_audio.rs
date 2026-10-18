@@ -133,7 +133,6 @@ pub fn start(app: Shared, want: &str, feed: bool) -> Result<Capture, String> {
                     continue;
                 }
                 let Ok(mut block) = opened.rx.recv_timeout(Duration::from_millis(100)) else { continue };
-                last_block = std::time::Instant::now();
                 if opened.rate != RATE {
                     block.iter_mut().for_each(|s| *s = lowpass.run(*s));
                 }
@@ -154,6 +153,10 @@ pub fn start(app: Shared, want: &str, feed: bool) -> Result<Capture, String> {
                         app.hub.broadcast(json!({ "type": "input-level", "peak": peak, "clipped": clipped, "gain": level.gain, "device": name }));
                     }
                 }
+                // "Gone" counts only time spent waiting for the input. Time spent waiting for a busy
+                // engine above is not the input going quiet: counted, a stall of 3 s reopened the
+                // input and threw away the audio queued meanwhile (review, 2026-10-18).
+                last_block = std::time::Instant::now();
             }
         })
         .map_err(|e| e.to_string())?;

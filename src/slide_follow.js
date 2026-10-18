@@ -66,12 +66,16 @@
   // "point three", "slide 3", "step two": the number a speaker puts on a point in their talk, or
   // null. Not "numbers 6" (the book), not "number six verse 24" (a citation: "verse"/"chapter" after
   // it), and a bare number or ordinal alone is never one.
-  const INDEX_WORDS = new Set(['point', 'number', 'step', 'reason', 'slide', 'item', 'principle', 'key', 'thing', 'lesson', 'secret']);
+  // Not "key", "thing", "lesson" or "secret": in ordinary talk they meet a number all the time ("a
+  // key, one that opened", "the lesson one learns") and the deck would move on its own (review, 2026-10-18).
+  const INDEX_WORDS = new Set(['point', 'number', 'step', 'reason', 'slide', 'item', 'principle']);
   function indexCall(text) {
-    const ws = String(text || '').toLowerCase().replace(/[’']/g, '').split(/[^a-z0-9]+/).filter(Boolean);
+    const lower = String(text || '').toLowerCase().replace(/[’']/g, '');
+    const ws = lower.split(/[^a-z0-9]+/).filter(Boolean);
     for (let i = 0; i + 1 < ws.length; i++) {
       if (!INDEX_WORDS.has(ws[i])) continue;
-      if (i > 0 && /^(the|a|of)$/.test(ws[i - 1]) && ws[i] === 'number') continue;   // "the number of", "a number of"
+      // "the number of", "our number one priority", "the reason one prays": a word that belongs to the sentence.
+      if (i > 0 && /^(the|a|an|of|our|my|your|his|her|their|its|this|that)$/.test(ws[i - 1])) continue;
       let n = null, used = 1;
       const w = ws[i + 1];
       if (/^\d{1,2}$/.test(w)) n = Number(w);
@@ -81,6 +85,8 @@
       if (n == null) continue;
       const after = ws[i + 1 + used];
       if (after === 'verse' || after === 'verses' || after === 'chapter' || after === 'of') continue;
+      // "number one priority is prayer": "number" calls a point only when the number ends the phrase.
+      if (ws[i] === 'number' && after != null && !new RegExp(`\\bnumber\\s+${ws.slice(i + 1, i + 1 + used).join('\\s+')}\\s*[,.:;!?\\u2014-]`).test(lower)) continue;
       return n;
     }
     return null;

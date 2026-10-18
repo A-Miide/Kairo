@@ -213,12 +213,13 @@
   const rcfg = () => cfg().record || {};
   const stamp = () => { const d = new Date(), p = (n) => String(n).padStart(2, '0'); return `Kairo ${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}-${p(d.getMinutes())}`; };
 
-  async function startRecording() {
+  // `going` (a recording carrying on by itself) never asks: nobody is at the button mid-service.
+  async function startRecording(going = false) {
     if (startingRecord || recording) return;
     startingRecord = true;
-    try { await startRecordingNow(); } finally { startingRecord = false; }
+    try { await startRecordingNow(going); } finally { startingRecord = false; }
   }
-  async function startRecordingNow() {
+  async function startRecordingNow(going) {
     if (!invoke) { alertMsg('Recording needs the Kairo app; it does not work in a browser.'); return; }
     if (recording) return;
     const r = rcfg();
@@ -227,7 +228,7 @@
     const pipelines = [];
     for (const o of outputs) pipelines.push(await pipelineBase(o, Number(r.bitrate) || 12000));
     captureOk = !!(window.KairoCapture && await window.KairoCapture.isSupported());
-    if (!captureOk && !(await ask('This computer can\'t capture Kairo\'s graphics yet, so the recording would have the camera and sound only. Record anyway?', 'Record'))) return;
+    if (!captureOk && !going && !(await ask('This computer can\'t capture Kairo\'s graphics yet, so the recording would have the camera and sound only. Record anyway?', 'Record'))) return;
     for (const p of pipelines) await useCapture(p.output, 'record', p.width, p.height);
     try {
       recWhy = '';
@@ -252,7 +253,8 @@
     Object.keys(recStatus).forEach(o => { lastFiles = recStatus[o].files && recStatus[o].files.length ? recStatus[o].files : lastFiles; dropCapture(o, 'record'); delete recStatus[o]; });
     recording = false;
     notify();
-    if (lastFiles.length && typeof showToast === 'function') showToast(`Recording saved: ${lastFiles[lastFiles.length - 1].split(/[\\/]/).pop()}`, 'success');
+    // No pop-up: the Record panel shows it as "Last recording" with Show in Finder.
+    if (lastFiles.length) { try { window.kairoLog && window.kairoLog('record-saved', { file: lastFiles[lastFiles.length - 1].split(/[\\/]/).pop(), parts: lastFiles.length }); } catch {} }
   }
   let recWhy = '';             // what the engine said when the recording last restarted
   let recFromStream = false;   // the recording is the stream's own picture (one encode), not its own pipeline
@@ -266,7 +268,7 @@
     recording = false;
     notify();
     try { window.kairoLog && window.kairoLog('record-continued-alone', {}); } catch {}
-    await startRecording();
+    await startRecording(true);
   }
   function takeRec(s) {
     if (!s || !s.output) return;
@@ -348,7 +350,8 @@
     if (!s || !s.output) return;
     if ((runs[s.output] || 0) > (s.run || 0)) return;
     runs[s.output] = s.run || 0;
-    if (s.state === 'stopped') { delete status[s.output]; if (!Object.keys(status).length) continueRecordingOnItsOwn(); } else status[s.output] = s;
+    // The stream a recording copies has ended (other outputs may still be streaming): it records on its own.
+    if (s.state === 'stopped') { delete status[s.output]; if (recFromStream && recStatus[s.output]) continueRecordingOnItsOwn(); } else status[s.output] = s;
     health();
   }
 
