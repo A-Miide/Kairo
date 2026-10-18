@@ -183,6 +183,19 @@ function buildVideoPane() {
     renderVideoSources();
   };
   navigator.mediaDevices?.addEventListener?.('devicechange', videoState.onDeviceChange);
+  // The window's web view does not always say when a camera is plugged in or allowed: the list is read
+  // again when the window comes back to the front and every few seconds while Director mode is on, and the
+  // board redraws when it changed. (A new camera used to show only after Director mode was switched off and on.)
+  const devSig = () => videoState.devices.map(d => `${d.deviceId}|${d.label}`).join(',');
+  let checking = false;
+  videoState.recheck = async () => {
+    if (checking || document.hidden || !videoState.built) return;
+    checking = true;
+    try { const before = devSig(); await refreshVideoDevices(false); if (devSig() !== before) renderVideoSources(); } finally { checking = false; }
+  };
+  videoState.recheckTimer = setInterval(videoState.recheck, 4000);
+  window.addEventListener('focus', videoState.recheck);
+  document.addEventListener('visibilitychange', videoState.recheck);
 }
 
 // ── Add flow: one input at a time, as a placeholder or from a detected device ──
@@ -568,6 +581,9 @@ async function startVideoSources() {
 function stopVideoSources() {
   videoState.observer?.disconnect();
   navigator.mediaDevices?.removeEventListener?.('devicechange', videoState.onDeviceChange);
+  clearInterval(videoState.recheckTimer); videoState.recheckTimer = null;
+  window.removeEventListener('focus', videoState.recheck);
+  document.removeEventListener('visibilitychange', videoState.recheck);
   releaseAllPreviews();
   videoState.root?.closest('.settings-pane')?.remove();
   document.querySelector('#settings-nav .settings-nav-item[data-pane="sources"]')?.remove();
