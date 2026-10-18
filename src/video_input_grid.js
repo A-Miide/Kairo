@@ -211,6 +211,8 @@
       t.appendChild(pv);
       const go = (e) => (e.shiftKey ? opts.onPreview(source.id) : opts.onProgram(source.id));
       t.addEventListener('click', go);
+      // Double-click shows it in Preview (also where nothing carries video yet).
+      t.addEventListener('dblclick', (e) => { e.preventDefault(); opts.onPreview(source.id); });
       // Right-click: this input's settings.
       t.addEventListener('contextmenu', (e) => { if (!opts.onSettings) return; e.preventDefault(); opts.onSettings(source.id, t); });
       // Enter sends it; Space is the Take key of the whole screen.
