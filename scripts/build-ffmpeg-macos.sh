@@ -51,7 +51,7 @@ for ARCH in "${ARCHS[@]}"; do
       --disable-ffplay --disable-ffprobe --disable-shared --enable-static \
       --enable-zlib --enable-videotoolbox --enable-avfoundation --enable-securetransport --enable-network \
       --enable-demuxer="$DEMUXERS,rawvideo" --enable-decoder="$DECODERS" --enable-parser="$PARSERS" \
-      --enable-encoder=h264_videotoolbox,aac,rawvideo --enable-muxer=mp4,rawvideo,flv,tee,fifo,mpegts \
+      --enable-encoder=h264_videotoolbox,aac,rawvideo --enable-muxer=mp4,mov,matroska,rawvideo,flv,tee,fifo,mpegts \
       --enable-protocol=file,pipe,tcp,tls,rtmp,rtmps \
       --enable-indev=avfoundation,lavfi \
       --enable-filter=scale,format,null,anull,aresample,aformat,setsar,fps,crop,pad,overlay,streamselect,color,anullsrc,split,amix,volume \

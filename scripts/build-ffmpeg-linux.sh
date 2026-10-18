@@ -76,7 +76,7 @@ tar -xJf "$WORK/ffmpeg.tar.xz" -C "$WORK/ff-src" --strip-components=1
     --enable-zlib --enable-libvpx --pkg-config-flags=--static \
     --extra-cflags="-I$PREFIX/include" --extra-ldflags="-L$PREFIX/lib" \
     --enable-demuxer="$DEMUXERS,rawvideo" --enable-decoder="$DECODERS" --enable-parser="$PARSERS" \
-    --enable-encoder=libvpx_vp9,aac,rawvideo --enable-muxer=mp4,rawvideo,flv,tee,fifo,mpegts \
+    --enable-encoder=libvpx_vp9,aac,rawvideo --enable-muxer=mp4,mov,matroska,rawvideo,flv,tee,fifo,mpegts \
     --enable-protocol=file,pipe,tcp,rtmp --enable-indev=lavfi \
     --enable-filter=scale,format,null,anull,aresample,aformat,setsar,fps,crop,pad,overlay,streamselect,color,anullsrc,split,amix,volume \
     --enable-bsf=aac_adtstoasc,extract_extradata,h264_mp4toannexb \

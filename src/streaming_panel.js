@@ -21,7 +21,10 @@
   const FPS = [30, 60];
   const VIDEO_BITRATES = [[2500, '2.5 Mbps · weak internet'], [4500, '4.5 Mbps'], [6000, '6 Mbps · recommended 1080p'], [9000, '9 Mbps · 1080p60']];
   const AUDIO_BITRATES = [128, 160, 192];
-  const RECORD_BITRATES = [[8000, '8 Mbps · smaller files'], [12000, '12 Mbps · recommended'], [20000, '20 Mbps · best']];
+  const RECORD_BITRATES = [[8000, '8 Mbps · smaller files'], [12000, '12 Mbps · recommended'], [20000, '20 Mbps · best'], [35000, '35 Mbps · highest']];
+  const RECORD_FORMATS = [['mp4', 'MP4 · plays everywhere'], ['mov', 'MOV · for Apple and editing apps'], ['mkv', 'MKV · survives a crash best']];
+  const RECORD_SIZES = [['same', 'Same as the stream'], ['720p', '720p · 1280 × 720'], ['1080p', '1080p · 1920 × 1080'], ['1440p', '1440p · 2560 × 1440'], ['2160p', '4K · 3840 × 2160']];
+  const RECORD_FPS = [['same', 'Same as the stream'], ['24', '24 fps'], ['30', '30 fps'], ['60', '60 fps']];
   const DEFAULTS = {
     destinations: [],
     video: { resolution: '1080p', fps: 30, bitrate: 6000 },
@@ -303,8 +306,11 @@
     if (r.folder) { const reset = el('button', 'modal-btn secondary', 'Use Movies'); reset.type = 'button'; reset.addEventListener('click', () => setRec({ folder: null })); folderCtl.appendChild(reset); }
     rbBody.append(
       ...(outs.length > 1 ? [row('Records', 'Which output is recorded', select(outs.map(o => [o.id, o.name]), r.output || outs[0].id, (v) => setRec({ output: v })))] : []),
-      row('Quality', 'Same size and frame rate as the stream. While streaming, the recording is the stream’s own picture at the stream’s quality', select(RECORD_BITRATES, r.bitrate || 12000, (v) => setRec({ bitrate: Number(v) }))),
-      row('Folder', 'Each recording is an MP4 named by its date and time', folderCtl),
+      row('Format', 'The kind of file. All of them are written as they go, so a crash keeps what was recorded', select(RECORD_FORMATS, r.format || 'mp4', (v) => setRec({ format: v }))),
+      row('Size', 'The picture size of a recording made on its own. While streaming, the recording is the stream’s own picture', select(RECORD_SIZES, r.resolution || 'same', (v) => setRec({ resolution: v }))),
+      row('Frame rate', null, select(RECORD_FPS, String(r.fps || 'same'), (v) => setRec({ fps: v }))),
+      row('Quality', 'How much detail each second keeps: higher is sharper and the file is bigger', select(RECORD_BITRATES, r.bitrate || 12000, (v) => setRec({ bitrate: Number(v) }))),
+      row('Folder', 'Each recording is named by its date and time', folderCtl),
     );
     const ro = S3 ? S3.recOverall() : { state: 'off', files: [] };
     if (ro.files && ro.files.length) {
