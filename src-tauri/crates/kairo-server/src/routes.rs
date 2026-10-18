@@ -44,6 +44,8 @@ pub fn router() -> Router<Shared> {
         .route("/api/look/apply", post(look_apply))
         .route("/api/monitor-message", post(monitor_message))
         .route("/api/debug-log", post(debug_log))
+        .route("/api/report/preview", get(crate::report::preview))
+        .route("/api/report/send", post(crate::report::send))
         .route("/api/translate", post(crate::translate::route))
         .fallback(get(static_file))
 }
