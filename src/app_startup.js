@@ -520,13 +520,15 @@ registerActionHandler('clock-message', (msg) => window.KairoService?.onClockActi
       });
     }
     await refreshDisplayStatus();
+    if (settingsLoaded && autoResumeDone && typeof reconcileDisplayWindows === 'function') reconcileDisplayWindows().catch(() => {});
     const connected = cachedScreens.length > 1;
     // List-row dot/text (renderOutputsList, always present once the
     // Outputs pane has rendered at least once).
     const headerDot = document.getElementById('external-header-dot');
     const headerTxt = document.getElementById('external-header-status');
     if (headerDot) headerDot.className = 'bs-dot' + (connected ? ' connected' : '');
-    if (headerTxt) headerTxt.textContent = connected ? 'External display connected' : 'No external display connected';
+    const waiting = typeof displaysWaiting !== 'undefined' && displaysWaiting.size > 0;
+    if (headerTxt) headerTxt.textContent = waiting ? 'An output is waiting for its display. If it is AirPlay, set it to Extend, not Mirror.' : connected ? 'External display connected' : 'No external display connected';
     // The open detail panel's dot, text and screen list — updated in place,
     // never rebuilt under the operator (see refreshDisplayDetailInPlace).
     refreshDisplayDetailInPlace();
