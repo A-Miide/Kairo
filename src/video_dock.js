@@ -108,6 +108,7 @@
       b.setAttribute('aria-checked', String(on));
       K.md.chips.appendChild(b);
     });
+    if (K.md.addBtn) K.md.addBtn.hidden = K.md.view !== 'slides';
     if (K.md.view !== 'media') return;
     const sel = vEl('select', 'media-bin-folder vd-folder');
     sel.title = 'Show one folder'; sel.setAttribute('aria-label', 'Folder');
@@ -190,10 +191,6 @@
     const home = document.querySelector('.ls-playlist-section .ls-transcript-header');
     if (home) { K.pl.headHome = document.createComment('playlist-head'); home.before(K.pl.headHome); home.classList.add('vd-pl-head'); plHead.appendChild(home); }
     else plHead.appendChild(vEl('span', 'vd-label', 'Playlist'));
-    // Slides, songs and scripture can be added without leaving the board (the Slides screen's
-    // "+ Add content"): the new item appears in the list below and its slides in the media area.
-    K.pl.addBtn = vBtn('+ Add', 'Add slides, a song or scripture to this playlist', (e) => svc() && svc().openAddContent && svc().openAddContent(e.currentTarget), 'vd-mini vd-add vd-pl-add');
-    plHead.appendChild(K.pl.addBtn);
     // ...and its list of items, the same one the sidebar shows.
     const list = document.getElementById('svc-items-list');
     K.pl.body = vEl('div', 'vd-pl-list');
@@ -217,7 +214,11 @@
     size.value = String(loadTile()); size.title = 'Smallest tile size'; size.setAttribute('aria-label', 'Tile size');
     size.addEventListener('input', () => { applyTile(Number(size.value)); });
     size.addEventListener('change', () => { try { localStorage.setItem(TILE_KEY, size.value); } catch {} repaintThumbs(); });
-    mdHead.append(K.md.chips, size);
+    // Slides, songs and scripture can be added without leaving the board (the Slides screen's
+    // "+ Add content"): it sits with the slides, shown while Slides is the view; the new item
+    // appears in the playlist and its slides here.
+    K.md.addBtn = vBtn('+ Add', 'Add slides, a song or scripture', (e) => svc() && svc().openAddContent && svc().openAddContent(e.currentTarget), 'vd-mini vd-add');
+    mdHead.append(K.md.chips, K.md.addBtn, size);
     K.md.body = vEl('div', 'vd-media-body');
     K.md.view = readPref(VIEW_KEY, 'slides') === 'media' ? 'media' : 'slides';
     K.md.folder = readPref(FOLDER_KEY, 'all');
@@ -248,7 +249,7 @@
     const head = document.querySelector('.vd-pl-head');
     if (head && K.pl.headHome && K.pl.headHome.parentNode) { K.pl.headHome.after(head); head.classList.remove('vd-pl-head'); }
     K.pl.headHome?.remove(); K.pl.headHome = null;
-    K.pl.addBtn?.remove(); K.pl.addBtn = null;
+    K.md.addBtn = null;
     K.root?.replaceChildren(); K.root = null;
   }
 

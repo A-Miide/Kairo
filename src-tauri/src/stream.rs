@@ -59,6 +59,11 @@ pub struct Destination {
 pub struct Camera {
     pub id: String,
     pub label: String,
+    /// Which of several devices with this name the input is bound to (0 = the first the
+    /// computer lists, 1 = the second…), worked out by the page from the input's own device id.
+    /// Two cameras of one model have the same name; this is what tells them apart.
+    #[serde(default)]
+    pub slot: Option<usize>,
 }
 
 /// One channel of the sound mixer (Settings → Streaming → Sound): an audio input, its level
@@ -252,6 +257,28 @@ pub fn match_device(label: &str, names: &[String], used: &HashSet<usize>) -> Opt
         .or_else(|| idx(&|n| { let n = norm(n); !n.is_empty() && (n.contains(&l) || l.contains(&n)) }))
 }
 
+/// Like `match_device`, for the `slot`-th device with that name: the page knows which of
+/// several identical cameras an input is bound to, so the stream opens that one.
+pub fn match_device_at(label: &str, names: &[String], used: &HashSet<usize>, slot: Option<usize>) -> Option<usize> {
+    if let Some(n) = slot {
+        let l = norm(label);
+        if !l.is_empty() {
+            let tiers: [&dyn Fn(&String) -> bool; 3] = [
+                &|x: &String| x.eq_ignore_ascii_case(label),
+                &|x: &String| norm(x) == l,
+                &|x: &String| { let x = norm(x); !x.is_empty() && (x.contains(&l) || l.contains(&x)) },
+            ];
+            for f in tiers {
+                let all: Vec<usize> = names.iter().enumerate().filter(|(_, x)| f(x)).map(|(i, _)| i).collect();
+                if all.is_empty() { continue; }
+                if let Some(&i) = all.get(n) { if !used.contains(&i) { return Some(i); } }
+                break;
+            }
+        }
+    }
+    match_device(label, names, used)
+}
+
 /// Can this FFmpeg stream at all: the flv, tee and fifo muxers, RTMP (and RTMPS when a
 /// destination needs it), and the filters used here?
 pub fn can_stream(ffmpeg: &Path, need_tls: bool) -> bool {
@@ -380,7 +407,7 @@ pub fn build_inputs(cfg: &PipelineConfig, graphics_port: u16, video_names: &[Str
                 warnings.push(format!("Cameras can't go into the stream on this computer yet ({}).", cam.label));
                 continue;
             };
-            let Some(i) = match_device(&cam.label, video_names, &used) else {
+            let Some(i) = match_device_at(&cam.label, video_names, &used, cam.slot) else {
                 warnings.push(format!("\"{}\" wasn't found for the stream.", cam.label));
                 continue;
             };
@@ -636,9 +663,13 @@ pub struct Pipeline {
     supervisor: Option<JoinHandle<()>>,
     /// Wakes the one thread that sends FFmpeg its camera commands.
     nudge: mpsc::Sender<()>,
+    on_status: OnStatus,
 }
 
 pub type OnStatus = Arc<dyn Fn(PipelineStatus) + Send + Sync>;
+
+/// What the status says about cameras added after this stream started.
+const PENDING_CAMERAS: &str = "Not in the stream yet:";
 
 impl Pipeline {
     pub fn start(ffmpeg: PathBuf, cfg: PipelineConfig, on_status: OnStatus) -> Pipeline {
@@ -671,8 +702,9 @@ impl Pipeline {
         let s2 = shared.clone();
         thread::spawn(move || send_commands(&s2, wake));
         let s3 = shared.clone();
+        let on_status2 = on_status.clone();
         let supervisor = Some(thread::spawn(move || supervise(ffmpeg, s3, on_status)));
-        Pipeline { shared, supervisor, nudge }
+        Pipeline { shared, supervisor, nudge, on_status: on_status2 }
     }
 
     pub fn output(&self) -> String {
@@ -701,6 +733,23 @@ impl Pipeline {
             cfg.zone = zone;
         }
         let _ = self.nudge.send(());
+    }
+
+    /// The cameras set up in Director changed while this is running (one was added, or came
+    /// back). The stream is never restarted for it: FFmpeg opens its inputs once, so the new ones
+    /// are used from the next start, and the status says which are missing meanwhile.
+    pub fn set_cameras(&self, cameras: Vec<Camera>) {
+        if let Ok(mut cfg) = self.shared.cfg.lock() { cfg.cameras = cameras.clone(); }
+        let open: Vec<String> = self.shared.camera_inputs.lock().map(|c| c.iter().map(|(id, _)| id.clone()).collect()).unwrap_or_default();
+        let missing: Vec<&str> = cameras.iter().filter(|c| !open.contains(&c.id)).map(|c| c.label.as_str()).collect();
+        set_status(&self.shared, &self.on_status, |s| {
+            s.warnings.retain(|w| !w.starts_with(PENDING_CAMERAS));
+            // A camera that was already left out says so itself.
+            let left_out: Vec<&str> = missing.iter().copied().filter(|l| !s.warnings.iter().any(|w| w.contains(&format!("\"{l}\"")))).collect();
+            if !left_out.is_empty() && s.state != "stopped" {
+                s.warnings.push(format!("{PENDING_CAMERAS} {}. Stop and Go live again to include {}.", left_out.join(", "), if left_out.len() == 1 { "it" } else { "them" }));
+            }
+        });
     }
 
     /// The sound mixer's levels or mutes changed: applied live. (A channel added or removed
@@ -826,6 +875,8 @@ fn supervise(ffmpeg: PathBuf, shared: Arc<Shared>, on_status: OnStatus) {
     let can_mix = ["amix", "volume"].iter().all(|f| filters.lines().any(|l| l.split_whitespace().any(|w| w == *f)));
     let mut backoff = 2u64;
     let mut skip: HashSet<String> = HashSet::new();
+    // Starts in a row that never got going without saying which camera was the trouble.
+    let mut unnamed_failures = 0u32;
     let mut part = 0u32;
     while !shared.stop.load(Ordering::SeqCst) {
         let started = Instant::now();
@@ -916,9 +967,22 @@ fn supervise(ffmpeg: PathBuf, shared: Arc<Shared>, on_status: OnStatus) {
         if shared.stop.load(Ordering::SeqCst) { break; }
         // It never got going: leave out the cameras it couldn't open (or all of them, when it
         // didn't say which) so graphics and sound still go out.
-        if !saw_progress && !inputs.camera_inputs.is_empty() {
+        if saw_progress {
+            // It was running: a camera left out earlier (unplugged then, maybe back now) gets
+            // another try with this restart, and a start that goes wrong names it again.
+            skip.clear();
+            unnamed_failures = 0;
+        } else if !inputs.camera_inputs.is_empty() {
             let named: Vec<String> = inputs.camera_inputs.iter().filter(|(_, n)| early_failures.contains(n)).map(|(id, _)| id.clone()).collect();
-            if named.is_empty() { skip.extend(inputs.camera_inputs.iter().map(|(id, _)| id.clone())); } else { skip.extend(named); }
+            if named.is_empty() {
+                // One start that fails without a word may not be a camera at all (the network, an
+                // encoder starting up): only a second one takes every camera out.
+                unnamed_failures += 1;
+                if unnamed_failures >= 2 { skip.extend(inputs.camera_inputs.iter().map(|(id, _)| id.clone())); }
+            } else {
+                unnamed_failures = 0;
+                skip.extend(named);
+            }
             backoff = 1;
         }
         if started.elapsed() > Duration::from_secs(60) { backoff = 2; }
@@ -1167,6 +1231,10 @@ impl StreamState {
             for x in p.iter().filter(|x| output.is_none_or(|o| x.output() == o)) { x.set_program(program.clone(), zone); }
         }
     }
+
+    pub fn set_cameras(&self, cameras: Vec<Camera>) {
+        if let Ok(p) = self.pipelines.lock() { for x in p.iter() { x.set_cameras(cameras.clone()); } }
+    }
 }
 
 /// Which of the two ways the same engine is used: a live stream to destinations, or a
@@ -1222,6 +1290,10 @@ impl Engines {
         for e in self.both() { e.set_mix(mix.clone()); }
     }
 
+    pub fn set_cameras(&self, cameras: Vec<Camera>) {
+        for e in self.both() { e.set_cameras(cameras.clone()); }
+    }
+
     pub fn kill_now(&self) {
         for e in self.both() { e.kill_now(); }
     }
@@ -1238,7 +1310,7 @@ mod tests {
                 Destination { id: "a".into(), name: "YouTube".into(), url: "rtmp://a.rtmp.youtube.com/live2/".into(), key: "abcd-efgh-1234".into() },
                 Destination { id: "b".into(), name: "Other".into(), url: "rtmps://x.example.com:443/app".into(), key: "".into() },
             ],
-            cameras: vec![Camera { id: "cam1".into(), label: "FaceTime HD Camera (Built-in)".into() }, Camera { id: "cam2".into(), label: "Missing".into() }],
+            cameras: vec![Camera { id: "cam1".into(), label: "FaceTime HD Camera (Built-in)".into(), slot: None }, Camera { id: "cam2".into(), label: "Missing".into(), slot: None }],
             program: Some("cam1".into()), zone: None, audio_input: Some("MacBook Pro Microphone (Built-in)".into()),
             zones: vec![Zone { x: 60.0, y: 120.0, w: 640.0, h: 840.0 }],
             record_to: None,
@@ -1340,6 +1412,21 @@ mod tests {
         assert_eq!((first, second), (1, 2));
         used.insert(second);
         assert_eq!(match_device("USB Camera", &names, &used), None);
+    }
+
+    #[test]
+    fn two_cameras_of_one_model_are_told_apart_by_their_slot() {
+        let names = vec!["FaceTime HD Camera".to_string(), "USB Camera".to_string(), "USB Camera".to_string()];
+        let mut used = HashSet::new();
+        // The input bound to the second USB camera opens the second one, even when it is
+        // asked for first.
+        assert_eq!(match_device_at("USB Camera", &names, &used, Some(1)), Some(2));
+        used.insert(2);
+        assert_eq!(match_device_at("USB Camera", &names, &used, Some(0)), Some(1));
+        // No slot, or a slot that isn't there: the first free one, as before.
+        assert_eq!(match_device_at("USB Camera", &names, &used, None), Some(1));
+        assert_eq!(match_device_at("USB Camera", &names, &used, Some(5)), Some(1));
+        assert_eq!(match_device_at("Nope", &names, &used, Some(0)), None);
     }
 
     #[test]
