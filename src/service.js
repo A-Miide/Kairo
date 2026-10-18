@@ -1212,7 +1212,9 @@
     // actual audio-time-based rate tracking instead of estimating tempo
     // from wall-clock arrival timing. Absent for engines that don't provide
     // them; LyricsFollower.ingest falls back to the old estimate then.
-    const meta = { isFinal: !!(msg && msg.isFinal), words: msg && msg.words };
+    const meta = { isFinal: !!(msg && msg.isFinal), words: msg && msg.words,
+      // A Bible verse went up a moment ago: the speaker is in scripture, so a number is a verse, not a point.
+      scriptureActive: !!(bibleOnTop && bibleLive && Date.now() - bibleLive.at < 15000) };
     if (follower && autoFollow) follower.ingest(text, meta);
     if (autoFollow) {
       if (!contentLookup) {
