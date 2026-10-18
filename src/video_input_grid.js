@@ -32,6 +32,10 @@
     let leases = [];
     let thumbsOn = true;
     let shown = true;
+    // What the tiles were built from. A cut changes only who is on air or staged, which is
+    // patched in place; a rebuild closes and reopens every thumbnail, which showed as a blink.
+    let built = null;
+    let tileEls = [];
 
     // Grid | List: which of the two views is showing is always visible.
     const seg = h('div', 'vg-seg');
@@ -157,9 +161,42 @@
       return t;
     }
 
+    // Who is on air or staged, written onto the tiles that are already there.
+    function paint(sources, st) {
+      sources.forEach((source, i) => {
+        const t = tileEls[i];
+        if (!t || t.classList.contains('is-empty')) return;
+        const onAir = !st.mixed && st.hasOutputs && st.programId === source.id;
+        const staged = st.previewId === source.id;
+        t.classList.toggle('is-pgm', onAir);
+        t.classList.toggle('is-pvw', staged);
+        const word = onAir ? 'On air' : staged ? 'Preview' : null;
+        t.querySelectorAll('.vg-flag').forEach(f => f.remove());
+        if (word) {
+          const f = h('span', 'vg-flag ' + (onAir ? 'vg-flag-pgm' : 'vg-flag-pvw'), word);
+          const anchor = t.querySelector('.vg-state') || null;
+          t.insertBefore(f, anchor);
+        }
+        const state = t.querySelector('.vg-state');
+        if (state) state.textContent = word || 'Ready';
+        if (!opts.readOnly) t.setAttribute('aria-label', `${source.name}${onAir ? ', on air' : staged ? ', on Preview' : ''}. Click to send to Program, Shift-click for Preview`);
+      });
+    }
+
+    function shape(sources) {
+      const devices = opts.getDevices();
+      return JSON.stringify([
+        sources.map(s => [s.id, s.name, V.stateOf(s, devices), V.resolveDevice(s, devices) || '']),
+        gridOn, shown, thumbsOn, opts.layout || '', !!opts.readOnly,
+      ]);
+    }
+
     function render() {
       const sources = opts.getSources();
       const st = opts.getState();
+      const shapeNow = shape(sources);
+      if (built === shapeNow && sources.length) { paint(sources, st); return; }
+      built = shapeNow;
       const fill = opts.layout === 'fill';
 
       // New leases are taken before the old ones go, so the hub keeps each camera open across a redraw.
@@ -168,7 +205,8 @@
       el.className = fill ? 'vg vg-fill' : 'vg ' + (gridOn ? 'vg-grid' : 'vg-list') + (opts.layout === 'column' ? ' vg-col' : '');
       if (fill) el.style.gridTemplateColumns = `repeat(${sources.length <= 1 ? 1 : sources.length === 2 ? 2 : Math.ceil(Math.sqrt(sources.length))}, minmax(0, 1fr))`;
       el.replaceChildren();
-      sources.forEach((s, i) => el.appendChild(tile(s, st, i)));
+      tileEls = sources.map((s, i) => tile(s, st, i));
+      tileEls.forEach(t => el.appendChild(t));
       if (!sources.length) {
         // One clear way in, instead of a blank area.
         const add = h('button', 'vg-add vg-add-first');

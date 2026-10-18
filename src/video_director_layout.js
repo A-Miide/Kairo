@@ -69,7 +69,7 @@
   // Timer screens, so the Bible view is the one shown; those tabs reach the
   // dock instead (or do nothing, for Songs and Timer).
   // ── The top-menu tabs: Media, Songs, Timer and Slides open the real screens as a sheet over the Director
-  // screen (which stays underneath and keeps running), with a Back to Director bar. Bible comes back. ──
+  // screen (which stays underneath and keeps running), as a modal card with a Done button, like the camera inputs. Bible comes back. ──
   const TAB_IDS = ['slides-btn', 'timer-btn', 'songs-btn', 'media-btn', 'bible-btn'];
   const TAB_NAMES = { 'slides-btn': 'Slides', 'timer-btn': 'Timer', 'songs-btn': 'Songs', 'media-btn': 'Media' };
   function syncSheet() {
@@ -83,7 +83,7 @@
         const bar = document.createElement('div');
         bar.className = 'vd-sheet-bar';
         const back = document.createElement('button');
-        back.type = 'button'; back.className = 'vd-mini vd-sheet-back'; back.textContent = 'Back to Director';
+        back.type = 'button'; back.className = 'vd-mini vd-sheet-back'; back.textContent = 'Done';
         back.addEventListener('click', () => document.getElementById('bible-btn')?.click());
         const title = document.createElement('span'); title.className = 'vd-label vd-sheet-title';
         bar.append(back, title);
@@ -91,7 +91,14 @@
       }
       L.sheetTitle.textContent = TAB_NAMES[active] || '';
       if (!L.sheetBar.isConnected) stage.prepend(L.sheetBar);
-    } else if (L.sheetBar) { L.sheetBar.remove(); }
+      // The Director screen shows through, dimmed; a click on it closes the card.
+      if (!L.sheetBackdrop) {
+        L.sheetBackdrop = document.createElement('div');
+        L.sheetBackdrop.className = 'vd-sheet-backdrop';
+        L.sheetBackdrop.addEventListener('click', () => document.getElementById('bible-btn')?.click());
+      }
+      if (!L.sheetBackdrop.isConnected) document.body.appendChild(L.sheetBackdrop);
+    } else { if (L.sheetBar) L.sheetBar.remove(); if (L.sheetBackdrop) L.sheetBackdrop.remove(); }
     // Coming back: the media bin picks up new folders and items.
     if (was && !open) { try { window.KairoVideoDock?.refresh?.(); } catch {} }
   }
@@ -122,6 +129,7 @@
     if (L.sheetEsc) { document.removeEventListener('keydown', L.sheetEsc, true); L.sheetEsc = null; }
     document.body.classList.remove('vd-sheet');
     if (L.sheetBar) { L.sheetBar.remove(); L.sheetBar = null; }
+    if (L.sheetBackdrop) { L.sheetBackdrop.remove(); L.sheetBackdrop = null; }
     if (L.prevView && L.prevView !== 'bible-btn') document.getElementById(L.prevView)?.click();
     L.prevView = null;
   }

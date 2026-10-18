@@ -125,6 +125,7 @@ const KairoCameras = (() => {
     mirror(sources, live) {
       set(SOURCES_KEY, sources);
       if (live !== undefined) set(LIVE_KEY, live);
+      try { window.dispatchEvent(new CustomEvent('kairo:cameras')); } catch {}
     },
     // A new list (and optionally the live map that goes with it): kept, saved, mirrored.
     save(sources, live) {
