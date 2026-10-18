@@ -389,6 +389,7 @@
     <script src="layer_geometry.js"></script>
     <script src="motion_graphics.js"></script>
     <script src="pp_render.js"></script>
+    <script src="slide_markers.js"></script>
     <script>
     'use strict';
 
@@ -2619,10 +2620,20 @@
         const ref = v.reference || v.ref || '';
         return v.label ? (ref ? `${v.label} · ${ref}` : v.label) : ref;
     }
+    // A slide's words as the Monitor shows them: its verse number first ("48. I am that bread of
+    // life."), a reference box as the reference, not run into the sentence (slide_markers.js).
+    function monitorSlideText(v) {
+        const SM = window.KairoSlideMarkers;
+        if (!v || v.image || !SM) return { text: v ? (v.text || v.verse || '') : '', reference: '' };
+        return SM.display(v.text || v.verse || '');
+    }
+    const SMok = (n) => !!(window.KairoSlideMarkers && n && typeof n.text === 'string' && !n.image);
     function noteConfidenceSlide(verse, isBible, next) {
+        const shown = isBible ? null : monitorSlideText(verse);
+        if (!isBible && next && SMok(next)) { const n = window.KairoSlideMarkers.display(next.text || ''); next = { ...next, text: n.text, reference: next.reference || n.reference }; }
         confCurrent = verse ? {
-            text: verse.image ? '' : (verse.text || verse.verse || ''),
-            ref: confRefOf(verse),
+            text: verse.image ? '' : (shown ? shown.text : (verse.text || verse.verse || '')),
+            ref: confRefOf(shown && shown.reference && !(verse.reference || verse.ref) ? { ...verse, reference: shown.reference } : verse),
             image: !!verse.image,
             bible: !!isBible,
             book: verse.book, chapter: verse.chapter, verse: verse.verse,
