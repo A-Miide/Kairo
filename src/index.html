@@ -2300,6 +2300,11 @@
             if (window.__TAURI__) {
                 try {
                     const { WebviewWindow } = window.__TAURI__.webviewWindow;
+                    // A window of this name that was just closed may still be going away
+                    // (turning an output off and straight back on): wait for it, or the new
+                    // one fails because the name is still taken.
+                    try { if (window.__kairoClosing && window.__kairoClosing[label]) await window.__kairoClosing[label]; } catch {}
+                    if (window.__kairoDisplayErrors) delete window.__kairoDisplayErrors[label];
                     // Reuse an existing display window if it's already open.
                     let replacedExisting = false;
                     const existing = await WebviewWindow.getByLabel(label);
@@ -2357,6 +2362,7 @@
                         visible: false,
                     });
                     win.once('tauri://error', function(e) {
+                      (window.__kairoDisplayErrors = window.__kairoDisplayErrors || {})[label] = String((e && e.payload) || e);
                       window.kairoLog('WebviewWindow creation error', { label, error: String(e) });
                       console.warn('[KAIRO] WebviewWindow creation error:', e);
                     });
@@ -2390,7 +2396,17 @@
                 try {
                     const { WebviewWindow } = window.__TAURI__.webviewWindow;
                     const existing = await WebviewWindow.getByLabel(label);
-                    if (existing) await existing.close();
+                    if (existing) {
+                        // Until it is really gone, a new window of this name must wait (openDisplayWindow).
+                        const gone = (async () => {
+                            try { await existing.close(); } catch {}
+                            for (let i = 0; i < 30 && await WebviewWindow.getByLabel(label); i++) await new Promise(r => setTimeout(r, 100));
+                            await new Promise(r => setTimeout(r, 250));
+                        })();
+                        (window.__kairoClosing = window.__kairoClosing || {})[label] = gone;
+                        await gone;
+                        if (window.__kairoClosing[label] === gone) delete window.__kairoClosing[label];
+                    }
                 } catch (e) {
                     console.warn('[KAIRO] closeDisplayWindow failed:', e);
                 }
