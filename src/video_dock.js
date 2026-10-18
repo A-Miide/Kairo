@@ -190,6 +190,10 @@
     const home = document.querySelector('.ls-playlist-section .ls-transcript-header');
     if (home) { K.pl.headHome = document.createComment('playlist-head'); home.before(K.pl.headHome); home.classList.add('vd-pl-head'); plHead.appendChild(home); }
     else plHead.appendChild(vEl('span', 'vd-label', 'Playlist'));
+    // Slides, songs and scripture can be added without leaving the board (the Slides screen's
+    // "+ Add content"): the new item appears in the list below and its slides in the media area.
+    K.pl.addBtn = vBtn('+ Add', 'Add slides, a song or scripture to this playlist', (e) => svc() && svc().openAddContent && svc().openAddContent(e.currentTarget), 'vd-mini vd-add vd-pl-add');
+    plHead.appendChild(K.pl.addBtn);
     // ...and its list of items, the same one the sidebar shows.
     const list = document.getElementById('svc-items-list');
     K.pl.body = vEl('div', 'vd-pl-list');
@@ -244,6 +248,7 @@
     const head = document.querySelector('.vd-pl-head');
     if (head && K.pl.headHome && K.pl.headHome.parentNode) { K.pl.headHome.after(head); head.classList.remove('vd-pl-head'); }
     K.pl.headHome?.remove(); K.pl.headHome = null;
+    K.pl.addBtn?.remove(); K.pl.addBtn = null;
     K.root?.replaceChildren(); K.root = null;
   }
 

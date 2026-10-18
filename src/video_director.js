@@ -1219,7 +1219,6 @@
     D.starting = false;
     if (!build()) return;
     D.active = true;
-    lockNav(true);
     window.kairoLog?.('director', { on: true });   // so a problem after a switch can be lined up with it
     drawShowing();
     dockTopButtons(true);
@@ -1275,7 +1274,6 @@
     if (!D.active) return;
     const keep = !!opts.keepVideo;
     D.active = false;
-    lockNav(false);
     window.kairoLog?.('director', { on: false });
     drawShowing();   // camera warnings belong to Director mode
     dockTopButtons(false);
@@ -1381,22 +1379,6 @@
   // An output window couldn't show the camera put on air (it wouldn't open, or
   // was unplugged): the tile still says On air, so say what the screen really
   // shows. display_video.js reports it under kairo-video-showing:<output>.
-  // The top menu (Bible, Slides, Timer, Songs, Media, Theme Studio) can't be navigated while the
-  // Director screen is up (owner, 2026-10-17): the Director's own panels carry the playlist, the
-  // slides and the media, and Preview's Edit opens Theme Studio (its Back returns here). Mouse,
-  // keyboard and programmatic clicks (menu events, shortcuts) are all stopped.
-  const navGuard = (e) => {
-    const g = e.target && e.target.closest && e.target.closest('.top-bar-center .tb-group');
-    if (g) { e.preventDefault(); e.stopImmediatePropagation(); }
-  };
-  function lockNav(on) {
-    const g = document.querySelector('.top-bar-center .tb-group');
-    if (!g) return;
-    g.classList.toggle('vd-nav-locked', on);
-    if (on) { g.setAttribute('inert', ''); g.setAttribute('aria-disabled', 'true'); document.addEventListener('click', navGuard, true); }
-    else { g.removeAttribute('inert'); g.removeAttribute('aria-disabled'); document.removeEventListener('click', navGuard, true); }
-  }
-
   // Director mode: Replay and Record sit with Preview and Output (owner, 2026-10-17), in the
   // Displays header beside Layouts; back in the top bar when Director mode ends. Each button
   // is made by its own module on first use, so this runs again on every refresh until both are in.
