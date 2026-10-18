@@ -36,6 +36,23 @@
     // patched in place; a rebuild closes and reopens every thumbnail, which showed as a blink.
     let built = null;
     let tileEls = [];
+    let tileCtl = [];
+    let curSt = { programId: null, mixed: false, hasOutputs: false, previewId: null };
+    // Only the input on air and the one on Preview run live; the others show a still of their last
+    // picture, or a camera silhouette until they have one (no camera running for a thumbnail nobody
+    // is watching: owner, 2026-10-17). The still is taken from a camera that is on air when it goes off.
+    const stills = new Map();   // source id → data URL
+    const SILHOUETTE = '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3z"/></svg>';
+    const isLiveSource = (id) => (!curSt.mixed && curSt.hasOutputs && curSt.programId === id) || curSt.previewId === id;
+    function frameOf(video) {
+      try {
+        if (!video || !video.videoWidth) return null;
+        const c = document.createElement('canvas');
+        c.width = 320; c.height = Math.max(1, Math.round(320 * video.videoHeight / video.videoWidth));
+        c.getContext('2d').drawImage(video, 0, 0, c.width, c.height);
+        return c.toDataURL('image/jpeg', 0.7);
+      } catch { return null; }
+    }
 
     // Grid | List: which of the two views is showing is always visible.
     const seg = h('div', 'vg-seg');
@@ -76,21 +93,59 @@
       return t;
     }
 
-    // A tile opens its camera only while it can be seen: scrolled out of the Inputs list, or
-    // clipped, it lets go of the device (the hub closes it a moment later if nothing else holds it).
-    function liveWhileVisible(t, v, devId, profile, onError) {
+    // A tile opens its camera only while it can be seen AND is on air or on Preview (`opts.wantLive`): scrolled out of
+    // the Inputs list, clipped, or just not in use, it lets go of the device (the hub closes it a moment later if
+    // nothing else holds it) and shows a still. `opts.sourceId` names the still. Returns { sync } to re-decide.
+    function liveWhileVisible(t, v, devId, profile, onError, opts = {}) {
       let release = null;
       let heard = false;      // the observer has spoken at least once
+      let seen = false;
+      let grabbing = false;
+      const still = h('img', 'vg-still'); still.alt = ''; still.hidden = true;
+      const sil = h('div', 'vg-silhouette'); sil.innerHTML = SILHOUETTE;
+      t.insertBefore(sil, t.firstChild); t.insertBefore(still, t.firstChild);
+      const wanted = () => !opts.wantLive || opts.wantLive();
+      const showStill = () => {
+        const url = opts.sourceId && stills.get(opts.sourceId);
+        still.hidden = !url; if (url) still.src = url;
+        sil.hidden = !!url;
+        v.hidden = true;
+      };
       const take = () => hub.lease(devId, profile, (stream) => {
         if (!v.isConnected) return;
         v.srcObject = stream; v.play().catch(() => {});
       }, onError);
-      const set = (on) => {
-        if (on && !release) release = take();
-        else if (!on && release) { release(); release = null; v.srcObject = null; }
+      // One picture for a tile that has none yet: the camera is opened for a moment and let go.
+      const grab = () => {
+        if (grabbing || !opts.sourceId || stills.has(opts.sourceId)) return;
+        grabbing = true;
+        const tmp = document.createElement('video'); tmp.muted = true; tmp.playsInline = true;
+        let rel = null, done = false;
+        const finish = () => { if (done) return; done = true; if (rel) rel(); tmp.srcObject = null; grabbing = false; showStill(); };
+        rel = hub.lease(devId, profile, (stream) => {
+          tmp.srcObject = stream; tmp.play().catch(() => {});
+          const t0 = Date.now();
+          const poll = () => {
+            if (done) return;
+            if (tmp.videoWidth && tmp.readyState >= 2) { const f = frameOf(tmp); if (f) stills.set(opts.sourceId, f); finish(); }
+            else if (Date.now() - t0 > 4000) finish();
+            else setTimeout(poll, 150);
+          };
+          setTimeout(poll, 250);
+        }, finish);
+      };
+      const sync = () => {
+        const on = seen && wanted();
+        if (on && !release) { release = take(); v.hidden = false; still.hidden = true; sil.hidden = true; }
+        else if (!on && release) {
+          const f = opts.sourceId ? frameOf(v) : null;
+          if (f) stills.set(opts.sourceId, f);
+          release(); release = null; v.srcObject = null;
+        }
+        if (!on) { showStill(); if (seen) grab(); }
       };
       // No camera until the tile is seen: a tile scrolled out of the list never opens one.
-      const io = new IntersectionObserver((es) => { heard = true; set(es.some(e => e.isIntersecting)); });
+      const io = new IntersectionObserver((es) => { heard = true; seen = es.some(e => e.isIntersecting); sync(); });
       io.observe(t);
       // Where the observer stays silent (a window that is not painting), look at the geometry instead.
       const fallback = setTimeout(() => {
@@ -101,9 +156,11 @@
           const o = getComputedStyle(p).overflowY;
           if (o === 'auto' || o === 'scroll' || o === 'hidden') { const pr = p.getBoundingClientRect(); box = { top: Math.max(box.top, pr.top), bottom: Math.min(box.bottom, pr.bottom), left: Math.max(box.left, pr.left), right: Math.min(box.right, pr.right) }; }
         }
-        set(r.bottom > box.top && r.top < box.bottom && r.right > box.left && r.left < box.right);
+        seen = r.bottom > box.top && r.top < box.bottom && r.right > box.left && r.left < box.right;
+        sync();
       }, 1200);
-      leases.push(() => { clearTimeout(fallback); io.disconnect(); if (release) { release(); release = null; } });
+      leases.push(() => { clearTimeout(fallback); io.disconnect(); if (release) { const f = opts.sourceId ? frameOf(v) : null; if (f) stills.set(opts.sourceId, f); release(); release = null; } });
+      return { sync };
     }
 
     // A read-only copy of a tile: the picture, the name and the on-air or Preview frame, nothing to click.
@@ -121,6 +178,7 @@
       return t;
     }
 
+    let ctl = null;
     function tile(source, st, index) {
       const state = V.stateOf(source, opts.getDevices());
       if (state === 'placeholder') return emptyTile(source, 'No device');
@@ -132,14 +190,17 @@
       t.tabIndex = 0;
       t.setAttribute('role', 'button');
       t.setAttribute('aria-label', `${source.name}${onAir ? ', on air' : staged ? ', on Preview' : ''}. Click to send to Program, Shift-click for Preview`);
-      t.title = `Click: on air. Shift-click: Preview. Right-click: settings.${index < 9 ? ` Key ${index + 1}, Shift+${index + 1} for Preview.` : ''}`;
+      t.title = `Click: on air. Shift-click: Preview. Right-click: settings.${source.key ? ` Key ${source.key.toUpperCase()}, Shift+${source.key.toUpperCase()} for Preview.` : index < 9 ? ` Key ${index + 1}, Shift+${index + 1} for Preview.` : ''}`;
       const v = h('video'); v.muted = true; v.playsInline = true; v.setAttribute('aria-hidden', 'true');
       t.appendChild(v);
       const devId = V.resolveDevice(source, opts.getDevices());
-      if (devId && thumbsOn && shown) liveWhileVisible(t, v, devId, 'thumb', () => { t.dataset.msg = 'Unavailable'; });
+      ctl = null;
+      if (devId && thumbsOn && shown) ctl = liveWhileVisible(t, v, devId, 'thumb', () => { t.dataset.msg = 'Unavailable'; }, { wantLive: () => isLiveSource(source.id), sourceId: source.id });
       else t.dataset.msg = devId ? '' : 'Not connected';
+      t.__ctl = ctl;
       t.appendChild(h('div', 'vg-name', source.name));
-      if (index < 9) t.appendChild(h('span', 'vg-key', String(index + 1)));
+      if (source.key) t.appendChild(h('span', 'vg-key', source.key.toUpperCase()));
+      else if (index < 9) t.appendChild(h('span', 'vg-key', String(index + 1)));
       if (onAir) t.appendChild(h('span', 'vg-flag vg-flag-pgm', 'On air'));
       else if (staged) t.appendChild(h('span', 'vg-flag vg-flag-pvw', 'Preview'));
       t.appendChild(h('span', 'vg-state', onAir ? 'On air' : staged ? 'Preview' : 'Ready'));
@@ -163,6 +224,8 @@
 
     // Who is on air or staged, written onto the tiles that are already there.
     function paint(sources, st) {
+      curSt = st;
+      tileEls.forEach(t => { try { t.__ctl && t.__ctl.sync(); } catch {} });
       sources.forEach((source, i) => {
         const t = tileEls[i];
         if (!t || t.classList.contains('is-empty')) return;
@@ -186,7 +249,7 @@
     function shape(sources) {
       const devices = opts.getDevices();
       return JSON.stringify([
-        sources.map(s => [s.id, s.name, V.stateOf(s, devices), V.resolveDevice(s, devices) || '']),
+        sources.map(s => [s.id, s.name, s.key || '', V.stateOf(s, devices), V.resolveDevice(s, devices) || '']),
         gridOn, shown, thumbsOn, opts.layout || '', !!opts.readOnly,
       ]);
     }
@@ -194,6 +257,7 @@
     function render() {
       const sources = opts.getSources();
       const st = opts.getState();
+      curSt = st;
       const shapeNow = shape(sources);
       if (built === shapeNow && sources.length) { paint(sources, st); return; }
       built = shapeNow;

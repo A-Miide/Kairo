@@ -303,7 +303,7 @@
     if (r.folder) { const reset = el('button', 'modal-btn secondary', 'Use Movies'); reset.type = 'button'; reset.addEventListener('click', () => setRec({ folder: null })); folderCtl.appendChild(reset); }
     rbBody.append(
       ...(outs.length > 1 ? [row('Records', 'Which output is recorded', select(outs.map(o => [o.id, o.name]), r.output || outs[0].id, (v) => setRec({ output: v })))] : []),
-      row('Quality', 'Same size and frame rate as the stream', select(RECORD_BITRATES, r.bitrate || 12000, (v) => setRec({ bitrate: Number(v) }))),
+      row('Quality', 'Same size and frame rate as the stream. While streaming, the recording is the stream’s own picture at the stream’s quality', select(RECORD_BITRATES, r.bitrate || 12000, (v) => setRec({ bitrate: Number(v) }))),
       row('Folder', 'Each recording is an MP4 named by its date and time', folderCtl),
       row('Top-bar button', 'Shows Record in the top bar; always there in Director mode', toggle(r.button === true, '', (on) => setRec({ button: on }))),
     );

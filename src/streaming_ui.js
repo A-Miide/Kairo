@@ -172,6 +172,8 @@
     Object.keys(status).forEach(o => delete status[o]);
     live = false;
     notify();
+    // A recording that was the stream's own picture goes on by itself (a new file).
+    continueRecordingOnItsOwn();
   }
 
   function ask(message, label, danger) {
@@ -253,10 +255,24 @@
     if (lastFiles.length && typeof showToast === 'function') showToast(`Recording saved: ${lastFiles[lastFiles.length - 1].split(/[\\/]/).pop()}`, 'success');
   }
   let recWhy = '';             // what the engine said when the recording last restarted
+  let recFromStream = false;   // the recording is the stream's own picture (one encode), not its own pipeline
+  // The stream ended while the recording was copying it: the recording starts again on its own (a new file),
+  // so it never just stops.
+  async function continueRecordingOnItsOwn() {
+    if (!recording || !recFromStream) return;
+    recFromStream = false;
+    try { await invoke('record_stop'); } catch {}
+    Object.keys(recStatus).forEach(o => { dropCapture(o, 'record'); delete recStatus[o]; });
+    recording = false;
+    notify();
+    try { window.kairoLog && window.kairoLog('record-continued-alone', {}); } catch {}
+    await startRecording();
+  }
   function takeRec(s) {
     if (!s || !s.output) return;
     if ((recRuns[s.output] || 0) > (s.run || 0)) return;
     recRuns[s.output] = s.run || 0;
+    if (s.state !== 'stopped') recFromStream = !!s.fromStream;
     // Kept in the log too: the restart's reason is otherwise gone once the status clears.
     if (s.state === 'retrying' || s.state === 'failed') {
       const why = String(s.error || '').slice(0, 200);
@@ -332,7 +348,7 @@
     if (!s || !s.output) return;
     if ((runs[s.output] || 0) > (s.run || 0)) return;
     runs[s.output] = s.run || 0;
-    if (s.state === 'stopped') delete status[s.output]; else status[s.output] = s;
+    if (s.state === 'stopped') { delete status[s.output]; if (!Object.keys(status).length) continueRecordingOnItsOwn(); } else status[s.output] = s;
     health();
   }
 

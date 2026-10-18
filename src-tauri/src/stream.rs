@@ -126,6 +126,14 @@ pub struct PipelineConfig {
     /// The sound mixer's channels; when there are any they replace `audio_input`.
     #[serde(default)]
     pub audio_mix: Vec<AudioIn>,
+    /// A stream's own copy of what it sends, on this local port: a recording made while streaming
+    /// reads it instead of encoding the picture a second time (one encoder, one set of cameras).
+    /// Set by the engine, never by the page.
+    #[serde(default, skip_deserializing)]
+    pub tap_port: Option<u16>,
+    /// A recording that copies the stream's picture from this local port instead of making its own.
+    #[serde(default, skip_deserializing)]
+    pub tap_from: Option<u16>,
 }
 
 #[derive(Serialize, Clone, Debug, Default)]
@@ -157,6 +165,8 @@ pub struct PipelineStatus {
     pub warnings: Vec<String>,
     /// A recording's files so far (more than one when it had to restart).
     pub files: Vec<String>,
+    /// This recording is the stream's own picture (not a second encode of it).
+    pub from_stream: bool,
 }
 
 // ── FFmpeg: which one, its encoders, its devices ─────────────────────────────
@@ -556,6 +566,15 @@ fn slave(d: &Destination) -> String {
     )
 }
 
+/// The stream's local copy for a recording to read: MPEG-TS over a loopback socket that waits for
+/// the recorder (behind its own fifo, so nothing is held up when nobody is listening).
+fn tap_slave(port: u16) -> String {
+    format!(
+        "[f=fifo:fifo_format=mpegts:drop_pkts_on_overflow=1:attempt_recovery=1:recover_any_error=1:recovery_wait_time=1:restart_with_keyframe=1:onfail=ignore]{}",
+        tee_escape(&format!("tcp://127.0.0.1:{port}?listen=1&listen_timeout=2500"))
+    )
+}
+
 pub fn ffmpeg_args(cfg: &PipelineConfig, enc: &str, inputs: &Inputs, selected: usize, zones: &[Option<Zone>], zone_sel: usize) -> Vec<String> {
     let mut a: Vec<String> = ["-hide_banner", "-loglevel", "warning", "-stats", "-stats_period", "1", "-y"].map(String::from).to_vec();
     a.extend(inputs.args.iter().cloned());
@@ -574,7 +593,8 @@ pub fn ffmpeg_args(cfg: &PipelineConfig, enc: &str, inputs: &Inputs, selected: u
         a.extend(["-movflags".into(), "+frag_keyframe+empty_moov+default_base_moof".into(), "-flush_packets".into(), "1".into(), "-f".into(), "mp4".into(), path.clone()]);
         return a;
     }
-    let slaves: Vec<String> = cfg.destinations.iter().map(slave).collect();
+    let mut slaves: Vec<String> = cfg.destinations.iter().map(slave).collect();
+    if let Some(port) = cfg.tap_port { slaves.push(tap_slave(port)); }
     a.extend(["-f".into(), "tee".into(), slaves.join("|")]);
     a
 }
@@ -684,6 +704,14 @@ impl Pipeline {
             },
             ..Default::default()
         };
+        let mut cfg = cfg;
+        // A stream offers its picture to a recording on a local port, chosen once for its life.
+        if cfg.record_to.is_none() && cfg.tap_from.is_none() && !cfg.destinations.is_empty() {
+            cfg.tap_port = TcpListener::bind("127.0.0.1:0").and_then(|l| l.local_addr()).ok().map(|a| a.port());
+        }
+        let from_tap = cfg.tap_from.is_some();
+        let mut status = status;
+        status.from_stream = from_tap;
         let shared = Arc::new(Shared {
             cfg: Mutex::new(cfg),
             status: Mutex::new(status),
@@ -703,12 +731,18 @@ impl Pipeline {
         thread::spawn(move || send_commands(&s2, wake));
         let s3 = shared.clone();
         let on_status2 = on_status.clone();
-        let supervisor = Some(thread::spawn(move || supervise(ffmpeg, s3, on_status)));
+        let supervisor = Some(thread::spawn(move || if from_tap { supervise_tap(ffmpeg, s3, on_status) } else { supervise(ffmpeg, s3, on_status) }));
         Pipeline { shared, supervisor, nudge, on_status: on_status2 }
     }
 
     pub fn output(&self) -> String {
         self.shared.cfg.lock().map(|c| c.output.clone()).unwrap_or_default()
+    }
+
+    /// The local port a recording can read this stream's picture from, while it is running.
+    pub fn tap_port(&self) -> Option<u16> {
+        if self.shared.stop.load(Ordering::SeqCst) { return None; }
+        self.shared.cfg.lock().ok().and_then(|c| c.tap_port)
     }
 
     pub fn status(&self) -> PipelineStatus {
@@ -873,6 +907,13 @@ fn supervise(ffmpeg: PathBuf, shared: Arc<Shared>, on_status: OnStatus) {
     let filters = Command::new(&ffmpeg).args(["-hide_banner", "-filters"]).stdin(Stdio::null()).stderr(Stdio::null()).output()
         .map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
     let can_mix = ["amix", "volume"].iter().all(|f| filters.lines().any(|l| l.split_whitespace().any(|w| w == *f)));
+    // A recording that copies the stream needs this FFmpeg's MPEG-TS muxer; without it the stream
+    // offers no copy and a recording encodes on its own.
+    let muxers = Command::new(&ffmpeg).args(["-hide_banner", "-muxers"]).stdin(Stdio::null()).stderr(Stdio::null()).output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
+    if !muxers.lines().any(|l| l.split_whitespace().nth(1) == Some("mpegts")) {
+        if let Ok(mut c) = shared.cfg.lock() { c.tap_port = None; }
+    }
     let mut backoff = 2u64;
     let mut skip: HashSet<String> = HashSet::new();
     // Starts in a row that never got going without saying which camera was the trouble.
@@ -1162,6 +1203,81 @@ fn unpremultiply_in_place(px: &mut [u8]) {
 
 // ── All the pipelines ────────────────────────────────────────────────────────
 
+/// A recording that copies the running stream's own picture (see `tap_port`): no cameras, no
+/// graphics, no encoder of its own. It follows the stream: when the stream restarts, the recording
+/// continues in the next part; when the stream ends it keeps trying (the page then records on its
+/// own instead, see streaming_ui.js).
+fn supervise_tap(ffmpeg: PathBuf, shared: Arc<Shared>, on_status: OnStatus) {
+    let mut part = 0u32;
+    while !shared.stop.load(Ordering::SeqCst) {
+        let started = Instant::now();
+        let cfg = match shared.cfg.lock() { Ok(c) => c.clone(), Err(_) => return };
+        let (Some(base), Some(port)) = (cfg.record_to.clone(), cfg.tap_from) else { return };
+        part += 1;
+        while Path::new(&record_part(&base, part)).exists() { part += 1; }
+        let file = record_part(&base, part);
+        let args: Vec<String> = ["-hide_banner", "-loglevel", "warning", "-stats", "-stats_period", "1", "-y",
+            "-probesize", "2M", "-analyzeduration", "2M", "-f", "mpegts", "-i"].map(String::from).into_iter()
+            .chain([format!("tcp://127.0.0.1:{port}")])
+            .chain(["-map", "0:v:0", "-map", "0:a:0", "-c", "copy", "-bsf:a", "aac_adtstoasc",
+                "-movflags", "+frag_keyframe+empty_moov+default_base_moof", "-flush_packets", "1", "-f", "mp4"].map(String::from))
+            .chain([file.clone()]).collect();
+        let mut child = match Command::new(&ffmpeg).args(&args).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped()).spawn() {
+            Ok(c) => c,
+            Err(e) => {
+                set_status(&shared, &on_status, |s| { s.state = "failed".into(); s.error = Some(format!("FFmpeg didn't start: {e}")); });
+                return;
+            }
+        };
+        let stderr = child.stderr.take();
+        if let Ok(mut s) = shared.stdin.lock() { *s = child.stdin.take(); }
+        if let Ok(mut c) = shared.child.lock() { *c = Some(child); }
+        if shared.stop.load(Ordering::SeqCst) { break; }
+        let name = Path::new(&file).file_name().map(|f| f.to_string_lossy().to_string()).unwrap_or_default();
+        let mut got_data = false;
+        if let Some(err) = stderr {
+            let mut reader = BufReader::new(err);
+            let mut buf = Vec::new();
+            loop {
+                buf.clear();
+                let mut byte = [0u8; 1];
+                let mut got = false;
+                while let Ok(1) = reader.read(&mut byte) {
+                    got = true;
+                    if byte[0] == b'\n' || byte[0] == b'\r' { break; }
+                    buf.push(byte[0]);
+                }
+                if !got { break; }
+                let line = String::from_utf8_lossy(&buf).to_string();
+                if !line.trim().is_empty() && !line.contains("frame=") { eprintln!("[Record] {line}"); }
+                if let Some((fps, kbps, drop)) = parse_stats(&line) {
+                    let first = !got_data;
+                    got_data = true;
+                    let up = started.elapsed().as_secs();
+                    set_status(&shared, &on_status, |s| {
+                        s.fps = fps; s.kbps = kbps; s.dropped = drop; s.uptime_secs = up;
+                        s.state = "live".into(); s.error = None;
+                        if first { s.files.push(file.clone()); if let Some(d) = s.destinations.first_mut() { d.state = "live".into(); d.name = name.clone(); d.error = None; } }
+                    });
+                }
+            }
+        }
+        let code = shared.child.lock().ok().and_then(|mut c| c.as_mut().and_then(|ch| ch.wait().ok()));
+        if let Ok(mut c) = shared.child.lock() { *c = None; }
+        if let Ok(mut s) = shared.stdin.lock() { *s = None; }
+        if shared.stop.load(Ordering::SeqCst) { break; }
+        let why = if got_data { "The stream restarted; the recording goes on in the next file".to_string() }
+            else { code.map(|c| format!("Waiting for the stream's picture ({c})")).unwrap_or_else(|| "Waiting for the stream's picture".into()) };
+        // "retrying" is for a recording that was running; one still waiting for its first picture is starting.
+        set_status(&shared, &on_status, |s| { s.state = if got_data { "retrying".into() } else { "starting".into() }; s.error = Some(why); });
+        for _ in 0..5 {
+            if shared.stop.load(Ordering::SeqCst) { break; }
+            thread::sleep(Duration::from_millis(100));
+        }
+    }
+    set_status(&shared, &on_status, |s| { s.state = "stopped".into(); s.fps = 0.0; s.kbps = 0.0; });
+}
+
 #[derive(Default)]
 pub struct StreamState {
     pipelines: Mutex<Vec<Pipeline>>,
@@ -1212,6 +1328,11 @@ impl StreamState {
 
     pub fn status(&self) -> Vec<PipelineStatus> {
         self.pipelines.lock().map(|p| p.iter().map(|x| x.status()).collect()).unwrap_or_default()
+    }
+
+    /// The local port to read a running stream's picture from for this output, if it has one.
+    pub fn tap_port(&self, output: &str) -> Option<u16> {
+        self.pipelines.lock().ok().and_then(|p| p.iter().find(|x| x.output() == output).and_then(|x| x.tap_port()))
     }
 
     /// A snapshot from a capture window: `stream-<output>` goes to that output's pipeline.
@@ -1267,6 +1388,9 @@ pub struct Engines {
 }
 
 impl Engines {
+    /// A recording made now for `output` copies the stream's picture when the output is streaming.
+    pub fn stream_tap(&self, output: &str) -> Option<u16> { self.stream.tap_port(output) }
+
     pub fn of(&self, kind: Kind) -> &StreamState {
         match kind {
             Kind::Stream => &self.stream,
@@ -1315,6 +1439,8 @@ mod tests {
             zones: vec![Zone { x: 60.0, y: 120.0, w: 640.0, h: 840.0 }],
             record_to: None,
             audio_mix: Vec::new(),
+            tap_port: None,
+            tap_from: None,
         }
     }
 
@@ -1596,6 +1722,59 @@ mod tests {
         println!("max level before mute {before} dB, after {after} dB");
         assert!(before > -20.0, "the tones are heard: {before}");
         assert!(after < -60.0, "muted live: {after}");
+    }
+
+    /// A recording made while streaming copies the stream's own picture (one encoder): it plays, has
+    /// the picture and the sound, and the stream is untouched:
+    /// `KAIRO_STREAM_E2E=1 cargo test --release -p kairo --lib tap_record_e2e -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn tap_record_e2e() {
+        if std::env::var("KAIRO_STREAM_E2E").is_err() { return; }
+        std::env::set_var("KAIRO_STREAM_TEST_DEVICES", "1");
+        let ffmpeg = PathBuf::from(std::env::var("KAIRO_FFMPEG").unwrap_or_else(|_| "ffmpeg".into()));
+        let dir = std::env::temp_dir().join(format!("kairo-tap-e2e-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut l1 = Command::new(&ffmpeg)
+            .args(["-hide_banner", "-loglevel", "error", "-y", "-listen", "1", "-i", "rtmp://127.0.0.1:19361/live/keytap", "-c", "copy"])
+            .arg(dir.join("a.flv")).stdin(Stdio::null()).spawn().unwrap();
+        thread::sleep(Duration::from_millis(1500));
+        let mut c = cfg();
+        c.width = 640; c.height = 360; c.program = None;
+        c.destinations = vec![Destination { id: "a".into(), name: "A".into(), url: "rtmp://127.0.0.1:19361/live".into(), key: "keytap".into() }];
+        let stream = Pipeline::start(ffmpeg.clone(), c.clone(), Arc::new(|_| {}));
+        stream.push_frame(Arc::new(Frame { width: 640, height: 360, bgra: vec![70u8; 640 * 360 * 4] }), 0);
+        thread::sleep(Duration::from_secs(4));
+        let port = stream.tap_port().expect("a stream offers its picture");
+        let file = dir.join("tap.mp4");
+        let mut r = c.clone();
+        r.destinations.clear();
+        r.record_to = Some(file.to_string_lossy().to_string());
+        r.tap_from = Some(port);
+        let statuses = Arc::new(Mutex::new(Vec::<PipelineStatus>::new()));
+        let st2 = statuses.clone();
+        let rec = Pipeline::start(ffmpeg.clone(), r, Arc::new(move |s| st2.lock().unwrap().push(s)));
+        thread::sleep(Duration::from_secs(10));
+        let rec_status = rec.status();
+        rec.stop();
+        rec.join(Duration::from_secs(6));
+        let stream_status = stream.status();
+        stream.stop();
+        stream.join(Duration::from_secs(6));
+        let _ = l1.wait();
+        println!("recording: {rec_status:?}\nstream: {stream_status:?}");
+        assert_eq!(rec_status.state, "live", "{rec_status:?}");
+        assert!(rec_status.from_stream);
+        assert_eq!(stream_status.state, "live", "{stream_status:?}");
+        let probe = Command::new(&ffmpeg).args(["-hide_banner", "-i"]).arg(&file).args(["-f", "null", "-"]).output().unwrap();
+        let t = String::from_utf8_lossy(&probe.stderr).to_string();
+        println!("{t}");
+        assert!(t.contains("Video: h264"), "has the picture");
+        assert!(t.contains("Audio: aac"), "has the sound");
+        let secs = t.lines().find_map(|l| l.split("time=").last().filter(|_| l.contains("frame=")).map(|x| x.split_whitespace().next().unwrap_or("").to_string())).unwrap_or_default();
+        println!("played {secs}");
+        assert!(!secs.is_empty() && secs.as_str() >= "00:00:04", "about the 7 s asked, at least 4 s: {secs}");
+        assert!(std::fs::metadata(dir.join("a.flv")).map(|m| m.len() > 10_000).unwrap_or(false), "the stream itself kept going");
     }
 
     /// Records ~4 s to a file with test sources and checks it plays, even cut off by a kill:

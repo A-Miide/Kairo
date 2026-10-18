@@ -27,7 +27,8 @@
   const VIEW_KEY = 'kairo-vd-media-view', FOLDER_KEY = 'kairo-vd-media-folder';
   const readPref = (k, d) => { try { return localStorage.getItem(k) || d; } catch { return d; } };
   const writePref = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
-  function setView(view) { K.md.view = view === 'media' ? 'media' : 'slides'; writePref(VIEW_KEY, K.md.view); }
+  const VIEWS = ['slides', 'media', 'timer'];
+  function setView(view) { K.md.view = VIEWS.includes(view) ? view : 'slides'; writePref(VIEW_KEY, K.md.view); }
   const TILE_KEY = 'kairo-vd-tile';
   function loadTile() { try { const n = Number(localStorage.getItem(TILE_KEY)); return n >= 90 && n <= 240 ? n : 120; } catch { return 120; } }
   function applyTile(n) { if (K.md.body) K.md.body.style.setProperty('--vd-tile', n + 'px'); }
@@ -35,7 +36,7 @@
   // For the Slides and Media tabs in the top bar: show that view.
   function show(id) {
     if (!K.mounted) return;
-    if (id === 'slides' || id === 'media') { setView(id); renderMedia(); }
+    if (VIEWS.includes(id)) { setView(id); renderMedia(); }
   }
 
   // ── Playlist: selection ──────────────────────────────────────────────────
@@ -100,8 +101,8 @@
   // ── Media bin group ──────────────────────────────────────────────────────
   function toggleRow() {
     K.md.chips.replaceChildren();
-    // Slides or Media Bin: one or the other.
-    [['slides', 'Slides'], ['media', 'Media Bin']].forEach(([view, label]) => {
+    // Slides, Media Bin or Timer: one of them. The top menu's Slides, Media and Timer buttons choose the same.
+    [['slides', 'Slides'], ['media', 'Media Bin'], ['timer', 'Timer']].forEach(([view, label]) => {
       const on = K.md.view === view;
       const b = vBtn(label, `Show ${label}`, () => { if (K.md.view !== view) { setView(view); renderMedia(); } }, 'vd-chip' + (on ? ' is-on' : ''));
       b.setAttribute('role', 'radio');
@@ -152,12 +153,29 @@
     if (grid.isConnected && !grid.children.length) grid.appendChild(vEl('p', 'vd-empty', text || 'Choose an item in the playlist to see its slides.'));
   }
 
+  // The Timer screen itself (segments, clock) shown in this area: moved here, put back when another view is chosen.
+  function releaseTimer() {
+    const tv = document.getElementById('timer-view');
+    if (tv && K.md.timerHome && K.md.timerHome.parentNode) { K.md.timerHome.after(tv); tv.classList.add('hidden'); tv.classList.remove('vd-in-dock'); }
+    K.md.timerHome?.remove(); K.md.timerHome = null;
+  }
   function renderMedia() {
     if (!K.mounted) return;
+    releaseTimer();
     toggleRow();
     const body = K.md.body;
     thumbIO && thumbIO.disconnect(); thumbIO = null;
     body.replaceChildren();
+    if (K.md.view === 'timer') {
+      const tv = document.getElementById('timer-view');
+      if (tv) {
+        K.md.timerHome = document.createComment('timer-view-home');
+        tv.before(K.md.timerHome);
+        tv.classList.remove('hidden'); tv.classList.add('vd-in-dock');
+        body.appendChild(tv);
+      } else body.appendChild(vEl('p', 'vd-empty', 'The timer is not available here.'));
+      return;
+    }
     const grid = vEl('div', 'vd-grid');
     body.appendChild(grid);
     const token = K.token = (K.token || 0) + 1;
@@ -220,7 +238,7 @@
     K.md.addBtn = vBtn('+ Add', 'Add slides, a song or scripture', (e) => svc() && svc().openAddContent && svc().openAddContent(e.currentTarget), 'vd-mini vd-add');
     mdHead.append(K.md.chips, K.md.addBtn, size);
     K.md.body = vEl('div', 'vd-media-body');
-    K.md.view = readPref(VIEW_KEY, 'slides') === 'media' ? 'media' : 'slides';
+    K.md.view = VIEWS.includes(readPref(VIEW_KEY, 'slides')) ? readPref(VIEW_KEY, 'slides') : 'slides';
     K.md.folder = readPref(FOLDER_KEY, 'all');
     applyTile(loadTile());
     md.append(mdHead, K.md.body);
@@ -238,6 +256,7 @@
     if (!K.mounted) return;
     K.mounted = false;
     K.pl.obs?.disconnect(); K.pl.obs = null;
+    releaseTimer();
     thumbIO && thumbIO.disconnect(); thumbIO = null;
     const list = document.getElementById('svc-items-list');
     if (list) {
@@ -253,5 +272,5 @@
     K.root?.replaceChildren(); K.root = null;
   }
 
-  window.KairoVideoDock = { mount, unmount, show, refresh: () => { if (K.mounted) { K.md.fetched = 0; loadFolders(); markSelected(); } } };
+  window.KairoVideoDock = { mount, unmount, show, isMounted: () => K.mounted, refresh: () => { if (K.mounted) { K.md.fetched = 0; loadFolders(); markSelected(); } } };
 })();

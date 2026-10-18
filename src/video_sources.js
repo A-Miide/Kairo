@@ -54,6 +54,17 @@
 
   // Whatever settings.json holds → a clean list. Drops entries with no id or
   // device, and de-duplicates ids so a hand-edited file can't break the UI.
+  // A key this input is put on air with ("q", "F2", "7"): one printable key or a function key, not
+  // Space, Enter, Escape, Tab or the arrows (those have jobs), not a modifier. '' = none.
+  const RESERVED_KEYS = new Set([' ', 'space', 'enter', 'escape', 'esc', 'tab', 'backspace', 'delete', 'shift', 'control', 'alt', 'meta', 'capslock', 'arrowup', 'arrowdown', 'arrowleft', 'arrowright']);
+  function keyName(k) {
+    const t = str(k).trim();
+    if (!t) return '';
+    const l = t.toLowerCase();
+    if (RESERVED_KEYS.has(l)) return '';
+    if (/^f([1-9]|1[0-2])$/.test(l)) return l.toUpperCase();
+    return t.length === 1 ? l : '';
+  }
   function normalizeSources(raw) {
     if (!Array.isArray(raw)) return [];
     const out = [];
@@ -73,6 +84,7 @@
         height: int(r.height, 120, 4320),
         fps: int(r.fps, 1, 240),
         enabled: r.enabled !== false,
+        key: keyName(r.key),
       };
       src.name = uniqueName(out, cleanName(r.name) || label || 'Input', id);
       out.push(src);
@@ -141,6 +153,7 @@
       if ('width' in patch) next.width = int(patch.width, 160, 7680);
       if ('height' in patch) next.height = int(patch.height, 120, 4320);
       if ('fps' in patch) next.fps = int(patch.fps, 1, 240);
+      if ('key' in patch) next.key = keyName(patch.key);
       return next;
     });
   }
@@ -259,7 +272,7 @@
 
   const API = {
     RESOLUTIONS, FPS_OPTIONS, normalizeSources, addSource, assignDevice, setEnabled, stateOf, freeDevices, addAll, renameSource, updateSource,
-    removeSource, moveSource, resolveDevice, setSourceList, buildConstraints, describeCaptureError,
+    removeSource, moveSource, keyName, resolveDevice, setSourceList, buildConstraints, describeCaptureError,
     normalizeLive, setLive, liveSourceFor, switchPlan, uniqueName,
   };
   if (typeof window !== 'undefined') window.KairoVideoSources = API;
