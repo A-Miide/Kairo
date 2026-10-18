@@ -82,7 +82,11 @@
     t.appendChild(el('div', 'st-name', name));
     const c = el('div', 'st-control');
     c.appendChild(control);
-    if (hint) c.appendChild(el('p', 'setting-hint st-hint', hint));
+    // A switch sits on the right in line with its name; what it does is said under the name.
+    if (control.classList && control.classList.contains('output-toggle')) {
+      r.classList.add('st-row-toggle');
+      if (hint) t.appendChild(el('p', 'setting-hint st-hint', hint));
+    } else if (hint) c.appendChild(el('p', 'setting-hint st-hint', hint));
     r.append(t, c);
     return r;
   }
@@ -311,7 +315,7 @@
       const show = el('button', 'modal-btn secondary', 'Show'); show.type = 'button';
       show.addEventListener('click', () => S3.reveal(file));
       last.appendChild(show);
-      rbBody.appendChild(row(ro.state === 'off' ? 'Last recording' : 'Recording to', ro.files.length > 1 ? `In ${ro.files.length} parts: it restarted after trouble` : null, last));
+      rbBody.appendChild(row(ro.state === 'off' ? 'Last recording' : 'Recording to', ro.files.length > 1 ? `In ${ro.files.length} parts: it restarted after trouble${ro.why ? ` (${ro.why})` : ''}` : null, last));
     }
     if (ro.state !== 'off') (ro.warnings || []).concat(ro.errors || []).forEach(t => rbBody.appendChild(el('p', 'st-result bad', t)));
     rec.appendChild(rbBody);
@@ -347,6 +351,12 @@
     .st-control { flex: none; width: 260px; display: flex; flex-direction: column; gap: 4px; align-items: stretch; }
     .st-control .setting-input { width: 100%; }
     .st-control .output-toggle { align-self: flex-end; }
+    .st-row-toggle { align-items: center; }
+    .st-row-toggle .st-name { padding-top: 0; }
+    .st-row-toggle .st-text { flex: 1 1 auto; min-width: 0; }
+    .st-row-toggle .st-control { width: auto; }
+    .st-row-toggle .st-control .output-toggle { align-self: center; }
+    .st-row-toggle .st-hint { margin-top: 2px; }
     .st-hint { margin: 0; font-size: 12px; color: var(--text-3, #8b8b96); }
     .st-dest { border: 1px solid var(--border); border-radius: var(--radius-md, 10px); padding: 12px 14px; margin: 10px 0 0; }
     .st-dest.off { opacity: 0.6; }

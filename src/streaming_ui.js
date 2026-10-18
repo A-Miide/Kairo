@@ -228,6 +228,7 @@
     if (!captureOk && !(await ask('This computer can\'t capture Kairo\'s graphics yet, so the recording would have the camera and sound only. Record anyway?', 'Record'))) return;
     for (const p of pipelines) await useCapture(p.output, 'record', p.width, p.height);
     try {
+      recWhy = '';
       lastFiles = await invoke('record_start', { pipelines, folder: r.folder || null, name: stamp() }) || [];
       recording = true;
       const now = await invoke('record_status').catch(() => []);
@@ -251,21 +252,27 @@
     notify();
     if (lastFiles.length && typeof showToast === 'function') showToast(`Recording saved: ${lastFiles[lastFiles.length - 1].split(/[\\/]/).pop()}`, 'success');
   }
+  let recWhy = '';             // what the engine said when the recording last restarted
   function takeRec(s) {
     if (!s || !s.output) return;
     if ((recRuns[s.output] || 0) > (s.run || 0)) return;
     recRuns[s.output] = s.run || 0;
+    // Kept in the log too: the restart's reason is otherwise gone once the status clears.
+    if (s.state === 'retrying' || s.state === 'failed') {
+      const why = String(s.error || '').slice(0, 200);
+      if (why && why !== recWhy) { recWhy = why; try { window.kairoLog && window.kairoLog('record-trouble', { output: s.output, state: s.state, error: why, warnings: s.warnings || [] }); } catch {} }
+    }
     if (s.files && s.files.length) lastFiles = s.files;
     if (s.state === 'stopped') delete recStatus[s.output]; else recStatus[s.output] = s;
   }
   function recOverall() {
     const all = Object.values(recStatus);
-    if (!all.length) return { state: 'off', files: lastFiles };
+    if (!all.length) return { state: 'off', files: lastFiles, why: recWhy };
     const states = all.map(s => s.state);
     const state = states.includes('live') ? 'live' : states.includes('retrying') ? 'retrying' : states.every(s => s === 'failed') ? 'failed' : 'starting';
     const warnings = all.flatMap(s => s.warnings || []);
     if (!captureOk) warnings.push('Kairo\'s graphics are not in the recording on this computer: camera and sound only.');
-    return { state, uptime: Math.max(0, ...all.map(s => s.uptimeSecs || 0)), warnings, errors: all.map(s => s.error).filter(Boolean), files: lastFiles };
+    return { state, uptime: Math.max(0, ...all.map(s => s.uptimeSecs || 0)), warnings, errors: all.map(s => s.error).filter(Boolean), files: lastFiles, why: recWhy };
   }
   // The Record button: shown in Director mode, when switched on under Settings → Streaming,
   // or while recording.
