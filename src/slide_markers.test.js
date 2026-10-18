@@ -25,6 +25,12 @@ test('a number that is not inside the named passage, or with no passage, is an i
 test('words that only look like a citation are not one', () => {
   assert.equal(SM.parse('Page 3:15\nsomething').reference, null);
   assert.equal(SM.parse('Meet at 6:30\nthen').reference, null);
+  // A service time on an announcement slide
+  assert.equal(SM.parse('Join us Sunday 9:30\n2.\nWorship').reference, null);
+  assert.equal(SM.parse('Join us Sunday 9:30\n2.\nWorship').kind, 'index');
+  assert.equal(SM.parse('October 12:00\nLunch').reference, null);
+  // ...and a real book is still one
+  assert.equal(SM.parse('48.\nJohn 6:48-58\nI am that bread of life.').reference, 'John 6:48-58');
 });
 
 test('plain slides are untouched', () => {
@@ -65,6 +71,17 @@ test('a numbered point is heard; a citation, a book or a bare number is not', ()
   assert.equal(indexCall('a number of people came'), null);
   assert.equal(indexCall('three people came'), null);
   assert.equal(indexCall('slide three of chapter five'), null);   // "of": not a point call
+});
+
+test('ordinary talk with a number in it never moves the deck', () => {
+  assert.equal(indexCall('He had a key, one that opened the door'), null);
+  assert.equal(indexCall('The lesson one learns is patience'), null);
+  assert.equal(indexCall('number one priority is prayer'), null);
+  assert.equal(indexCall('the reason one prays'), null);
+  assert.equal(indexCall('thing one and thing two'), null);
+  // ...while a point said as one still is
+  assert.equal(indexCall('Number one: pray'), 1);
+  assert.equal(indexCall('reason one, God loves you'), 1);
 });
 
 test('"point three" moves the deck to the slide numbered 3, forward only, and never while scripture is read', () => {

@@ -16,7 +16,8 @@
   const NUM = /^[(\[]?\s*(\d{1,3})(?:\s*[-–—]\s*(\d{1,3}))?\s*[.):\]]?$/;
   const CITE = /^((?:[1-3]|i{1,3}|first|second|third)\s*)?([a-z]+(?:\s+(?:of\s+)?[a-z]+){0,2})\.?\s+(\d{1,3})\s*[:.]\s*(\d{1,3})(?:\s*[-–—]\s*(\d{1,3}))?$/i;
   // Words that make a "citation" something else ("Page 3:15").
-  const NOT_BOOK = /^(page|pages|slide|slides|chapter|verse|verses|step|point|at|time|room|from|until|by|meet|meets|start|starts|begin|begins|end|ends|call|doors|service|services|ratio|score|vote)$/i;
+  // Days and months too: an announcement's "Sunday 9:30" is a time, not a chapter and verse.
+  const NOT_BOOK = /^(page|pages|slide|slides|chapter|verse|verses|step|point|at|time|room|from|until|by|meet|meets|start|starts|begin|begins|end|ends|call|doors|service|services|ratio|score|vote|sunday|monday|tuesday|wednesday|thursday|friday|saturday|today|tonight|tomorrow|january|february|march|april|may|june|july|august|september|october|november|december|sun|mon|tue|tues|wed|thu|thur|thurs|fri|sat)$/i;
 
   function parse(text) {
     const lines = String(text || '').split(/\n+/).map(s => s.trim()).filter(Boolean);

@@ -690,6 +690,8 @@ pub type OnStatus = Arc<dyn Fn(PipelineStatus) + Send + Sync>;
 
 /// What the status says about cameras added after this stream started.
 const PENDING_CAMERAS: &str = "Not in the stream yet:";
+/// The same, for a recording.
+const PENDING_CAMERAS_RECORD: &str = "Not in the recording yet:";
 
 impl Pipeline {
     pub fn start(ffmpeg: PathBuf, cfg: PipelineConfig, on_status: OnStatus) -> Pipeline {
@@ -773,15 +775,19 @@ impl Pipeline {
     /// back). The stream is never restarted for it: FFmpeg opens its inputs once, so the new ones
     /// are used from the next start, and the status says which are missing meanwhile.
     pub fn set_cameras(&self, cameras: Vec<Camera>) {
+        // A recording that copies the stream opens no cameras of its own: it has whatever the stream has.
+        let (copies_stream, recording) = self.shared.cfg.lock().map(|c| (c.tap_from.is_some(), c.record_to.is_some())).unwrap_or((false, false));
+        if copies_stream { return; }
         if let Ok(mut cfg) = self.shared.cfg.lock() { cfg.cameras = cameras.clone(); }
         let open: Vec<String> = self.shared.camera_inputs.lock().map(|c| c.iter().map(|(id, _)| id.clone()).collect()).unwrap_or_default();
         let missing: Vec<&str> = cameras.iter().filter(|c| !open.contains(&c.id)).map(|c| c.label.as_str()).collect();
+        let (prefix, again) = if recording { (PENDING_CAMERAS_RECORD, "Stop and start recording again") } else { (PENDING_CAMERAS, "Stop and Go live again") };
         set_status(&self.shared, &self.on_status, |s| {
-            s.warnings.retain(|w| !w.starts_with(PENDING_CAMERAS));
+            s.warnings.retain(|w| !w.starts_with(prefix));
             // A camera that was already left out says so itself.
             let left_out: Vec<&str> = missing.iter().copied().filter(|l| !s.warnings.iter().any(|w| w.contains(&format!("\"{l}\"")))).collect();
             if !left_out.is_empty() && s.state != "stopped" {
-                s.warnings.push(format!("{PENDING_CAMERAS} {}. Stop and Go live again to include {}.", left_out.join(", "), if left_out.len() == 1 { "it" } else { "them" }));
+                s.warnings.push(format!("{prefix} {}. {again} to include {}.", left_out.join(", "), if left_out.len() == 1 { "it" } else { "them" }));
             }
         });
     }
@@ -1270,7 +1276,10 @@ fn supervise_tap(ffmpeg: PathBuf, shared: Arc<Shared>, on_status: OnStatus) {
             else { code.map(|c| format!("Waiting for the stream's picture ({c})")).unwrap_or_else(|| "Waiting for the stream's picture".into()) };
         // "retrying" is for a recording that was running; one still waiting for its first picture is starting.
         set_status(&shared, &on_status, |s| { s.state = if got_data { "retrying".into() } else { "starting".into() }; s.error = Some(why); });
-        for _ in 0..5 {
+        // Straight back after a stream restart (the copy is offered again at once); while still
+        // waiting for the stream's first picture, every 1.5 s, not a new FFmpeg twice a second.
+        // The stream's copy listens 2.5 s at a time, so a try always lands inside one.
+        for _ in 0..(if got_data { 5 } else { 15 }) {
             if shared.stop.load(Ordering::SeqCst) { break; }
             thread::sleep(Duration::from_millis(100));
         }
