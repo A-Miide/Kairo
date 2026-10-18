@@ -45,6 +45,37 @@
     if (!u || !u.size) { delete captureUsers[output]; window.KairoCapture?.close(`stream-${output}`); }
   }
 
+  // The cameras the engine opens. Each carries its place among the devices of its name, from the
+  // input's own device id: two cameras of one model share a name, and FFmpeg is only told names.
+  async function engineCameras() {
+    const sources = KairoCameras.list();
+    let devices = [];
+    try { devices = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput'); } catch {}
+    const V = window.KairoVideoSources;
+    return sources
+      .filter(s => s && s.enabled !== false && (s.deviceId || s.label) && s.label)
+      .map(s => {
+        const cam = { id: s.id, label: s.label };
+        try {
+          const dev = V && V.resolveDevice(s, devices, sources);
+          const same = devices.filter(d => (d.label || '').toLowerCase() === s.label.toLowerCase());
+          const at = same.findIndex(d => d.deviceId === dev);
+          if (dev && at >= 0) cam.slot = at;
+        } catch {}
+        return cam;
+      });
+  }
+  // A camera added or changed while streaming or recording: the engine says which are not in the
+  // picture yet (its status line in the panel). It never restarts a live stream for it.
+  let camerasTimer = null;
+  window.addEventListener('kairo:cameras', () => {
+    clearTimeout(camerasTimer);
+    camerasTimer = setTimeout(async () => {
+      if (!invoke || !(live || recording) || !isDirectorOn()) return;
+      try { await invoke('stream_cameras', { cameras: await engineCameras() }); } catch {}
+    }, 400);
+  });
+
   // What each pipeline is made of besides where it goes: size, cameras, zones, sound.
   async function pipelineBase(output, videoKbps) {
     const c = cfg();
@@ -52,9 +83,7 @@
     const fps = Number((c.video || {}).fps) || 30;
     // Cameras belong to Director mode; placeholders (no device yet) can't be opened.
     const director = isDirectorOn();
-    const cameras = director ? KairoCameras.list()
-      .filter(s => s && s.enabled !== false && (s.deviceId || s.label) && s.label)
-      .map(s => ({ id: s.id, label: s.label })) : [];
+    const cameras = director ? await engineCameras() : [];
     // Every video zone the screen themes have: the engine prepares the camera for each.
     const zones = director && typeof looks !== 'undefined' && Array.isArray(looks)
       ? looks.filter(l => l && l.groupId === 'grp-screen').flatMap(l => (l.layers || []).filter(x => x.type === 'videozone' && x.visible !== false && x.pos).map(x => ({ x: x.pos.x, y: x.pos.y, w: x.pos.w, h: x.pos.h })))

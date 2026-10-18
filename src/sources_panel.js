@@ -191,7 +191,9 @@ function buildVideoPane() {
 videoState.addFlows = new Set();
 videoState.dismissed = new Set();
 
-function buildAddFlow() {
+// part: 'offer' shows only the offer to use a newly plugged-in device for a waiting placeholder;
+// anything else is the whole add form.
+function buildAddFlow(part) {
   const wrap = vEl('div', 'vsrc-add');
   const flow = { el: wrap, render };
 
@@ -212,6 +214,7 @@ function buildAddFlow() {
       break outer;
     }
 
+    if (part === 'offer') return;
     // + Add input: a name now, a device any time later.
     const row = vEl('div', 'vsrc-add-row');
     const name = vEl('input', 'setting-input'); name.type = 'text'; name.maxLength = 60;
@@ -433,7 +436,12 @@ function renderVideoSources() {
   videoState.leases = [];
 
   const sec = vEl('div', 'settings-section');
-  sec.appendChild(vEl('div', 'settings-section-label', 'Video Sources'));
+  // The title, and Add at the top right: its own small panel (name, or a detected device).
+  const titleRow = vEl('div', 'vsrc-title-row');
+  titleRow.appendChild(vEl('div', 'settings-section-label', 'Video Sources'));
+  const addTop = vBtn('+ Add', 'Add a camera or capture card, or a named placeholder for one that is not connected yet', () => openAddInputPanel(addTop), 'vd-mini vd-mini-primary');
+  titleRow.appendChild(addTop);
+  sec.appendChild(titleRow);
   sec.appendChild(vEl('p', 'setting-hint', 'Add every camera and capture card you use, or a named placeholder for one that is not connected yet.'));
 
   // Every configured input, one row each.
@@ -456,12 +464,10 @@ function renderVideoSources() {
       if (!cb.checked) { const live = videoLiveMap(); const ids = Object.keys(live).filter(k => live[k] === src.id); if (ids.length) setVideoLiveFor(ids, null); }
     });
     sw.append(cb, vEl('span', 'output-toggle-track'));
-    const up = vBtn('↑', 'Move up', () => saveVideoSources(VSRC.moveSource(videoSourceList(), src.id, -1)), 'ls-icon-btn');
-    const down = vBtn('↓', 'Move down', () => saveVideoSources(VSRC.moveSource(videoSourceList(), src.id, 1)), 'ls-icon-btn');
-    up.disabled = i === 0; down.disabled = i === sources.length - 1;
-    up.setAttribute('aria-label', `Move ${src.name} up`); down.setAttribute('aria-label', `Move ${src.name} down`);
-    const rm = vBtn('Remove', `Remove ${src.name}`, () => saveVideoSources(VSRC.removeSource(videoSourceList(), src.id)), 'vd-mini vsrc-remove');
-    top.append(name, sw, up, down, rm);
+    const rm = vBtn('', `Remove ${src.name}`, () => saveVideoSources(VSRC.removeSource(videoSourceList(), src.id)), 'vsrc-trash');
+    rm.setAttribute('aria-label', `Remove ${src.name}`);
+    rm.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6M10 11v6M14 11v6"/></svg>';
+    top.append(name, sw, rm);
 
     const sub = vEl('div', 'vsrc-input-sub');
     // Device: every detected one, or none.
@@ -510,40 +516,15 @@ function renderVideoSources() {
   if (!sources.length) listEl.appendChild(vEl('p', 'setting-hint vsrc-empty', 'No inputs yet. Add one below.'));
   sec.appendChild(listEl);
 
-  // + Add input, and the detected devices
-  sec.appendChild(vEl('div', 'vsrc-add-title', 'Add another input'));
+  // A device plugged in that a placeholder was waiting for: offered here.
   if (videoState.pageFlow) videoState.addFlows.delete(videoState.pageFlow);   // the form of the last redraw is gone
-  const flow = buildAddFlow();
+  const flow = buildAddFlow('offer');
   videoState.pageFlow = flow;
   sec.appendChild(flow.el);
   root.appendChild(sec);
 
-  // Live on each output
-  const live = videoLiveMap();
-  const layers = outputLayerMap();
-  const out = vEl('div', 'settings-section');
-  out.appendChild(vEl('div', 'settings-section-label', 'Live on each output'));
-  out.appendChild(vEl('p', 'setting-hint', 'One video source is live per output. Video input must be on for the output, in Director mode settings.'));
-  const table = vEl('div', 'vsrc-live');
-  videoOutputs().forEach(o => {
-    const row = vEl('div', 'vsrc-live-row');
-    row.appendChild(vEl('span', 'vsrc-live-name', o.monitor ? `${o.name} (Monitor)` : o.name));
-    const usable = sources.filter(x => x.enabled !== false && (x.deviceId || x.label));
-    const opts = [['', 'No video']].concat(usable.map(s => [s.id, s.name]));
-    const select = vSelect(opts, live[o.id] || '', (v) => setVideoLiveFor([o.id], v || null));
-    select.setAttribute('aria-label', `Live video source on ${o.name}`);
-    row.appendChild(select);
-    const layerOn = layers[o.id] && layers[o.id].video;
-    const toggle = vEl('label', 'vsrc-layer-toggle');
-    const cb = vEl('input'); cb.type = 'checkbox'; cb.checked = !!layerOn;
-    cb.addEventListener('change', () => { setOutputLayer(o.id, 'video', cb.checked); renderVideoSources(); });
-    toggle.append(cb, document.createTextNode('Video input on'));
-    row.appendChild(toggle);
-    table.appendChild(row);
-  });
-  out.appendChild(table);
-  root.appendChild(out);
-
+  // What goes out on a screen is set under Outputs → that output → Settings (Video input), and the
+  // Director takes a camera live. Neither is repeated here.
   old.forEach(release => release());
 }
 

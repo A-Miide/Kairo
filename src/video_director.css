@@ -241,12 +241,19 @@ body.video-director .vd-section-sends .cs-theme-btn:hover { color: var(--text); 
 .vg-tile.is-empty .vg-name { background: none; color: var(--text-2); }
 
 /* Video Sources page: one row per input. */
+.vsrc-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.vsrc-title-row .settings-section-label { margin: 0; }
+/* Add opened from the Cameras overlay sits above it. */
+.vd-cam-modal ~ .vd-add-panel { z-index: 2600; }
 .vsrc-inputs { display: flex; flex-direction: column; gap: 8px; }
 .vsrc-input { padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: rgba(255,255,255,0.015); display: flex; flex-direction: column; gap: 8px; cursor: pointer; }
 .vsrc-input.is-sel { border-color: var(--selected-border); }
 .vsrc-input.is-empty { border-style: dashed; }
 .vsrc-input.is-off { opacity: 0.6; }
-.vsrc-input-top { display: flex; align-items: center; gap: 8px; }
+.vsrc-input-top { display: flex; align-items: center; gap: 10px; }
+.vsrc-input-top .output-toggle { flex: none; }
+.vsrc-trash { flex: none; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--border-md); border-radius: var(--radius); background: transparent; color: var(--text-2); cursor: pointer; }
+.vsrc-trash:hover { color: var(--red); border-color: var(--red); background: rgba(255,59,48,0.08); }
 .vsrc-name { flex: 1 1 auto; min-width: 0; }
 .vsrc-input-sub { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
 .vsrc-input-sub .setting-input { width: 100%; min-width: 0; }
@@ -718,12 +725,15 @@ body.video-director .svc-slide.is-staged, body.video-director .media-card.is-sta
 .vd-band .vd-cluster .vd-quiet:hover:not(:disabled) { background: rgba(255,255,255,0.04); color: var(--text); border-color: var(--border-md); }
 .vd-band .vd-cluster .vd-quiet:disabled { color: var(--text-3); border-color: var(--border); opacity: 0.6; cursor: default; }
 
-/* ── A top-menu tab (Media, Songs, Timer, Slides) is a full sheet over the Director screen, which keeps running underneath. ── */
+/* ── A top-menu tab (Media, Songs, Timer, Slides) is a modal card over the Director screen, which stays visible
+   (dimmed) and keeps running underneath. Done, Esc or a click outside closes it, as the camera inputs do. ── */
+body.video-director.vd-sheet { --sh-w: min(1080px, calc(100vw - 96px)); --sh-h: min(780px, calc(100vh - 140px)); --sh-top: calc(64px + (100vh - 64px - var(--sh-h)) / 2); --sh-left: calc((100vw - var(--sh-w)) / 2); }
 body.video-director.vd-sheet .center-stage { position: relative; }
 body.video-director.vd-sheet #svc-stack-view:not(.hidden), body.video-director.vd-sheet #svc-fullscreen:not(.hidden),
 body.video-director.vd-sheet #songs-library-view:not(.hidden), body.video-director.vd-sheet #media-library-view:not(.hidden),
-body.video-director.vd-sheet #timer-view:not(.hidden) { position: absolute; top: 44px; left: 0; right: 0; bottom: 0; z-index: 30; background: var(--bg); overflow: auto; }
-.vd-sheet-bar { position: absolute; top: 0; left: 0; right: 0; height: 44px; z-index: 31; display: flex; align-items: center; gap: 12px; padding: 0 14px; background: var(--bg); border-bottom: 1px solid var(--border); }
+body.video-director.vd-sheet #timer-view:not(.hidden) { position: fixed; top: calc(var(--sh-top) + 44px); left: var(--sh-left); width: var(--sh-w); height: calc(var(--sh-h) - 44px); right: auto; bottom: auto; z-index: 30; background: var(--bg-elevated, var(--bg)); overflow: auto; border: 1px solid var(--border-md); border-top: 0; border-radius: 0 0 var(--radius-lg, 14px) var(--radius-lg, 14px); box-shadow: 0 24px 64px rgba(0,0,0,.55); }
+.vd-sheet-backdrop { position: fixed; inset: 0; z-index: 25; background: rgba(0,0,0,.55); }
+.vd-sheet-bar { position: fixed; top: var(--sh-top); left: var(--sh-left); width: var(--sh-w); height: 44px; z-index: 31; display: flex; align-items: center; gap: 12px; padding: 0 14px; background: var(--bg-elevated, var(--bg)); border: 1px solid var(--border-md); border-bottom-color: var(--border); border-radius: var(--radius-lg, 14px) var(--radius-lg, 14px) 0 0; box-sizing: border-box; }
 .vd-sheet-back { height: 26px; border-color: var(--accent); color: var(--accent); }
 .vd-sheet-back:hover { background: var(--accent-dim); color: var(--text); }
 body.video-director .vd-tab-off { opacity: 1; cursor: pointer; }
