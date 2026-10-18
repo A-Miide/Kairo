@@ -118,6 +118,9 @@
     sel.value = opts.some(([v]) => v === K.md.folder) ? K.md.folder : 'all';
     sel.addEventListener('change', () => { K.md.folder = sel.value; writePref(FOLDER_KEY, sel.value); renderMedia(); });
     K.md.chips.appendChild(sel);
+    // New folders, smart folders and importing live on the full Media screen: it opens as a card.
+    const manage = vBtn('Manage', 'Open the Media screen: new folders, smart folders, importing', () => window.KairoVideoLayout && window.KairoVideoLayout.openFull && window.KairoVideoLayout.openFull('media-btn'), 'vd-mini');
+    K.md.chips.appendChild(manage);
   }
 
   function slideCards(grid, wantSong) {
@@ -155,6 +158,7 @@
 
   // The Timer screen itself (segments, clock) shown in this area: moved here, put back when another view is chosen.
   function releaseTimer() {
+    K.md.timerWatch?.disconnect(); K.md.timerWatch = null;
     const tv = document.getElementById('timer-view');
     if (tv && K.md.timerHome && K.md.timerHome.parentNode) { K.md.timerHome.after(tv); tv.classList.add('hidden'); tv.classList.remove('vd-in-dock'); }
     K.md.timerHome?.remove(); K.md.timerHome = null;
@@ -173,6 +177,10 @@
         tv.before(K.md.timerHome);
         tv.classList.remove('hidden'); tv.classList.add('vd-in-dock');
         body.appendChild(tv);
+        // The app hides this screen whenever another top-menu screen is shown: while it is in this
+        // area it stays shown.
+        K.md.timerWatch = new MutationObserver(() => { if (tv.classList.contains('hidden')) tv.classList.remove('hidden'); });
+        K.md.timerWatch.observe(tv, { attributes: true, attributeFilter: ['class'] });
       } else body.appendChild(vEl('p', 'vd-empty', 'The timer is not available here.'));
       return;
     }

@@ -77,9 +77,11 @@
     // Slides, Media and Timer are views of the area at the bottom right (its selector), not cards over the
     // board: the button chooses what that area shows and the board stays as it is. Songs is a card.
     const DOCK_VIEW = { 'slides-btn': 'slides', 'media-btn': 'media', 'timer-btn': 'timer' };
-    if (active && DOCK_VIEW[active] && window.KairoVideoDock && window.KairoVideoDock.isMounted()) {
-      window.KairoVideoDock.show(DOCK_VIEW[active]);
+    if (active && active !== L.fullFor) L.fullFor = null;
+    if (active && DOCK_VIEW[active] && active !== L.fullFor && window.KairoVideoDock && window.KairoVideoDock.isMounted()) {
+      // The app hides the screen it leaves when the Bible tab comes back: go back first, then fill the area.
       document.getElementById('bible-btn')?.click();
+      window.KairoVideoDock.show(DOCK_VIEW[active]);
       return;
     }
     const open = !!active && active !== 'bible-btn';
@@ -372,5 +374,11 @@
     document.body.classList.remove('video-director');
   }
 
-  window.KairoVideoLayout = { start, stop, fillSends, emptySends, moveTo, nodePopover };
+  // The whole Media (or Timer, Slides) screen as a card, for what the bottom-right area can't do
+  // (new folders, smart folders, importing).
+  function openFull(tabId) {
+    L.fullFor = tabId;
+    document.getElementById(tabId)?.click();
+  }
+  window.KairoVideoLayout = { start, stop, fillSends, emptySends, moveTo, nodePopover, openFull };
 })();
