@@ -38,9 +38,9 @@
     let tileEls = [];
     let tileCtl = [];
     let curSt = { programId: null, mixed: false, hasOutputs: false, previewId: null };
-    // Only the input on air and the one on Preview run live; the others show a still of their last
-    // picture, or a camera silhouette until they have one (no camera running for a thumbnail nobody
-    // is watching: owner, 2026-10-17). The still is taken from a camera that is on air when it goes off.
+    // No input tile runs a live picture (owner, 2026-10-17): the Preview and Program frames show what is
+    // on air, so a tile is a still of its last picture, or a camera silhouette until it has one. A still is
+    // taken once from the camera (opened for a moment) and again when the input comes off air or Preview.
     const stills = new Map();   // source id → data URL
     const SILHOUETTE = '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="M16 10l6-3v10l-6-3z"/></svg>';
     const isLiveSource = (id) => (!curSt.mixed && curSt.hasOutputs && curSt.programId === id) || curSt.previewId === id;
@@ -134,6 +134,8 @@
           setTimeout(poll, 250);
         }, finish);
       };
+      // The camera that was on air or on Preview just came off: its picture changed, so take a new still.
+      const regrab = () => { if (opts.sourceId) { stills.delete(opts.sourceId); showStill(); if (seen) grab(); } };
       const sync = () => {
         const on = seen && wanted();
         if (on && !release) { release = take(); v.hidden = false; still.hidden = true; sil.hidden = true; }
@@ -160,7 +162,7 @@
         sync();
       }, 1200);
       leases.push(() => { clearTimeout(fallback); io.disconnect(); if (release) { const f = opts.sourceId ? frameOf(v) : null; if (f) stills.set(opts.sourceId, f); release(); release = null; } });
-      return { sync };
+      return { sync, regrab };
     }
 
     // A read-only copy of a tile: the picture, the name and the on-air or Preview frame, nothing to click.
@@ -195,7 +197,7 @@
       t.appendChild(v);
       const devId = V.resolveDevice(source, opts.getDevices());
       ctl = null;
-      if (devId && thumbsOn && shown) ctl = liveWhileVisible(t, v, devId, 'thumb', () => { t.dataset.msg = 'Unavailable'; }, { wantLive: () => isLiveSource(source.id), sourceId: source.id });
+      if (devId && thumbsOn && shown) ctl = liveWhileVisible(t, v, devId, 'thumb', () => { t.dataset.msg = 'Unavailable'; }, { wantLive: () => false, sourceId: source.id });
       else t.dataset.msg = devId ? '' : 'Not connected';
       t.__ctl = ctl;
       t.appendChild(h('div', 'vg-name', source.name));
@@ -223,8 +225,13 @@
     }
 
     // Who is on air or staged, written onto the tiles that are already there.
+    let wasLive = new Set();
     function paint(sources, st) {
       curSt = st;
+      // An input that was on air or on Preview and is not any more gets a fresh still.
+      const nowLive = new Set(sources.filter(x => isLiveSource(x.id)).map(x => x.id));
+      sources.forEach((x, i) => { if (wasLive.has(x.id) && !nowLive.has(x.id)) { try { tileEls[i] && tileEls[i].__ctl && tileEls[i].__ctl.regrab(); } catch {} } });
+      wasLive = nowLive;
       tileEls.forEach(t => { try { t.__ctl && t.__ctl.sync(); } catch {} });
       sources.forEach((source, i) => {
         const t = tileEls[i];
