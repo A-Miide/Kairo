@@ -135,6 +135,24 @@ function screensSignature() {
   return cachedScreens.map(s => `${s.index}:${s.width}x${s.height}@${s.left},${s.top}${s.isPrimary ? 'p' : ''}`).join('|');
 }
 
+// The OS lists screens in no order that means anything to the operator (it changes as displays
+// come and go), so screens are named by where they are: the Mac's own first, then the others
+// left to right, each said as to the side of this Mac, with the OS's own name for it when it has one.
+function screensInOrder() {
+  return [...cachedScreens].sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0) || a.left - b.left || a.top - b.top);
+}
+function screenName(s) {
+  if (s.isPrimary) return 'This Mac’s screen';
+  const p = cachedScreens.find(x => x.isPrimary);
+  let where = '';
+  if (p) {
+    const dx = (s.left + s.width / 2) - (p.left + p.width / 2), dy = (s.top + s.height / 2) - (p.top + p.height / 2);
+    where = Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right of' : 'left of') : (dy > 0 ? 'below' : 'above');
+  }
+  const base = s.name || 'External display';
+  return where ? `${base}, ${where} this Mac` : base;
+}
+
 function populateScreenOptions(sel, outputId) {
   sel.dataset.screensSig = screensSignature();
   const current = outputScreenMap()[outputId];
@@ -144,10 +162,10 @@ function populateScreenOptions(sel, outputId) {
   noneOpt.value = '';
   noneOpt.textContent = 'None — don’t output here';
   sel.appendChild(noneOpt);
-  cachedScreens.forEach(s => {
+  screensInOrder().forEach(s => {
     const o = document.createElement('option');
     o.value = String(s.index);
-    o.textContent = `${s.isPrimary ? 'This Mac’s screen' : 'Display ' + (s.index + 1)} — ${s.width}×${s.height}`;
+    o.textContent = `${screenName(s)} — ${s.width}×${s.height}`;
     if (current && current.width === s.width && current.height === s.height &&
         current.left === s.left && current.top === s.top) o.selected = true;
     sel.appendChild(o);
@@ -254,7 +272,7 @@ async function identifyScreen(screenIdx) {
   const label = 'kairo-identify-0';
   await openDisplayWindow(
     label,
-    `/identify.html?n=${screenIdx + 1}&label=${encodeURIComponent(s.isPrimary ? 'This Mac’s screen' : `Display ${screenIdx + 1}`)}`,
+    `/identify.html?n=${screensInOrder().indexOf(s) + 1}&label=${encodeURIComponent(screenName(s))}`,
     { width: s.width, height: s.height, x: s.left, y: s.top, fullscreen: false }
   );
   setTimeout(() => {
@@ -1788,7 +1806,7 @@ const displaysWaiting = new Set();
 const displayStateText = {};
 // The screen an output was on when it was switched off: switching it back on returns there.
 const lastDisplayScreen = {};
-const screenWords = (s) => `${s.isPrimary ? 'this Mac’s screen' : 'Display ' + (s.index + 1)} (${s.width}×${s.height})`;
+const screenWords = (s) => `${screenName(s)} (${s.width}×${s.height})`;
 // null when nothing is assigned to the output.
 function displayStatusFor(id) {
   if (!outputScreenMap()[id]) return null;
