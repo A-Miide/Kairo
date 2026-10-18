@@ -2514,7 +2514,8 @@ function renderOutputControlMatrix() {
     // A Layout for this display alone: which layers it shows, its theme and its video input. Its theme
     // takes over from the display's own theme while it is set; None gives the display its own back.
     // ("Copy from" another output was removed, owner 2026-10-18: a display is set up here, directly.)
-    const layouts = (window.KairoVideoLooks && window.KairoVideoLooks.normalize(settings.directorLooks)) || [];
+    // The Director's own Layouts: the same list, seeded with the starters if Director mode has not made it yet.
+    const layouts = (window.KairoVideoLooks && window.KairoVideoLooks.load && window.KairoVideoLooks.load()) || [];
     if (layouts.length) {
       const pick = document.createElement('select');
       pick.className = 'setting-input oc-copy';

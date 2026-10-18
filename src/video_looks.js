@@ -69,22 +69,31 @@
   // ctx: { loadToPreview(look), capture() → Promise<{videoId, layers, overlays, themeId}>,
   //        previewLookId(), liveLookId(), videoName(look), onChange(),
   //        screenThemes() → [theme], renderThumb(el, theme), editTheme(id) }
-  function create(ctx) {
+  // The saved Layouts (settings.directorLooks), with the starters the first time and the one-time additions
+  // for older lists. The Director's Layouts and the Layout picker on each display under Outputs both read this
+  // one list, so they are always the same Layouts (owner, 2026-10-18).
+  function load() {
+    const save = () => { settings.directorLooks = looks; if (typeof saveSettingsPatch === 'function') saveSettingsPatch({ directorLooks: looks }); };
     let looks = normalize(settings.directorLooks);
-    if (!looks) { looks = normalize([...STARTERS, ...SPLIT_STARTERS]); settings.directorLooksSplit = true; saveSettingsPatch && saveSettingsPatch({ directorLooksSplit: true }); persist(); }
+    if (!looks) { looks = normalize([...STARTERS, ...SPLIT_STARTERS]); settings.directorLooksSplit = true; if (typeof saveSettingsPatch === 'function') saveSettingsPatch({ directorLooksSplit: true }); save(); }
     // Looks saved before the split starters existed get them once.
     else if (settings.directorLooksSplit !== true) {
       looks.push(...normalize(SPLIT_STARTERS).filter(n => !looks.some(l => l.name === n.name)));
       settings.directorLooksSplit = true;
       if (typeof saveSettingsPatch === 'function') saveSettingsPatch({ directorLooksSplit: true });
-      persist();
+      save();
     }
     // Layouts saved before the Lower third existed get it once, first in the list.
     if (settings.directorLooksLowerThird !== true) {
-      if (!looks.some(l => l.themeId === 'screen-lower-third' || l.name === LOWER_THIRD.name)) { looks.unshift(...normalize([LOWER_THIRD])); persist(); }
+      if (!looks.some(l => l.themeId === 'screen-lower-third' || l.name === LOWER_THIRD.name)) { looks.unshift(...normalize([LOWER_THIRD])); save(); }
       settings.directorLooksLowerThird = true;
       if (typeof saveSettingsPatch === 'function') saveSettingsPatch({ directorLooksLowerThird: true });
     }
+    return looks;
+  }
+
+  function create(ctx) {
+    let looks = load();
     let modal = null, prevFocus = null, renaming = null, dragId = null, keyHandler = null, menu = null, undoDel = null, undoTimer = null;
     let overlayNames = {};
 
@@ -490,7 +499,7 @@
     };
   }
 
-  const API = { create, normalize, LABEL };
+  const API = { create, normalize, load, LABEL };
   if (typeof window !== 'undefined') window.KairoVideoLooks = API;
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
 })();
