@@ -1117,45 +1117,9 @@
       r.append(text, label);
       return r;
     };
-    // Multiview display: the input grid full screen on one chosen display (Off by default).
-    const mvRow = vEl('div', 'dm-row');
-    const mvText = vEl('div', 'dm-text');
-    mvText.append(vEl('div', 'dm-name', 'Multiview display'), vEl('p', 'setting-hint', 'Show the inputs full screen on one display.'));
-    const mvSel = vEl('select', 'setting-input');
-    const mvOpts = [['', 'Off']].concat(displayOutputs().map(d => [d.id, d.name + (d.kind === 'monitor' ? ' (Monitor)' : '')]));
-    mvOpts.forEach(([v, l]) => mvSel.add(new Option(l, v, false, v === (settings.videoMultiview || ''))));
-    mvSel.setAttribute('aria-label', 'Multiview display');
-    const mvConfirm = vEl('div', 'dm-confirm');
-    mvConfirm.hidden = true;
-    const applyMultiview = (id) => {
-      settings.videoMultiview = id || '';
-      saveSettingsPatch({ videoMultiview: settings.videoMultiview });
-      if (typeof applyOutputModes === 'function') applyOutputModes();
-      unmountSettings(); mountSettings();
-      refresh();
-      if (typeof onVideoLayerChanged === 'function') onVideoLayerChanged();
-    };
-    mvSel.addEventListener('change', () => {
-      const id = mvSel.value;
-      // The audience screen asks once, by name, before it stops showing the audience.
-      if (id && id === PRIMARY_DISPLAY) {
-        const name = (displayOutputs().find(d => d.id === id) || {}).name || 'This display';
-        mvConfirm.replaceChildren(
-          vEl('span', null, `${name} is your audience screen. Show the multiview there instead?`),
-          vBtn('Show multiview', 'Replace the audience screen with the multiview', () => applyMultiview(id), 'vd-mini vd-mini-primary'),
-          vBtn('Keep as is', 'Leave the audience screen alone', () => { mvSel.value = settings.videoMultiview || ''; mvConfirm.hidden = true; }, 'vd-mini'));
-        mvConfirm.hidden = false;
-        return;
-      }
-      mvConfirm.hidden = true;
-      applyMultiview(id);
-    });
-    mvRow.append(mvText, mvSel);
-    card.append(mvRow, mvConfirm);
-    const layers = outputLayerMap();
-    videoOutputs().forEach(o => {
-      card.appendChild(row(`Video on ${o.name}`, 'Show the live input behind scripture.', !!(layers[o.id] && layers[o.id].video), (on) => setOutputLayer(o.id, 'video', on)));
-    });
+    // What goes out on a screen (the live video behind scripture) is set once, under Outputs → that
+    // output → Settings → Video input, not here. The Multiview display (every input on one screen)
+    // has no switch for now: it was Off by default and unclear (owner, 2026-10-17).
     card.appendChild(row('Stage sends on Preview', 'Verses you send by hand wait until you send them to the screen.', stageManual(), (on) => {
       settings.videoStageManual = on;
       saveSettingsPatch({ videoStageManual: on });
