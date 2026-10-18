@@ -528,7 +528,11 @@
         // index), this item type carries its layers directly on the slide
         // object — a 'slides' item's blocks are already 1:1 with its
         // slides, with no separate scenes array to index into.
-        return (item.blocks || []).map((b, i) => b.layers
+        // Until a theme is chosen for it (Change Theme on the slide or the whole deck): then it is the
+        // slide's words in that theme, like any other slide (owner, 2026-10-18: changing an imported
+        // slide's theme did nothing). Its imported layers stay on the block, so choosing "Same as the
+        // deck" / "Output default" brings the imported design back.
+        return (item.blocks || []).map((b, i) => b.layers && !(b.themeId || item.themeId)
           ? { label: b.label || `Slide ${i + 1}`, isScene: true, blockIndex: i, layers: b.layers, canvasSize: b.canvasSize, text: b.text || '', reference: '' }
           : b.image
           ? { label: b.label || `Slide ${i + 1}`, image: b.image, text: '', reference: '', themeId: b.themeId || null }
@@ -3269,11 +3273,12 @@
   // like [Chorus] starts a group (a song's stanza; a deck's slide label). Typing re-flows
   // the slides as you go; Slides goes back to a field per slide.
   let flowMode = 'slides';
-  // Text-only songs and decks: a picture or imported scene slide has no text to edit here.
+  // Songs and decks: a picture slide has no text to edit here. An imported slide does (owner,
+  // 2026-10-18: no reflow for an imported hymn); one whose words change keeps its design (sceneBlockWithText).
   function textEditable(item) {
     if (!item) return false;
     if (item.type === 'song') return true;
-    if (item.type === 'slides') return !(item.blocks || []).some(b => b.image || b.layers);
+    if (item.type === 'slides') return !(item.blocks || []).some(b => b.image);
     return false;
   }
   const GROUP_LINE = /^\s*\[([^\]\n]{1,40})\]\s*$/;
@@ -3340,7 +3345,12 @@
     });
     flush();
     const kept = keepOldBlocks(old, slides.map(sl => sl.lines.join('\n').trim()), b => String(b.text || '').trim());
-    return slides.map((sl, i) => ({ ...kept[i], label: sl.label || `Slide ${i + 1}`, text: sl.lines.join('\n').trim() }));
+    return slides.map((sl, i) => {
+      const text = sl.lines.join('\n').trim();
+      const b = { ...kept[i], label: sl.label || `Slide ${i + 1}`, text };
+      // An imported slide whose words changed (or that took another's place) shows the new words in its design.
+      return b.layers && String(kept[i].text || '').trim() !== text ? sceneBlockWithText(b) : b;
+    });
   }
   // What each new slide keeps of the old ones (its theme and the like): the old slide with
   // the same words, else the one in its place if that wasn't kept elsewhere, else nothing.
@@ -3954,6 +3964,18 @@
   // actually came from — the same slide can be a whole block (slides items),
   // a spliced line-range within a block (song items, via lineStart/lineEnd),
   // or the item's own text field (scripture, always exactly one slide).
+  // An imported slide (ProPresenter layers) whose words were edited keeps its design: its main text box
+  // is pointed at the slide's own words (binding 'verse', drawn in that box's first style by
+  // pp_render.js), so the edit shows instead of the words baked in at import (owner, 2026-10-18).
+  function sceneBlockWithText(b) {
+    if (!b || !Array.isArray(b.layers)) return b;
+    if (b.layers.some(l => l.type === 'pp' && l.binding === 'verse')) return b;
+    const plain = (l) => (l.text && Array.isArray(l.text.paragraphs) ? l.text.paragraphs.map(p => (p.runs || []).map(r => r.t || '').join('')).join('\n') : '');
+    const boxes = b.layers.filter(l => l.type === 'pp' && l.binding !== 'reference' && plain(l).trim());
+    if (!boxes.length) return b;
+    const main = boxes.reduce((a, l) => (plain(l).length > plain(a).length ? l : a));
+    return { ...b, layers: b.layers.map(l => (l === main ? { ...l, binding: 'verse' } : l)) };
+  }
   function commitSlideText(item, index, slide, text) {
     const lines = String(text || '').replace(/\r/g, '').split('\n').map(l => l.trim());
     if (item.type === 'song' && slide.blockIndex != null) {
@@ -3963,7 +3985,11 @@
       shiftBreaks(b, slide.lineStart, lines.length - (slide.lineEnd - slide.lineStart));
     } else if (item.type === 'slides') {
       const b = item.blocks[index];
-      if (b) b.text = lines.join('\n');
+      if (b) {
+        const next = lines.join('\n');
+        if (b.layers && next !== String(b.text || '')) item.blocks[index] = sceneBlockWithText({ ...b, text: next });
+        else b.text = next;
+      }
     } else if (item.type === 'scripture') {
       item.text = lines.join('\n');
     }
@@ -4244,8 +4270,9 @@
 
     const del = document.createElement('button');
     del.className = 'svc-flow-del' + (canDelete ? '' : ' is-disabled');
-    del.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg><span>Delete</span>`;
+    del.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;   // icon only (owner, 2026-10-18); its name is in the tooltip
     del.title = canDelete ? 'Delete slide' : 'A section needs at least one slide';
+    del.setAttribute('aria-label', del.title);
     del.addEventListener('click', () => deleteFlowSlideOrSong(item, i, slide));
 
     row.appendChild(grip);
