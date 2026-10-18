@@ -7,7 +7,7 @@
 //     video: { resolution: '1080p', fps: 30, bitrate: 6000 },
 //     audio: { bitrate: 160, music: true, input: true },
 //     mix: [sound mixer channels, sound_mixer.js],
-//     record: { output, bitrate: 12000, folder: null (Movies/Kairo), button: false } }
+//     record: { output, bitrate: 12000, folder: null (Movies/Kairo) } }
 // Stream keys stay on this computer (they are saved in Kairo's own settings file and are
 // never put in a log, an export or a link).
 (function () {
@@ -305,7 +305,6 @@
       ...(outs.length > 1 ? [row('Records', 'Which output is recorded', select(outs.map(o => [o.id, o.name]), r.output || outs[0].id, (v) => setRec({ output: v })))] : []),
       row('Quality', 'Same size and frame rate as the stream. While streaming, the recording is the stream’s own picture at the stream’s quality', select(RECORD_BITRATES, r.bitrate || 12000, (v) => setRec({ bitrate: Number(v) }))),
       row('Folder', 'Each recording is an MP4 named by its date and time', folderCtl),
-      row('Top-bar button', 'Shows Record in the top bar; always there in Director mode', toggle(r.button === true, '', (on) => setRec({ button: on }))),
     );
     const ro = S3 ? S3.recOverall() : { state: 'off', files: [] };
     if (ro.files && ro.files.length) {
