@@ -2586,7 +2586,10 @@
     // shouldn't get the colored section highlight below (same distinction
     // typeLabel() above already draws for the sidebar's type text).
     const realLabel = item.type === 'song' && item.songBank && s.label && !/^slide\s+\d+$/i.test(s.label) ? s.label : null;
-    label.textContent = realLabel || `${i + 1}.`;
+    // The slide's place in the deck is written "#2", never "2.": a slide's own words often carry a number
+    // that looks just like it (a verse number "48.", a list's "2."), and the two must not read alike.
+    label.textContent = realLabel || `#${i + 1}`;
+    label.title = realLabel ? `${realLabel} (slide ${i + 1})` : `Slide ${i + 1} in this deck`;
     // Owner: "it needs a color shading with a frame around it to make the
     // user see it in first glance" — a plain-text label was easy to miss
     // among the thumbnails. Same color palette as the live-screen operator
