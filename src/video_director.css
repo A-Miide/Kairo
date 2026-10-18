@@ -828,3 +828,6 @@ body.video-director .svc-slide.live.is-staged, body.video-director .media-card.i
 
 /* Matches in the Scripture header: always there, quiet while there are none. */
 .vd-match-btn.is-empty { color: var(--text-3); border-color: var(--border); }
+
+/* No camera name over Preview or Output (owner, 2026-10-18): the pictures are clean, as on the outputs. */
+.vd-frame .vd-frame-name { display: none; }
