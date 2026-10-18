@@ -1574,6 +1574,11 @@
     // 'clear-layer' already uses for a manual Clear Slide/Media/Timer click.
     // Called on load, on every 'storage' event, and on every 'look-update'
     // broadcast — all three are real, independent ways this value changes.
+    // What is live on the slide (or Bible) and media layers, kept while a layer is switched off, so
+    // switching it back on brings it back instead of leaving the screen empty until the next send.
+    // Dropped when it is cleared.
+    let lastLiveSlide = null;   // { msg, isBible }
+    let lastLiveMedia = null;
     function applyOutputLayers(next) {
         const prev = outputLayers;
         outputLayers = next;
@@ -1584,6 +1589,11 @@
         // turning off Bible shouldn't blank an announcement slide.
         if ((currentSlideIsBible ? (prev.bible && !next.bible) : (prev.slide && !next.slide))) { clearDisplay(); noteConfidenceSlide(null); }
         if (prev.media && !next.media) renderMediaStage(null);
+        // Switched back on: what was live there comes back.
+        if (lastLiveSlide && ((!prev.slide && next.slide && !lastLiveSlide.isBible) || (!prev.bible && next.bible && lastLiveSlide.isBible))) {
+            try { handleMessage(lastLiveSlide.msg); } catch {}
+        }
+        if (lastLiveMedia && !prev.media && next.media) { try { handleMessage(lastLiveMedia); } catch {} }
         if (prev.overlay !== next.overlay) drawOverlays();
         if (prev.message !== next.message) drawMessageBanner();
         if (prev.timer && !next.timer) {
@@ -2363,6 +2373,7 @@
         if (msg.type === 'detection' && msg.target === 'viewer') {
             const verse = msg.verses && msg.verses[0];
             const isBible = !!(verse && verse.book && verse.chapter && verse.verse);
+            if (verse) lastLiveSlide = { msg, isBible };
             if (isBible ? !outputLayers.bible : !outputLayers.slide) return;
             if (verse) noteConfidenceSlide(verse, isBible, msg.next);
             if (verse) {
@@ -2427,6 +2438,7 @@
         // with layer:'all' replaced it) but keep it as an alias in case
         // anything external still posts the old shape.
         if (msg.type === 'clear') {
+            lastLiveSlide = null; lastLiveMedia = null;
             clearDisplay();
             renderMediaStage(null);
             noteConfidenceSlide(null);
@@ -2434,6 +2446,8 @@
         }
 
         if (msg.type === 'clear-layer') {
+            if (msg.layer === 'slide' || msg.layer === 'all') lastLiveSlide = null;
+            if (msg.layer === 'media' || msg.layer === 'all') lastLiveMedia = null;
             if (msg.layer === 'slide' || msg.layer === 'all') { clearDisplay(); noteConfidenceSlide(null); }
             if (msg.layer === 'timer' || msg.layer === 'all') updateConfidenceTimer({ cleared: true });
             if (msg.layer === 'media' || msg.layer === 'all') transitionMedia(null);
@@ -2460,6 +2474,7 @@
         }
 
         if (msg.type === 'media' && msg.target === 'viewer') {
+            lastLiveMedia = msg.src ? msg : null;
             if (!outputLayers.media) return;
             transitionMedia(msg.src, msg.kind, msg.fit);
             return;
