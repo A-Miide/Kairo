@@ -3,6 +3,16 @@
 //! outputs. Runs inside the Tauri app, or on its own for development
 //! (`cargo run -p kairo-server`).
 
+/// A file Kairo hosts itself, by its place under the repository's releases
+/// ("offline-model-v1/<file>"): the one base every Kairo-hosted download
+/// address is built from. `scripts/check-downloads.sh` (CI) checks each one is there.
+#[macro_export]
+macro_rules! kairo_download {
+    ($path:literal) => {
+        concat!("https://github.com/miide-Adeyemi/Kairo/releases/download/", $path)
+    };
+}
+
 pub mod audio_stats;
 pub mod bible;
 pub mod config;

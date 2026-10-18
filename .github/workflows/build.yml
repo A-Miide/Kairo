@@ -7,6 +7,23 @@ on:
   workflow_dispatch:  # a manual run builds every platform and keeps the installers as run artifacts
 
 jobs:
+  # ── The app's own tests, before anything is built ────────────────────────
+  # The JS tests take seconds; a failure stops the release before ~30 minutes
+  # of platform builds. (The Rust tests need the full engine build: run them
+  # locally, see docs/HANDOVER_*.md.)
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: JS tests
+        run: node --test src/*.test.js
+      # Every model and file the app downloads is really there (scripts/check-downloads.sh).
+      - name: Downloads the app needs
+        run: scripts/check-downloads.sh
+
   # ── What the app bundles but git doesn't hold ────────────────────────────
   # The meaning models (pinned, checksum-verified) and the verse index built
   # from them — once, shared by every platform, cached until the Bible text
@@ -131,7 +148,7 @@ jobs:
           retention-days: 3
 
   build:
-    needs: [bundle-data, ffmpeg]
+    needs: [test, bundle-data, ffmpeg]
     permissions:
       contents: write   # tauri-action creates the draft release on a tag
     strategy:
@@ -274,10 +291,12 @@ jobs:
 
   # ── Landing page (docs/index.html) to GitHub Pages ───────────────────────
   # Only the page itself — the engineering docs beside it stay in the repo.
-  # Tag runs skip it (the github-pages environment deploys from branches only).
+  # Only manual runs on main: the github-pages environment deploys from main
+  # alone, so a tag run or a run on a feature branch would fail here (run
+  # 39093554447 built every platform and still ended red on this job).
   deploy-page:
     needs: build
-    if: github.event_name != 'push' || !startsWith(github.ref, 'refs/tags/')
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:
       pages: write
