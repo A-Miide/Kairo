@@ -1350,11 +1350,11 @@
   // An output window couldn't show the camera put on air (it wouldn't open, or
   // was unplugged): the tile still says On air, so say what the screen really
   // shows. display_video.js reports it under kairo-video-showing:<output>.
-  // Director mode: Replay and Record sit with Preview and Output (owner, 2026-10-17), in the
-  // Displays header beside Layouts; back in the top bar when Director mode ends. Each button
-  // is made by its own module on first use, so this runs again on every refresh until both are in.
+  // Director mode: Record sits with Preview and Output (owner, 2026-10-17), in the
+  // Displays header beside Layouts; back in the top bar when Director mode ends. The button
+  // is made by its own module on first use, so this runs again on every refresh until it is in.
   function dockTopButtons(on) {
-    const btns = [document.querySelector('.tb-replay-btn'), document.getElementById('record-btn')].filter(Boolean);
+    const btns = [document.getElementById('record-btn')].filter(Boolean);
     if (on && D.active && D.ui.dctl) {
       const before = D.ui.looksBtn || null;
       btns.forEach(b => { if (b.parentNode !== D.ui.dctl) D.ui.dctl.insertBefore(b, before); b.classList.add('vd-docked'); });

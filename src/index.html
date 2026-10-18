@@ -1673,20 +1673,13 @@
                                     <li><strong>Preview and Output</strong> — Preview is what is staged, Output is what is live. Under them: <strong>Send</strong> (Space), Cut or Fade with the fade length, Fade to black and Undo.</li>
                                     <li><strong>Layouts</strong> — saved setups for Preview: the input, which layers are on, the overlays and a screen theme. Click one to load it into Preview, then Send. Alt+1 to 9 load the first nine. A screen theme is drawn around the slide or verse: the slide or Bible verse keeps its own theme and branding inside it, unless the screen theme has its own verse text. Customize a screen theme in Theme Studio (Video zone and Content zone tools) from the menu on a Layout.</li>
                                     <li><strong>Remote</strong> — Stream Deck and OSC can drive Send, Fade to black, Undo, Layouts 1 to 9 and Inputs 1 to 9.</li>
-                                    <li><strong>Menus</strong> — the <strong>Director</strong> menu has Send to Screen (⌘Return), Fade to Black (⌘⇧B), Undo Last Send, Inputs and Layouts 1 to 9 (Inputs 1 to 4 on ⌘⌥1–4) and Instant Replay (⌘⇧R). The <strong>Production</strong> menu has Go Live, Recording, Run Macro and Auto-send.</li>
+                                    <li><strong>Menus</strong> — the <strong>Director</strong> menu has Send to Screen (⌘Return), Fade to Black (⌘⇧B), Undo Last Send, Inputs and Layouts 1 to 9 (Inputs 1 to 4 on ⌘⌥1–4). The <strong>Production</strong> menu has Go Live, Recording, Run Macro and Auto-send.</li>
                                     <li><strong>Keys</strong> — 1 to 9 put an input on air, Shift + 1 to 9 stage one on Preview, Alt + 1 to 9 load a layout, Space sends, Esc clears what is staged, ⌘Z (Ctrl+Z) undoes the last send. The <strong>?</strong> button lists them all. <strong>Ready check</strong> lists anything not ready (an input with no device, a missing camera) before the service.</li>
                                     <li><strong>Leaving Director mode</strong> puts the normal screen back as it was: the outputs' layers and overlays a layout changed are restored, the layout frame goes, and every camera is released.</li>
                                     <li><strong>Scripture sends</strong> — search, the Bible, Theme, the verse transition and the Live Queue in one place. The <strong>Auto</strong> switch decides whether detected verses go straight to the screen or wait on Preview for Send.</li>
                                     <li><strong>Top menu</strong> — Media, Songs, Timer and Slides open as a card over Director, with a Done button (Esc or a click outside also closes it). The cameras keep running.</li>
                                     <li><strong>Bottom half</strong> — the playlist, and the media bin with toggles for Slides, Songs and one for each media folder. A click stages a slide or media item on Preview; Send (or a double-click) puts it on the screen. Right-click a slide to edit it.</li>
                                 </ul>
-                            </div>
-                        </details>
-
-                        <details class="help-group">
-                            <summary>Instant replay</summary>
-                            <div class="help-body">
-                                <p>In Director mode, <strong>Replay</strong> in the top bar plays back the last few seconds of the camera on air. Switch on <strong>Keep the camera on air recording for replays</strong> there first (it is off by default, because it keeps the camera recording in the background). Then <strong>Replay to Preview</strong> saves about the last 8 to 16 seconds to the Media Bin as "Replay …" and puts it in Preview; <strong>Send</strong> puts it on the screens, like any video. Stream Deck and OSC can do it too (<code>/kairo/director-replay</code>).</p>
                             </div>
                         </details>
 
@@ -2487,7 +2480,6 @@
     <script src="streaming_panel.js"></script>
     <script src="streaming_ui.js"></script>
     <script src="sound_mixer.js"></script>
-    <script src="instant_replay.js"></script>
     <script src="media_transition.js"></script>
     <script src="macros.js"></script>
     <script src="settings_layout.js"></script>

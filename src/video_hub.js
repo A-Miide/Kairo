@@ -1,9 +1,9 @@
 // KAIRO — one capture per physical camera inside the operator window.
 //
-// Thumbnails, the director's Preview, its Program copy and instant replay all draw from the
+// Thumbnails, the director's Preview and its Program copy all draw from the
 // same MediaStream, so a camera is decoded once here however many video
 // elements show it. A device is opened at the lowest size that covers every
-// holder ('thumb' for thumbnails, 'mid' for Preview/Program, 'replay' for instant replay) and released a
+// holder ('thumb' for thumbnails, 'mid' for Preview/Program) and released a
 // moment after its last holder lets go. Nothing here runs a timer, a frame
 // loop or a canvas: the video elements decode in the browser.
 //
@@ -15,9 +15,6 @@
   const PROFILES = {
     thumb: { rank: 1, width: 320, height: 180, fps: 10, maxFps: 15 },
     mid:   { rank: 2, width: 640, height: 360, fps: 15, maxFps: 15 },
-    // Instant replay (instant_replay.js) records the camera on air at this size: it shares the
-    // hub's capture rather than opening the device a second time.
-    replay: { rank: 3, width: 1280, height: 720, fps: 30, maxFps: 30 },
   };
   const LINGER_MS = 1500;   // a re-render can take the device back without reopening it
   const entries = new Map();

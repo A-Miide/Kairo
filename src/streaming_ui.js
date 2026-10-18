@@ -293,9 +293,10 @@
     const o = recOverall();
     recBtn.classList.toggle('is-live', recording && o.state === 'live');
     recBtn.classList.toggle('is-trouble', recording && (o.state === 'retrying' || o.state === 'failed'));
+    // The red dot is the button's own (CSS), so the words carry none.
     recBtn.textContent = !recording ? 'Record'
-      : o.state === 'live' ? `● REC ${clock(o.uptime || 0)}`
-      : o.state === 'retrying' ? '● REC restarting…' : o.state === 'failed' ? '● Recording failed' : '● REC…';
+      : o.state === 'live' ? `REC ${clock(o.uptime || 0)}`
+      : o.state === 'retrying' ? 'REC restarting…' : o.state === 'failed' ? 'Recording failed' : 'REC…';
     recBtn.title = recording ? 'Click to stop recording' : 'Record what the output shows to a video file';
   }
   const reveal = (path) => invoke?.('record_reveal', { path }).catch(e => alertMsg(String(e && e.message || e)));
@@ -403,7 +404,15 @@
     .tb-stream-btn[hidden] { display: none; }
     .tb-stream-btn.is-live { border-color: #b5532c; background: #5a2414; color: #ffe9e0; font-variant-numeric: tabular-nums; }
     .tb-stream-btn.is-trouble { border-color: #b5832c; background: #4a3512; color: #ffeccc; }
-    .tb-record-btn.is-live { border-color: #8f3d1f; background: #3a1a12; }
+    /* Record: a red dot, like every record button; while recording, a red button with the dot pulsing. */
+    .tb-record-btn { display: inline-flex; align-items: center; gap: 7px; }
+    .tb-record-btn::before { content: ''; width: 10px; height: 10px; border-radius: 50%; background: #ff3b30; flex: none; }
+    .tb-record-btn:hover { border-color: #ff3b30; }
+    .tb-record-btn.is-live { border-color: #ff3b30; background: #8a1d17; color: #fff; }
+    .tb-record-btn.is-live::before { background: #fff; animation: kairo-rec-pulse 1.4s ease-in-out infinite; }
+    .tb-record-btn.is-trouble::before { background: #ffcf66; }
+    @keyframes kairo-rec-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+    @media (prefers-reduced-motion: reduce) { .tb-record-btn.is-live::before { animation: none; } }
   `;
   document.head.appendChild(style);
 
