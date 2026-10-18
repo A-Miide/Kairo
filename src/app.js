@@ -2319,10 +2319,20 @@ function onNativeLevel(msg) {
   noteCaptureLevel(msg.peak * 32768, 0, msg.gain || 1, !!msg.clipped);
 }
 // The server's capture lost its input (unplugged) and is trying to open it again.
+let _inputLostName = '';   // the input the server lost (unplugged); the indicator says so
 function onNativeLost(msg, back) {
   const name = msg?.device || captureLabel() || 'The sound input';
-  if (back) { window.kairoProblemCleared?.('input-lost'); kairoLog('native-capture-back', { device: name }); return; }
-  window.kairoProblem?.(`${name} was disconnected. Kairo is still listening and reconnects it as soon as it is back.`, 'input-lost');
+  if (back) {
+    _inputLostName = '';
+    kairoLog('native-capture-back', { device: name });
+    // Sound has to be heard again to clear the indicator; until then the silence rules apply.
+    lastRealAudioAt = Date.now();
+    setAudioSilenceWarning(false);
+    return;
+  }
+  _inputLostName = name;
+  setAudioSilenceWarning(true);
+  kairoLog('native-capture-lost', { device: name });
 }
 
 async function openCaptureGraph() {
@@ -2373,7 +2383,7 @@ async function stopListening() {
 
 function stopAudioCapture() {
   pendingAudioFrames = [];
-  if (nativeCapture) { nativeCapture = null; fetch(`${SERVER}/api/stop-capture`, { method: 'POST' }).catch(() => {}); }
+  if (nativeCapture) { nativeCapture = null; _inputLostName = ''; fetch(`${SERVER}/api/stop-capture`, { method: 'POST' }).catch(() => {}); }
   Object.assign(inputSummary, { since: 0, reports: 0, silent: 0, clipped: 0, peaks: [], gainDbSum: 0 });
   stopCaptureSender();
   if (audioProcessor) { try { audioProcessor.disconnect(); if (audioProcessor.port) audioProcessor.port.onmessage = null; } catch {} audioProcessor = null; }
@@ -2407,11 +2417,13 @@ function setAudioSilenceWarning(on) {
     // set to BlackHole, the file still playing, BlackHole silent until the
     // output was switched away and back). Clicking opens Settings → Audio
     // Input and its level meter.
-    const input = captureLabel() || 'the selected input';
+    const input = _inputLostName || captureLabel() || 'the selected input';
     const pill = lbl?.closest('.ls-bcast-pill');
     if (pill) {
       pill.classList.add('is-actionable');
-      pill.title = LOOPBACK_INPUT_RE.test(input)
+      pill.title = _inputLostName
+        ? `${_inputLostName} was disconnected. Kairo is still listening and reconnects it as soon as it is back. Click for Audio settings.`
+        : LOOPBACK_INPUT_RE.test(input)
         ? `Nothing is reaching ${input}. Check the sound is playing and the Mac's Sound output is ${input} (or a Multi-Output Device that includes it). If it is and it's still silent, macOS has dropped the playing app's link to it: in System Settings → Sound, switch the output to something else and back. Click for Audio settings.`
         : `Nothing is coming from ${input}. Check it's connected, switched on and not muted. Click for Audio settings.`;
     }
@@ -2463,11 +2475,11 @@ function checkAudioSilence() {
   // into it stopped, or was sent elsewhere), never a capture problem on this side, so there is
   // nothing to rebuild; it is said on screen, and clears the moment sound returns.
   if (nativeCapture) {
-    setAudioSilenceWarning(now - lastRealAudioAt > AUDIO_SILENCE_WARN_MS);
+    // The Broadcasting / No audio! indicator carries it (its hover says what to check).
+    setAudioSilenceWarning(!!_inputLostName || now - lastRealAudioAt > AUDIO_SILENCE_WARN_MS);
     if (lastHeardSignalAt && now - lastHeardSignalAt > 20000 && !_inputSilentShown) {
       _inputSilentShown = true;
       _healLog('the input has gone silent', { input: nativeCapture.device });
-      window.kairoProblem?.(`${nativeCapture.device} has been silent for 20 seconds: nothing is arriving from it. Check that whatever plays into it is still playing and sending its sound to ${nativeCapture.device}. Kairo is still listening.`, 'input-silent');
     }
     return;
   }
@@ -2516,9 +2528,6 @@ function checkAudioSilence() {
       if (_silentReopenPending !== pending) return;
       _healLog('still silent after reopening the input — nothing is reaching it', { input });
       _silentReopenPending = null;
-      // Said on screen, not only in the log: detection looked as if it had stopped (owner, 2026-10-17).
-      _inputSilentShown = true;
-      window.kairoProblem?.(`${input || 'The sound input'} has gone silent: nothing is reaching it. Check that your player is still playing and sending its sound to ${input || 'it'}. Kairo is still listening.`, 'input-silent');
     }, 30000);
     return;
   }

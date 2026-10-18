@@ -54,14 +54,21 @@
       strip.appendChild(row);
     });
   }
+  // Owner, 2026-10-17: operators don't see pop-up messages (ProPresenter has none); what is wrong
+  // shows where it happens (the Broadcasting / No audio indicator, a tile that says Unavailable,
+  // an empty panel). Every message still goes to the debug log. The one exception is a failure to
+  // keep what the operator set — settings, playlists or themes that can't be saved or read —
+  // because "if I set something, let me come back and meet it" would silently not hold.
+  const SHOWN = /aren.t being saved|couldn.t be read|^Save (settings|the timer|the song) didn.t work/i;
   function kairoProblem(message, key) {
     const text = String(message || '').trim();
     if (!text) return;
     const k = key || text;
+    log('problem', { text: text.slice(0, 300), key: String(k).slice(0, 80) });
+    if (!SHOWN.test(text)) return;
     const p = shown.get(k);
     shown.set(k, { text, count: p ? p.count + 1 : 1, at: Date.now() });
     if (document.body) draw(); else document.addEventListener('DOMContentLoaded', draw, { once: true });
-    log('problem', { text: text.slice(0, 300), key: String(k).slice(0, 80) });
   }
   // A suggestion, not a problem: a calm row with buttons ({label, run}); never repeated once answered.
   function kairoSuggest(message, actions, key) {
