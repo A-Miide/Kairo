@@ -92,6 +92,8 @@
         #screen-layer { position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden; }
         #screen-layer:empty { display: none; }
         #slide-layer { z-index: 1; }
+        /* A Bible verse covers everything but the overlays, the countdown included (owner, 2026-10-18). */
+        #slide-layer.is-bible { z-index: 3; }
         #timer-layer { z-index: 2; pointer-events: none; }
         /* Overlays (logo, bug, lower-third picture) sit above everything. */
         #overlay-layer { position: fixed; inset: 0; z-index: 5; pointer-events: none; overflow: hidden; }
@@ -2250,6 +2252,7 @@
     // media layer show through, the same way a cleared front layer in
     // ProPresenter reveals whatever's behind it.
     function clearDisplay() {
+        slideLayer.classList.remove('is-bible');
         currentImageSlide = null;
         currentVerseText = '';
         currentVerseRef  = '';
@@ -2410,6 +2413,7 @@
             if (verse) noteConfidenceSlide(verse, isBible, msg.next);
             if (verse) {
                 currentSlideIsBible = isBible;
+                slideLayer.classList.toggle('is-bible', isBible);
                 if (!verse.image) currentImageSlide = null;
                 // A playlist item may carry its own theme (lyrics vs scripture).
                 // Anything without one falls back to this output's assigned theme.
@@ -2435,6 +2439,7 @@
             if (verse) {
                 noteConfidenceSlide(verse, true, null);
                 currentSlideIsBible = true;
+                slideLayer.classList.add('is-bible');
                 currentImageSlide = null;
                 showVerse(verse.text || verse.verse || '', verse.reference || verse.ref || '', true, verse.translatedText || '');
             } else {

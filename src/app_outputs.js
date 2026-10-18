@@ -2567,14 +2567,15 @@ function renderOutputControlMatrix() {
 }
 
 // How the layers stack on every screen, top to bottom: a small fixed diagram, so the order is
-// something you can see instead of guess. Overlays always sit on top.
+// something you can see instead of guess. Overlays always sit on top, then a Bible verse.
 function layerOrderDiagram(mk) {
   const box = mk('div', 'oc-order');
   box.appendChild(mk('div', 'oc-order-title', 'Order on the screen'));
   const steps = [
     ['Overlays', 'logos and badges, always on top'],
+    ['Scripture', 'a Bible verse covers everything below'],
     ['Timer', null],
-    ['Slides and scripture', 'with their own theme'],
+    ['Slides', 'with their own theme'],
     ['Media', null],
     ...(isDirectorOn() ? [['Video', 'in its own zone when the layout has one']] : []),
     ['Background', 'the theme or layout backdrop'],
