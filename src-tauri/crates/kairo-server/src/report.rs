@@ -21,10 +21,10 @@ use crate::Shared;
 
 /// The feedback form reports are posted to: `https://docs.google.com/forms/d/e/<id>/formResponse`.
 /// Empty until the form exists; then Send says reporting isn't set up instead of failing silently.
-const FORM_URL: &str = "";
+const FORM_URL: &str = "https://docs.google.com/forms/d/e/1FAIpQLScylNBNVGFzu-ixcmqoekA8XbArWYzwBypYn21UEvLnZVuqFQ/formResponse";
 /// The form's question ids (`entry.<n>`), in this order: what happened, what they were doing, version,
 /// computer, speech engine, details (events and crash).
-const FORM_ENTRIES: [&str; 6] = ["", "", "", "", "", ""];
+const FORM_ENTRIES: [&str; 6] = ["1519498139", "248842757", "554500677", "1523054642", "1322888153", "251261618"];
 
 /// At most this many reports from one computer an hour: a form address pulled out of the app can't
 /// be used to flood the inbox from here.
