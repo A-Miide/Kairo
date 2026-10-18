@@ -759,3 +759,6 @@ body.video-director .svc-slide.live.is-staged, body.video-director .media-card.i
 .vsrc-prop-label { font-size: 11px; color: var(--text-3); }
 .vsrc-prop .setting-input, .vsrc-prop select { width: 100%; min-width: 0; }
 .vsrc-prop-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 4px; }
+
+/* The top menu, while the Director screen is up: visible but not navigable. */
+.top-bar-center .tb-group.vd-nav-locked { opacity: .4; pointer-events: none; }
