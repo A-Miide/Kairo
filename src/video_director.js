@@ -1128,7 +1128,8 @@
     }
     if (typeof allConfiguredOutputs === 'function' && typeof isOutputEnabled === 'function') {
       for (const o of allConfiguredOutputs()) {
-        if (o.type === 'display' && !isOutputEnabled(o)) issues.push({ text: `${o.name} is off`, fix: 'Open Outputs', run: () => { document.getElementById('settings-modal')?.classList.remove('hidden'); if (typeof showSettingsPane === 'function') showSettingsPane('outputs'); } });
+        // A Monitor is the stage's words-only screen: it never carries video or graphics, so it is never a reason to wait.
+        if (o.type === 'display' && !o.monitor && !isOutputEnabled(o)) issues.push({ text: `${o.name} is off`, fix: 'Open Outputs', run: () => { document.getElementById('settings-modal')?.classList.remove('hidden'); if (typeof showSettingsPane === 'function') showSettingsPane('outputs'); } });
       }
     }
     return issues;
