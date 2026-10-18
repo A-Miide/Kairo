@@ -1148,7 +1148,8 @@
     // popover) has the keys: Space, 1–9, Esc and ⌘Z must not reach the live screen from there.
     if (document.querySelector('.modal:not(.hidden), .vd-add-panel, #looks-modal:not(.hidden), .onboarding:not(.hidden), .svc-popover:not(.hidden), .ctx-menu, .mc-pop, .mx-pop, .rp-pop')) return;
     if (e.defaultPrevented) return;
-    if (document.body.classList.contains('vd-sheet')) return;   // a full screen is open over the Director: its keys are not ours
+    // A card is open over the Director (Slides, Songs…): its own keys are not ours, but Space is still Send.
+    if (document.body.classList.contains('vd-sheet') && e.code !== 'Space') return;
     if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'z') {
       if (D.last) { e.preventDefault(); undo(); }
       return;
@@ -1160,6 +1161,17 @@
       return;
     }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
+    // A key an input was given of its own (its right-click settings) puts it on air; Shift stages it.
+    const ck = VSRC.keyName ? VSRC.keyName(e.key) : '';
+    if (ck) {
+      const own = videoSourceList().find(x => x.enabled !== false && x.key && x.key.toLowerCase() === ck.toLowerCase());
+      if (own) {
+        if (VSRC.stateOf(own, videoState.devices) !== 'ready') return;
+        e.preventDefault();
+        if (e.shiftKey) setPreview(own.id); else sendToProgram(own.id);
+        return;
+      }
+    }
     const m = /^(?:Digit|Numpad)([1-9])$/.exec(e.code || '');
     if (m) {
       const src = videoSourceList().filter(x => x.enabled !== false)[Number(m[1]) - 1];

@@ -74,6 +74,14 @@
   const TAB_NAMES = { 'slides-btn': 'Slides', 'timer-btn': 'Timer', 'songs-btn': 'Songs', 'media-btn': 'Media' };
   function syncSheet() {
     const active = TAB_IDS.find(id => document.getElementById(id)?.classList.contains('active'));
+    // Slides, Media and Timer are views of the area at the bottom right (its selector), not cards over the
+    // board: the button chooses what that area shows and the board stays as it is. Songs is a card.
+    const DOCK_VIEW = { 'slides-btn': 'slides', 'media-btn': 'media', 'timer-btn': 'timer' };
+    if (active && DOCK_VIEW[active] && window.KairoVideoDock && window.KairoVideoDock.isMounted()) {
+      window.KairoVideoDock.show(DOCK_VIEW[active]);
+      document.getElementById('bible-btn')?.click();
+      return;
+    }
     const open = !!active && active !== 'bible-btn';
     const was = document.body.classList.contains('vd-sheet');
     document.body.classList.toggle('vd-sheet', open);

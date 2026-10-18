@@ -76,10 +76,10 @@ tar -xJf "$WORK/ffmpeg.tar.xz" -C "$WORK/ff-src" --strip-components=1
     --enable-zlib --enable-libvpx --pkg-config-flags=--static \
     --extra-cflags="-I$PREFIX/include" --extra-ldflags="-L$PREFIX/lib" \
     --enable-demuxer="$DEMUXERS,rawvideo" --enable-decoder="$DECODERS" --enable-parser="$PARSERS" \
-    --enable-encoder=libvpx_vp9,aac,rawvideo --enable-muxer=mp4,rawvideo,flv,tee,fifo \
+    --enable-encoder=libvpx_vp9,aac,rawvideo --enable-muxer=mp4,rawvideo,flv,tee,fifo,mpegts \
     --enable-protocol=file,pipe,tcp,rtmp --enable-indev=lavfi \
     --enable-filter=scale,format,null,anull,aresample,aformat,setsar,fps,crop,pad,overlay,streamselect,color,anullsrc,split,amix,volume \
-    --enable-bsf=aac_adtstoasc,extract_extradata \
+    --enable-bsf=aac_adtstoasc,extract_extradata,h264_mp4toannexb \
     "${FF_PLATFORM[@]+"${FF_PLATFORM[@]}"}" >"$WORK/ff-configure.log" 2>&1 \
     || { tail -40 "$WORK/ff-configure.log" >&2; exit 1; }
   make -j"$(nproc)" "$BIN" >"$WORK/ff-make.log" 2>&1 || { tail -40 "$WORK/ff-make.log" >&2; exit 1; } )

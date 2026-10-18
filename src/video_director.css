@@ -56,7 +56,7 @@ body.video-director .rs-preview-output-row,
 body.video-director #slide-preview,
 body.video-director #outputs-monitor-grid,
 body.video-director:not(.vd-sheet) #svc-stack-view, body.video-director:not(.vd-sheet) #svc-fullscreen,
-body.video-director:not(.vd-sheet) #songs-library-view, body.video-director:not(.vd-sheet) #media-library-view, body.video-director:not(.vd-sheet) #timer-view,
+body.video-director:not(.vd-sheet) #songs-library-view, body.video-director:not(.vd-sheet) #media-library-view, body.video-director:not(.vd-sheet) #timer-view:not(.vd-in-dock),
 body.video-director .center-stage > #media-bin { display: none !important; }
 /* Possible Matches, opened from the Scripture header's Matches button. */
 body.video-director .vd-pop-matches .rs-candidates { display: flex !important; flex-direction: column; width: min(380px, calc(100vw - 24px)); max-height: 60vh; overflow: auto; }
@@ -777,3 +777,20 @@ body.video-director .svc-slide.live.is-staged, body.video-director .media-card.i
 .vd-cam-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; background: var(--bg-elevated, var(--bg)); border-bottom: 1px solid var(--border); }
 .vd-cam-title { font-size: 15px; font-weight: 700; color: var(--text); }
 .vd-cam-card .vsrc-root { padding: 6px 18px 18px; }
+
+/* The Timer screen shown in the bottom-right area (the dock's Timer view): fills it and scrolls. */
+.vd-media-body #timer-view.vd-in-dock { display: block; position: static; width: 100%; height: 100%; overflow: auto; background: transparent; padding: 0; border: 0; }
+.vd-media-body #timer-view.vd-in-dock .svc-header { position: sticky; top: 0; z-index: 1; background: var(--bg); }
+
+/* A tile that is not on air or on Preview: its last picture, or a camera silhouette until it has one. */
+.vg-tile .vg-still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.85; }
+.vg-tile .vg-silhouette { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-3); }
+.vg-tile .vg-silhouette[hidden], .vg-tile .vg-still[hidden] { display: none; }
+.vg-col.vg-list .vg-tile .vg-still { position: static; grid-column: 1; grid-row: 1; width: 72px; height: 41px; border-radius: 3px; background: #000; }
+.vg-col.vg-list .vg-tile .vg-silhouette { position: static; grid-column: 1; grid-row: 1; width: 72px; height: 41px; border-radius: 3px; background: #000; }
+.vg-col.vg-list .vg-tile .vg-silhouette svg { width: 22px; height: 22px; }
+.vg-col.vg-list .vg-tile video { grid-row: 1; }
+.vg-col.vg-list .vg-tile video[hidden] { display: none; }
+.vsrc-key-btn { text-align: left; cursor: pointer; min-width: 90px; }
+.vsrc-key-btn.is-listening { border-color: var(--accent); color: var(--accent); }
+.vsrc-key-note { margin: 0; }

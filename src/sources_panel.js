@@ -409,6 +409,30 @@ function openInputSettings(sourceId, anchor) {
       saveVideoSources(VSRC.updateSource(videoSourceList(), sourceId, { fps: Number(v) }));
     }));
 
+    // A key of its own for this input: press it to put the input on air (Shift+key stages it on Preview).
+    const keyBtn = vBtn('', 'Click, then press the key to use. Backspace removes it.', () => {}, 'setting-input vsrc-key-btn');
+    const keyNote = vEl('p', 'setting-hint vsrc-key-note', 'Putting this input on air with one key: 1–9 already do it by place. Shift+key stages it on Preview.');
+    const paintKey = () => { keyBtn.textContent = src().key ? src().key.toUpperCase() : 'None'; keyBtn.classList.remove('is-listening'); };
+    keyBtn.addEventListener('click', () => {
+      keyBtn.textContent = 'Press a key…'; keyBtn.classList.add('is-listening');
+      const onKeyDown = (e) => {
+        e.preventDefault(); e.stopPropagation();
+        document.removeEventListener('keydown', onKeyDown, true);
+        if (e.key === 'Escape') { paintKey(); return; }
+        if (e.key === 'Backspace' || e.key === 'Delete') { saveVideoSources(VSRC.updateSource(videoSourceList(), sourceId, { key: '' })); paintKey(); keyNote.textContent = 'No key for this input.'; return; }
+        const k = VSRC.keyName(e.key);
+        if (!k) { paintKey(); keyNote.textContent = 'That key has another job (Space, Enter, Esc, arrows). Pick a letter, a number or F1–F12.'; return; }
+        const other = videoSourceList().find(x => x.id !== sourceId && x.key && x.key.toLowerCase() === k.toLowerCase());
+        if (other) { paintKey(); keyNote.textContent = `${k.toUpperCase()} is already ${other.name}'s key.`; return; }
+        saveVideoSources(VSRC.updateSource(videoSourceList(), sourceId, { key: k }));
+        paintKey(); keyNote.textContent = `${k.toUpperCase()} puts this input on air. Shift+${k.toUpperCase()} stages it on Preview.`;
+      };
+      document.addEventListener('keydown', onKeyDown, true);
+    });
+    paintKey();
+    field('Key', keyBtn);
+    box.appendChild(keyNote);
+
     const actions = vEl('div', 'vsrc-prop-actions');
     actions.appendChild(vBtn('Switch off', 'Hide this input in Director mode (it goes off air)', () => {
       saveVideoSources(VSRC.setEnabled(videoSourceList(), sourceId, false));

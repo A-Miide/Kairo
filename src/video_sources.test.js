@@ -178,3 +178,17 @@ test('two cameras of one model: a name match never takes the other input\'s devi
   assert.equal(V.resolveDevice(B, [dev('d9')], [B]), 'd9');
   assert.equal(V.resolveDevice(B, devices), 'd1');
 });
+
+test('an input can carry its own key: a letter, a digit or F1-F12, never a key with another job', () => {
+  assert.equal(V.keyName('Q'), 'q');
+  assert.equal(V.keyName('7'), '7');
+  assert.equal(V.keyName('f2'), 'F2');
+  assert.equal(V.keyName(' '), '');
+  assert.equal(V.keyName('Escape'), '');
+  assert.equal(V.keyName('ArrowLeft'), '');
+  assert.equal(V.keyName('ab'), '');
+  const list = V.normalizeSources([{ id: 'a', name: 'Pulpit', label: 'Cam', key: 'Q' }, { id: 'b', name: 'Choir', label: 'Cam2', key: 'Enter' }]);
+  assert.equal(list[0].key, 'q');
+  assert.equal(list[1].key, '');
+  assert.equal(V.updateSource(list, 'b', { key: 'F3' })[1].key, 'F3');
+});

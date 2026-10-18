@@ -7150,6 +7150,9 @@
       const fsOpen = !document.getElementById('svc-fullscreen')?.classList.contains('hidden');
       if (!stackOpen && !fsOpen) return;
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(e.target.tagName) || e.target.isContentEditable) return;
+      // In Director mode Space is Send (the staged slide or input goes to the screen), here too:
+      // the arrow keys still move the slides.
+      if (e.key === ' ' && typeof isDirectorOn === 'function' && isDirectorOn()) return;
       if (e.key === 'ArrowRight' || e.key === 'ArrowDown' || e.key === ' ') { e.preventDefault(); advanceLiveSlide(1); }
       else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') { e.preventDefault(); advanceLiveSlide(-1); }
     });

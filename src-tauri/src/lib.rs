@@ -227,8 +227,6 @@ fn build_app_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry
         .separator()
         .item(&cams_menu)
         .item(&layouts_menu)
-        .separator()
-        .item(&MenuItemBuilder::with_id("menu-run-director-replay", "Instant Replay to Preview").accelerator("CmdOrCtrl+Shift+R").build(app)?)
         .build()?;
 
     let window_menu = SubmenuBuilder::new(app, "Window")
@@ -538,6 +536,8 @@ fn list_monitors(app: AppHandle) -> Result<Vec<serde_json::Value>, String> {
                         "left": logical_pos.x,
                         "top": logical_pos.y,
                         "isPrimary": primary_pos.map(|p| p == *pos).unwrap_or(i == 0),
+                        // The OS's own name for the screen ("LG TV", "AirPlay"…), when it has one.
+                        "name": m.name().cloned().unwrap_or_default(),
                     })
                 })
                 .collect())
@@ -904,6 +904,9 @@ async fn record_start(app: AppHandle, mut pipelines: Vec<stream::PipelineConfig>
         let file = dir.join(format!("{stem}.mp4")).to_string_lossy().to_string();
         files.push(file.clone());
         p.record_to = Some(file);
+        // Streaming this output now: record the stream's own picture (one encode, one set of
+        // cameras), as OBS's "same as stream" does. Not streaming: a full pipeline of its own.
+        p.tap_from = app.state::<stream::Engines>().stream_tap(&p.output);
     }
     launch(&app, stream::Kind::Record, pipelines).await?;
     Ok(files)

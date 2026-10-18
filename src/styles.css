@@ -1586,8 +1586,10 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
 /* Give the settings dialog a stable working height so switching between a
    short pane (Bible) and a tall one (Outputs) doesn't resize the window. */
 #settings-modal .modal-content {
-  width: 880px;
-  height: 78vh;
+  /* A little roomier (owner, 2026-10-17: it looked cramped): wide enough that a switch's hint
+     stays on one line, and tall enough for the longer panes. */
+  width: min(1040px, 94vw);
+  height: min(86vh, 920px);
 }
 
 .settings-nav {
