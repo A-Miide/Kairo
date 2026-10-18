@@ -163,7 +163,6 @@ const REMOTE_ACTIONS = [
   { id: 'director-undo',          label: 'Director: Undo',                       run: () => directorDo('undo') },
   { id: 'stream-start',           label: 'Streaming: go live',                   run: () => window.KairoStreaming?.start() },
   { id: 'stream-stop',            label: 'Streaming: stop',                      run: () => window.KairoStreaming?.stop(false) },
-  { id: 'director-replay',        label: 'Director: instant replay to Preview',   run: () => window.KairoReplay?.replay() },
   { id: 'record-start',           label: 'Recording: start',                     run: () => window.KairoStreaming?.startRecording() },
   { id: 'record-stop',            label: 'Recording: stop',                      run: () => window.KairoStreaming?.stopRecording(false) },
   { id: 'auto-send-on',           label: 'Auto-send verses: on',                 run: () => setAutoSend(true) },

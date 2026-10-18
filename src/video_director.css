@@ -759,7 +759,8 @@ body.video-director .svc-slide.live.is-staged, body.video-director .media-card.i
 .vd-det-chip { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-color: var(--accent); color: var(--accent); }
 .vd-det-chip[hidden] { display: none; }
 
-/* Replay and Record, docked in the Displays header in Director mode: sized like its other buttons. */
+/* Record, docked in the Displays header in Director mode: sized like its other buttons. */
+.vd-gh-ctl .tb-record-btn.vd-docked::before { width: 8px; height: 8px; }
 .vd-gh-ctl .tb-stream-btn.vd-docked { height: 22px; padding: 0 8px; font-size: 10.5px; font-weight: 600; border-radius: var(--radius-sm); }
 .vd-gh-ctl .tb-stream-btn.vd-docked[hidden] { display: none; }
 
