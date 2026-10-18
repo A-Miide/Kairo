@@ -2206,9 +2206,11 @@ const DEFAULT_OUTPUT_LAYERS = { bible: true, slide: true, media: true, timer: tr
 // Video input goes to display windows and the Monitor only (Phase 1). NDI,
 // Syphon/Spout and DeckLink render natively and don't carry it yet.
 // Video input shows in the outputs UI only while Video director mode is on.
+// Video input is always listed; outside Director mode it is dimmed with the reason on hover.
 function visibleLayerKeys() {
-  return isDirectorOn() ? OUTPUT_LAYER_KEYS : OUTPUT_LAYER_KEYS.filter(([k]) => k !== 'video');
+  return OUTPUT_LAYER_KEYS;
 }
+const DIRECTOR_ONLY_NOTE = 'Video input only works in Director mode. Turn Director mode on under Settings → Director mode.';
 const VIDEO_NATIVE_NOTE = 'Video input is not sent to NDI, Syphon or DeckLink outputs yet.';
 function outputSupportsVideo(outputId) {
   return displayOutputs().some(d => d.id === outputId);
@@ -2250,7 +2252,7 @@ function buildOutputLayersSummary(outputId, map) {
   visibleLayerKeys().forEach(([key, label]) => {
     // Video input only shows up here once it is on, so every other output's
     // summary reads as it always did.
-    if (key === 'video' && !(want.video && outputSupportsVideo(outputId))) return;
+    if (key === 'video' && !(want.video && outputSupportsVideo(outputId) && isDirectorOn())) return;
     const item = document.createElement('span');
     item.className = 'outputs-layers-summary-item' + (want[key] ? '' : ' is-off');
     item.textContent = label;
@@ -2346,6 +2348,7 @@ function buildLayerChecksRow(outputId, map) {
     cb.checked = want[layerKey] !== false;
     cb.dataset.layerKey = layerKey;
     if (monitor && layerKey === 'media') { cb.checked = false; cb.disabled = true; wrap.title = 'A Monitor shows words only'; }
+    else if (layerKey === 'video' && !isDirectorOn()) { cb.disabled = true; wrap.title = DIRECTOR_ONLY_NOTE; wrap.classList.add('na'); }
     else if (layerKey === 'video' && !outputSupportsVideo(outputId)) { cb.checked = false; cb.disabled = true; wrap.title = VIDEO_NATIVE_NOTE; }
     else cb.addEventListener('change', () => setOutputLayer(outputId, layerKey, cb.checked));
     wrap.appendChild(cb);
@@ -2416,6 +2419,7 @@ function ocChipState(row, o, map, textOnly) {
     return { on: !!textOnly[o.id], disabled: false, why: 'Just the words: no background, shapes or pictures' };
   }
   if (row.key === 'media' && o.monitor) return { on: false, disabled: true, why: 'A Monitor shows words only' };
+  if (row.key === 'video' && !isDirectorOn()) return { on: map[o.id]?.video === true, disabled: true, why: DIRECTOR_ONLY_NOTE };
   if (row.key === 'video') return outputSupportsVideo(o.id) ? { on: map[o.id]?.video === true, disabled: false, why: '' } : { on: false, disabled: true, why: VIDEO_NATIVE_NOTE };
   return { on: map[o.id]?.[row.key] !== false, disabled: false, why: '' };
 }
@@ -2440,7 +2444,7 @@ function renderOutputControlMatrix() {
   if (!outputs.length) { host.innerHTML = '<p class="setting-hint">No outputs yet.</p>'; return; }
   const map = outputLayerMap();
   const textOnly = outputTextOnlyMap();
-  const rows = OC_ROWS.filter(r => r.key !== 'video' || isDirectorOn());
+  const rows = OC_ROWS;
   const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
 
   outputs.forEach((o) => {
@@ -2473,7 +2477,7 @@ function renderOutputControlMatrix() {
     const shown = [], hidden = [];
     rows.forEach((row) => {
       const st = ocChipState(row, o, map, textOnly);
-      if (row.key !== 'textOnly') (st.on ? shown : hidden).push(row.label);
+      if (row.key !== 'textOnly' && !(row.key === 'video' && !isDirectorOn())) (st.on ? shown : hidden).push(row.label);
       const item = mk('label', 'oc-switch' + (st.disabled ? ' na' : ''));
       if (st.why) item.title = st.why;
       const text = mk('span', 'oc-switch-label', row.label);
