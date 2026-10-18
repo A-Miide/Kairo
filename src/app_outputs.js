@@ -219,8 +219,12 @@ function refreshDisplayDetailInPlace() {
   document.getElementById('external-detail-dot')?.classList.toggle('connected', connected);
   const status = document.getElementById('external-detail-status');
   if (status?.lastChild?.nodeType === Node.TEXT_NODE) {
-    status.lastChild.textContent = connected ? 'External display connected' : 'No external display connected';
+    status.lastChild.textContent = displayStatusFor(PRIMARY_DISPLAY) || (connected ? 'External display connected' : 'No external display connected');
   }
+  document.querySelectorAll('[data-display-status]').forEach(el => {
+    const t = displayStatusFor(el.dataset.displayStatus);
+    if (t) el.textContent = t;
+  });
   const sig = screensSignature();
   document.querySelectorAll('select.output-screen-select').forEach(sel => {
     if (sel === document.activeElement || sel.dataset.screensSig === sig) return;
@@ -1099,11 +1103,12 @@ function renderDisplayDetail(host, o) {
     dot.id = 'external-detail-dot';
     dot.classList.toggle('connected', cachedScreens.length > 1);
     statusEl.id = 'external-detail-status';
-    statusEl.textContent = cachedScreens.length > 1 ? 'External display connected' : 'No external display connected';
+    statusEl.textContent = displayStatusFor(o.id) || (cachedScreens.length > 1 ? 'External display connected' : 'No external display connected');
     statusEl.prepend(dot);
   } else {
     const assigned = !!outputScreenMap()[o.id];
-    statusEl.textContent = assigned ? 'Assigned' : 'Not assigned';
+    statusEl.textContent = assigned ? (displayStatusFor(o.id) || 'Assigned') : 'Not assigned';
+    statusEl.dataset.displayStatus = o.id;
     statusEl.classList.toggle('is-active', assigned);
   }
   host.appendChild(detailTitle(o.name, statusEl, buildOutputRowToggle(o)));
@@ -1758,6 +1763,14 @@ function liveScreenFor(assigned) {
 }
 // Outputs whose screen was not connected when they were due to open: opened when it appears.
 const displaysWaiting = new Set();
+// What each display output is doing right now, in words (kept up to date by reconcileDisplayWindows).
+const displayStateText = {};
+const screenWords = (s) => `${s.isPrimary ? 'this Mac’s screen' : 'Display ' + (s.index + 1)} (${s.width}×${s.height})`;
+// null when nothing is assigned to the output.
+function displayStatusFor(id) {
+  if (!outputScreenMap()[id]) return null;
+  return displayStateText[id] || 'Assigned';
+}
 
 async function openDisplayOutput(d) {
   const url = `/display.html?output=${encodeURIComponent(d.id)}`;
@@ -1805,10 +1818,13 @@ async function reconcileDisplayWindows() {
   if (!getWin || !cachedScreens.length) return;
   for (const d of displayOutputs()) {
     const assigned = outputScreenMap()[d.id];
-    if (!assigned) { displaysWaiting.delete(d.id); continue; }
+    if (!assigned) { displaysWaiting.delete(d.id); delete displayStateText[d.id]; continue; }
     const hit = liveScreenFor(assigned);
     let win = null;
     try { win = await getWin.getByLabel(`kairo-${d.id}`); } catch {}
+    const stateNow = !hit ? 'Waiting for its display: not connected'
+      : win ? `Showing on ${screenWords(hit)}` : `Display connected: ${screenWords(hit)}, output not open`;
+    if (displayStateText[d.id] !== stateNow) { displayStateText[d.id] = stateNow; kairoLog('display-state', { outputId: d.id, state: stateNow }); }
     if (!hit && win) {
       try { await win.close(); } catch {}
       displaysWaiting.add(d.id);

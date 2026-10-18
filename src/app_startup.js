@@ -528,7 +528,8 @@ registerActionHandler('clock-message', (msg) => window.KairoService?.onClockActi
     const headerTxt = document.getElementById('external-header-status');
     if (headerDot) headerDot.className = 'bs-dot' + (connected ? ' connected' : '');
     const waiting = typeof displaysWaiting !== 'undefined' && displaysWaiting.size > 0;
-    if (headerTxt) headerTxt.textContent = waiting ? 'An output is waiting for its display. If it is AirPlay, set it to Extend, not Mirror.' : connected ? 'External display connected' : 'No external display connected';
+    const own = typeof displayStatusFor === 'function' ? displayStatusFor(PRIMARY_DISPLAY) : null;
+    if (headerTxt) headerTxt.textContent = waiting ? 'An output is waiting for its display. If it is AirPlay, set it to Extend, not Mirror.' : own || (connected ? 'External display connected' : 'No external display connected');
     // The open detail panel's dot, text and screen list — updated in place,
     // never rebuilt under the operator (see refreshDisplayDetailInPlace).
     refreshDisplayDetailInPlace();
