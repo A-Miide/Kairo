@@ -590,13 +590,45 @@ pub fn ffmpeg_args(cfg: &PipelineConfig, enc: &str, inputs: &Inputs, selected: u
     if let Some(path) = cfg.record_to.as_ref() {
         // Fragmented MP4, each piece written out as it is made: everything recorded so far
         // plays even if Kairo or the computer stops.
-        a.extend(["-movflags".into(), "+frag_keyframe+empty_moov+default_base_moof".into(), "-flush_packets".into(), "1".into(), "-f".into(), "mp4".into(), path.clone()]);
+        a.extend(record_format_args(path));
+        a.push(path.clone());
         return a;
     }
     let mut slaves: Vec<String> = cfg.destinations.iter().map(slave).collect();
     if let Some(port) = cfg.tap_port { slaves.push(tap_slave(port)); }
     a.extend(["-f".into(), "tee".into(), slaves.join("|")]);
     a
+}
+
+/// How a recording file is written, by its extension: MP4 (the default) and MOV as fragmented files and
+/// MKV as Matroska. All of them are written out as they are made: everything recorded so far plays even
+/// if Kairo or the computer stops.
+pub fn record_format_args(path: &str) -> Vec<String> {
+    let ext = Path::new(path).extension().map(|e| e.to_string_lossy().to_lowercase()).unwrap_or_default();
+    let frag = ["-movflags", "+frag_keyframe+empty_moov+default_base_moof", "-flush_packets", "1"];
+    let v: Vec<&str> = match ext.as_str() {
+        "mov" => frag.iter().copied().chain(["-f", "mov"]).collect(),
+        "mkv" => vec!["-flush_packets", "1", "-f", "matroska"],
+        _ => frag.iter().copied().chain(["-f", "mp4"]).collect(),
+    };
+    v.into_iter().map(String::from).collect()
+}
+
+/// The muxer FFmpeg calls the format a recording's extension asks for.
+fn record_muxer(path: &str) -> &'static str {
+    match Path::new(path).extension().map(|e| e.to_string_lossy().to_lowercase()).as_deref() {
+        Some("mov") => "mov",
+        Some("mkv") => "matroska",
+        _ => "mp4",
+    }
+}
+
+/// The recording's path with the format this FFmpeg can write: MP4 when it can't write the one asked for.
+fn writable_record_path(path: &str, muxers: &str) -> (String, Option<String>) {
+    let want = record_muxer(path);
+    if want == "mp4" || muxers.lines().any(|l| l.split_whitespace().nth(1) == Some(want)) { return (path.to_string(), None); }
+    let p = Path::new(path).with_extension("mp4").to_string_lossy().to_string();
+    (p, Some(format!("This copy of FFmpeg can't write {}; recording as MP4 instead.", if want == "matroska" { "MKV" } else { "MOV" })))
 }
 
 /// A recording's file for each start: the file asked for, then "… part 2", "… part 3".
@@ -928,7 +960,10 @@ fn supervise(ffmpeg: PathBuf, shared: Arc<Shared>, on_status: OnStatus) {
     while !shared.stop.load(Ordering::SeqCst) {
         let started = Instant::now();
         let mut cfg = match shared.cfg.lock() { Ok(c) => c.clone(), Err(_) => return };
+        let mut format_warning = None;
         if let Some(base) = cfg.record_to.clone() {
+            let (base, warn) = writable_record_path(&base, &muxers);
+            format_warning = warn;
             // Never over a file already there (an earlier part, or someone else's).
             part += 1;
             while Path::new(&record_part(&base, part)).exists() { part += 1; }
@@ -951,6 +986,7 @@ fn supervise(ffmpeg: PathBuf, shared: Arc<Shared>, on_status: OnStatus) {
         }
         let mut inputs = build_inputs(&cfg, port, &video_names, &audio_names, &skip);
         inputs.warnings.extend(mix_warning);
+        inputs.warnings.extend(format_warning);
         let selected = select_index(cfg.program.as_deref(), &inputs.camera_inputs);
         let zones = zone_list(&cfg);
         let zone_sel = zone_index(cfg.zone, &zones);
@@ -1215,18 +1251,21 @@ fn unpremultiply_in_place(px: &mut [u8]) {
 /// own instead, see streaming_ui.js).
 fn supervise_tap(ffmpeg: PathBuf, shared: Arc<Shared>, on_status: OnStatus) {
     let mut part = 0u32;
+    let muxers = Command::new(&ffmpeg).args(["-hide_banner", "-muxers"]).stdin(Stdio::null()).stderr(Stdio::null()).output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).to_string()).unwrap_or_default();
     while !shared.stop.load(Ordering::SeqCst) {
         let started = Instant::now();
         let cfg = match shared.cfg.lock() { Ok(c) => c.clone(), Err(_) => return };
         let (Some(base), Some(port)) = (cfg.record_to.clone(), cfg.tap_from) else { return };
+        let (base, _) = writable_record_path(&base, &muxers);
         part += 1;
         while Path::new(&record_part(&base, part)).exists() { part += 1; }
         let file = record_part(&base, part);
         let args: Vec<String> = ["-hide_banner", "-loglevel", "warning", "-stats", "-stats_period", "1", "-y",
             "-probesize", "2M", "-analyzeduration", "2M", "-f", "mpegts", "-i"].map(String::from).into_iter()
             .chain([format!("tcp://127.0.0.1:{port}")])
-            .chain(["-map", "0:v:0", "-map", "0:a:0", "-c", "copy", "-bsf:a", "aac_adtstoasc",
-                "-movflags", "+frag_keyframe+empty_moov+default_base_moof", "-flush_packets", "1", "-f", "mp4"].map(String::from))
+            .chain(["-map", "0:v:0", "-map", "0:a:0", "-c", "copy", "-bsf:a", "aac_adtstoasc"].map(String::from))
+            .chain(record_format_args(&file))
             .chain([file.clone()]).collect();
         let mut child = match Command::new(&ffmpeg).args(&args).stdin(Stdio::piped()).stdout(Stdio::null()).stderr(Stdio::piped()).spawn() {
             Ok(c) => c,
@@ -1509,6 +1548,22 @@ mod tests {
     }
 
     #[test]
+    fn a_recording_is_written_in_the_format_its_file_asks_for() {
+        let tail = |p: &str| record_format_args(p).join(" ");
+        assert!(tail("/m/a.mp4").ends_with("-f mp4") && tail("/m/a.mp4").contains("frag_keyframe"));
+        assert!(tail("/m/a.mov").ends_with("-f mov") && tail("/m/a.mov").contains("frag_keyframe"));
+        assert!(tail("/m/a.mkv").ends_with("-f matroska") && tail("/m/a.mkv").contains("-flush_packets 1"));
+        assert!(tail("/m/a").ends_with("-f mp4"), "no extension: MP4");
+        // A copy of FFmpeg without the muxer records MP4 and says so.
+        let only_mp4 = " E mp4             MP4\n E flv             FLV\n";
+        let (p, warn) = writable_record_path("/m/a.mkv", only_mp4);
+        assert_eq!(p, "/m/a.mp4");
+        assert!(warn.unwrap().contains("MKV"));
+        assert_eq!(writable_record_path("/m/a.mkv", " E matroska  Matroska\n").0, "/m/a.mkv");
+        assert_eq!(writable_record_path("/m/a.mp4", "").0, "/m/a.mp4");
+    }
+
+    #[test]
     fn encoders_in_order() {
         let listing = " V....D libx264  libx264 H.264\n V....D h264_videotoolbox VideoToolbox\n V....D h264_mf MF\n";
         assert_eq!(encoder_candidates(listing), vec!["h264_videotoolbox", "h264_mf", "libx264"]);
@@ -1784,6 +1839,34 @@ mod tests {
         println!("played {secs}");
         assert!(!secs.is_empty() && secs.as_str() >= "00:00:04", "about the 7 s asked, at least 4 s: {secs}");
         assert!(std::fs::metadata(dir.join("a.flv")).map(|m| m.len() > 10_000).unwrap_or(false), "the stream itself kept going");
+    }
+
+    /// A recording in each format plays and has the picture and the sound:
+    /// `KAIRO_STREAM_E2E=1 cargo test --release -p kairo --lib record_formats_e2e -- --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn record_formats_e2e() {
+        if std::env::var("KAIRO_STREAM_E2E").is_err() { return; }
+        std::env::set_var("KAIRO_STREAM_TEST_DEVICES", "1");
+        let ffmpeg = PathBuf::from(std::env::var("KAIRO_FFMPEG").unwrap_or_else(|_| "ffmpeg".into()));
+        let dir = std::env::temp_dir().join(format!("kairo-formats-e2e-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        for (ext, container) in [("mp4", "mov,mp4"), ("mov", "mov,mp4"), ("mkv", "matroska")] {
+            let file = dir.join(format!("fmt.{ext}"));
+            let mut c = cfg();
+            c.width = 640; c.height = 360; c.destinations.clear(); c.program = None;
+            c.record_to = Some(file.to_string_lossy().to_string());
+            let p = Pipeline::start(ffmpeg.clone(), c, Arc::new(|_| {}));
+            p.push_frame(Arc::new(Frame { width: 640, height: 360, bgra: vec![90u8; 640 * 360 * 4] }), 0);
+            thread::sleep(Duration::from_secs(4));
+            p.stop();
+            p.join(Duration::from_secs(6));
+            let probe = Command::new(&ffmpeg).args(["-hide_banner", "-i"]).arg(&file).args(["-f", "null", "-"]).output().unwrap();
+            let t = String::from_utf8_lossy(&probe.stderr).to_string();
+            println!("{ext}: {}", t.lines().find(|l| l.starts_with("Input #0")).unwrap_or(""));
+            assert!(t.contains(&format!("Input #0, {container}")), "{ext}: {t}");
+            assert!(t.contains("Video: h264") && t.contains("Audio: aac"), "{ext}: {t}");
+        }
     }
 
     /// Records ~4 s to a file with test sources and checks it plays, even cut off by a kill:

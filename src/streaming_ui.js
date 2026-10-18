@@ -1,6 +1,6 @@
 // Going live (src-tauri stream.rs): the Go live button in the top bar and on Settings →
 // Streaming, and the live status both show. Recording (the Record button) is the same
-// engine writing an MP4 instead (lib.rs record_*), and starts and stops on its own.
+// engine writing an MP4, MOV or MKV instead (lib.rs record_*), and starts and stops on its own.
 //
 // Each output being streamed gets a hidden capture window (output_capture.js,
 // `kairo-cap-stream-<output>`, display.html?stream=1): Kairo's graphics for that output,
@@ -11,7 +11,7 @@
 (function () {
   const T = window.__TAURI__;
   const invoke = T && T.core && T.core.invoke;
-  const SIZES = { '720p': [1280, 720], '1080p': [1920, 1080] };
+  const SIZES = { '720p': [1280, 720], '1080p': [1920, 1080], '1440p': [2560, 1440], '2160p': [3840, 2160] };
   const status = {};          // output → the engine's status for it
   const runs = {};            // output → the newest run seen (a Go live after a Stop is a new run)
   let captureOk = true;       // can this computer capture the outputs' graphics?
@@ -226,13 +226,19 @@
     const known = typeof displayOutputs === 'function' ? displayOutputs().map(o => o.id) : [];
     const outputs = [known.includes(r.output) ? r.output : primary()];
     const pipelines = [];
-    for (const o of outputs) pipelines.push(await pipelineBase(o, Number(r.bitrate) || 12000));
+    for (const o of outputs) {
+      const p = await pipelineBase(o, Number(r.bitrate) || 12000);
+      // The recording's own size and frame rate when set; "same" follows the stream's.
+      if (r.resolution && r.resolution !== 'same' && SIZES[r.resolution]) { [p.width, p.height] = SIZES[r.resolution]; }
+      if (r.fps && r.fps !== 'same' && Number(r.fps) > 0) p.fps = Number(r.fps);
+      pipelines.push(p);
+    }
     captureOk = !!(window.KairoCapture && await window.KairoCapture.isSupported());
     if (!captureOk && !going && !(await ask('This computer can\'t capture Kairo\'s graphics yet, so the recording would have the camera and sound only. Record anyway?', 'Record'))) return;
     for (const p of pipelines) await useCapture(p.output, 'record', p.width, p.height);
     try {
       recWhy = '';
-      lastFiles = await invoke('record_start', { pipelines, folder: r.folder || null, name: stamp() }) || [];
+      lastFiles = await invoke('record_start', { pipelines, folder: r.folder || null, name: stamp(), format: r.format || 'mp4' }) || [];
       recording = true;
       const now = await invoke('record_status').catch(() => []);
       (now || []).forEach(takeRec);

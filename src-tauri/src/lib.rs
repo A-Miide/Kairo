@@ -890,7 +890,9 @@ fn safe_name(s: &str) -> String {
 }
 
 #[tauri::command]
-async fn record_start(app: AppHandle, mut pipelines: Vec<stream::PipelineConfig>, folder: Option<String>, name: String) -> Result<Vec<String>, String> {
+async fn record_start(app: AppHandle, mut pipelines: Vec<stream::PipelineConfig>, folder: Option<String>, name: String, format: Option<String>) -> Result<Vec<String>, String> {
+    // The recording's file type: MP4 (the default), MOV or MKV.
+    let ext = match format.as_deref().map(|f| f.to_lowercase()).as_deref() { Some("mov") => "mov", Some("mkv") => "mkv", _ => "mp4" };
     let dir = match folder.filter(|f| !f.trim().is_empty()) {
         Some(f) => std::path::PathBuf::from(f),
         None => app.path().video_dir().map_err(|e| e.to_string())?.join("Kairo"),
@@ -901,7 +903,7 @@ async fn record_start(app: AppHandle, mut pipelines: Vec<stream::PipelineConfig>
     for p in &mut pipelines {
         p.destinations.clear();
         let stem = if several { format!("{} {}", safe_name(&name), safe_name(&p.output)) } else { safe_name(&name) };
-        let file = dir.join(format!("{stem}.mp4")).to_string_lossy().to_string();
+        let file = dir.join(format!("{stem}.{ext}")).to_string_lossy().to_string();
         files.push(file.clone());
         p.record_to = Some(file);
         // Streaming this output now: record the stream's own picture (one encode, one set of
@@ -926,7 +928,7 @@ fn record_status(app: AppHandle) -> Vec<stream::PipelineStatus> {
 #[tauri::command]
 fn record_reveal(path: String) -> Result<(), String> {
     let p = std::path::PathBuf::from(&path);
-    if p.extension().and_then(|e| e.to_str()) != Some("mp4") || !p.is_file() { return Err("That recording isn't there any more.".into()); }
+    if !matches!(p.extension().and_then(|e| e.to_str()), Some("mp4" | "mov" | "mkv")) || !p.is_file() { return Err("That recording isn't there any more.".into()); }
     #[cfg(target_os = "macos")]
     let r = std::process::Command::new("open").arg("-R").arg(&p).spawn();
     #[cfg(target_os = "windows")]
