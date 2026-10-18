@@ -85,6 +85,20 @@ let wsReconnectTimer = null;
 let wsReconnectAttempts = 0;
 let isListening    = false;
 let mediaStream    = null;
+// The server captures the sound input itself (kairo-server native_audio.rs): nothing in this
+// window's web view touches it, so cameras opening or closing can't silence it. null when the
+// page captures it (mediaStream), the fallback if the server can't open the input.
+let nativeCapture  = null;   // { device }
+const captureLabel = () => mediaStream?.getAudioTracks?.()[0]?.label || nativeCapture?.device || '';
+// The input to name to the server: the selected one's label, '' for the system default; null
+// when the page can't name it yet (no labels until camera/mic access was allowed once).
+function nativeInputWantedFor(deviceId) {
+  const sel = audioSourceSettings;
+  if (!deviceId || !sel) return '';
+  const opt = [...sel.options].find(o => o.value === deviceId);
+  return (opt && opt.dataset.label) || null;
+}
+const nativeInputWanted = () => nativeInputWantedFor(audioSourceSettings?.value || '');
 let audioContext   = null;
 let audioProcessor = null;
 // Real, sustained silence reaching Kairo while listening — owner: "are you
@@ -251,6 +265,10 @@ function handleServerMessage(msg) {
     case 'action':
       _actionHandlers.get(msg.actionId)?.(msg);
       break;
+
+    case 'input-level': onNativeLevel(msg); break;
+    case 'input-lost': onNativeLost(msg, false); break;
+    case 'input-back': onNativeLost(msg, true); break;
 
     case 'overlays':
       window.KairoOverlays?.render(document.getElementById('slide-preview-overlays'), msg.items);
@@ -1870,7 +1888,7 @@ setInterval(() => {
   if (!wrap || settingsModal?.classList.contains('hidden')) { inputLevel.meterPeak = 0; return; }
   const bar = wrap.querySelector('.input-level-meter i');
   const status = document.getElementById('input-level-status');
-  if (!isListening && !inputPreview?.ctx) {
+  if (!isListening && !inputPreview?.ctx && !inputPreview?.live) {
     bar.style.width = '0%';
     wrap.dataset.state = 'idle';
     status.textContent = inputPreviewFailed ? 'This input isn’t available' : '';
@@ -1894,6 +1912,20 @@ let inputPreview = null;         // { deviceId, stream, ctx, timer }
 let inputPreviewFailed = null;   // { deviceId, at } — retried after 3 s
 async function startInputPreview(deviceId) {
   stopInputPreview();
+  // The server opens the input just to report its level (the same capture listening uses);
+  // this window's web view only if the server can't.
+  const label = nativeInputWantedFor(deviceId);
+  if (label !== null) {
+    const np = { deviceId, native: true };
+    inputPreview = np;
+    try {
+      const d = await (await fetch(`${SERVER}/api/audio-preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on: true, input: label }) })).json();
+      if (inputPreview !== np) return;   // superseded
+      if (!d.error) { np.live = true; inputPreviewFailed = null; return; }
+    } catch {}
+    if (inputPreview !== np) return;
+    inputPreview = null;
+  }
   const p = { deviceId };
   inputPreview = p;
   try {
@@ -1932,6 +1964,7 @@ function stopPreviewCapture(p) {
 function stopInputPreview() {
   const p = inputPreview;
   inputPreview = null;
+  if (p && p.native) { fetch(`${SERVER}/api/audio-preview`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ on: false }) }).catch(() => {}); return; }
   if (p) stopPreviewCapture(p);
 }
 setInterval(() => {
@@ -2040,7 +2073,7 @@ function noteCaptureLevel(peak, bufferLength, gain = 1, clipped = false) {
   const now = Date.now();
   noteInputLevel(peak / 32768, clipped, gain);
   noteInputSummary(peak / 32768, clipped, gain);
-  if (peak > 0) rememberInputGain(mediaStream?.getAudioTracks?.()[0]?.label || '', gain);
+  if (peak > 0) rememberInputGain(captureLabel(), gain);
   if (peak > 0) {
     lastNonZeroAudioAt = lastHeardSignalAt = now;
     if (_inputSilentShown) { _inputSilentShown = false; window.kairoProblemCleared?.('input-silent'); }
@@ -2116,7 +2149,7 @@ function noteInputSummary(peak, clipped, gain) {
   const sorted = s.peaks.sort((a, b) => a - b);
   const typical = sorted.length ? sorted[sorted.length >> 1] : 0;
   const data = {
-    device: mediaStream?.getAudioTracks?.()[0]?.label || '',
+    device: captureLabel(),
     typicalPeakDb: typical > 0 ? Math.round(20 * Math.log10(typical)) : null,
     silentPct: Math.round((s.silent / s.reports) * 100),
     clippedPct: Math.round((s.clipped / s.reports) * 1000) / 10,
@@ -2149,8 +2182,15 @@ function teardownCaptureGraph(g) {
   try { g.ctx?.close(); } catch {}
 }
 
+// This window is starting a session itself (it knows what it is capturing): the "connected"
+// message that arrives mid-start must not trigger resumeCaptureIfNeeded (for a reloaded window).
+let _startingListening = false;
 async function startListening() {
-  if (isListening) return;
+  if (isListening || _startingListening) return;
+  _startingListening = true;
+  try { await startListeningInner(); } finally { _startingListening = false; }
+}
+async function startListeningInner() {
   // New session — reset accumulators so Content Studio doesn't bundle the
   // previous sermon's transcript and verses into the next save. Counters and
   // timers are reset in handleConnectionState when we actually connect.
@@ -2182,15 +2222,20 @@ async function startListening() {
     // So: DSP off, unconditionally. A room-mic user loses noise
     // suppression, an acceptable trade for never silently crushing a clean
     // line feed.
-    mediaStream = await navigator.mediaDevices.getUserMedia(captureConstraints(deviceId));
-    if (micDisplay) micDisplay.textContent = mediaStream.getAudioTracks()[0]?.label || 'Microphone';
+    // The server opens the input itself when it can name it (see nativeCapture); otherwise, or
+    // if it can't open it, this window captures it as before.
+    const wantNative = nativeInputWanted();
+    if (wantNative === null) {
+      mediaStream = await navigator.mediaDevices.getUserMedia(captureConstraints(deviceId));
+      if (micDisplay) micDisplay.textContent = mediaStream.getAudioTracks()[0]?.label || 'Microphone';
+    }
 
     // Start the server-side engine (Deepgram or the offline sherpa-onnx engine)
     window.KairoInterpreter?.reset();
     const r = await fetch(`${SERVER}/api/start-listening`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ engine: serverEngine }),
+      body: JSON.stringify({ engine: serverEngine, ...(wantNative !== null ? { nativeInput: wantNative } : {}) }),
     });
     const d = await r.json();
     if (d.error) {
@@ -2220,6 +2265,15 @@ async function startListening() {
       return;
     }
 
+    if (d.native && d.native.device) {
+      beginNativeSession(d.native.device);
+      return;
+    }
+    if (d.native && d.native.error) kairoLog('native-capture-failed', { error: d.native.error, wanted: wantNative });
+    if (!mediaStream) {
+      mediaStream = await navigator.mediaDevices.getUserMedia(captureConstraints(deviceId));
+      if (micDisplay) micDisplay.textContent = mediaStream.getAudioTracks()[0]?.label || 'Microphone';
+    }
     await openCaptureGraph();
   } catch (err) {
     // toast() is a deliberate no-op (see its own definition) — without
@@ -2245,6 +2299,32 @@ function captureConstraints(deviceId) {
 }
 
 // Stream PCM16 to the server via WebSocket — same path for both engines.
+// The server is capturing the input: this window only watches its levels and silence.
+function beginNativeSession(device) {
+  nativeCapture = { device };
+  if (micDisplay) micDisplay.textContent = device;
+  lastRealAudioAt = lastNonZeroAudioAt = Date.now();
+  lastHeardSignalAt = _silentReopenFor = 0; _silentReopenPending = null;
+  audioSilenceWarning = false;
+  clearInterval(audioSilenceWatchdog);
+  audioSilenceWatchdog = setInterval(checkAudioSilence, 5000);
+  showEmptyTranscript(false);
+  kairoLog('native-capture', { device });
+}
+// A level report from the server's capture (about six a second).
+function onNativeLevel(msg) {
+  if (!msg || typeof msg.peak !== 'number') return;
+  // Not listening: the Settings meter's own preview, which only drives the meter.
+  if (!isListening || !nativeCapture) { noteInputLevel(msg.peak, !!msg.clipped, msg.gain || 1); return; }
+  noteCaptureLevel(msg.peak * 32768, 0, msg.gain || 1, !!msg.clipped);
+}
+// The server's capture lost its input (unplugged) and is trying to open it again.
+function onNativeLost(msg, back) {
+  const name = msg?.device || captureLabel() || 'The sound input';
+  if (back) { window.kairoProblemCleared?.('input-lost'); kairoLog('native-capture-back', { device: name }); return; }
+  window.kairoProblem?.(`${name} was disconnected. Kairo is still listening and reconnects it as soon as it is back.`, 'input-lost');
+}
+
 async function openCaptureGraph() {
   const g = await buildCaptureGraph(null, mediaStream);
   audioContext = g.ctx; audioProcessor = g.proc;
@@ -2265,9 +2345,14 @@ async function openCaptureGraph() {
 // button said Stop Listening while nothing was heard. The input is picked up again here.
 let _resumingCapture = false;
 async function resumeCaptureIfNeeded() {
-  if (mediaStream || _resumingCapture) return;
+  if (mediaStream || nativeCapture || _resumingCapture || _startingListening) return;
   _resumingCapture = true;
   try {
+    // The server may be capturing the input itself: this window was reloaded, nothing to open.
+    try {
+      const st = await (await fetch(`${SERVER}/api/capture`)).json();
+      if (st && st.native) { beginNativeSession(st.native); return; }
+    } catch {}
     stopInputPreview();
     mediaStream = await navigator.mediaDevices.getUserMedia(captureConstraints(audioSourceSettings?.value || ''));
     if (micDisplay) micDisplay.textContent = mediaStream.getAudioTracks()[0]?.label || 'Microphone';
@@ -2288,6 +2373,7 @@ async function stopListening() {
 
 function stopAudioCapture() {
   pendingAudioFrames = [];
+  if (nativeCapture) { nativeCapture = null; fetch(`${SERVER}/api/stop-capture`, { method: 'POST' }).catch(() => {}); }
   Object.assign(inputSummary, { since: 0, reports: 0, silent: 0, clipped: 0, peaks: [], gainDbSum: 0 });
   stopCaptureSender();
   if (audioProcessor) { try { audioProcessor.disconnect(); if (audioProcessor.port) audioProcessor.port.onmessage = null; } catch {} audioProcessor = null; }
@@ -2321,7 +2407,7 @@ function setAudioSilenceWarning(on) {
     // set to BlackHole, the file still playing, BlackHole silent until the
     // output was switched away and back). Clicking opens Settings → Audio
     // Input and its level meter.
-    const input = mediaStream?.getAudioTracks?.()[0]?.label || 'the selected input';
+    const input = captureLabel() || 'the selected input';
     const pill = lbl?.closest('.ls-bcast-pill');
     if (pill) {
       pill.classList.add('is-actionable');
@@ -2373,6 +2459,18 @@ function resetSleepCheck() { _lastSilenceCheckAt = 0; _lastSilenceCheckAudioTime
 function checkAudioSilence() {
   if (!isListening) return;
   const now = Date.now();
+  // The server is capturing: silence here means nothing arrives from the input (whatever plays
+  // into it stopped, or was sent elsewhere), never a capture problem on this side, so there is
+  // nothing to rebuild; it is said on screen, and clears the moment sound returns.
+  if (nativeCapture) {
+    setAudioSilenceWarning(now - lastRealAudioAt > AUDIO_SILENCE_WARN_MS);
+    if (lastHeardSignalAt && now - lastHeardSignalAt > 20000 && !_inputSilentShown) {
+      _inputSilentShown = true;
+      _healLog('the input has gone silent', { input: nativeCapture.device });
+      window.kairoProblem?.(`${nativeCapture.device} has been silent for 20 seconds: nothing is arriving from it. Check that whatever plays into it is still playing and sending its sound to ${nativeCapture.device}. Kairo is still listening.`, 'input-silent');
+    }
+    return;
+  }
   // This runs every 5s — a much longer gap can mean the machine was asleep,
   // and waking from sleep is what leaves a WKWebView capture delivering zeros.
   // But a long gap alone isn't sleep: the page's timers are throttled while
@@ -3546,7 +3644,14 @@ audioSourceSettings?.addEventListener('change', () => {
   // silently using the OLD device until something else (the silence
   // watchdog, a track ending) happened to trigger an unrelated rebuild.
   // Take effect immediately, same as every other live audio-recovery path.
-  if (isListening) restartAudioCapture('operator-changed-source');
+  if (isListening && nativeCapture) {
+    const want = nativeInputWanted();
+    fetch(`${SERVER}/api/capture`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ input: want || '' }) })
+      .then(r => r.json()).then(d => {
+        if (d.device) { nativeCapture = { device: d.device }; if (micDisplay) micDisplay.textContent = d.device; lastHeardSignalAt = 0; kairoLog('native-capture', { device: d.device, why: 'operator-changed-source' }); }
+        else window.kairoProblem?.(`The input couldn't be opened (${d.error || 'unknown'}). The previous one was closed: pick another, or stop and start listening.`, 'input-lost');
+      }).catch(() => {});
+  } else if (isListening) restartAudioCapture('operator-changed-source');
 });
 
 refreshDevicesBtn?.addEventListener('click', populateAudioDevices);
