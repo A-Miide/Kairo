@@ -34,6 +34,7 @@ mod obs;
 mod pdf;
 pub mod propresenter;
 mod pdf_metrics;
+mod report;
 mod routes;
 mod routes_library;
 mod routes_misc;
@@ -167,6 +168,8 @@ impl App {
 /// Serves until the process ends.
 pub async fn serve(cfg: Config) -> anyhow::Result<()> {
     routes::set_debug_log_path(cfg.app_data_dir.join("debug.log"));
+    // An internal error leaves a small crash file the Report window can offer (report.rs).
+    report::install_crash_hook(cfg.app_data_dir.clone());
     interpretation::set_model_path(cfg.db_dir.parent().map(|d| d.join("vad/silero_vad.onnx")).unwrap_or_default());
     let settings = Settings::load(cfg.app_data_dir.join("settings.json"));
     let hub = Arc::new(Hub::new());

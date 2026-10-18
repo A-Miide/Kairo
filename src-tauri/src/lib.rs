@@ -244,6 +244,7 @@ fn build_app_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry
         .text("menu-shortcuts", "Keyboard Shortcuts")
         .text("menu-help", "Kairo Help")
         .separator()
+        .text("menu-run-report-problem", "Report a Problem…")
         .text("menu-learn-more", "Kairo on GitHub")
         .build()?;
 
