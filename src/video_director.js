@@ -1180,7 +1180,9 @@
     setFrameSrc('pvw', `/display.html?output=${encodeURIComponent(PRIMARY_DISPLAY)}&preview=1`);
     const pgmSource = ps.mixed ? null : sources.find(s => s.id === ps.id);
     D.ui.pgmOff.hidden = ps.on.length > 0;
-    D.ui.pgmName.textContent = isBlack() ? 'Faded to black: press Fade up to bring it back' : !ps.on.length ? 'Video input is off on every output' : ps.mixed ? 'Mixed' : pgmSource ? pgmSource.name : 'No video';
+    // The headers only name the screens (owner, 2026-10-18); what is on air is read from the frame itself.
+    const screenNames = videoOutputs().map(o => o.name).join(' · ');
+    D.ui.pgmName.textContent = screenNames;
     // What the multiview display mirrors.
     try {
       const pub = JSON.stringify({ programId: ps.id, mixed: ps.mixed, hasOutputs: ps.on.length > 0, previewId: D.previewId });
@@ -1197,11 +1199,7 @@
     const pvwSource = sources.find(s => s.id === D.previewId);
     const staged = D.staged ? (D.staged.verse.reference || D.staged.verse.ref || D.staged.verse.label || 'Staged') : '';
     markStaged();
-    const bits = [];
-    if (pvwSource) bits.push(pvwSource.name);
-    if (staged) bits.push(staged);
-    if (D.pendingLook) bits.push(`Layout: ${D.pendingLook.name}`);
-    D.ui.pvwRef.textContent = bits.length ? bits.join(' · ') : 'Same as output';
+    D.ui.pvwRef.textContent = screenNames;
     if (D.ui.clearStage) D.ui.clearStage.hidden = !(D.staged && !D.staged.sent);
     dockTopButtons(true);
     // The empty-picture label sits inside the video zone when the layout has one, not over the frame.
