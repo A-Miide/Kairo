@@ -42,7 +42,7 @@ const FILES: &[File] = &[
 /// release file: a fresh build machine downloads it in seconds instead of
 /// embedding 31,102 verses. Checked by its checksum and its verse count;
 /// anything else, and it's built here.
-const PREBUILT_INDEX: &str = "https://github.com/miide-Adeyemi/Kairo/releases/download/bundle-data-v1/verse_index.bge-small.kvx";
+const PREBUILT_INDEX: &str = kairo_server::kairo_download!("bundle-data-v1/verse_index.bge-small.kvx");
 const PREBUILT_INDEX_SHA256: &str = "da8fab69c2f2fc3a0b92f45c99fda1d3f6896e429c5808fc5c5211cb41ea8dcc";
 
 fn fetch_prebuilt_index(target: &Path, verses: usize) -> bool {

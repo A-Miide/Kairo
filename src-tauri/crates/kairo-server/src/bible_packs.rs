@@ -15,7 +15,7 @@ use serde_json::{json, Value};
 use crate::Shared;
 
 /// Where the catalogue lives unless `KAIRO_BIBLE_CATALOG_URL` says otherwise.
-const DEFAULT_CATALOG: &str = "https://github.com/miide-Adeyemi/Kairo/releases/download/bible-packs/catalog.json";
+const DEFAULT_CATALOG: &str = crate::kairo_download!("bible-packs/catalog.json");
 
 static INSTALLING: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
 
