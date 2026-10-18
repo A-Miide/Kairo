@@ -803,7 +803,7 @@
     ifoot.append(
       D.ui.ready,
       D.ui.noVideo,
-      vBtn('Manage', 'Rename, reorder, switch off or remove inputs', () => openSources(), 'vd-mini'),
+      vBtn('Manage', 'Add, rename, reorder, switch off or remove inputs', (e) => openCameraManager(e.currentTarget), 'vd-mini'),
     );
     inputs.append(ihead, D.grid.el, ifoot);
 
