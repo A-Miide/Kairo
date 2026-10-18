@@ -759,3 +759,10 @@ body.video-director .svc-slide.live.is-staged, body.video-director .media-card.i
 .vsrc-prop-label { font-size: 11px; color: var(--text-3); }
 .vsrc-prop .setting-input, .vsrc-prop select { width: 100%; min-width: 0; }
 .vsrc-prop-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 4px; }
+
+/* Manage: every camera and input in an overlay over the Director board. */
+.vd-cam-modal { position: fixed; inset: 0; z-index: 2500; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.55); padding: 24px; }
+.vd-cam-card { width: min(760px, 100%); max-height: calc(100vh - 48px); overflow: auto; background: var(--bg-elevated, var(--bg)); border: 1px solid var(--border-md); border-radius: var(--radius-lg, 14px); box-shadow: 0 24px 64px rgba(0,0,0,.55); }
+.vd-cam-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; background: var(--bg-elevated, var(--bg)); border-bottom: 1px solid var(--border); }
+.vd-cam-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.vd-cam-card .vsrc-root { padding: 6px 18px 18px; }

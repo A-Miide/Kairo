@@ -333,6 +333,44 @@ function openDevicePicker(sourceId, anchor) {
   });
 }
 
+// Manage (Director screen): every input in an overlay over the board, not in Settings (owner,
+// 2026-10-17). The Video Sources page's own rendering, into the overlay's container: add, rename,
+// device, resolution, frame rate, on/off, order, remove, the live look, and which input is live
+// on each output. Closing puts the page's container back and lets go of the previews.
+function openCameraManager(anchor) {
+  document.querySelectorAll('.vd-cam-modal').forEach(m => m.remove());
+  const back = vEl('div', 'vd-cam-modal');
+  const card = vEl('div', 'vd-cam-card');
+  card.setAttribute('role', 'dialog'); card.setAttribute('aria-modal', 'true'); card.setAttribute('aria-label', 'Cameras and inputs');
+  const head = vEl('div', 'vd-cam-head');
+  head.appendChild(vEl('span', 'vd-cam-title', 'Cameras and inputs'));
+  const body = vEl('div', 'vsrc-root');
+  const prev = { root: videoState.root, visible: videoState.visible };
+  const close = () => {
+    videoPanelClosers.delete(close);
+    document.removeEventListener('keydown', esc, true);
+    back.remove();
+    releaseAllPreviews();
+    videoState.root = prev.root; videoState.visible = prev.visible;
+    if (prev.root && prev.visible) renderVideoSources();
+    try { if (anchor && anchor.isConnected) anchor.focus(); } catch {}
+  };
+  const esc = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); close(); } };
+  const done = vBtn('Done', 'Close', close, 'vd-mini vd-mini-primary');
+  head.appendChild(done);
+  card.append(head, body);
+  back.appendChild(card);
+  back.addEventListener('mousedown', (e) => { if (e.target === back) close(); });
+  document.body.appendChild(back);
+  videoState.root = body; videoState.visible = true;
+  renderVideoSources();
+  refreshVideoDevices(false).then(() => { if (back.isConnected) renderVideoSources(); });
+  document.addEventListener('keydown', esc, true);
+  videoPanelClosers.add(close);
+  try { done.focus({ preventScroll: true }); } catch {}
+  return close;
+}
+
 // Right-click on an input in Director mode: its settings in a small panel, the same ones as
 // on the Video Sources page (name, on/off, device, resolution, frame rate, remove).
 function openInputSettings(sourceId, anchor) {
