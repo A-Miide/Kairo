@@ -30,6 +30,8 @@
     || (typeof require === 'function' ? require('./lyrics_follow.js') : null);
   if (!LF) throw new Error('slide_follow.js requires lyrics_follow.js to be loaded first');
   const { tokenizeKeys, keyMatch } = LF;
+  const SM = (typeof window !== 'undefined' && window.KairoSlideMarkers)
+    || (typeof require === 'function' ? require('./slide_markers.js') : null);
 
   // ── numbers: "twenty one" → 21, "first John" → 1 john, "4:20-21" → 4 20 21
   const UNITS = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9,
@@ -82,7 +84,9 @@
       const refs = (s && Array.isArray(s.refs)) ? s.refs : [];
       let spoken = text;
       for (const r of refs) if (r.raw) spoken = spoken.split(r.raw).join(`${r.book} ${r.chapter} ${r.verse}${r.verseEnd !== r.verse ? ' ' + r.verseEnd : ''}`);
-      return { idx, keys: keysOf(spoken), refs, text: original };
+      // The slide's own verse number (the big "48." of a scripture slide) or list index.
+      const m = SM ? SM.parse(original) : { marker: null };
+      return { idx, keys: keysOf(spoken), refs, text: original, marker: m.marker, markerEnd: m.markerEnd, markerKind: m.kind };
     });
     const df = new Map();
     list.forEach((s) => new Set(s.keys).forEach((k) => df.set(k, (df.get(k) || 0) + 1)));
@@ -219,7 +223,8 @@
   SlideFollower.prototype.noteVerse = function (v, now) {
     if (!this.enabled || !v) return false;
     now = now || Date.now();
-    const covers = (s) => s.refs.some((r) => r.book === v.book && r.chapter === v.chapter && v.verse >= r.verse && v.verse <= r.verseEnd);
+    // A slide marked as one verse of its passage carries only that verse (slide_markers.js).
+    const covers = (s) => SM ? SM.carries(s, v) : s.refs.some((r) => r.book === v.book && r.chapter === v.chapter && v.verse >= r.verse && v.verse <= r.verseEnd);
     const cur = this.slides[this.index];
     if (cur && covers(cur)) return false;
     const hi = Math.min(this.slides.length - 1, this.index + this.cfg.verseAhead);

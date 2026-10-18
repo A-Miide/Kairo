@@ -989,14 +989,17 @@
     if (idx == null || `${item.id}:${idx}` === liveSlideKey) return;
     const s = follower && follower.slides ? follower.slides[idx] : null;
     const refs = (s && s.refs) || [];
-    const covers = (v) => !!v && refs.some(r => r.book === v.book && r.chapter === v.chapter && v.verse >= r.verse && v.verse <= r.verseEnd);
+    const covers = (v) => !!v && (window.KairoSlideMarkers ? window.KairoSlideMarkers.carries(s, v) : refs.some(r => r.book === v.book && r.chapter === v.chapter && v.verse >= r.verse && v.verse <= r.verseEnd));
     let keepBible = false;
-    if (bibleOnTop && bibleLive) {
+    // The slide IS that scripture (it is marked with this verse's number): it replaces the Bible
+    // verse instead of sitting under it, so the church sees one of them, not both.
+    const slideIsTheVerse = !!(s && s.markerKind === 'verse' && bibleOnTop && bibleLive && covers(bibleLive));
+    if (bibleOnTop && bibleLive && !slideIsTheVerse) {
       keepBible = e.by === 'verse' || covers(bibleLive) || !bibleLive.auto || stillTheVerse(e.heard, bibleLive.text);
     }
     // Moved on from a verse that only just went up: the slide goes under it
     // now and takes over once the verse has been up VERSE_MIN_MS.
-    const young = !keepBible && bibleOnTop && bibleLive && Date.now() - bibleLive.at < VERSE_MIN_MS;
+    const young = !keepBible && !slideIsTheVerse && bibleOnTop && bibleLive && Date.now() - bibleLive.at < VERSE_MIN_MS;
     followerAdvancing = true;
     Promise.resolve(sendSlide(item, idx, { auto: true, follow: true, keepBible: keepBible || young })).finally(() => { followerAdvancing = false; });
     if (young) {
