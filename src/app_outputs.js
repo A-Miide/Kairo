@@ -635,7 +635,15 @@ function buildOutputRowToggle(o) {
         // over Kairo itself (owner, 2026-10-01: "it defaults to my mac
         // display because nothing is connected"). This Mac's screen is
         // still there to pick, deliberately, under Physical screen.
-        const s = outputScreenMap()[o.id] || cachedScreens.find(x => !x.isPrimary);
+        // The screen it was on when it was switched off, if that is still connected; else a
+        // connected external screen no other output is using; else any external one.
+        const taken = new Set(displayOutputs().filter(d => d.id !== o.id).map(d => outputScreenMap()[d.id]).filter(Boolean).map(a => `${a.left},${a.top},${a.width},${a.height}`));
+        const key = (x) => `${x.left},${x.top},${x.width},${x.height}`;
+        const external = cachedScreens.filter(x => !x.isPrimary);
+        const s = outputScreenMap()[o.id]
+          || liveScreenFor(lastDisplayScreen[o.id])
+          || external.find(x => !taken.has(key(x)))
+          || external[0];
         if (!s) {
           input.checked = false;
           noScreenNoticeFor = o.id;
@@ -647,6 +655,8 @@ function buildOutputRowToggle(o) {
         setOutputScreen(o.id, { width: s.width, height: s.height, left: s.left, top: s.top });
         if (typeof openDisplayOutput === 'function') openDisplayOutput({ id: o.id, name: o.id });
       } else {
+        if (outputScreenMap()[o.id]) lastDisplayScreen[o.id] = outputScreenMap()[o.id];
+        displaysWaiting.delete(o.id); delete displayStateText[o.id];
         setOutputScreen(o.id, null);
         const label2 = `kairo-${o.id}`;
         if (typeof closeDisplayWindow === 'function') closeDisplayWindow(label2);
@@ -1776,6 +1786,8 @@ function liveScreenFor(assigned) {
 const displaysWaiting = new Set();
 // What each display output is doing right now, in words (kept up to date by reconcileDisplayWindows).
 const displayStateText = {};
+// The screen an output was on when it was switched off: switching it back on returns there.
+const lastDisplayScreen = {};
 const screenWords = (s) => `${s.isPrimary ? 'this Mac’s screen' : 'Display ' + (s.index + 1)} (${s.width}×${s.height})`;
 // null when nothing is assigned to the output.
 function displayStatusFor(id) {
@@ -1834,7 +1846,7 @@ async function reconcileDisplayWindows() {
     let win = null;
     try { win = await getWin.getByLabel(`kairo-${d.id}`); } catch {}
     const stateNow = !hit ? 'Waiting for its display: not connected'
-      : win ? `Showing on ${screenWords(hit)}` : `Display connected: ${screenWords(hit)}, output not open`;
+      : win ? `Showing on ${screenWords(hit)}` : (window.__kairoDisplayErrors && window.__kairoDisplayErrors[`kairo-${d.id}`]) ? `Could not open the output window: ${window.__kairoDisplayErrors[`kairo-${d.id}`]}` : `Display connected: ${screenWords(hit)}, output not open`;
     if (displayStateText[d.id] !== stateNow) { displayStateText[d.id] = stateNow; kairoLog('display-state', { outputId: d.id, state: stateNow }); }
     if (!hit && win) {
       try { await win.close(); } catch {}
@@ -1861,7 +1873,10 @@ async function verifyDisplayWindowOpened(label) {
     const visible = win ? await win.isVisible().catch(() => null) : null;
     if (!win || visible === false) {
       logDisplayLifecycleFallback('verifyDisplayWindowOpened', { label, exists: !!win, visible });
-      toast('Display window may not have opened — check the monitor picker in Settings', 'error');
+      // Said on the output's own status line (the panel shows it), with the reason when there is one.
+      const err = window.__kairoDisplayErrors && window.__kairoDisplayErrors[label];
+      displayStateText[label.replace(/^kairo-/, '')] = `Could not open the output window${err ? `: ${err}` : ''}`;
+      refreshDisplayDetailInPlace();
     }
   } catch (err) {
     logDisplayLifecycleFallback('verifyDisplayWindowOpened threw', { label, error: String(err) });
