@@ -107,15 +107,15 @@
   }
 
   // 'placeholder' (no device chosen), 'missing' (chosen, not plugged in now) or 'ready'.
-  function stateOf(source, devices) {
+  function stateOf(source, devices, sources) {
     if (!source || (!source.deviceId && !source.label)) return 'placeholder';
-    return resolveDevice(source, devices) ? 'ready' : 'missing';
+    return resolveDevice(source, devices, sources) ? 'ready' : 'missing';
   }
   // Devices no input uses yet.
   function freeDevices(list, devices) {
     const inputs = (devices || []).filter(d => d && d.kind === 'videoinput');
     const used = new Set();
-    for (const s of list) { const id = resolveDevice(s, inputs); if (id) used.add(id); }
+    for (const s of list) { const id = resolveDevice(s, inputs, list); if (id) used.add(id); }
     return inputs.filter(d => !used.has(d.deviceId));
   }
   // One new input for every device not used yet.
@@ -164,17 +164,35 @@
   // The deviceId to open for `source`, given the current enumerateDevices()
   // videoinput list: the saved id if it is still there, else the same label,
   // else null (unplugged — the output shows no video and the panel says so).
-  function resolveDevice(source, devices) {
+  //
+  // The name fallback never takes a device another input holds (two cameras of one model: unplug
+  // one and its input used to quietly show the other). Inputs that share a name and have all lost
+  // their saved id take the free devices of that name in list order. `sources` is the list to
+  // compare with; by default the app's own (setSourceList), none in tests.
+  let listProvider = null;
+  function setSourceList(fn) { listProvider = typeof fn === 'function' ? fn : null; }
+  function currentList() { try { return listProvider ? listProvider() : null; } catch { return null; } }
+  function resolveDevice(source, devices, sources) {
     const inputs = (devices || []).filter(d => d && d.kind === 'videoinput');
     if (!inputs.length || !source) return null;
     const byId = source.deviceId && inputs.find(d => d.deviceId === source.deviceId);
     if (byId) return byId.deviceId;
     const want = str(source.label).toLowerCase();
-    if (want) {
-      const byLabel = inputs.find(d => str(d.label).toLowerCase() === want);
-      if (byLabel) return byLabel.deviceId;
+    if (!want) return null;
+    let cands = inputs.filter(d => str(d.label).toLowerCase() === want);
+    const list = Array.isArray(sources) ? sources : currentList();
+    if (!list || !list.length) return cands.length ? cands[0].deviceId : null;
+    const holds = (o) => !!(o && o.deviceId && inputs.some(d => d.deviceId === o.deviceId));
+    const claimed = new Set(list.filter(o => o.id !== source.id && holds(o)).map(o => o.deviceId));
+    cands = cands.filter(d => !claimed.has(d.deviceId));
+    // Earlier inputs of this name with no live id take the first free devices.
+    const at = list.findIndex(o => o.id === source.id);
+    let before = 0;
+    for (let i = 0; i < at; i++) {
+      const o = list[i];
+      if (!holds(o) && str(o.label).toLowerCase() === want) before++;
     }
-    return null;
+    return cands[before] ? cands[before].deviceId : null;
   }
 
   // getUserMedia constraints. Size and rate are ideals, never exact: a camera
@@ -241,7 +259,7 @@
 
   const API = {
     RESOLUTIONS, FPS_OPTIONS, normalizeSources, addSource, assignDevice, setEnabled, stateOf, freeDevices, addAll, renameSource, updateSource,
-    removeSource, moveSource, resolveDevice, buildConstraints, describeCaptureError,
+    removeSource, moveSource, resolveDevice, setSourceList, buildConstraints, describeCaptureError,
     normalizeLive, setLive, liveSourceFor, switchPlan, uniqueName,
   };
   if (typeof window !== 'undefined') window.KairoVideoSources = API;
