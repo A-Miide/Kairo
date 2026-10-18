@@ -1888,8 +1888,10 @@ setInterval(() => {
   if (!wrap || settingsModal?.classList.contains('hidden')) { inputLevel.meterPeak = 0; return; }
   const bar = wrap.querySelector('.input-level-meter i');
   const status = document.getElementById('input-level-status');
+  const dbText = document.getElementById('input-level-db');
   if (!isListening && !inputPreview?.ctx && !inputPreview?.live) {
     bar.style.width = '0%';
+    if (dbText) dbText.textContent = '';
     wrap.dataset.state = 'idle';
     status.textContent = inputPreviewFailed ? 'This input isn’t available' : '';
     return;
@@ -1898,6 +1900,13 @@ setInterval(() => {
   inputLevel.meterPeak = 0;
   const db = p > 0 ? 20 * Math.log10(p) : -90;
   bar.style.width = `${Math.max(0, Math.min(100, ((db + 60) / 60) * 100))}%`;
+  // The same level as a number: the loudest point of the last second (the bar flickers at 10 a second).
+  if (dbText) {
+    inputLevel.dbHold = inputLevel.dbHold || [];
+    inputLevel.dbHold.push(p); if (inputLevel.dbHold.length > 10) inputLevel.dbHold.shift();
+    const held = Math.max(...inputLevel.dbHold);
+    dbText.textContent = held > 0.001 ? `${Math.round(20 * Math.log10(held))} dB` : '−∞ dB';
+  }
   const recentPeak = inputLevel.recent.reduce((m, x) => Math.max(m, x.peak), 0);
   const verdict = window.KairoLevel.describeLevel({
     peak: recentPeak, clipped: Date.now() - inputLevel.clippedAt < 2000, gain: inputLevel.gain,

@@ -7602,6 +7602,16 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .input-level[data-state="hot"] .input-level-meter i { background: var(--red); }
 .input-level[data-state="silent"] .input-level-meter i,
 .input-level[data-state="idle"] .input-level-meter i { background: var(--text-3); }
+.input-level-db {
+  flex: 0 0 auto;
+  min-width: 52px;
+  text-align: right;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+.input-level[data-state="idle"] .input-level-db { color: var(--text-3); }
 .input-level-status {
   flex: 0 0 auto;
   font-size: 11px;
