@@ -227,6 +227,8 @@
 
       let opened;
       try { opened = await open(want); } catch (err) {
+        // A camera that would not open here, kept in the log (a blank Preview or Output, 2026-10-18).
+        if (myGen === gen) { try { window.kairoLog && window.kairoLog('vid-open-failed', { out: args.outputKey, name: err && err.name }); } catch {} }
         if (myGen !== gen) return;
         console.warn('[Video] could not open', want.name, err && err.name);
         report(want.id, (err && err.name) || 'Error');

@@ -81,6 +81,13 @@
             <label class="output-toggle"><input type="checkbox" id="dm-toggle" aria-labelledby="dm-name"><span class="output-toggle-track"></span></label>
           </div>
           <p class="dm-armed" id="dm-armed" role="status" hidden></p>
+          <div class="dm-row">
+            <div class="dm-text">
+              <label class="dm-name" for="dm-default-layout">Layout</label>
+              <p class="setting-hint">What the outputs with video show in Director mode: every verse, slide and media item follows it. The same as the Layout sent from the Director screen: change either and the other follows.</p>
+            </div>
+            <select class="setting-input" id="dm-default-layout"></select>
+          </div>
           <div class="dm-row" id="dm-sim-row" hidden>
             <div class="dm-text">
               <div class="dm-name" id="dm-sim-name">Simulate 4 cameras at 30 fps</div>
@@ -93,6 +100,36 @@
     panes.appendChild(pane);
     dmToggle = pane.querySelector('#dm-toggle');
     dmArmed = pane.querySelector('#dm-armed');
+    // Default Layout: the saved Layouts, or None. Never chosen: Lower third (video_director.js defaultLayout).
+    const defSel = pane.querySelector('#dm-default-layout');
+    const fillDefault = () => {
+      if (!defSel || defSel === document.activeElement) return;
+      // Read straight from settings: video_looks.js only loads with Director mode, and before the first
+      // start there are no saved Layouts yet (the Lower third is made then).
+      const list = (Array.isArray(settings.directorLooks) ? settings.directorLooks : []).filter(l => l && typeof l.id === 'string' && l.name);
+      defSel.replaceChildren();
+      const opt = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; defSel.appendChild(o); };
+      opt('', 'None: the outputs keep their own themes');
+      const lower = list.find(l => l.themeId === 'screen-lower-third');
+      if (!lower) opt('@lower-third', 'Lower third');
+      list.forEach(l => opt(l.id, l.name));
+      const cur = settings.directorDefaultLayout;
+      const notChosen = lower ? lower.id : '@lower-third';
+      defSel.value = cur === null ? '' : (cur && list.some(l => l.id === cur) ? cur : notChosen);
+    };
+    if (defSel) {
+      defSel.addEventListener('change', () => {
+        // '@lower-third': the Lower third, made on the first start (video_director.js defaultLayout).
+        const v = defSel.value === '' ? null : defSel.value;
+        settings.directorDefaultLayout = v;
+        saveSettingsPatch({ directorDefaultLayout: v });
+        // One Layout: with Director mode on it goes on the outputs and Preview at once.
+        window.KairoVideoDirector?.useLayout?.(v);
+      });
+      document.querySelector('.settings-nav-item[data-pane="director"]')?.addEventListener('click', fillDefault);
+      if (typeof onSettingsChange === 'function') onSettingsChange(() => fillDefault());
+      fillDefault();
+    }
     // The developer row shows only in a dev setup: localStorage 'kairo-dev' = '1', or while simulating.
     const sim = window.KairoSimCameras;
     let dev = false;

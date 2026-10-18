@@ -117,6 +117,9 @@
         /* This output keyed for a video mixer (Settings → Outputs → Keying):
            no theme canvas is painted, so this shows behind the content —
            see-through, chroma green, or black for a luma key. */
+        /* Fade to black (Director): one black sheet over everything this output shows. */
+        #ftb-cover { position: fixed; inset: 0; background: #000; opacity: 0; pointer-events: none; z-index: 2147483000; transition: opacity var(--ftb-ms, 300ms) ease; }
+        #ftb-cover.on { opacity: 1; }
         body[data-keying="alpha"] { background: transparent; }
         body[data-keying="chroma"] { background: #00ff00; }
         body[data-keying="luma"] { background: #000000; }
@@ -516,6 +519,7 @@
     // ── Video zone: a theme that frames the live picture ───────────────────
     // A "screen theme" (Director mode) has a video zone layer: the picture shows in that
     // rectangle, over the theme's background and frames, instead of filling the whole screen.
+    function zoneCoversScreen(z) { const p = z && z.pos; return !p || (p.x <= 0 && p.y <= 0 && p.x + p.w >= DESIGN_W && p.y + p.h >= DESIGN_H); }
     function hasVideoZone(look) { return !!(look && (look.layers || []).some(l => l.type === 'videozone' && l.visible !== false)); }
     let currentZone = null;   // the video zone in use (design pixels), for the stream
     function applyVideoZone(z) {
@@ -527,12 +531,16 @@
         if (!z) { if (host.dataset.zone) { host.removeAttribute('data-zone'); props.forEach(k => host.style.removeProperty(k)); } return; }
         const p = z.pos || { x: 0, y: 0, w: DESIGN_W, h: DESIGN_H };
         host.dataset.zone = '1';
+        // A zone over the whole screen (the Lower third) is the picture under everything: the theme's
+        // layers after it (a band, the verse) draw on top, as their order says. A smaller zone sits
+        // over the theme's background and frames, beside the words (the splits).
+        const whole = zoneCoversScreen(z);
         host.style.setProperty('inset', 'auto');
         host.style.setProperty('left', (p.x / DESIGN_W * 100) + '%');
         host.style.setProperty('top', (p.y / DESIGN_H * 100) + '%');
         host.style.setProperty('width', (p.w / DESIGN_W * 100) + '%');
         host.style.setProperty('height', (p.h / DESIGN_H * 100) + '%');
-        host.style.setProperty('z-index', '2');
+        host.style.setProperty('z-index', whole ? '0' : '2');
         host.style.setProperty('border-radius', ((z.radius || 0) / DESIGN_H * 100) + 'vh');
         if (z.frameWidth > 0) host.style.setProperty('box-shadow', `0 0 0 ${z.frameWidth / DESIGN_H * 100}vh ${z.frameColor || '#ffffff'}`);
         else host.style.removeProperty('box-shadow');
@@ -703,6 +711,8 @@
         const animOf = (layer) => animOverride(layer, (styleByLayerId || {})[layer.id]);
         const paintLayer = (layer) => {
             if (!layer.visible) return;
+            // A layer only for when there are words (the Lower third's band): nothing on screen, no band.
+            if (layer.showWith === 'words' && !verseText && !verseRef) return;
             // The slide's own rotation / accent colour / photo look, if any
             // (see layer_geometry.js's withLayerOverride).
             layer = withLayerOverride(layer, (styleByLayerId || {})[layer.id]);
@@ -885,6 +895,10 @@
                 layer = withFillOverride(layer, bgOv);
                 // A keyed output shows its key colour where the canvas would be.
                 if (!layer.pos && outputKeying !== 'none') return;
+                // The Split themes' dimmed "camera half": on a keyed output (Transparent, Chroma, Luma)
+                // or a capture (NDI, Syphon, DeckLink fill and key) it would turn the key green murky or
+                // darken the camera in the mixer, so there that half is left clear (2026-10-18).
+                if (layer.id === 'shade' && /^split-(left|right)$/.test(look.layout || '') && (outputKeying !== 'none' || CAPTURE)) return;
                 // Only a full-canvas background keys the output transparent —
                 // a positioned shape with a transparent fill is just invisible.
                 if (layer.fill === 'transparent') {
@@ -1259,7 +1273,11 @@
         };
         // Each layer's build-in (new content only) and its idle motion — the
         // stage fills this window, so 1vh is one percent of the output.
-        layers.forEach(layer => {
+        // Under a whole-screen video zone, what comes before it in the theme can't be seen: not drawn,
+        // or it would cover the picture (the zone goes under the stage, applyVideoZone).
+        const underZone = zoneLayer && zoneCoversScreen(zoneLayer) ? layers.indexOf(zoneLayer) : -1;
+        layers.forEach((layer, li) => {
+            if (li < underZone) return;
             const before = frag.childNodes.length;
             paintLayer(layer);
             for (let i = before; i < frag.childNodes.length; i++) applyBlendMode(frag.childNodes[i], layer, (styleByLayerId || {})[layer.id]);
@@ -1382,6 +1400,18 @@
             if (map && OUTPUT_MODES.includes(map[OUTPUT_KEY])) return map[OUTPUT_KEY];
         } catch {}
         return 'theme';
+    }
+    // Fade to black (Director mode, video_director.js fadeToBlack): every program output goes to black
+    // over its own fade length, and back up when it is pressed again. What is on screen stays underneath.
+    // A confidence Monitor and the Director's Preview never go black.
+    function applyFadeToBlack() {
+        let st = null;
+        try { st = JSON.parse(localStorage.getItem('kairo-ftb') || 'null'); } catch {}
+        const on = !!(st && st.on) && !PREVIEW && outputMode !== 'confidence';
+        let el = document.getElementById('ftb-cover');
+        if (!el) { if (!on) return; el = document.createElement('div'); el.id = 'ftb-cover'; el.setAttribute('aria-hidden', 'true'); document.body.appendChild(el); void el.offsetWidth; }
+        el.style.setProperty('--ftb-ms', `${Math.max(0, Number(st && st.ms) || 0)}ms`);
+        el.classList.toggle('on', on);
     }
     let outputMode = loadOutputMode();
     document.body.dataset.mode = outputMode;
@@ -2262,6 +2292,7 @@
             try { const map = JSON.parse(e.newValue || 'null'); setFrame(map && map[OUTPUT_KEY] || null); } catch {}
         }
         if (e.key === 'kairo-video-sources' || e.key === 'kairo-video-live') syncVideo();
+        if (e.key === 'kairo-ftb') applyFadeToBlack();
         if (e.key === 'kairo-output-keying' && e.newValue) {
             try { applyOutputKeying((JSON.parse(e.newValue) || {})[OUTPUT_KEY]); } catch {}
         }
@@ -2592,6 +2623,7 @@
         if (currentImageSlide) renderImageStage(currentImageSlide.src, false, currentImageSlide.fit);
         else applyLook(activeLook, false);
         if (lastTimerLayerArgs) renderTimerLayer(...lastTimerLayerArgs);
+        try { applyFadeToBlack(); } catch {}
     }
 
     // ── Monitor view: the confidence monitor ───────────────────────────────
@@ -3031,6 +3063,7 @@
 
     // 3. Connect WebSocket (after the auth token is loaded so the upgrade
     //    URL carries it; falls back to unauthed when not running under Tauri).
+    try { applyFadeToBlack(); } catch {}   // a window opened while the outputs are faded to black starts black
     if (!PREVIEW) loadAuthToken().finally(connect);   // the Preview is fed by its parent, not the socket
 
     // 4. Reveal the window now that its own dark CSS has actually settled.
