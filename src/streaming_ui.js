@@ -307,7 +307,7 @@
       listen.parentNode.insertBefore(recBtn, document.getElementById('stream-btn') || listen);
     }
     const director = isDirectorOn();
-    recBtn.hidden = !recording && !(director || rcfg().button === true);
+    recBtn.hidden = !recording && !director;   // Record lives in Director mode (and shows while recording)
     const o = recOverall();
     recBtn.classList.toggle('is-live', recording && o.state === 'live');
     recBtn.classList.toggle('is-trouble', recording && (o.state === 'retrying' || o.state === 'failed'));
