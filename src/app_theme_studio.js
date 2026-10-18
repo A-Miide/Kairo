@@ -815,6 +815,8 @@ DEFAULT_LOOKS.push(
 // front. Text layers can show what is on screen now (the verse binding), its reference, the
 // next slide, the time of day, the countdown and the message from the booth. Picked per
 // Monitor under Settings → Outputs; never offered as a theme for slides or verses.
+// The next line on a Monitor is yellow, so it reads apart from what is on screen now (owner, 2026-10-17).
+const MONITOR_NEXT_YELLOW = '#ffd23f';
 function monitorText(id, name, binding, pos, size, opts = {}) {
   return { id, type: 'text', name, visible: true, binding, customText: opts.text || '',
     pos, font: { family: 'Manrope', size, weight: opts.weight || 600, italic: false, lineHeight: opts.lineHeight || 1.22, letterSpacing: opts.spacing || 0, transform: opts.transform || 'none' },
@@ -834,8 +836,8 @@ DEFAULT_LOOKS.push(
       monitorText('ref', 'Reference', 'reference', { x: 77, y: 190, w: 1766, h: 50 }, 36, { weight: 700, spacing: 3, transform: 'uppercase', color: '#f5b74e' }),
       monitorText('verse', 'On screen now', 'verse', { x: 77, y: 250, w: 1766, h: 520 }, 96),
       monitorText('message', 'Message', 'mon-message', { x: 77, y: 790, w: 1766, h: 80 }, 48, { weight: 700, color: '#f5b74e' }),
-      monitorText('next-ref', 'Next (reference)', 'mon-next-ref', { x: 77, y: 890, w: 1766, h: 40 }, 26, { weight: 700, spacing: 3, transform: 'uppercase', opacity: 55 }),
-      monitorText('next', 'Next', 'mon-next', { x: 77, y: 935, w: 1766, h: 110 }, 42, { weight: 500, opacity: 62 }),
+      monitorText('next-ref', 'Next (reference)', 'mon-next-ref', { x: 77, y: 890, w: 1766, h: 40 }, 26, { weight: 700, spacing: 3, transform: 'uppercase', color: MONITOR_NEXT_YELLOW }),
+      monitorText('next', 'Next', 'mon-next', { x: 77, y: 935, w: 1766, h: 110 }, 42, { weight: 500, color: MONITOR_NEXT_YELLOW }),
     ] },
   { id: 'monitor-words', name: 'Monitor — Big words', layout: 'fullscreen', animation: 'cut', ...MONITOR_GROUP,
     layers: [
@@ -872,8 +874,8 @@ DEFAULT_LOOKS.push(
       ...monitorBox('now-box', 'Now box', { x: 60, y: 184, w: 1800, h: 560 }, '#0d1530'),
       monitorText('verse', 'On screen now', 'verse', { x: 96, y: 210, w: 1728, h: 510 }, 104, { weight: 700, align: 'center', lineHeight: 1.12 }),
       ...monitorBox('next-box', 'Next box', { x: 60, y: 744, w: 1800, h: 300 }, '#0d1530'),
-      monitorText('next-ref', 'Next (reference)', 'mon-next-ref', { x: 96, y: 760, w: 1728, h: 36 }, 24, { weight: 800, spacing: 3, transform: 'uppercase', opacity: 55 }),
-      monitorText('next', 'Next', 'mon-next', { x: 96, y: 800, w: 1728, h: 220 }, 76, { weight: 600, align: 'center', opacity: 85 }),
+      monitorText('next-ref', 'Next (reference)', 'mon-next-ref', { x: 96, y: 760, w: 1728, h: 36 }, 24, { weight: 800, spacing: 3, transform: 'uppercase', color: MONITOR_NEXT_YELLOW }),
+      monitorText('next', 'Next', 'mon-next', { x: 96, y: 800, w: 1728, h: 220 }, 76, { weight: 600, align: 'center', color: MONITOR_NEXT_YELLOW }),
     ] },
 );
 
@@ -1041,6 +1043,10 @@ let looks = (function loadLooks() {
     // fills are all STILL exactly the old shipped ones takes the new
     // defaults; a theme the operator recoloured keeps its own. Gated and
     // force-persisted, same as the align migration above.
+    const NEXTYELLOW_MIGRATION_KEY = 'kairo-migrated-monitor-next-yellow';
+    const runNextYellowMigration = !localStorage.getItem(NEXTYELLOW_MIGRATION_KEY);
+    if (runNextYellowMigration) localStorage.setItem(NEXTYELLOW_MIGRATION_KEY, '1');
+    let nextYellowMigrated = false;
     const BACKGROUND_MIGRATION_KEY = 'kairo-migrated-builtin-backgrounds';
     const runBackgroundMigration = !localStorage.getItem(BACKGROUND_MIGRATION_KEY);
     if (runBackgroundMigration) localStorage.setItem(BACKGROUND_MIGRATION_KEY, '1');
@@ -1160,6 +1166,14 @@ let looks = (function loadLooks() {
           });
         }
       }
+      // The Monitor layouts' next line turns yellow: only where it is still the shipped white.
+      if (runNextYellowMigration && (l.id === 'monitor-boxed' || l.id === 'monitor-classic')) {
+        (l.layers || []).forEach(ly => {
+          if ((ly.id === 'next' || ly.id === 'next-ref') && (ly.color || '').toLowerCase() === '#ffffff') {
+            ly.color = MONITOR_NEXT_YELLOW; ly.opacity = 100; nextYellowMigrated = true;
+          }
+        });
+      }
       if (runTextHeightMigration && l.id === 'lyrics-block') {
         const verse = (l.layers || []).find(ly => ly.id === 'verse');
         if (verse?.pos?.h === 380 && verse?.pos?.y === 360) {
@@ -1178,7 +1192,7 @@ let looks = (function loadLooks() {
     // does (the align one is gated, so without a forced write here it would
     // silently never actually persist on an install that never happens to
     // save an unrelated theme edit — the gate key alone doesn't get you that).
-    if (alignMigrated || textHeightMigrated || backgroundMigrated || followMigrated) {
+    if (alignMigrated || textHeightMigrated || backgroundMigrated || followMigrated || nextYellowMigrated) {
       try { localStorage.setItem(LOOKS_KEY, JSON.stringify(result)); } catch {}
     }
     return result;
@@ -1195,6 +1209,7 @@ let looks = (function loadLooks() {
   localStorage.setItem('kairo-migrated-fullscreen-text-height', '1');
   localStorage.setItem('kairo-migrated-builtin-backgrounds', '1');
   localStorage.setItem('kairo-migrated-reference-follows-verse', '1');
+  localStorage.setItem('kairo-migrated-monitor-next-yellow', '1');
   const legacy = JSON.parse(localStorage.getItem('kairo-looks-v2') || 'null');
   const custom = Array.isArray(legacy) ? legacy.filter(l => l && !LEGACY_BUILTIN_IDS.has(l.id)) : [];
   return [...DEFAULT_LOOKS, ...custom];
