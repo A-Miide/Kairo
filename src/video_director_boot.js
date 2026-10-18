@@ -76,7 +76,7 @@
           <div class="dm-row">
             <div class="dm-text">
               <div class="dm-name" id="dm-name">Video director mode</div>
-              <p class="setting-hint">A screen for cameras and inputs: Preview and Output, saved Layouts, and the playlist and media bin. Scripture and lower-thirds draw over the video. Turn it off and the normal screen comes back.</p>
+              <p class="setting-hint">Cameras and inputs on your outputs, with a screen for directing them: Preview and Output, saved Layouts, and the playlist and media bin. Scripture and lower-thirds draw over the video. This switch turns video on or off; the video button in the top bar only shows or hides the Director screen, and the cameras stay on air.</p>
             </div>
             <label class="output-toggle"><input type="checkbox" id="dm-toggle" aria-labelledby="dm-name"><span class="output-toggle-track"></span></label>
           </div>
@@ -128,9 +128,12 @@
   }
 
   // armed: false, or the sentence saying what the next choice will do (shown under the switch and as the button's label).
+  // The button shows whether the Director screen is up; the Settings switch whether video is on.
+  const viewShown = () => !!(window.KairoVideoDirector && window.KairoVideoDirector.isShown && window.KairoVideoDirector.isShown());
   function paint(on, armed) {
     if (dmToggle) dmToggle.checked = !!on;
     if (dmArmed) { dmArmed.hidden = !armed; if (armed) dmArmed.textContent = armed; }
+    on = on && (viewShown() || busy);
     btn.classList.toggle('active', on);
     btn.classList.toggle('vd-armed', !!armed);
     btn.setAttribute('aria-pressed', String(on));
@@ -177,6 +180,7 @@
     busy = true;
     try {
       if (persist) save(true);
+      if (settings.directorView === false) { settings.directorView = true; saveSettingsPatch({ directorView: true }); }
       paint(true, false);
       await ensureLoaded();
       await window.KairoVideoDirector.start();
@@ -213,13 +217,34 @@
     disarm();
     save(false);
     paint(false, false);
-    if (dir) dir.stop();
+    // The Director screen may be hidden (and, after a restart, not even loaded): video still comes off air.
+    if (dir) dir.offAir(); else ensureLoaded().then(() => window.KairoVideoDirector.offAir()).catch(() => {});
     refreshOutputsUi();
     emitDirectorChange('stopped');
   }
 
   function toggle() { return isDirectorOn() ? disable() : enable(true); }
-  btn.addEventListener('click', toggle);
+  // The top bar's video button only shows or hides the Director screen (owner, 2026-10-17):
+  // hiding it leaves the cameras on air and the outputs as they are. With video off it turns
+  // video on. Turning video off is the switch in Settings -> Director mode (or the View menu).
+  async function toggleView() {
+    if (busy) return;
+    if (!isDirectorOn()) return enable(true);
+    const dir = window.KairoVideoDirector;
+    if (viewShown()) {
+      dir.stop({ keepVideo: true });
+      settings.directorView = false; saveSettingsPatch({ directorView: false });
+      paint(true, false);
+      refreshOutputsUi();
+      return;
+    }
+    settings.directorView = true; saveSettingsPatch({ directorView: true });
+    busy = true;
+    try { await ensureLoaded(); await window.KairoVideoDirector.start(); } finally { busy = false; }
+    paint(true, false);
+    refreshOutputsUi();
+  }
+  btn.addEventListener('click', toggleView);
   // The switch does what the button and the View menu item do. A first click that only
   // armed (video is live, or a stream or recording is running) leaves it as it was and shows the line under it.
   if (dmToggle) dmToggle.addEventListener('change', () => { toggle(); dmToggle.checked = armedFor === 'off' || (armedFor !== 'on' && isDirectorOn()); });
@@ -297,6 +322,8 @@
         settings.directorScreenOrig = {}; saveSettingsPatch({ directorScreenOrig: {} });
       }
     } catch {}
+    // Video on with the Director screen hidden last time: the normal screen, cameras as they were.
+    if (isDirectorOn() && settings.directorView === false) { paint(true, false); return; }
     if (isDirectorOn()) { await enable(false); return; }
     // Mode off: a Layout's layer and overlay changes left by a crash go back as they were.
     window.KairoDirectorBaseline.restore().catch((err) => console.warn('[Video] could not restore the outputs from before a Layout:', err.message));

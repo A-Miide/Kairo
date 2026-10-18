@@ -1267,8 +1267,12 @@
 
   // Mode off: the verse on screen stays; the video goes to nothing with a
   // fade, every capture is released and the screen is the normal one again.
-  function stop() {
+  // stop({ keepVideo: true }) only puts the normal screen back (the top bar's video button,
+  // owner 2026-10-17: "only a ui toggle"): the cameras stay on air, Layouts stay applied and
+  // the Video Sources page stays. Video itself is turned off in Settings -> Director mode.
+  function stop(opts = {}) {
     if (!D.active) return;
+    const keep = !!opts.keepVideo;
     D.active = false;
     window.kairoLog?.('director', { on: false });
     drawShowing();   // camera warnings belong to Director mode
@@ -1284,18 +1288,22 @@
     window.KairoVideoLayout?.emptySends();
     D.grid?.destroy(); D.grid = null;
     window.KairoVideoLayout?.stop();
-    // Going off air fades, without changing the transition the operator chose.
-    KairoTransitions.video('fade');
-    setVideoLiveFor(videoOutputs().map(o => o.id), null);
-    // Kept, so turning the mode back on within the moment cancels it (it would wipe the new one).
-    clearTimeout(D.transTimer); D.transTimer = null;
-    clearTimeout(D.offTimer); D.offTimer = setTimeout(() => { D.offTimer = null; KairoTransitions.video(null); }, 1500);
+    if (!keep) {
+      // Going off air fades, without changing the transition the operator chose.
+      KairoTransitions.video('fade');
+      setVideoLiveFor(videoOutputs().map(o => o.id), null);
+      // Kept, so turning the mode back on within the moment cancels it (it would wipe the new one).
+      clearTimeout(D.transTimer); D.transTimer = null;
+      clearTimeout(D.offTimer); D.offTimer = setTimeout(() => { D.offTimer = null; KairoTransitions.video(null); }, 1500);
+    }
     Object.values(D.frames).forEach(f => { f.ro.disconnect(); f.frame.src = 'about:blank'; });
     D.frames = {};
-    stopVideoSources();
+    if (!keep) stopVideoSources();
     window.KairoVideoHub?.releaseAll();
-    try { applyScreenTheme(null); } catch {}
-    try { restoreBaseline(); } catch {}
+    if (!keep) {
+      try { applyScreenTheme(null); } catch {}
+      try { restoreBaseline(); } catch {}
+    }
     closeKeyHelp();
     try { window.KairoVideoPanels && window.KairoVideoPanels.closeAll(); } catch {}
     // Nothing of this session carries into the next: no Undo, no staged input, no remembered live content.
@@ -1307,10 +1315,27 @@
     if (D.onResize) { window.removeEventListener('resize', D.onResize); D.onResize = null; }
     D.main?.remove();
     D.root = null; D.main = null; D.top = null; D.bottomWrap = null;
+    D.lastPub = null;
+    if (keep) return;   // the outputs carry on exactly as they are
     try { localStorage.setItem('kairo-video-live', '{}'); localStorage.removeItem('kairo-video-tbar'); localStorage.removeItem('kairo-video-director'); } catch {}
     KairoTransitions.videoFade(null);
-    D.lastPub = null;
     // The display chosen for the multiview goes back to its normal mode (the Monitor gets its confidence view back).
+    if (typeof applyOutputModes === 'function') applyOutputModes();
+  }
+
+  // Video off with the Director screen hidden (stop() has nothing to take down): the cameras
+  // come off air and the outputs go back, as stop() does when the screen is up.
+  function offAir() {
+    if (D.active) { stop(); return; }
+    KairoTransitions.video('fade');
+    setVideoLiveFor(videoOutputs().map(o => o.id), null);
+    clearTimeout(D.offTimer); D.offTimer = setTimeout(() => { D.offTimer = null; KairoTransitions.video(null); }, 1500);
+    try { stopVideoSources(); } catch {}
+    window.KairoVideoHub?.releaseAll();
+    try { applyScreenTheme(null); } catch {}
+    try { restoreBaseline(); } catch {}
+    try { localStorage.setItem('kairo-video-live', '{}'); localStorage.removeItem('kairo-video-tbar'); localStorage.removeItem('kairo-video-director'); } catch {}
+    KairoTransitions.videoFade(null);
     if (typeof applyOutputModes === 'function') applyOutputModes();
   }
 
@@ -1318,7 +1343,7 @@
   function isLive() { return programState().on.some(o => videoLiveMap()[o.id]); }
 
   window.KairoVideoDirector = {
-    start, stop, refresh, isLive,
+    start, stop, offAir, refresh, isLive, isShown: () => D.active,
     // For the dock's input tiles.
     state: () => ({ previewId: D.previewId, program: D.programState, transition: transitionPref(), active: D.active }),
     setPreview, sendToProgram, mountSettings,
