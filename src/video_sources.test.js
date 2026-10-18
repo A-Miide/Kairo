@@ -154,3 +154,27 @@ test('enabled flag, and a placeholder or disabled input is never taken to air', 
   const ph = V.addSource([], null, { name: 'Lobby' });
   assert.equal(V.liveSourceFor('main', { video: true }, { main: ph.added.id }, ph.list), null);
 });
+
+test('two cameras of one model: a name match never takes the other input\'s device', () => {
+  const dev = (id) => ({ kind: 'videoinput', deviceId: id, label: 'USB Camera' });
+  const devices = [dev('d1'), dev('d2')];
+  const A = { id: 'a', deviceId: 'd1', label: 'USB Camera' };
+  const B = { id: 'b', deviceId: 'gone', label: 'USB Camera' };
+  // B lost its id, A holds d1: B gets d2, never d1.
+  assert.equal(V.resolveDevice(B, devices, [A, B]), 'd2');
+  // d2 unplugged: B is missing, not a second view of A's camera.
+  assert.equal(V.resolveDevice(B, [dev('d1')], [A, B]), null);
+  assert.equal(V.stateOf(B, [dev('d1')], [A, B]), 'missing');
+  // A unplugged while B holds d2 (A's id is stale): A is missing, not B's camera.
+  const A2 = { id: 'a', deviceId: 'gone-a', label: 'USB Camera' };
+  const B2 = { id: 'b', deviceId: 'd2', label: 'USB Camera' };
+  assert.equal(V.resolveDevice(A2, [dev('d2')], [A2, B2]), null);
+  assert.equal(V.resolveDevice(A2, devices, [A2, B2]), 'd1');
+  // Both lost their ids: each takes its own, in list order.
+  const C = { id: 'c', deviceId: 'x', label: 'USB Camera' }, D = { id: 'd', deviceId: 'y', label: 'USB Camera' };
+  assert.equal(V.resolveDevice(C, devices, [C, D]), 'd1');
+  assert.equal(V.resolveDevice(D, devices, [C, D]), 'd2');
+  // A single camera by name still resolves, and with no list the old behaviour holds.
+  assert.equal(V.resolveDevice(B, [dev('d9')], [B]), 'd9');
+  assert.equal(V.resolveDevice(B, devices), 'd1');
+});

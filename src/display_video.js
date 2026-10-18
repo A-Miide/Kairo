@@ -11,6 +11,8 @@
 'use strict';
 (function () {
   const V = window.KairoVideoSources;
+  // This window's copy of the inputs (settings can't be read here): a name match never takes a device another input holds.
+  V.setSourceList(() => { try { return JSON.parse(localStorage.getItem('kairo-video-sources') || '[]'); } catch { return []; } });
 
   // Where a device stream comes from. By default this window opens the device
   // itself; a copy inside the operator window passes the parent's hub so the

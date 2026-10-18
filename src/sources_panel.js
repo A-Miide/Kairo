@@ -18,6 +18,7 @@
 'use strict';
 
 const VSRC = window.KairoVideoSources;
+VSRC.setSourceList(() => videoSourceList());   // the inputs' own list: a name match never takes another input's device
 const videoState = {
   devices: [],          // videoinput MediaDeviceInfo list
   blind: false,         // devices listed but unlabelled: camera access not granted yet
