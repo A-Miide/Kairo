@@ -560,8 +560,11 @@ registerActionHandler('clock-message', (msg) => window.KairoService?.onClockActi
 // were never really the same screen. This overlay is the app's one splash now.
 async function bootstrapStartup() {
   const overlay = document.getElementById('bootstrap-overlay');
+  const startedAt = Date.now();
   const finish = () => {
     if (overlay) { overlay.classList.add('done'); setTimeout(() => overlay.remove(), 500); }
+    // How long the splash stayed up, so a slow start can be read from the log.
+    try { window.kairoLog && window.kairoLog('startup-splash', { ms: Date.now() - startedAt }); } catch {}
   };
   // Hard safety valve — never keep the overlay up longer than 90s.
   const safety = setTimeout(finish, 90000);
@@ -573,7 +576,6 @@ async function bootstrapStartup() {
   // holds the screen on a little longer, never makes it wait longer than it
   // already would. Owner: "lets keep the delay to 5s" (down from 8.5s).
   const MIN_DISPLAY_MS = 5000;
-  const startedAt = Date.now();
 
   try {
     // 1) Microphone permission
