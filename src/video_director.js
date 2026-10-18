@@ -555,6 +555,13 @@
       setOutputLayer(id, key, !!val);
     }
   }
+  // Settings → Outputs: where each output's Video input is switched on.
+  function openOutputsSettings() {
+    try {
+      document.getElementById('settings-btn')?.click();
+      setTimeout(() => { try { showSettingsPane('outputs'); } catch {} }, 60);
+    } catch {}
+  }
   // Esc: cancel what is staged and not yet sent. Something already sent stays held in Preview.
   function clearStaging() {
     if (D.staged && !D.staged.sent) D.staged = null;
@@ -590,13 +597,13 @@
   // One click on an input tile: straight to Program with the current transition,
   // or with `mode` for this one send (Fade to black).
   function sendToProgram(id, mode) {
-    let ps = programState();
+    const ps = programState();
     if (!ps.on.length) {
-      // Nothing is set to carry video yet: the primary display does (put back off when the mode ends).
-      const was = !!(outputLayerMap()[PRIMARY_DISPLAY] || {}).video;
-      setOutputLayer(PRIMARY_DISPLAY, 'video', true);
-      if (!was) recordChanges({ layers: [[PRIMARY_DISPLAY, 'video', false, true]] });
-      ps = programState();
+      // What goes to a screen is set under Outputs only (owner, 2026-10-17): the Director never
+      // switches it on. It takes you there; the board's own line says why nothing went out.
+      openOutputsSettings();
+      refresh();
+      return;
     }
     snapshot();
     D.liveLookId = null;
@@ -990,7 +997,7 @@
       else if (st === 'missing') issues.push({ text: `${x.name}: device not connected`, fix: 'Choose device', run: (btn) => openDevicePicker(x.id, btn) });
     }
     const ps = programState();
-    if (!ps.on.length) issues.push({ text: 'Video input is off on every output', fix: 'Turn on', run: () => setOutputLayer(PRIMARY_DISPLAY, 'video', true) });
+    if (!ps.on.length) issues.push({ text: 'Video input is off on every output', fix: 'Open Outputs', run: () => openOutputsSettings() });
     else if (!ps.mixed && !ps.id) {
       const first = sources.find(x => VSRC.stateOf(x, videoState.devices) === 'ready');
       issues.push(first ? { text: 'Output has no video source', fix: `Send ${first.name}`, run: () => sendToProgram(first.id) } : { text: 'Output has no video source', fix: 'Add input', run: (btn) => openAddInputPanel(btn) });
