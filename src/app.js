@@ -343,10 +343,11 @@ function handleServerMessage(msg) {
       handleRangeActive(msg.activeRef);
       break;
 
-    // The operator's range Next in Director mode (server detect.rs, Route::OperatorStep): it goes
-    // the way a hand send goes, staged on Preview while "Stage sends on Preview" is on.
+    // The operator's range Next in Director mode (server detect.rs, Route::OperatorStep). The range
+    // is already on screen: its next verse goes straight out, never parked on Preview (owner,
+    // 2026-10-18: scripture is an instant hit; one verse went out, the next waited on Preview).
     case 'range-step':
-      if (msg.verses?.[0]) sendVerseToServer(msg.verses[0]);
+      if (msg.verses?.[0]) sendVerseToServer(msg.verses[0], null, { direct: true });
       break;
 
     // Display window reporting media <video> playback state back up, and
@@ -1759,7 +1760,8 @@ function buildRangeCard(v, isActive) {
   sendBtn?.addEventListener('click', (e) => {
     e.stopPropagation();
     showInViewer([v], 'direct', 1.0);
-    sendVerseToServer(v);
+    // A verse of the range already on screen: straight out in Director mode too, as the range's Next.
+    sendVerseToServer(v, null, { direct: true });
     syncRangeJumpIfNeeded(v);
   });
 

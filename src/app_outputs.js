@@ -141,8 +141,14 @@ function screensSignature() {
 function screensInOrder() {
   return [...cachedScreens].sort((a, b) => (b.isPrimary ? 1 : 0) - (a.isPrimary ? 1 : 0) || a.left - b.left || a.top - b.top);
 }
+// "Mac" on a Mac only: the same picker ships on Windows and Linux.
+const thisComputer = () => {
+  const c = document.documentElement.classList;
+  const mac = c.contains('platform-darwin') || (!c.contains('platform-win32') && !c.contains('platform-linux') && /Mac/.test(navigator.platform || ''));
+  return mac ? 'this Mac' : 'this computer';
+};
 function screenName(s) {
-  if (s.isPrimary) return 'This Mac’s screen';
+  if (s.isPrimary) return thisComputer() === 'this Mac' ? 'This Mac’s screen' : 'This computer’s screen';
   const p = cachedScreens.find(x => x.isPrimary);
   let where = '';
   if (p) {
@@ -150,7 +156,7 @@ function screenName(s) {
     where = Math.abs(dx) >= Math.abs(dy) ? (dx > 0 ? 'right of' : 'left of') : (dy > 0 ? 'below' : 'above');
   }
   const base = s.name || 'External display';
-  return where ? `${base}, ${where} this Mac` : base;
+  return where ? `${base}, ${where} ${thisComputer()}` : base;
 }
 
 function populateScreenOptions(sel, outputId) {
@@ -659,7 +665,7 @@ function buildOutputRowToggle(o) {
         const key = (x) => `${x.left},${x.top},${x.width},${x.height}`;
         const external = cachedScreens.filter(x => !x.isPrimary);
         const s = outputScreenMap()[o.id]
-          || liveScreenFor(lastDisplayScreen[o.id])
+          || liveScreenFor(lastDisplayScreen[o.id], o.id)
           || external.find(x => !taken.has(key(x)))
           || external[0];
         if (!s) {
@@ -1790,14 +1796,18 @@ async function refreshDisplayStatus() {
 // somewhere else) must never be opened as it is: a fullscreen window at a place with no screen
 // lands on the operator's own screen and covers it. Exact place first, then the same size on
 // another screen, then the one other screen there is; none means it is not connected.
-function liveScreenFor(assigned) {
+// The guesses never take a screen another output is on (`forId` is the output asking): with two
+// screens of one size, unplugging one must not put its output over the other's (review, 2026-10-18).
+function liveScreenFor(assigned, forId) {
   if (!assigned) return null;
   const live = cachedScreens;
   if (!live.length) return assigned;   // nothing known (a plain browser): as saved
   const same = (a, b) => a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height;
   const exact = live.find(s => same(s, assigned));
   if (exact) return exact;
-  const others = live.filter(s => !s.isPrimary);
+  const map = outputScreenMap();
+  const taken = (s) => displayOutputs().some(d => d.id !== forId && map[d.id] && same(map[d.id], s));
+  const others = live.filter(s => !s.isPrimary && !taken(s));
   return others.find(s => s.width === assigned.width && s.height === assigned.height) || (others.length === 1 ? others[0] : null);
 }
 // Outputs whose screen was not connected when they were due to open: opened when it appears.
@@ -1819,7 +1829,7 @@ async function openDisplayOutput(d) {
   let scr = assigned || d.screen || {};
   if (assigned) {
     await refreshDisplayStatus();
-    const hit = liveScreenFor(assigned);
+    const hit = liveScreenFor(assigned, d.id);
     if (!hit) {
       displaysWaiting.add(d.id);
       logDisplayLifecycleFallback('openDisplayOutput', { outputId: d.id, reason: 'its screen is not connected; waiting for it', assigned, connected: cachedScreens.map(s => ({ w: s.width, h: s.height, x: s.left, y: s.top, primary: !!s.isPrimary })) });
@@ -1860,7 +1870,7 @@ async function reconcileDisplayWindows() {
   for (const d of displayOutputs()) {
     const assigned = outputScreenMap()[d.id];
     if (!assigned) { displaysWaiting.delete(d.id); delete displayStateText[d.id]; continue; }
-    const hit = liveScreenFor(assigned);
+    const hit = liveScreenFor(assigned, d.id);
     let win = null;
     try { win = await getWin.getByLabel(`kairo-${d.id}`); } catch {}
     const stateNow = !hit ? 'Waiting for its display: not connected'
@@ -2465,6 +2475,26 @@ function applyLayoutToDisplay(look, o, map, textOnly) {
   saveSettingsPatch({ outputLayouts: settings.outputLayouts });
 }
 
+// A display follows the Director's Layout (nothing saved for it, the default), has a Layout of its own
+// (its id), or none ('@none': its own theme, whatever the Director sends). Owner, 2026-10-18: "every
+// connected display can then decide if they want to follow that set structure or customize".
+// mode: 'follow' or 'none'. The display's layer switches stay as they are: set them on the card.
+function clearLayoutFromDisplay(o, mode) {
+  const layoutsMap = { ...(settings.outputLayouts || {}) };
+  if (mode === 'none') layoutsMap[o.id] = '@none'; else delete layoutsMap[o.id];
+  settings.outputLayouts = layoutsMap;
+  saveSettingsPatch({ outputLayouts: layoutsMap });
+  // The frame it had (its own Layout's, or the Director's) comes off; following, the Director puts its own back.
+  const frames = { ...(settings.outputFrames && typeof settings.outputFrames === 'object' ? settings.outputFrames : {}) };
+  if (frames[o.id]) {
+    delete frames[o.id];
+    settings.outputFrames = frames;
+    saveSettingsPatch({ outputFrames: frames });
+    if (typeof applyOutputFrames === 'function') applyOutputFrames();
+  }
+  if (mode !== 'none') window.KairoVideoDirector?.reapplyLayout?.();
+}
+
 function renderOutputControlMatrix() {
   const host = document.getElementById('output-control-matrix');
   if (!host) return;
@@ -2481,42 +2511,25 @@ function renderOutputControlMatrix() {
     const head = mk('div', 'oc-card-head');
     head.appendChild(mk('span', 'oc-card-name', o.name));
     head.appendChild(mk('span', 'oc-card-type', o.monitor ? 'Monitor' : outputTypeLabel(o.type)));
-    // A Layout (Director mode's saved setups) for this display alone: which layers it shows, its screen
-    // theme and its video input. Below them, "copy from" another output's choices. What was chosen is
-    // remembered and shown here.
+    // A Layout for this display alone: which layers it shows, its theme and its video input. Its theme
+    // takes over from the display's own theme while it is set; None gives the display its own back.
+    // ("Copy from" another output was removed, owner 2026-10-18: a display is set up here, directly.)
     const layouts = (window.KairoVideoLooks && window.KairoVideoLooks.normalize(settings.directorLooks)) || [];
-    if (layouts.length || outputs.length > 1) {
+    if (layouts.length) {
       const pick = document.createElement('select');
       pick.className = 'setting-input oc-copy';
-      pick.title = 'Give this display one of your Layouts, or copy what another output shows';
+      pick.title = 'Follow the Director\u2019s Layout, give this display one of its own, or None to keep its own theme.';
+      pick.setAttribute('aria-label', `Layout for ${o.name}`);
       const known = (settings.outputLayouts || {})[o.id];
       const current = layouts.find(l => l.id === known);
-      pick.appendChild(Object.assign(document.createElement('option'), { value: '', textContent: current ? `Layout: ${current.name}` : 'Layout\u2026' }));
-      if (layouts.length) {
-        const g = document.createElement('optgroup'); g.label = 'Layouts';
-        layouts.forEach(l => g.appendChild(Object.assign(document.createElement('option'), { value: `layout:${l.id}`, textContent: l.name })));
-        pick.appendChild(g);
-      }
-      if (outputs.length > 1) {
-        const g = document.createElement('optgroup'); g.label = 'Copy from';
-        outputs.filter(x => x.id !== o.id).forEach(x => g.appendChild(Object.assign(document.createElement('option'), { value: `copy:${x.id}`, textContent: x.name })));
-        pick.appendChild(g);
-      }
+      pick.appendChild(Object.assign(document.createElement('option'), { value: '', textContent: 'Layout: Follow Director' }));
+      pick.appendChild(Object.assign(document.createElement('option'), { value: '@none', textContent: 'Layout: None (its own theme)' }));
+      layouts.forEach(l => pick.appendChild(Object.assign(document.createElement('option'), { value: l.id, textContent: `Layout: ${l.name}` })));
+      pick.value = current ? current.id : known === '@none' ? '@none' : '';
       pick.addEventListener('change', () => {
-        const [kind, id] = pick.value.split(/:(.*)/s);
-        if (kind === 'layout') {
-          const look = layouts.find(l => l.id === id);
-          if (look) applyLayoutToDisplay(look, o, map, textOnly);
-          renderOutputControlMatrix();
-          return;
-        }
-        const from = outputs.find(x => x.id === id);
-        if (!from) return;
-        rows.forEach((row) => {
-          const src = ocChipState(row, from, map, textOnly);
-          const dst = ocChipState(row, o, map, textOnly);
-          if (!dst.disabled && !src.disabled && src.on !== dst.on) setRowForOutputs(row, [o.id], src.on);
-        });
+        const look = layouts.find(l => l.id === pick.value);
+        if (look) applyLayoutToDisplay(look, o, map, textOnly);
+        else clearLayoutFromDisplay(o, pick.value === '@none' ? 'none' : 'follow');
         renderOutputControlMatrix();
       });
       head.appendChild(pick);

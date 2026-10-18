@@ -101,8 +101,8 @@
   // ── Media bin group ──────────────────────────────────────────────────────
   function toggleRow() {
     K.md.chips.replaceChildren();
-    // Slides, Media Bin or Timer: one of them. The top menu's Slides, Media and Timer buttons choose the same.
-    [['slides', 'Slides'], ['media', 'Media Bin'], ['timer', 'Timer']].forEach(([view, label]) => {
+    // Slides, Timer or Media Bin (Media Bin last, beside its folder and Manage): one of them. The top menu's Slides, Media and Timer buttons choose the same.
+    [['slides', 'Slides'], ['timer', 'Timer'], ['media', 'Media Bin']].forEach(([view, label]) => {
       const on = K.md.view === view;
       const b = vBtn(label, `Show ${label}`, () => { if (K.md.view !== view) { setView(view); renderMedia(); } }, 'vd-chip' + (on ? ' is-on' : ''));
       b.setAttribute('role', 'radio');
@@ -150,10 +150,17 @@
     try { all = await svc().loadMediaBinItems(); } catch {}
     if (token !== K.token || !K.mounted) return;
     (source === 'all' ? all : all.filter(it => it.binSource === source)).forEach(it => grid.appendChild(svc().buildMediaBinCard(it)));   // the bin's own card: click sends, right-click sets the fit
-    emptyNote(grid, all.length ? 'Nothing in this folder yet.' : 'No media yet: add some from the Media tab.');
+    // Empty: the way to fill it is right here (the same Media card as Manage), not "go to the Media tab".
+    const add = () => vBtn('Add media', 'Open the Media screen to import pictures and videos', () => window.KairoVideoLayout && window.KairoVideoLayout.openFull && window.KairoVideoLayout.openFull('media-btn'), 'vd-mini');
+    emptyNote(grid, all.length ? 'Nothing in this folder yet.' : 'No media yet.', add());
   }
-  function emptyNote(grid, text) {
-    if (grid.isConnected && !grid.children.length) grid.appendChild(vEl('p', 'vd-empty', text || 'Choose an item in the playlist to see its slides.'));
+  function emptyNote(grid, text, action) {
+    if (!grid.isConnected || grid.children.length) return;
+    // In the middle of the area, the button under the words (owner, 2026-10-18), for every empty view.
+    const p = vEl('p', 'vd-empty', text || 'Choose an item in the playlist to see its slides.');
+    if (action) p.appendChild(action);
+    grid.classList.add('is-empty');
+    grid.appendChild(p);
   }
 
   // The Timer screen itself (segments, clock) shown in this area: moved here, put back when another view is chosen.

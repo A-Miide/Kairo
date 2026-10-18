@@ -263,8 +263,10 @@ const DEFAULT_LOOKS = [
   },
   {
     // Filled left half, fully transparent right half — the right side keys out
-    // so a camera / lyric feed shows through on a chroma or alpha rig.
-    id: 'split-left', name: 'Split — Left', layout: 'split-left', animation: 'slide-up',
+    // so a camera / lyric feed shows through on a chroma or alpha rig. For keying in a
+    // vision mixer (ATEM, vMix) in normal mode; Director mode's own splits are the
+    // "Screen —" themes. The name says so (2026-10-18).
+    id: 'split-left', name: 'Split — Left, for keying', layout: 'split-left', animation: 'slide-up',
     groupId: 'grp-bible', groupName: 'Bible',
     layers: [
       { id: 'bg', type: 'background', name: 'Canvas', visible: true,
@@ -291,7 +293,7 @@ const DEFAULT_LOOKS = [
   },
   {
     // Mirror of Split — Left: filled right half, transparent left half.
-    id: 'split-right', name: 'Split — Right', layout: 'split-right', animation: 'slide-up',
+    id: 'split-right', name: 'Split — Right, for keying', layout: 'split-right', animation: 'slide-up',
     groupId: 'grp-bible', groupName: 'Bible',
     layers: [
       { id: 'bg', type: 'background', name: 'Canvas', visible: true,
@@ -805,10 +807,39 @@ function screenTheme(id, name, videoLeft, videoW) {
     ],
   };
 }
+// The camera full screen, the words on a band across the bottom third (owner, 2026-10-18: over live
+// video it is a lower third or a split). The verse and reference are this theme's own text layers, not
+// a content zone: a zone scales a whole 16:9 theme into its box, and in a band that leaves tiny words.
+function screenLowerThird() {
+  return {
+    id: 'screen-lower-third', name: 'Screen — Lower third', layout: 'fullscreen', animation: 'fade',
+    groupId: 'grp-screen', groupName: 'Screens (Director mode)',
+    layers: [
+      screenCanvas(),
+      { id: 'zone', type: 'videozone', name: 'Video zone', visible: true, radius: 0, frameWidth: 0, frameColor: '#ffffff', opacity: 100,
+        pos: { x: 0, y: 0, w: 1920, h: 1080 } },
+      // Shown only while a verse or slide is up (display.html paintLayer showWith).
+      { id: 'band', type: 'background', name: 'Band', visible: true, showWith: 'words',
+        fill: 'gradient', color: '#050b1f', color2: '#0a1a45', opacity: 88, angle: 90, radius: 0,
+        pos: { x: 0, y: 760, w: 1920, h: 260 } },
+      { id: 'verse', type: 'text', name: 'Verse', visible: true, binding: 'verse', customText: '',
+        pos: { x: 120, y: 790, w: 1680, h: 150 },
+        font: { family: 'Manrope', size: 44, weight: 500, italic: false, lineHeight: 1.3, letterSpacing: 0, transform: 'none' },
+        color: '#ffffff', opacity: 100, align: 'center',
+        shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
+      { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '', follows: 'verse',
+        pos: { x: 120, y: 958, w: 1680, h: 0 },
+        font: { family: 'Manrope', size: 22, weight: 800, italic: false, lineHeight: 1.2, letterSpacing: 6, transform: 'uppercase' },
+        color: '#ffffff', opacity: 90, align: 'center',
+        shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
+    ],
+  };
+}
 DEFAULT_LOOKS.push(
   screenTheme('screen-split-left', 'Screen — Video left', true, 640),
   screenTheme('screen-split-right', 'Screen — Video right', false, 640),
   screenTheme('screen-split-half', 'Screen — Half and half', true, 900),
+  screenLowerThird(),
 );
 
 // Monitor layouts (groupId 'grp-monitor'): what a Monitor output shows, for whoever is up
@@ -990,6 +1021,11 @@ let looks = (function loadLooks() {
     // alongside this renamed one instead of this being an in-place rename.
     stored.forEach(l => {
       if (l.id === 'lyrics-collage') { l.id = 'lyrics-bold-caption'; l.name = 'Lyrics — Bold Caption'; }
+      // The keying splits say what they are for (2026-10-18); a name the user changed stays.
+      if (l.id === 'split-left' && l.name === 'Split — Left') l.name = 'Split — Left, for keying';
+      if (l.id === 'split-right' && l.name === 'Split — Right') l.name = 'Split — Right, for keying';
+      // The Lower third's band shows only with words (saved by a build before that existed).
+      if (l.id === 'screen-lower-third') (l.layers || []).forEach(ly => { if (ly.id === 'band' && !ly.showWith) ly.showWith = 'words'; });
     });
     const knownIds = new Set(stored.map(l => l.id));
     const missing  = DEFAULT_LOOKS.filter(d => !knownIds.has(d.id));
@@ -7993,7 +8029,7 @@ newLookBtn?.addEventListener('click', (e) => {
     window.KairoService.openContextMenu(r.left, r.bottom + 4, [[
       { label: 'New theme', onClick: () => createNewLook(false) },
       { label: 'New monitor layout', onClick: () => createNewLook('monitor') },
-      ...(isDirectorOn() ? [{ label: 'New screen theme', onClick: () => createNewLook(true) }] : []),
+      ...(isDirectorOn() ? [{ label: 'New Director theme', onClick: () => createNewLook(true) }] : []),
     ]]);
     return;
   }

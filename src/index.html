@@ -536,9 +536,8 @@
                     <span class="cs-section-label">Media Bin</span>
                     <select id="media-bin-folder" class="media-bin-folder" title="Show one folder" aria-label="Folder"></select>
                     <span class="media-bin-hint">Click an item to send it to the display</span>
-                    <!-- How media comes on screen: its own transition, or the words' (media_transition.js). -->
+                    <!-- How media comes on screen (media_transition.js): Fade unless chosen otherwise. -->
                     <select id="media-bin-transition" class="media-bin-folder" title="How pictures and videos come on screen" aria-label="Media transition">
-                        <option value="">Transition: same as words</option>
                         <option value="fade">Transition: Fade</option>
                         <option value="slide-up">Transition: Slide</option>
                         <option value="cut">Transition: Cut</option>
@@ -1158,7 +1157,7 @@
                                 <button class="ts-tool-btn" id="ts-add-videozone-btn" data-tool-name="Video zone" title="Add a video zone — where the live camera picture shows in this theme (Director mode)">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="6" width="13" height="12" rx="2.5"/><path d="M16 10.5l5-3v9l-5-3z"/></svg>
                                 </button>
-                                <button class="ts-tool-btn" id="ts-add-contentzone-btn" data-tool-name="Content zone" title="Add a content zone — where slides and Bible verses show in this screen theme, each with its own theme (Director mode)">
+                                <button class="ts-tool-btn" id="ts-add-contentzone-btn" data-tool-name="Content zone" title="Add a content zone — where slides and Bible verses show in this Director theme, each with its own theme">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"/><path d="M7.5 10h9M7.5 14h5.5"/></svg>
                                 </button>
                             </div>
@@ -1183,8 +1182,8 @@
                          the same kind of thing, not a different one. A tab
                          with nothing to show for the selection hides itself. -->
                     <div class="ts-props-tabs" id="ts-props-tabs">
-                        <button class="ts-tab-btn hidden" data-tab="item" id="ts-props-tab-item">Look</button>
-                        <button class="ts-tab-btn active" data-tab="layout" id="ts-props-tab-layout">Layout</button>
+                        <button class="ts-tab-btn hidden" data-tab="item" id="ts-props-tab-item">Theme</button>
+                        <button class="ts-tab-btn active" data-tab="layout" id="ts-props-tab-layout">Position</button>
                         <button class="ts-tab-btn" data-tab="style" id="ts-props-tab-style">Style</button>
                         <button class="ts-tab-btn" data-tab="animate" id="ts-props-tab-animate">Animate</button>
                     </div>
@@ -1635,7 +1634,7 @@
                                 <p>A ProPresenter-imported slide is the one exception: it carries its own preserved layout directly (see Importing above), independent of whichever theme is assigned to the rest of the item — editing it in Full-Scale Edit adjusts that one slide's own layers, not a shared theme.</p>
                                 <p>The Multi-Language theme is a special split layout — the verse's own language on one side, a translated version on the other (see Multi-Language below).</p>
                                 <p><strong>Monitor layouts</strong> design what a Monitor output shows for whoever is up front. Start from <strong>New → New monitor layout</strong> or edit one of the two under <strong>Monitor layouts</strong>. A text layer's <strong>Shows</strong> can be what is on screen now, its reference, the next slide, the time of day, the countdown or the message from the booth; add backgrounds, logos and shapes like any theme. Pick it for a Monitor under <strong>Settings → Outputs</strong> (Layout); <strong>Built-in</strong> keeps the standard view. Monitor layouts never show up as themes for slides or verses.</p>
-                                <p><strong>Screen themes</strong> (Director mode only, under <strong>Screens</strong>) are whole-screen designs for layouts: a background, frames and logos, a <strong>Video zone</strong> where the camera shows and a <strong>Content zone</strong> where slides and Bible verses show, each in its own theme. Add the zones with the two tools next to Image, or start from <strong>New → New screen theme</strong>. Put a verse text layer in a screen theme and it styles the verse itself instead of using a content zone.</p>
+                                <p><strong>Director themes</strong> (Director mode only, under <strong>Screens</strong>) are whole-screen designs for layouts: a background, frames and logos, a <strong>Video zone</strong> where the camera shows and a <strong>Content zone</strong> where slides and Bible verses show, each in its own theme. Add the zones with the two tools next to Image, or start from <strong>New → New Director theme</strong>. Put a verse text layer in a Director theme and it styles the verse itself instead of using a content zone.</p>
                             </div>
                         </details>
 
@@ -1652,7 +1651,7 @@
                                 </ul>
                                 <p>The <strong>Monitor</strong> (right side, under Clear Bible) shows exactly what each output is showing right now. Pick <strong>Main</strong> or any output that's on from its list, or use the grid button to see them all side by side — click a tile to watch just that one. The arrow button opens the monitor in its own window, about the size of Settings: resize or move it as you like; it stays above Kairo while you keep working.</p>
                                 <p>Each NDI/Syphon output also has its own configurable resolution and network/source name, editable any time under its detail panel.</p>
-                                <p><strong>Output Control</strong> (further down the same page) has one card per output with a switch for each kind of content: Scripture, Slides and songs, Timer, Media, Overlays, and Words only. Each card ends with one sentence saying what that output shows and what is hidden. <em>Copy from…</em> copies another output's choices. A Monitor always shows words only, so Media is dimmed there.</p>
+                                <p><strong>Output Control</strong> (further down the same page) has one card per output with a switch for each kind of content: Scripture, Slides and songs, Timer, Media, Overlays, and Words only. Each card ends with one sentence saying what that output shows and what is hidden. <em>Layout</em> gives one display a Layout of its own; its theme takes over from the display's, and None gives the display its own theme back. A Monitor always shows words only, so Media is dimmed there.</p>
                                 <p><strong>Output layers</strong>, bottom to top: the background (the theme's, or a layout's in Director mode), <strong>Media</strong> (background image or video), <strong>Slide</strong>, <strong>Bible</strong>, the timer, and <strong>Overlays</strong> always on top. Output Control shows this order too. A <strong>Words only</strong> or keyed output shows the words alone: no media, overlays or layout frame. When a scripture goes up — called by the preacher or sent by you — it covers the live slide without ending it, and your view stays where it is. Slides that follow along while listening keep the slide underneath up to date. <strong>Clear Bible</strong> (lit while a scripture covers a slide) brings that slide back; <strong>Clear Slide</strong> removes only the slide; clicking a slide yourself sends it straight out.</p>
                             </div>
                         </details>
@@ -1672,7 +1671,7 @@
                                 <ul>
                                     <li><strong>Inputs</strong> — your cameras and capture cards, as a grid of tiles or a list. Add them under <strong>Settings → Video Sources</strong>; an input can be a named placeholder before the device is connected. Click an input to put it on air; Shift-click stages it on Preview.</li>
                                     <li><strong>Preview and Output</strong> — Preview is what is staged, Output is what is live. Under them: <strong>Send</strong> (Space), Cut or Fade with the fade length, Fade to black and Undo.</li>
-                                    <li><strong>Layouts</strong> — saved setups for Preview: the input, which layers are on, the overlays and a screen theme. Click one to load it into Preview, then Send. Alt+1 to 9 load the first nine. A screen theme is drawn around the slide or verse: the slide or Bible verse keeps its own theme and branding inside it, unless the screen theme has its own verse text. Customize a screen theme in Theme Studio (Video zone and Content zone tools) from the menu on a Layout.</li>
+                                    <li><strong>Layouts</strong> — saved setups for Preview: the input, which layers are on, the overlays and a theme. Click one to load it into Preview, then Send. Alt+1 to 9 load the first nine. A Layout's theme is drawn around the slide or verse: the slide or Bible verse keeps its own theme and branding inside it, unless that theme has its own verse text. Customize a Layout's theme in Theme Studio (Video zone and Content zone tools) from the menu on a Layout.</li>
                                     <li><strong>Remote</strong> — Stream Deck and OSC can drive Send, Fade to black, Undo, Layouts 1 to 9 and Inputs 1 to 9.</li>
                                     <li><strong>Menus</strong> — the <strong>Director</strong> menu has Send to Screen (⌘Return), Fade to Black (⌘⇧B), Undo Last Send, Inputs and Layouts 1 to 9 (Inputs 1 to 4 on ⌘⌥1–4). The <strong>Production</strong> menu has Go Live, Recording, Run Macro and Auto-send.</li>
                                     <li><strong>Keys</strong> — 1 to 9 put an input on air, Shift + 1 to 9 stage one on Preview, Alt + 1 to 9 load a layout, Space sends, Esc clears what is staged, ⌘Z (Ctrl+Z) undoes the last send. The <strong>?</strong> button lists them all. <strong>Ready check</strong> lists anything not ready (an input with no device, a missing camera) before the service.</li>

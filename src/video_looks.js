@@ -16,8 +16,11 @@
   // What this feature is called, in one place: a rename is a one-line change.
   const LABEL = { many: 'Layouts', one: 'Layout' };
   const LAYER_KEYS = ['bible', 'slide', 'media', 'timer', 'video'];
+  // Over live video the words are a lower third or a split (owner, 2026-10-18). "Scripture over video"
+  // (the output's own theme over the camera, its background dropped) is no longer a starter; a saved one stays.
+  const LOWER_THIRD = { name: 'Lower third', videoId: '@first', layers: { bible: true, slide: true, media: true, timer: true, video: true }, overlays: null, themeId: 'screen-lower-third' };
   const STARTERS = [
-    { name: 'Scripture over video', videoId: '@first', layers: { bible: true, slide: true, media: true, timer: true, video: true }, overlays: null },
+    LOWER_THIRD,
     { name: 'Video only', videoId: '@first', layers: { bible: false, slide: false, media: false, timer: false, video: true }, overlays: null },
   ];
   // Looks that frame the picture with a screen theme (Theme Studio, group "Screens").
@@ -75,6 +78,12 @@
       settings.directorLooksSplit = true;
       if (typeof saveSettingsPatch === 'function') saveSettingsPatch({ directorLooksSplit: true });
       persist();
+    }
+    // Layouts saved before the Lower third existed get it once, first in the list.
+    if (settings.directorLooksLowerThird !== true) {
+      if (!looks.some(l => l.themeId === 'screen-lower-third' || l.name === LOWER_THIRD.name)) { looks.unshift(...normalize([LOWER_THIRD])); persist(); }
+      settings.directorLooksLowerThird = true;
+      if (typeof saveSettingsPatch === 'function') saveSettingsPatch({ directorLooksLowerThird: true });
     }
     let modal = null, prevFocus = null, renaming = null, dragId = null, keyHandler = null, menu = null, undoDel = null, undoTimer = null;
     let overlayNames = {};
@@ -256,13 +265,14 @@
         b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
         menu.appendChild(b);
       };
+      item('Edit…', () => { closeMenu(); edit(look.id); });
       item('Rename', () => { closeMenu(); renaming = look.id; render(); const i = modal.querySelector('.vd-card-input'); if (i) { i.focus(); i.select(); } });
       item('Update from current', () => { closeMenu(); updateFromCurrent(look.id); });
       item('Duplicate', () => { closeMenu(); duplicate(look.id); });
-      if (ctx.screenThemes && ctx.screenThemes().length) item('Screen theme', () => openThemes(look, anchor));
+      if (ctx.screenThemes && ctx.screenThemes().length) item('Theme', () => openThemes(look, anchor));
       if (ctx.customizeTheme) {
         const has = !!themeOf(look);
-        item(has ? 'Customize in Theme Studio' : 'Create a screen theme…', () => {
+        item(has ? 'Customize in Theme Studio' : 'Create a theme…', () => {
           closeMenu();
           const id = ctx.customizeTheme(look);
           if (!id) return;
@@ -279,7 +289,7 @@
     }
     function openThemes(look, anchor) {
       closeMenu();
-      menu = el('div', 'vd-lk-menu vd-lk-themes'); menu.setAttribute('role', 'listbox'); menu.setAttribute('aria-label', 'Screen theme');
+      menu = el('div', 'vd-lk-menu vd-lk-themes'); menu.setAttribute('role', 'listbox'); menu.setAttribute('aria-label', 'Theme');
       const choose = (id) => {
         look.themeId = id; closeMenu(); persist(); render(); ctx.onChange();
         if (ctx.previewLookId() === look.id) ctx.loadToPreview(look);   // Preview follows the change
@@ -368,6 +378,98 @@
         window.KairoOverlays.load().then(items => { overlayNames = Object.fromEntries((items || []).map(i => [i.id, i.name || i.label || ''])); if (modal) render(); }).catch(() => {});
       }
     }
+    // ── The Layout editor: everything a Layout is, in one card (owner, 2026-10-18: Edit on a
+    // Layout opened Theme Studio, but a Layout is not a theme). Each change is kept at once, and
+    // Preview follows when it is showing this Layout. Theme Studio is one click away for the theme.
+    let editor = null;
+    function closeEditor() {
+      if (!editor) return;
+      document.removeEventListener('keydown', editor.keys, true);
+      editor.node.remove();
+      const back = editor.prev; editor = null;
+      if (back && back.focus && back.isConnected) back.focus();
+    }
+    function edit(id) {
+      const look = byId(id); if (!look) return false;
+      closeEditor();
+      const changed = () => {
+        persist(); ctx.onChange();
+        if (ctx.previewLookId() === look.id) ctx.loadToPreview(look);
+        if (modal) render();
+      };
+      const node = el('div', 'modal vd-lk-editor');
+      node.setAttribute('role', 'dialog'); node.setAttribute('aria-modal', 'true'); node.setAttribute('aria-label', `Edit ${LABEL.one}`);
+      const overlay = el('div', 'modal-overlay'); overlay.addEventListener('mousedown', closeEditor);
+      const content = el('div', 'modal-content vd-lke-content');
+      const head = el('div', 'modal-header');
+      const title = el('div', 'vd-lk-title');
+      title.append(el('h2', null, `Edit ${LABEL.one}`), el('span', 'vd-lk-sub', 'What Preview shows when this is loaded. Nothing goes out until you send it.'));
+      const done = el('button', 'modal-close-btn', 'Done'); done.type = 'button'; done.addEventListener('click', closeEditor);
+      head.append(title, done);
+      const body = el('div', 'modal-body vd-lke-body');
+      const row = (label, control, hint) => {
+        const r = el('div', 'vd-lke-row');
+        const l = el('label', 'vd-lke-label', label);
+        r.append(l, control);
+        if (hint) r.appendChild(el('p', 'setting-hint vd-lke-hint', hint));
+        return r;
+      };
+
+      // Name
+      const name = el('input', 'setting-input vd-lke-name'); name.type = 'text'; name.maxLength = 40; name.value = look.name;
+      name.addEventListener('change', () => { const v = name.value.replace(/\s+/g, ' ').trim(); if (v) { look.name = uniqueName(v, look.id); name.value = look.name; changed(); } else name.value = look.name; });
+      body.appendChild(row('Name', name));
+
+      // Layers
+      const layers = el('div', 'vd-lke-layers'); layers.setAttribute('role', 'group'); layers.setAttribute('aria-label', 'Layers');
+      LAYER_KEYS.forEach(k => {
+        const b = el('button', 'vd-lke-layer' + (look.layers[k] ? ' is-on' : '')); b.type = 'button';
+        b.setAttribute('aria-pressed', String(!!look.layers[k]));
+        b.innerHTML = LAYER_ICONS[k]; b.appendChild(el('span', null, LAYER_LABELS[k]));
+        b.addEventListener('click', () => { look.layers[k] = !look.layers[k]; b.classList.toggle('is-on', look.layers[k]); b.setAttribute('aria-pressed', String(look.layers[k])); changed(); });
+        layers.appendChild(b);
+      });
+      body.appendChild(row('Layers', layers, 'On the display screens. NDI, Syphon and DeckLink keep their own.'));
+
+      // Theme
+      const themeBox = el('div', 'vd-lke-inline');
+      const themeSel = el('select', 'setting-input vd-lke-select'); themeSel.setAttribute('aria-label', 'Theme');
+      const addOpt = (sel, v, label) => { const o = document.createElement('option'); o.value = v; o.textContent = label; sel.appendChild(o); };
+      addOpt(themeSel, '', 'None: the output keeps its own theme');
+      (ctx.screenThemes ? ctx.screenThemes() : []).forEach(t => addOpt(themeSel, t.id, t.name.replace(/^Screen\s*[—-]\s*/, '')));
+      themeSel.value = look.themeId || '';
+      themeSel.addEventListener('change', () => { look.themeId = themeSel.value || null; changed(); });
+      themeBox.appendChild(themeSel);
+      if (ctx.customizeTheme) {
+        const studio = el('button', 'vd-mini', 'Theme Studio'); studio.type = 'button';
+        studio.title = 'Change how this theme looks. A built-in theme is copied first, so the original stays as it is.';
+        studio.addEventListener('click', () => { const tid = ctx.customizeTheme(look); if (!tid) return; look.themeId = tid; persist(); ctx.onChange(); closeEditor(); close(); });
+        themeBox.appendChild(studio);
+      }
+      body.appendChild(row('Theme', themeBox));
+
+      // Video input
+      const vidSel = el('select', 'setting-input vd-lke-select'); vidSel.setAttribute('aria-label', 'Video input');
+      addOpt(vidSel, '@first', 'The first input');
+      addOpt(vidSel, '', 'No video');
+      const sources = ctx.videoSources ? ctx.videoSources() : [];
+      sources.forEach(v => addOpt(vidSel, v.id, v.name));
+      const cur = look.videoId == null ? '' : look.videoId;
+      if (cur && cur !== '@first' && !sources.some(v => v.id === cur)) addOpt(vidSel, cur, 'An input that was removed');
+      vidSel.value = cur;
+      vidSel.addEventListener('change', () => { look.videoId = vidSel.value || null; changed(); });
+      body.appendChild(row('Video input', vidSel));
+
+      content.append(head, body);
+      node.append(overlay, content);
+      document.body.appendChild(node);
+      const keys = (e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); closeEditor(); } };
+      document.addEventListener('keydown', keys, true);
+      editor = { node, keys, prev: document.activeElement };
+      name.focus();
+      return true;
+    }
+
     function close() {
       if (!modal) return;
       document.removeEventListener('keydown', keyHandler, true); keyHandler = null;
@@ -379,7 +481,7 @@
     }
 
     return {
-      open, close, render,
+      open, close, render, edit,
       all: () => looks,
       byId,
       loadIndex(n) { const l = looks[n]; if (l) ctx.loadToPreview(l); return !!l; },
