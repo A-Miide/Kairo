@@ -2436,6 +2436,35 @@ function setRowForOutputs(row, ids, value) {
   renderOutputsList();
 }
 
+// A Layout applied to ONE display (owner, 2026-10-17: layouts at an individual display level): the layers it
+// switches on or off, its screen theme (frame) and its video input, for this output only. Switches this
+// display cannot take (media on a Monitor, video outside Director mode) are left as they are.
+function applyLayoutToDisplay(look, o, map, textOnly) {
+  const keys = ['bible', 'slide', 'media', 'timer', 'video'];
+  const rowOf = (k) => OC_ROWS.find(r => r.key === k);
+  keys.forEach((k) => {
+    const row = rowOf(k);
+    if (!row) return;
+    const st = ocChipState(row, o, map, textOnly);
+    const want = look.layers ? look.layers[k] !== false : true;
+    if (!st.disabled && st.on !== want) setRowForOutputs(row, [o.id], want);
+  });
+  // Its screen theme: this display's frame, or none.
+  const frames = { ...(settings.outputFrames && typeof settings.outputFrames === 'object' ? settings.outputFrames : {}) };
+  if (look.themeId) frames[o.id] = look.themeId; else delete frames[o.id];
+  settings.outputFrames = frames;
+  saveSettingsPatch({ outputFrames: frames });
+  if (typeof applyOutputFrames === 'function') applyOutputFrames();
+  // Its video input, when it carries video here.
+  if (isDirectorOn() && typeof setVideoLiveFor === 'function' && outputSupportsVideo(o.id)) {
+    const list = typeof videoSourceList === 'function' ? videoSourceList().filter(x => x.enabled !== false) : [];
+    const id = look.videoId === '@first' ? (list[0] && list[0].id) : look.videoId;
+    setVideoLiveFor([o.id], id && list.some(x => x.id === id) ? id : null);
+  }
+  settings.outputLayouts = { ...(settings.outputLayouts || {}), [o.id]: look.id };
+  saveSettingsPatch({ outputLayouts: settings.outputLayouts });
+}
+
 function renderOutputControlMatrix() {
   const host = document.getElementById('output-control-matrix');
   if (!host) return;
@@ -2452,15 +2481,36 @@ function renderOutputControlMatrix() {
     const head = mk('div', 'oc-card-head');
     head.appendChild(mk('span', 'oc-card-name', o.name));
     head.appendChild(mk('span', 'oc-card-type', o.monitor ? 'Monitor' : outputTypeLabel(o.type)));
-    // Copy another output's choices onto this one.
-    if (outputs.length > 1) {
-      const copy = document.createElement('select');
-      copy.className = 'setting-input oc-copy';
-      copy.title = 'Copy what another output shows';
-      copy.appendChild(Object.assign(document.createElement('option'), { value: '', textContent: 'Copy from\u2026' }));
-      outputs.filter(x => x.id !== o.id).forEach(x => copy.appendChild(Object.assign(document.createElement('option'), { value: x.id, textContent: x.name })));
-      copy.addEventListener('change', () => {
-        const from = outputs.find(x => x.id === copy.value);
+    // A Layout (Director mode's saved setups) for this display alone: which layers it shows, its screen
+    // theme and its video input. Below them, "copy from" another output's choices. What was chosen is
+    // remembered and shown here.
+    const layouts = (window.KairoVideoLooks && window.KairoVideoLooks.normalize(settings.directorLooks)) || [];
+    if (layouts.length || outputs.length > 1) {
+      const pick = document.createElement('select');
+      pick.className = 'setting-input oc-copy';
+      pick.title = 'Give this display one of your Layouts, or copy what another output shows';
+      const known = (settings.outputLayouts || {})[o.id];
+      const current = layouts.find(l => l.id === known);
+      pick.appendChild(Object.assign(document.createElement('option'), { value: '', textContent: current ? `Layout: ${current.name}` : 'Layout\u2026' }));
+      if (layouts.length) {
+        const g = document.createElement('optgroup'); g.label = 'Layouts';
+        layouts.forEach(l => g.appendChild(Object.assign(document.createElement('option'), { value: `layout:${l.id}`, textContent: l.name })));
+        pick.appendChild(g);
+      }
+      if (outputs.length > 1) {
+        const g = document.createElement('optgroup'); g.label = 'Copy from';
+        outputs.filter(x => x.id !== o.id).forEach(x => g.appendChild(Object.assign(document.createElement('option'), { value: `copy:${x.id}`, textContent: x.name })));
+        pick.appendChild(g);
+      }
+      pick.addEventListener('change', () => {
+        const [kind, id] = pick.value.split(/:(.*)/s);
+        if (kind === 'layout') {
+          const look = layouts.find(l => l.id === id);
+          if (look) applyLayoutToDisplay(look, o, map, textOnly);
+          renderOutputControlMatrix();
+          return;
+        }
+        const from = outputs.find(x => x.id === id);
         if (!from) return;
         rows.forEach((row) => {
           const src = ocChipState(row, from, map, textOnly);
@@ -2469,7 +2519,7 @@ function renderOutputControlMatrix() {
         });
         renderOutputControlMatrix();
       });
-      head.appendChild(copy);
+      head.appendChild(pick);
     }
     card.appendChild(head);
 
