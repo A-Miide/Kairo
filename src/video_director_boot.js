@@ -29,7 +29,8 @@
           l.id = 'video-director-css'; l.rel = 'stylesheet'; l.href = 'video_director.css';
           document.head.appendChild(l);
         }
-        for (const f of FILES) await loadScript(f);
+        // video_looks.js is loaded with the page (the Layout picker under Outputs reads it); not twice.
+        for (const f of FILES) { if (f === 'video_looks.js' && window.KairoVideoLooks) continue; await loadScript(f); }
       })().catch((err) => { loading = null; throw err; });
     }
     return loading;
