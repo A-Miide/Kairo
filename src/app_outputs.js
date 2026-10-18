@@ -1741,10 +1741,43 @@ async function refreshDisplayStatus() {
 // with that screen's assigned theme. The explicitly-assigned physical screen
 // (outputScreenMap) always wins over the old d.screen/window.screen guesses,
 // which only apply when nothing's been assigned yet.
-function openDisplayOutput(d) {
+// The screen an output was assigned, found among the screens connected NOW. A saved position
+// that no longer matches anything (an AirPlay or other display that is not there, or came back
+// somewhere else) must never be opened as it is: a fullscreen window at a place with no screen
+// lands on the operator's own screen and covers it. Exact place first, then the same size on
+// another screen, then the one other screen there is; none means it is not connected.
+function liveScreenFor(assigned) {
+  if (!assigned) return null;
+  const live = cachedScreens;
+  if (!live.length) return assigned;   // nothing known (a plain browser): as saved
+  const same = (a, b) => a.left === b.left && a.top === b.top && a.width === b.width && a.height === b.height;
+  const exact = live.find(s => same(s, assigned));
+  if (exact) return exact;
+  const others = live.filter(s => !s.isPrimary);
+  return others.find(s => s.width === assigned.width && s.height === assigned.height) || (others.length === 1 ? others[0] : null);
+}
+// Outputs whose screen was not connected when they were due to open: opened when it appears.
+const displaysWaiting = new Set();
+
+async function openDisplayOutput(d) {
   const url = `/display.html?output=${encodeURIComponent(d.id)}`;
   const assigned = outputScreenMap()[d.id];
-  const scr = assigned || d.screen || {};
+  let scr = assigned || d.screen || {};
+  if (assigned) {
+    await refreshDisplayStatus();
+    const hit = liveScreenFor(assigned);
+    if (!hit) {
+      displaysWaiting.add(d.id);
+      logDisplayLifecycleFallback('openDisplayOutput', { outputId: d.id, reason: 'its screen is not connected; waiting for it', assigned, connected: cachedScreens.map(s => ({ w: s.width, h: s.height, x: s.left, y: s.top, primary: !!s.isPrimary })) });
+      return;
+    }
+    displaysWaiting.delete(d.id);
+    scr = hit;
+    // The screen is somewhere else now: the assignment follows it.
+    if (hit !== assigned && (hit.left !== assigned.left || hit.top !== assigned.top || hit.width !== assigned.width || hit.height !== assigned.height)) {
+      setOutputScreen(d.id, { width: hit.width, height: hit.height, left: hit.left, top: hit.top });
+    }
+  }
   const w = scr.width  || window.screen.width;
   const h = scr.height || window.screen.height;
   const x = scr.left   != null ? scr.left : window.screen.width;
@@ -1762,6 +1795,28 @@ function openDisplayOutput(d) {
     // never be silent again if it's ever hit for some other reason.
     logDisplayLifecycleFallback('openDisplayOutput', { outputId: d.id, reason: 'openDisplayWindow not a function — falling back to window.open()' });
     window.open(url, `kairo-${d.id}`, `width=${w},height=${h},left=${x},top=${y}`);
+  }
+}
+
+// Each poll: an output window whose screen has gone away is closed (macOS would keep it, fullscreen,
+// on the operator's own screen), and one that was waiting for its screen is opened when it is back.
+async function reconcileDisplayWindows() {
+  const getWin = window.__TAURI__?.webviewWindow?.WebviewWindow;
+  if (!getWin || !cachedScreens.length) return;
+  for (const d of displayOutputs()) {
+    const assigned = outputScreenMap()[d.id];
+    if (!assigned) { displaysWaiting.delete(d.id); continue; }
+    const hit = liveScreenFor(assigned);
+    let win = null;
+    try { win = await getWin.getByLabel(`kairo-${d.id}`); } catch {}
+    if (!hit && win) {
+      try { await win.close(); } catch {}
+      displaysWaiting.add(d.id);
+      logDisplayLifecycleFallback('reconcileDisplayWindows', { outputId: d.id, reason: 'its screen was disconnected; window closed, waiting for it' });
+    } else if (hit && !win && displaysWaiting.has(d.id)) {
+      displaysWaiting.delete(d.id);
+      openDisplayOutput(d);
+    }
   }
 }
 
