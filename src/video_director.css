@@ -825,3 +825,6 @@ body.video-director .svc-slide.live.is-staged, body.video-director .media-card.i
 /* No helper text beside PREVIEW and OUTPUT (owner, 2026-10-18): the pictures say it. The space stays,
    so Edit and the Output's buttons keep their place. */
 .vd-screen-head .vd-ref { visibility: hidden; }
+
+/* Matches in the Scripture header: always there, quiet while there are none. */
+.vd-match-btn.is-empty { color: var(--text-3); border-color: var(--border); }
