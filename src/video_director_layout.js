@@ -304,13 +304,13 @@
     // How verse text arrives (Fade / Slide / Cut): the app's own bar, in a small popover.
     S.verseBtn = hb('vd-hbtn', 'Verse transition', ICONS.verse, (e) => nodePopover(e.currentTarget, document.getElementById('rs-transition-bar'), 'vd-pop-verse'));
     // Possible Matches: the same list as the normal screen (same detection, same Send to Air),
-    // opened from here. Shown only while there are matches.
+    // opened from here. Always shown (owner, 2026-10-18), dimmed while there are none.
     const matches = document.querySelector('.rs-candidates');
     S.matchBtn = hb('vd-hbtn vd-match-btn', 'Possible matches', '', (e) => nodePopover(e.currentTarget, matches, 'vd-pop-matches'));
     const syncMatches = () => {
       const n = Number(document.getElementById('suggestion-count-badge')?.textContent) || 0;
       S.matchBtn.textContent = `Matches ${n}`;
-      S.matchBtn.hidden = n === 0 && !(L.np && L.np.node === matches);
+      S.matchBtn.classList.toggle('is-empty', n === 0);
     };
     const badge = document.getElementById('suggestion-count-badge');
     if (badge) { S.matchObs = new MutationObserver(syncMatches); S.matchObs.observe(badge, { childList: true, characterData: true, subtree: true }); }
