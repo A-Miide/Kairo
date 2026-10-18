@@ -19,6 +19,7 @@ mod bible_packs;
 pub mod notes;
 pub mod offline;
 mod mt;
+mod native_audio;
 mod obs;
 mod pdf;
 pub mod propresenter;
@@ -66,6 +67,10 @@ pub struct App {
     /// Where microphone audio goes while a speech engine is listening.
     pub audio: tokio::sync::Mutex<Option<tokio::sync::mpsc::Sender<bytes::Bytes>>>,
     pub listening: tokio::sync::Mutex<Option<Listening>>,
+    /// The sound input captured here (native_audio.rs) while listening, when the page asked for it.
+    pub(crate) capture: std::sync::Mutex<Option<native_audio::Capture>>,
+    /// The Settings meter's capture while not listening (levels only).
+    pub(crate) capture_preview: std::sync::Mutex<Option<native_audio::Capture>>,
     pub(crate) keep_awake: std::sync::Mutex<Option<KeepAwake>>,
     pub(crate) songs: library::Songs,
     pub(crate) triggers: Arc<library::Triggers>,
@@ -175,6 +180,8 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         presentation: Arc::new(RwLock::new(Presentation::default())),
         audio: tokio::sync::Mutex::new(None),
         listening: tokio::sync::Mutex::new(None),
+        capture: std::sync::Mutex::new(None),
+        capture_preview: std::sync::Mutex::new(None),
         keep_awake: std::sync::Mutex::new(None),
     });
     app.refresh_presentation().await;

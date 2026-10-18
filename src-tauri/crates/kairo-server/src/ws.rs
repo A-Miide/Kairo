@@ -30,17 +30,31 @@ pub async fn root(State(app): State<Shared>, uri: Uri, headers: HeaderMap, ws: R
     })
 }
 
-async fn forward_audio(app: &Shared, data: bytes::Bytes) {
-    crate::audio_stats::note_frame(&data);
-    let samples: Vec<f32> = data.chunks_exact(2).map(|s| i16::from_le_bytes([s[0], s[1]]) as f32 / 32768.0).collect();
-    if let Some(change) = crate::interpretation::with(|i| i.audio(&samples)) {
-        crate::detect::announce_interpretation(&app.hub, change);
-    }
-    if let Some(tx) = app.audio.lock().await.as_ref() {
+pub(crate) async fn forward_audio(app: &Shared, data: bytes::Bytes) {
+    if let Some(tx) = note_audio(app, &data).await {
         if tx.try_send(data).is_err() {
             crate::audio_stats::STATS.dropped.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
     }
+}
+
+/// The same, for the server's own capture (native_audio.rs): it waits for room in the engine's
+/// queue instead of dropping the frame, so no audio (and no words) is lost.
+pub(crate) async fn forward_audio_lossless(app: &Shared, data: bytes::Bytes) {
+    if let Some(tx) = note_audio(app, &data).await {
+        if tx.send(data).await.is_err() {
+            crate::audio_stats::STATS.dropped.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        }
+    }
+}
+
+async fn note_audio(app: &Shared, data: &bytes::Bytes) -> Option<tokio::sync::mpsc::Sender<bytes::Bytes>> {
+    crate::audio_stats::note_frame(data);
+    let samples: Vec<f32> = data.chunks_exact(2).map(|s| i16::from_le_bytes([s[0], s[1]]) as f32 / 32768.0).collect();
+    if let Some(change) = crate::interpretation::with(|i| i.audio(&samples)) {
+        crate::detect::announce_interpretation(&app.hub, change);
+    }
+    app.audio.lock().await.clone()
 }
 
 async fn audio(app: Shared, mut socket: WebSocket) {

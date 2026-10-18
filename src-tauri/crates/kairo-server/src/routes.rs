@@ -22,6 +22,10 @@ pub fn router() -> Router<Shared> {
         .route("/api/test-transcript", post(test_transcript))
         .route("/api/start-listening", post(start_listening))
         .route("/api/stop-listening", post(stop_listening))
+        .route("/api/audio-inputs", get(audio_inputs))
+        .route("/api/audio-preview", post(audio_preview))
+        .route("/api/capture", post(capture_open).get(capture_status))
+        .route("/api/stop-capture", post(capture_stop))
         .route("/api/lookup", post(lookup))
         .route("/api/search", post(search))
         .route("/api/search/lookup", post(search_lookup))
@@ -188,13 +192,88 @@ async fn start_listening(State(app): State<Shared>, Json(body): Json<Value>) -> 
         Ok(session) => {
             *listening = Some(session);
             *crate::util::lock(&app.keep_awake) = Some(crate::KeepAwake::hold());
-            Json(if engine == "offline" || engine == "browser" { json!({ "ok": true, "engine": "offline" }) } else { json!({ "ok": true }) })
+            // The page asked for the input to be captured here (native_audio.rs): open it. If it
+            // can't be, the answer says so and the page captures it itself, as before.
+            let mut native = Value::Null;
+            if let Some(want) = body.get("nativeInput").and_then(|v| v.as_str()) {
+                native = open_capture(&app, want).await;
+            }
+            let mut out = if engine == "offline" || engine == "browser" { json!({ "ok": true, "engine": "offline" }) } else { json!({ "ok": true }) };
+            out["native"] = native;
+            Json(out)
         }
         Err(e) => Json(e),
     }
 }
 
+/// The Settings meter while not listening: `{ input, on }` opens that input here only to report
+/// its level (input-level broadcasts); `{ on: false }` closes it. While listening the meter
+/// follows the listening capture instead.
+async fn audio_preview(State(app): State<Shared>, Json(body): Json<Value>) -> Json<Value> {
+    let prev = crate::util::lock(&app.capture_preview).take();
+    if let Some(c) = prev { let _ = tokio::task::spawn_blocking(move || c.stop()).await; }
+    if body["on"] != json!(true) || crate::util::lock(&app.capture).is_some() {
+        return Json(json!({ "ok": true }));
+    }
+    let want = body["input"].as_str().unwrap_or("").to_string();
+    match crate::native_audio::start(app.clone(), &want, false) {
+        Ok(c) => { let device = c.device.clone(); *crate::util::lock(&app.capture_preview) = Some(c); Json(json!({ "ok": true, "device": device })) }
+        Err(e) => Json(json!({ "error": e })),
+    }
+}
+
+/// Opens `want` (the system default when empty) as the listening capture, replacing any open
+/// one: `{ device }` or `{ error }`.
+async fn open_capture(app: &Shared, want: &str) -> Value {
+    let old = crate::util::lock(&app.capture).take();
+    if let Some(c) = old { let _ = tokio::task::spawn_blocking(move || c.stop()).await; }
+    let prev = crate::util::lock(&app.capture_preview).take();
+    if let Some(c) = prev { let _ = tokio::task::spawn_blocking(move || c.stop()).await; }
+    let (a, w) = (app.clone(), want.to_string());
+    let started = tokio::task::spawn_blocking(move || crate::native_audio::start(a, &w, true)).await;
+    match started {
+        Ok(Ok(c)) => {
+            let device = c.device.clone();
+            *crate::util::lock(&app.capture) = Some(c);
+            write_debug_global("server:native-capture", json!({ "device": device }));
+            json!({ "device": device })
+        }
+        Ok(Err(e)) => {
+            write_debug_global("server:native-capture-failed", json!({ "error": e, "wanted": want }));
+            json!({ "error": e })
+        }
+        Err(_) => json!({ "error": "the input couldn't be opened here" }),
+    }
+}
+
+/// `{ input }`: (re)open the listening capture on that input while listening.
+async fn capture_open(State(app): State<Shared>, Json(body): Json<Value>) -> Json<Value> {
+    Json(open_capture(&app, body["input"].as_str().unwrap_or("")).await)
+}
+
+async fn capture_stop(State(app): State<Shared>) -> Json<Value> {
+    let c = crate::util::lock(&app.capture).take();
+    if let Some(c) = c { let _ = tokio::task::spawn_blocking(move || c.stop()).await; }
+    Json(json!({ "ok": true }))
+}
+
+/// Whether the server is capturing the input (a window opened mid-session asks).
+async fn capture_status(State(app): State<Shared>) -> Json<Value> {
+    let device = crate::util::lock(&app.capture).as_ref().map(|c| c.device.clone());
+    Json(json!({ "native": device }))
+}
+
+/// The sound inputs the server can capture itself, by name.
+async fn audio_inputs() -> Json<Value> {
+    let names = tokio::task::spawn_blocking(crate::native_audio::inputs).await.unwrap_or_default();
+    Json(json!({ "inputs": names }))
+}
+
 async fn stop_listening(State(app): State<Shared>) -> Json<Value> {
+    let capture = crate::util::lock(&app.capture).take();
+    if let Some(c) = capture {
+        let _ = tokio::task::spawn_blocking(move || c.stop()).await;
+    }
     let session = app.listening.lock().await.take();
     match session {
         Some(crate::Listening::Deepgram(s)) => s.stop().await,
