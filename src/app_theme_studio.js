@@ -3710,6 +3710,8 @@ function renderProps() {
     renderMotionProps(panel, activeLayer);
   } else if (activeLayer.type === 'videozone' || activeLayer.type === 'contentzone') {
     renderVideoZoneProps(panel, activeLayer);
+  } else if (activeLayer.type === 'pp') {
+    renderPPProps(panel, activeLayer);
   } else {
     renderTextProps(panel, activeLayer);
   }
@@ -5744,6 +5746,20 @@ function revealRows() {
 // layer shows (Layout tab), then its position, then the type — family; weight
 // and size; line and letter spacing; alignment, italic and case — and its
 // colour (Style), its shadow and outline (Effects).
+// An element imported from ProPresenter has no font settings of its own (pp_render.js draws it as it
+// was designed); the text panel would fail on it. Name, position, size and rotation are what can change.
+function renderPPProps(panel, layer) {
+  const nameInp = document.createElement('input');
+  nameInp.type = 'text'; nameInp.className = 'ts-prop-input';
+  nameInp.value = layer.name || ''; nameInp.placeholder = 'Layer name';
+  nameInp.addEventListener('input', () => { layer.name = nameInp.value; renderLayersList(); });
+  const note = document.createElement('p');
+  note.className = 'setting-hint';
+  note.textContent = 'Imported from ProPresenter and drawn as it was designed. Move, resize and rotate it here.';
+  panel.appendChild(section('layout', 'Layer', prop('Name', nameInp), note));
+  renderLayoutProps(panel, layer);
+}
+
 function renderTextProps(panel, layer) {
   const nameInp = document.createElement('input');
   nameInp.type = 'text'; nameInp.className = 'ts-prop-input';
@@ -6625,8 +6641,9 @@ function closeItemStyleEditor() {
   // has open in ordinary Theme Studio.
   if (tsMode !== 'item') return;
   looksModal?.classList.add('hidden');
-  toggleItemModeChrome(false);
+  // The screen comes back first: a panel that fails to redraw must never leave the app blank.
   document.querySelector('.main-layout')?.classList.remove('hidden-el');
+  try { toggleItemModeChrome(false); } catch (err) { console.warn('[Theme Studio] closing the slide editor:', err); }
   settleItemEdits();
   tsMode = 'theme';
   tsItemCtx = null;
