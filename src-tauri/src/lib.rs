@@ -865,6 +865,13 @@ fn stream_program(app: AppHandle, output: Option<String>, program: Option<String
     app.state::<stream::Engines>().set_program(output.as_deref(), program, zone);
 }
 
+/// The cameras set up in Director changed while streaming or recording: the engines say which
+/// are not in the picture yet (they are used from the next start).
+#[tauri::command]
+fn stream_cameras(app: AppHandle, cameras: Vec<stream::Camera>) {
+    app.state::<stream::Engines>().set_cameras(cameras);
+}
+
 /// The sound mixer's levels and mutes changed: applied live to the stream and the recording.
 #[tauri::command]
 fn stream_mix(app: AppHandle, mix: Vec<stream::AudioIn>) {
@@ -1150,6 +1157,7 @@ pub fn run() {
             stream_status,
             stream_program,
             stream_mix,
+            stream_cameras,
             record_start,
             record_stop,
             record_status,

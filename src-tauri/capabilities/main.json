@@ -59,6 +59,7 @@
     "allow-stream-status",
     "allow-stream-program",
     "allow-stream-mix",
+    "allow-stream-cameras",
     "allow-record-start",
     "allow-record-stop",
     "allow-record-status",
