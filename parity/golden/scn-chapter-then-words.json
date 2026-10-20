@@ -1,0 +1,56 @@
+{
+ "source": "scn-chapter-then-words",
+ "kind": "scenario",
+ "lang": "en",
+ "songLive": false,
+ "cues": [
+  {
+   "text": "favour came on Solomon, look at first Kings three",
+   "audioMs": 0
+  },
+  {
+   "text": "and that which thou hast not asked I have also given thee, both riches and honour",
+   "audioMs": 4500
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "favour came on Solomon,",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "favour came on Solomon, look at first Kings",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "favour came on Solomon, look at first Kings three",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "and that which thou",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and that which thou hast not asked I",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and that which thou hast not asked I have also given thee,",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and that which thou hast not asked I have also given thee, both riches and honour",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}
