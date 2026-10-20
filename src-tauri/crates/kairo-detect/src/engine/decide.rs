@@ -395,7 +395,26 @@ impl Engine {
         // Only the newest words: reaching further back reaches the verse on
         // screen being read (Isaiah 53:8 held back by 53:7's "open his mouth").
         let newest = if self.t.interim.is_empty() { self.t.finals.back().map_or("", |f| f.text.as_str()) } else { &self.t.interim };
-        fits_first_at_least_as_well(self.verse_text(up), self.verse_text(v), source.unwrap_or(newest))
+        let said = source.unwrap_or(newest);
+        // The verse on screen read and then cited ("…established the heavens. Proverbs three
+        // nineteen. How manifold are thy works…"): what follows its citation is something else.
+        let u = self.r(up);
+        let has_citation = crate::reference::book_mentions(said, self.k.books, self.cfg.lang).contains(&u.book);
+        let after = if has_citation { super::citations::text_after_book_mention(said, u.book, u.chapter as u32) } else { said.to_string() };
+        // A twin of the verse on screen shares its wording, and the shared words keep the verse up
+        // (Habakkuk 2:14 against Isaiah 11:9, "as the waters cover the sea"). Any other verse needs
+        // the one on screen to have words of its own heard: "O God, in wisdom" can't hold Proverbs
+        // 3:19 up against Psalm 104:24 being quoted.
+        // Its own words are looked for in everything said since it went up ("…power to get wealth
+        // … his covenant … unto thy fathers" keeps Deuteronomy 8:18 up against 29:13).
+        let twin = self.k.lexicon.twins(up).iter().any(|t| t.verse == v);
+        let since: Vec<&str> = self.t.finals.iter().filter(|f| f.at >= at).map(|f| f.text.as_str()).chain(std::iter::once(self.t.interim.as_str())).collect();
+        let since = since.join(" ");
+        let since = if crate::reference::book_mentions(&since, self.k.books, self.cfg.lang).contains(&u.book) { super::citations::text_after_book_mention(&since, u.book, u.chapter as u32) } else { since };
+        let heard = super::evidence::evidence_words(&format!("{since} {after}"));
+        let (uw, vw) = (super::evidence::evidence_words(self.verse_text(up)), super::evidence::evidence_words(self.verse_text(v)));
+        let up_own = uw.iter().any(|w| !vw.contains(w) && heard.contains(w));
+        (twin || up_own) && fits_first_at_least_as_well(self.verse_text(up), self.verse_text(v), &after)
     }
 
     /// What a sighting rests on: the verse's own words found in the speech.

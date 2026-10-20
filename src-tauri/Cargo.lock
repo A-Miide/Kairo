@@ -2601,6 +2601,7 @@ dependencies = [
  "ort",
  "serde_json",
  "sha2",
+ "sherpa-onnx",
 ]
 
 [[package]]

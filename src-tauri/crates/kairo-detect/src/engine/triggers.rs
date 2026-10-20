@@ -24,6 +24,10 @@ const BARE_NUMBER_MAX_GAP_MS: u64 = 15_000;
 const VERSE_END_NUMBER_WINDOW_MS: u64 = 8_000;
 const VERSE_JUMP_MAX_WORDS: usize = 4;
 const VERSE_JUMP_COOLDOWN_MS: u64 = 2_000;
+/// A word this identifying, heard, lets a bare "verse N" in a chapter never named go up.
+const PARTIAL_OWN_WORD_MIN_IDF: f32 = 4.0;
+/// A verse of the same chapter on screen this recently also lets a bare "verse N" go up.
+const PARTIAL_CHAPTER_UP_MS: u64 = 30_000;
 /// A "verse N" resolution renews the context only if it reached the screen,
 /// or that verse is already up from this recently.
 const PARTIAL_CONFIRM_MAX_AGE_MS: u64 = 15_000;
@@ -170,8 +174,36 @@ impl Engine {
         }
         let Some(v) = self.k.id(VerseRef::new(p.citation.book, p.citation.chapter as u16, verse as u16)) else { return };
         self.jump_range_to(v, now);
-        let sent = self.decide(Candidate::new(vec![v], partial_method(&p), DIRECT_PARTIAL_SCORE, Target::Screen), now);
+        let candidate = Candidate::new(vec![v], partial_method(&p), DIRECT_PARTIAL_SCORE, Target::Screen);
+        let sent = self.decide(if self.partial_may_send(&p, &[v], text) { candidate } else { candidate.capped() }, now);
         self.partial_confirms_context(sent, v, &p, now);
+    }
+
+    /// A bare "verse N" goes up when its chapter was named aloud. A chapter in play only because a
+    /// quote of it was matched may be one the recogniser lost the book of ("Psalm one ten, verse one
+    /// to three" heard as "someone wants the rule, verse one to three" with Matthew 24 in play): then,
+    /// as for a lapsed context, only the verse's own words in what was just said put it up.
+    fn partial_may_send(&self, p: &Partial, verses: &[VerseId], text: &str) -> bool {
+        if p.chapter_given || self.sermon.iter().any(|c| c.named && c.book == p.citation.book && c.chapter == Some(p.citation.chapter as u16)) {
+            return true;
+        }
+        // A verse of the chapter went up moments ago: the reading is still there ("…verse 12 and
+        // then gets us up on our high places, verse 14", Isaiah 58:12 up 9 s before).
+        if let Some((up, at)) = self.screen.up {
+            let u = self.r(up);
+            if u.book == p.citation.book && u.chapter as u32 == p.citation.chapter && self.last_now.saturating_sub(at) < PARTIAL_CHAPTER_UP_MS {
+                return true;
+            }
+        }
+        self.own_word_heard(verses, text)
+    }
+
+    /// An identifying word of one of the verses in what was just said, not two everyday ones
+    /// ("one", "down" for Matthew 24:2 in "verse one to three. Sit down").
+    fn own_word_heard(&self, verses: &[VerseId], text: &str) -> bool {
+        let spoken = format!("{} {text}", self.recent_speech_seconds(20).join(" "));
+        let said: HashSet<String> = meaningful_words(&spoken).iter().map(|w| stem_lite(w)).collect();
+        verses.iter().any(|v| meaningful_words(self.verse_text(*v)).iter().any(|w| self.k.lexicon.idf_of(w) >= PARTIAL_OWN_WORD_MIN_IDF && said.contains(&stem_lite(w))))
     }
 
     /// "Romans 8:28 — sorry, verse 31": the verse named after a correction word
@@ -210,10 +242,9 @@ impl Engine {
             return false;
         }
         // The context has lapsed, so the preacher may have moved to a passage
-        // never named: only the verse's own words in what was just said put
-        // it up; otherwise it is offered.
-        let spoken = format!("{} {text}", self.recent_speech_seconds(20).join(" "));
-        if !verses.iter().any(|v| self.shares_words_with(*v, &spoken)) {
+        // never named: only an identifying word of the verse in what was just
+        // said puts it up; otherwise it is offered.
+        if !self.own_word_heard(&verses, text) {
             self.decide(Candidate::new(verses, partial_method(&p), DIRECT_PARTIAL_SCORE, Target::Suggestions).capped(), now);
             return true;
         }
@@ -254,7 +285,8 @@ impl Engine {
         } else {
             outside_range = !self.jump_range_to(verses[0], now);
         }
-        let sent = self.decide(Candidate::new(verses.clone(), partial_method(&p), DIRECT_PARTIAL_SCORE, Target::Screen), now);
+        let candidate = Candidate::new(verses.clone(), partial_method(&p), DIRECT_PARTIAL_SCORE, Target::Screen);
+        let sent = self.decide(if self.partial_may_send(&p, &verses, text) { candidate } else { candidate.capped() }, now);
         // A demoted stray number mustn't destroy the range.
         if outside_range && sent == Target::Screen {
             self.clear_range(now);
