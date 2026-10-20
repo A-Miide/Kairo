@@ -151,6 +151,71 @@ S["hold-daniel6-live"] = [
     ('as much it', []),
     ('was faithful. I', []),
 ]
+# ── 11. Wording shared by verses of one book ─────────────────────────────────────────
+# Psalm 107's refrain is verses 8, 15, 21 and 31: reading on from 13 makes it 15.
+S["same-psalm107-reading"] = [
+    ("Psalm one hundred and seven verse thirteen", [("citation", "Psalm 107:13")]),
+    ("then they cried unto the Lord in their trouble, and he saved them out of their distresses", [("quote", "Psalm 107:13")]),
+    ("he brought them out of darkness and the shadow of death, and brake their bands in sunder", [("quote", "Psalm 107:14")]),
+    ("oh that men would praise the Lord for his goodness, and for his wonderful works to the children of men", [("quote", "Psalm 107:15")]),
+]
+# The refrain said with nothing pointing at one of its four verses: nothing goes up.
+S["same-psalm107-refrain-uncited"] = [
+    ("church, oh that men would praise the Lord for his goodness, and for his wonderful works to the children of men", []),
+]
+S["same-proverbs14-cited"] = [
+    ("Proverbs fourteen twelve", [("citation", "Proverbs 14:12")]),
+    ("there is a way which seemeth right unto a man, but the end thereof are the ways of death", [("quote", "Proverbs 14:12")]),
+]
+# Proverbs 14:12 and 16:25 differ by one word ("which"/"that"): uncited, neither is sure.
+S["same-proverbs-uncited"] = [
+    ("there is a way that seemeth right unto a man, but the end thereof are the ways of death", []),
+]
+# Psalm 42:11 is nearly Psalm 43:5: the citation decides.
+S["same-psalm42-11-cited"] = [
+    ("Psalm forty two verse eleven", [("citation", "Psalm 42:11")]),
+    ("why art thou cast down, O my soul? and why art thou disquieted within me? hope thou in God: for I shall yet praise him, who is the health of my countenance, and my God", [("quote", "Psalm 42:11")]),
+]
+# ── 12. Wording shared across books ──────────────────────────────────────────────────
+# "The just shall live by faith": Habakkuk 2:4, Romans 1:17, Galatians 3:11, Hebrews 10:38.
+S["cross-hebrews10-reading"] = [
+    ("Hebrews chapter ten verse thirty six", [("citation", "Hebrews 10:36")]),
+    ("for ye have need of patience, that, after ye have done the will of God, ye might receive the promise", [("quote", "Hebrews 10:36")]),
+    ("for yet a little while, and he that shall come will come, and will not tarry", [("quote", "Hebrews 10:37")]),
+    ("now the just shall live by faith: but if any man draw back, my soul shall have no pleasure in him", [("quote", "Hebrews 10:38")]),
+]
+S["cross-romans117-cited"] = [
+    ("Romans one seventeen", [("citation", "Romans 1:17")]),
+    ("for therein is the righteousness of God revealed from faith to faith: as it is written, the just shall live by faith", [("quote", "Romans 1:17")]),
+]
+S["cross-just-live-uncited"] = [
+    ("and I want you to know this morning that the just shall live by faith", []),
+]
+# Acts 2:17 quotes Joel 2:28.
+S["cross-acts217-cited"] = [
+    ("Acts chapter two verse seventeen", [("citation", "Acts 2:17")]),
+    ("and it shall come to pass in the last days, saith God, I will pour out of my Spirit upon all flesh: and your sons and your daughters shall prophesy", [("quote", "Acts 2:17")]),
+]
+S["cross-joel228-uncited"] = [
+    ("and it shall come to pass afterward, that I will pour out my spirit upon all flesh; and your sons and your daughters shall prophesy, your old men shall dream dreams, your young men shall see visions", [("quote", "Joel 2:28")]),
+]
+# Matthew 24:35, Mark 13:31 and Luke 21:33 are word for word.
+S["cross-heaven-earth-uncited"] = [
+    ("heaven and earth shall pass away, but my words shall not pass away", []),
+]
+S["cross-hebrews13-cited"] = [
+    ("Hebrews thirteen verse five", [("citation", "Hebrews 13:5")]),
+    ("let your conversation be without covetousness; and be content with such things as ye have: for he hath said, I will never leave thee, nor forsake thee", [("quote", "Hebrews 13:5")]),
+]
+# Deuteronomy 31:6 and Joshua 1:5 end alike.
+S["cross-forsake-uncited"] = [
+    ("he will not fail thee, nor forsake thee", []),
+]
+# Micah 4:3 is nearly Isaiah 2:4.
+S["cross-micah43-cited"] = [
+    ("Micah four three", [("citation", "Micah 4:3")]),
+    ("and they shall beat their swords into plowshares, and their spears into pruninghooks: nation shall not lift up a sword against nation, neither shall they learn war any more", [("quote", "Micah 4:3")]),
+]
 S_LANG = {"num-spanish": "es", "num-french": "fr", "num-portuguese": "pt", "num-german": "de", "num-spanish-mixed": "es"}
 
 def answer(kind, ref, at):

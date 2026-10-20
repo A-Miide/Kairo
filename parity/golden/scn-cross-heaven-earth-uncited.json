@@ -1,0 +1,37 @@
+{
+ "source": "scn-cross-heaven-earth-uncited",
+ "kind": "scenario",
+ "lang": "en",
+ "songLive": false,
+ "cues": [
+  {
+   "text": "heaven and earth shall pass away, but my words shall not pass away",
+   "audioMs": 0
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "heaven and earth shall",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "heaven and earth shall pass away, but my",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "heaven and earth shall pass away, but my words shall not pass",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "heaven and earth shall pass away, but my words shall not pass away",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

@@ -1,0 +1,67 @@
+{
+ "source": "scn-cross-joel228-uncited",
+ "kind": "scenario",
+ "lang": "en",
+ "songLive": false,
+ "cues": [
+  {
+   "text": "and it shall come to pass afterward, that I will pour out my spirit upon all flesh; and your sons and your daughters shall prophesy, your old men shall dream dreams, your young men shall see visions",
+   "audioMs": 0
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "and it shall come",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "and it shall come to pass afterward, that",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "and it shall come to pass afterward, that I will pour out",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "and it shall come to pass afterward, that I will pour out my spirit upon all",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "and it shall come to pass afterward, that I will pour out my spirit upon all flesh; and your sons",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "and it shall come to pass afterward, that I will pour out my spirit upon all flesh; and your sons and your daughters shall",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "and it shall come to pass afterward, that I will pour out my spirit upon all flesh; and your sons and your daughters shall prophesy, your old men",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "and it shall come to pass afterward, that I will pour out my spirit upon all flesh; and your sons and your daughters shall prophesy, your old men shall dream dreams, your",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "and it shall come to pass afterward, that I will pour out my spirit upon all flesh; and your sons and your daughters shall prophesy, your old men shall dream dreams, your young men shall see",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "and it shall come to pass afterward, that I will pour out my spirit upon all flesh; and your sons and your daughters shall prophesy, your old men shall dream dreams, your young men shall see visions",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

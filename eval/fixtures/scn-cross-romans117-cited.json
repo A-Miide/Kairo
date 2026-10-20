@@ -1,0 +1,24 @@
+{
+ "videoId": "scn-cross-romans117-cited",
+ "title": "Scenario: cross-romans117-cited",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "Romans one seventeen"
+  },
+  {
+   "startMs": 2100,
+   "text": "for therein is the righteousness of God revealed from faith to faith: as it is written, the just shall live by faith"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Romans",
+   "chapter": 1,
+   "kind": "citation",
+   "startMs": 0,
+   "verse": 17
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

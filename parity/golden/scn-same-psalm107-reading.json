@@ -1,0 +1,114 @@
+{
+ "source": "scn-same-psalm107-reading",
+ "kind": "scenario",
+ "lang": "en",
+ "songLive": false,
+ "cues": [
+  {
+   "text": "Psalm one hundred and seven verse thirteen",
+   "audioMs": 0
+  },
+  {
+   "text": "then they cried unto the Lord in their trouble, and he saved them out of their distresses",
+   "audioMs": 3700
+  },
+  {
+   "text": "he brought them out of darkness and the shadow of death, and brake their bands in sunder",
+   "audioMs": 11400
+  },
+  {
+   "text": "oh that men would praise the Lord for his goodness, and for his wonderful works to the children of men",
+   "audioMs": 19100
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "Psalm one hundred and",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "Psalm one hundred and seven verse thirteen",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "then they cried unto",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "then they cried unto the Lord in their",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "then they cried unto the Lord in their trouble, and he saved",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "then they cried unto the Lord in their trouble, and he saved them out of their",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "then they cried unto the Lord in their trouble, and he saved them out of their distresses",
+   "isFinal": true
+  },
+  {
+   "cue": 2,
+   "text": "he brought them out",
+   "isFinal": false
+  },
+  {
+   "cue": 2,
+   "text": "he brought them out of darkness and the",
+   "isFinal": false
+  },
+  {
+   "cue": 2,
+   "text": "he brought them out of darkness and the shadow of death, and",
+   "isFinal": false
+  },
+  {
+   "cue": 2,
+   "text": "he brought them out of darkness and the shadow of death, and brake their bands in",
+   "isFinal": false
+  },
+  {
+   "cue": 2,
+   "text": "he brought them out of darkness and the shadow of death, and brake their bands in sunder",
+   "isFinal": true
+  },
+  {
+   "cue": 3,
+   "text": "oh that men would",
+   "isFinal": false
+  },
+  {
+   "cue": 3,
+   "text": "oh that men would praise the Lord for",
+   "isFinal": false
+  },
+  {
+   "cue": 3,
+   "text": "oh that men would praise the Lord for his goodness, and for",
+   "isFinal": false
+  },
+  {
+   "cue": 3,
+   "text": "oh that men would praise the Lord for his goodness, and for his wonderful works to",
+   "isFinal": false
+  },
+  {
+   "cue": 3,
+   "text": "oh that men would praise the Lord for his goodness, and for his wonderful works to the children of men",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

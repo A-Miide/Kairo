@@ -1,0 +1,61 @@
+{
+ "source": "scn-cross-hebrews13-cited",
+ "kind": "scenario",
+ "lang": "en",
+ "songLive": false,
+ "cues": [
+  {
+   "text": "Hebrews thirteen verse five",
+   "audioMs": 0
+  },
+  {
+   "text": "let your conversation be without covetousness; and be content with such things as ye have: for he hath said, I will never leave thee, nor forsake thee",
+   "audioMs": 2500
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "Hebrews thirteen verse five",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "let your conversation be",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "let your conversation be without covetousness; and be",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "let your conversation be without covetousness; and be content with such things",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "let your conversation be without covetousness; and be content with such things as ye have: for",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "let your conversation be without covetousness; and be content with such things as ye have: for he hath said, I",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "let your conversation be without covetousness; and be content with such things as ye have: for he hath said, I will never leave thee,",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "let your conversation be without covetousness; and be content with such things as ye have: for he hath said, I will never leave thee, nor forsake thee",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}
