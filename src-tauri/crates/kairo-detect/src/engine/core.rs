@@ -430,7 +430,7 @@ impl Engine {
 
         // The slower text searches: on every final while a range is being
         // read (verse transitions must feel immediate), else per sentence.
-        let expensive = if self.range.current.is_some() {
+        let expensive = if self.range.current.is_some() && !self.range.soft {
             self.t.sentence.flush();
             Some(text.clone())
         } else if seg.speech_final {
@@ -468,7 +468,7 @@ impl Engine {
         if verses.len() > 1 {
             self.set_range(verses.clone(), now);
         } else {
-            self.clear_range(now);
+            self.set_soft_range(first, now);   // the next verses held in case they're read on
         }
         let r = self.r(first);
         self.note_cited(r.book, Some(r.chapter), Some(r.verse), true, now);

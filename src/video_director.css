@@ -48,8 +48,7 @@
 #video-director-btn.vd-armed { color: var(--orange); }
 
 /* ── Director mode screen. Every rule is under body.video-director. ───────── */
-/* Possible Matches is not in the layout here: it opens from the Scripture header (Matches). */
-body.video-director .rs-candidates,
+/* Possible Matches and Message sit in the Scripture column (see the end of this file); the rest of the basic screen's side panels are not here. */
 body.video-director #topic-chips-section,
 body.video-director .ls-status-bar,
 body.video-director .rs-preview-output-row,
@@ -114,8 +113,10 @@ body.video-director .center-stage { padding: 8px 12px 10px; gap: 8px; overflow: 
 .vd-mini-primary { background: var(--brand); border-color: transparent; color: #fff; }
 
 /* Top half: three columns with splits. Bottom half below, with its own split. */
-.vd-main { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; }
-.vd-top { flex: 1 1 0; min-height: 140px; display: grid; grid-template-columns: minmax(0, 14fr) 8px minmax(0, 60fr) 8px minmax(0, 26fr); min-width: 0; }
+.vd-main { flex: 1 1 0; min-height: 0; display: flex; flex-direction: row; }
+.vd-left { flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.vd-main > .vd-section-sends { flex: 0 0 300px; min-width: 0; }
+.vd-top { flex: 1 1 0; min-height: 140px; display: grid; grid-template-columns: minmax(0, 22fr) 8px minmax(0, 78fr); min-width: 0; }
 .vd-section { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: rgba(255,255,255,0.015); }
 .vd-section-head { display: flex; align-items: center; gap: 8px; min-height: 22px; flex-wrap: wrap; }
 .vd-section-head .vd-label { margin-right: auto; }
@@ -402,7 +403,7 @@ body.video-director #live-queue-section .cs-section-label { flex-shrink: 1; min-
 
 /* Media bin grid: equal tiles that fill the width, scrolling when there are more than fit. */
 .vd-media-body { display: block; overflow-x: hidden; overflow-y: auto; }
-.vd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--vd-tile, 120px), 1fr)); gap: 8px; align-content: start; }
+.vd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--vd-tile, 150px), 1fr)); gap: 8px; align-content: start; }
 .vd-grid .svc-slide { width: auto; min-width: 0; margin: 0; padding: 4px; gap: 0; }
 .vd-grid .svc-slide .svc-slide-preview { width: 100%; padding: 0; }
 .vd-grid .media-card { width: auto; min-width: 0; flex: none; }
@@ -418,8 +419,6 @@ body.video-director #clear-locked-btn { display: none !important; }
 .vd-transbar .vd-take-main:hover:not(:disabled) { background: var(--brand-hover); color: #fff; }
 .vd-transbar .vd-take-main:disabled { background: var(--bg-hover); color: var(--text-3); }
 .vd-seg2 { display: flex; padding: 2px; gap: 0; border-radius: 8px; background: rgba(255,255,255,0.05); }
-.vd-seg-label { align-self: center; padding: 0 8px 0 6px; font-size: 10.5px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--text-3); }
-.vd-band.is-beside .vd-seg2 .vd-seg-label { grid-column: 1 / -1; padding: 2px 6px; }
 .vd-seg2 .vd-take { height: 28px; min-width: 48px; border-color: transparent; background: transparent; }
 .vd-seg2 .vd-take.is-current { background: var(--bg-hover); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.35); }
 .vd-tuck { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
@@ -556,7 +555,9 @@ body.video-director #live-queue-section .cs-section-header { display: none !impo
 .vd-danger { color: var(--red); }
 .vd-sends-head { min-width: 0; }
 .vd-sends-head > * { min-width: 0; }
-.vd-sends-head > select, .vd-sends-head > .cs-theme-btn, .vd-sends-head > .vd-hbtn, .vd-sends-head > #cs-auto-badge { flex: 0 0 auto; }
+.vd-sends-head > .cs-theme-btn, .vd-sends-head > .vd-hbtn { flex: 0 0 auto; }
+/* The Bible select gives way before the icons do (the Theme icon was pushed off the end of a narrow column). */
+.vd-sends-head > select { flex: 0 1 auto; min-width: 54px; }
 .vd-transbar .vd-dur { width: auto; }
 .vd-dur input { flex: 0 0 56px; }
 .vd-band.is-beside .vd-transbar { width: var(--vd-colw, 132px); flex: 0 0 var(--vd-colw, 132px); }
@@ -564,21 +565,6 @@ body.video-director #live-queue-section .cs-section-header { display: none !impo
 body.video-director #current-display-card .is-live .lvc-ref::before { content: none !important; }
 body.video-director #current-display-card .is-live .lvc-send-btn { display: none; }
 
-/* ── Auto-send switch (the Scripture sends header). Brand colour when on; never red. ── */
-body.video-director #cs-auto-badge.vd-auto-switch { cursor: pointer; height: 28px; padding: 0 10px 0 8px; gap: 7px; margin-left: 0; font-size: 10px; color: var(--text-1); border-color: var(--border-md); background: transparent; }
-body.video-director #cs-auto-badge.vd-auto-switch:hover { background: var(--bg-hover); }
-body.video-director #cs-auto-badge.vd-auto-switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-body.video-director #cs-auto-badge.vd-auto-switch .cs-auto-dot { position: relative; width: 22px; height: 12px; border-radius: 6px; background: var(--accent); animation: none; flex: 0 0 auto; }
-body.video-director #cs-auto-badge.vd-auto-switch .cs-auto-dot::after { content: ''; position: absolute; top: 2px; left: 12px; width: 8px; height: 8px; border-radius: 50%; background: #fff; transition: left 0.12s; }
-body.video-director #cs-auto-badge.vd-auto-switch.off .cs-auto-dot { background: var(--border-md); }
-body.video-director #cs-auto-badge.vd-auto-switch.off .cs-auto-dot::after { left: 2px; }
-body.video-director #cs-auto-badge.vd-auto-switch #cs-auto-badge-label { font-size: 0; }
-body.video-director #cs-auto-badge.vd-auto-switch #cs-auto-badge-label::after { content: 'Auto-send on'; font-size: 10px; letter-spacing: 0.06em; }
-body.video-director #cs-auto-badge.vd-auto-switch.off #cs-auto-badge-label::after { content: 'Auto-send off'; color: var(--text-3); }
-@container (max-width: 399px) {
-  body.video-director #cs-auto-badge.vd-auto-switch #cs-auto-badge-label::after { content: 'Auto'; }
-  body.video-director #cs-auto-badge.vd-auto-switch.off #cs-auto-badge-label::after { content: 'Auto off'; }
-}
 /* The Scripture group keeps its title: short ("Scripture") from 300px, none below. */
 @container (min-width: 300px) and (max-width: 469px) { .vd-sends-head.vd-gh > .vd-sends-title { font-size: 0; letter-spacing: 0; } .vd-sends-head.vd-gh > .vd-sends-title::after { content: 'Scripture'; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; } }
 @container (max-width: 299px) { .vd-sends-head.vd-gh > .vd-sends-title { display: none !important; } }
@@ -586,7 +572,7 @@ body.video-director #cs-auto-badge.vd-auto-switch.off #cs-auto-badge-label::afte
 /* ── Looks: the screen theme of a Look ── */
 
 /* ── Transition cluster: one centred row. Cut | Fade (+ length) · Send to screen · Fade to black, Undo ── */
-.vd-band .vd-cluster { display: grid; grid-template-columns: minmax(0, 1fr) var(--vd-sendw, 240px) minmax(0, 1fr); grid-template-areas: "left send right"; align-items: center; justify-content: center; column-gap: 8px; row-gap: 8px; width: 100%; }
+.vd-band .vd-cluster { display: grid; grid-template-columns: var(--vd-sendw, 240px) auto; grid-template-areas: "send right"; align-items: center; justify-content: center; column-gap: 8px; row-gap: 8px; width: 100%; }
 .vd-band .vd-cluster > * { flex: none; }
 .vd-band .vd-cl-left { grid-area: left; justify-self: end; display: flex; min-width: 0; }
 .vd-band .vd-cl-right { grid-area: right; justify-self: start; display: flex; gap: 6px; min-width: 0; }
@@ -697,7 +683,7 @@ body.video-director #cs-auto-badge.vd-auto-switch.off #cs-auto-badge-label::afte
 .vd-looks-chip[hidden] { display: none; }
 
 /* ── Staged slide / media tile: the orange Preview outline. The live one keeps its own live look. ── */
-body.video-director .svc-slide.is-staged, body.video-director .media-card.is-staged { outline: 2px solid var(--accent); outline-offset: -1px; box-shadow: 0 0 0 1px var(--accent); border-color: var(--accent); }
+body.video-director .svc-slide.is-staged, body.video-director .media-card.is-staged, body.video-director .timer-card.is-staged .timer-card-preview { outline: 2px solid var(--accent); outline-offset: -1px; box-shadow: 0 0 0 1px var(--accent); border-color: var(--accent); }
 
 /* ── Send: a quiet outline until something is staged, then the solid brand colour with a glow ring. ── */
 .vd-band .vd-cluster .vd-send { position: relative; overflow: hidden; background: transparent; border: 1px solid var(--border-md); color: var(--text-3); opacity: 1; filter: none; font-size: 14px; font-weight: 700; }
@@ -780,7 +766,7 @@ body.video-director .svc-slide.live.is-staged, body.video-director .media-card.i
 
 /* The Timer screen shown in the bottom-right area (the dock's Timer view): fills it and scrolls. */
 .vd-media-body #timer-view.vd-in-dock { display: block; position: static; width: 100%; height: 100%; overflow: auto; background: transparent; padding: 0; border: 0; }
-.vd-media-body #timer-view.vd-in-dock .svc-header { position: sticky; top: 0; z-index: 1; background: var(--bg); }
+.vd-media-body #timer-view.vd-in-dock .svc-header { position: sticky; top: 0; z-index: 6; background: var(--bg); }   /* above the cards' own labels */
 
 /* A tile that is not on air or on Preview: its last picture, or a camera silhouette until it has one. */
 .vg-tile .vg-still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.85; }
@@ -815,7 +801,7 @@ body.video-director .svc-slide.live.is-staged, body.video-director .media-card.i
 .vd-grid.is-empty .vd-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; font-size: 12px; text-align: center; }
 
 /* Fade to black in the Displays header: black while the outputs are black. */
-.vd-gh-ctl .vd-ftb.is-on { background: #000; color: #fff; border-color: var(--red, #e5484d); }
+.vd-ftb.is-on { background: #000; color: #fff; border-color: var(--red, #e5484d); }
 
 /* Clear (Displays header): one kind of content at a time. */
 .vd-clear-menu { display: flex; flex-direction: column; gap: 4px; padding: 4px 0; }
@@ -831,3 +817,62 @@ body.video-director .svc-slide.live.is-staged, body.video-director .media-card.i
 
 /* No camera name over Preview or Output (owner, 2026-10-18): the pictures are clean, as on the outputs. */
 .vd-frame .vd-frame-name { display: none; }
+
+/* The dock's Slides / Timer / Media Bin choice, lit in the top bar (a ring, so Bible's filled pill still says where you are). */
+body.video-director .tb-studio-btn.vd-dock-lit { color: var(--brand); border-color: var(--brand-dim); box-shadow: inset 0 0 0 1px var(--brand-dim); }
+/* The basic screen's red "shelf showing" state means nothing here: only the dock's own choice lights it. */
+body.video-director #media-bin-toggle-btn.active:not(.vd-dock-lit) { color: var(--text-2); border-color: var(--border-md); background: var(--bg-hover); }
+
+.vd-band .vd-cl-left:empty { display: none; }
+
+/* Message and Possible Matches live in the Scripture column, as on the basic screen. */
+body.video-director .vd-section-sends #monitor-message-bar { flex: 0 0 auto; margin: 0; }
+body.video-director .vd-section-sends .rs-candidates { flex: 0 1 220px; min-height: 110px; margin: 0; display: flex !important; flex-direction: column; }
+
+/* The Timer's cards follow the same size slider as the Slides and Media tiles: about four across at the app's default size. */
+.vd-media-body #timer-view.vd-in-dock .timer-grid { grid-template-columns: repeat(auto-fill, minmax(var(--vd-tile, 150px), 1fr)); gap: 8px; }
+/* At about four across the chips get little room: one row, smaller type, and a card with no time set shows only its name. */
+.vd-media-body #timer-view.vd-in-dock .timer-card-foot { left: 6px; right: 6px; bottom: 6px; gap: 4px; }
+.vd-media-body #timer-view.vd-in-dock .timer-card-label, .vd-media-body #timer-view.vd-in-dock .timer-card-readout { font-size: 10.5px; padding: 1px 6px; }
+.vd-media-body #timer-view.vd-in-dock .timer-card-readout.is-unset { display: none; }
+
+/* Inputs footer: Ready check on the left, Manage at the right end (owner, 2026-10-19). */
+.vd-section-foot > :last-child { margin-left: auto; }
+
+/* Button system: "+ Add" is an ordinary secondary action, not a "look here" one; only Ready check (when something is not ready) is outlined orange. */
+.vd-add { background: transparent; border-color: var(--border-md); color: var(--text-2); }
+.vd-add:hover { background: var(--btn-hover); color: var(--text); border-color: var(--btn-line-hover); }
+
+/* Layer strip in each screen's header: which layers the screen carries; a click drops one from Preview or clears it on the Output. */
+.vd-layers { display: flex; gap: 2px; margin-left: auto; flex: 0 0 auto; }
+.vd-layer { width: 24px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--text-3, #6b6b6b); opacity: 0.55; cursor: default; }
+.vd-layer.is-lit { color: var(--text-1, #fff); opacity: 1; }
+.vd-screen-pvw .vd-layer.is-lit { color: var(--accent); }
+.vd-screen-pgm .vd-layer.is-lit { color: var(--red); }
+.vd-layer:not(:disabled) { cursor: pointer; }
+.vd-layer:not(:disabled):hover { background: var(--btn-hover, rgba(255,255,255,0.08)); border-color: var(--btn-line-hover, rgba(255,255,255,0.16)); }
+.vd-layer:disabled { pointer-events: auto; }
+
+.vd-icon-btn { padding: 0 8px; min-width: 30px; display: inline-flex; align-items: center; justify-content: center; }
+
+.vd-layout-toggle.is-on { color: var(--accent); border-color: var(--accent); }
+
+.vd-input-toggle.is-on { color: var(--accent); border-color: var(--accent); }
+.vd-inputs-off { opacity: 0.45; }
+
+.vd-looks-btn.is-active { color: var(--accent); border-color: var(--accent); }
+.vd-lk-switch { margin-left: auto; margin-right: 10px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border-md); background: transparent; color: var(--text-2); font-weight: 600; cursor: pointer; }
+.vd-lk-switch.is-on { color: var(--accent); border-color: var(--accent); }
+
+.vd-tgl { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.vd-tgl-text { font-size: 11px; font-weight: 600; color: var(--text-2); }
+.vd-lk-switch { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; margin-right: 14px; cursor: pointer; border: 0; background: transparent; padding: 0; }
+.vd-lk-switch-text { font-weight: 600; color: var(--text-2); }
+
+.vd-lk-footer { display: flex; justify-content: flex-end; padding: 12px 20px 16px; border-top: 1px solid var(--border); }
+button.vd-lk-ic { background: transparent; border: 0; padding: 2px; border-radius: 4px; cursor: pointer; }
+button.vd-lk-ic:hover { opacity: 1; background: var(--btn-hover, rgba(255,255,255,0.08)); }
+.vd-screen-head .vd-ftb { margin-left: auto; }
+.vd-screen-head .vd-layers + .vd-ftb { margin-left: 6px; }
+
+.vd-layer[hidden] { display: none; }

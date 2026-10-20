@@ -364,7 +364,10 @@
       el.decoding = 'async';
       el.draggable = false;
     }
-    el.src = authed(m.src);
+    // opts.small: the operator's own tiles and previews ask for a copy no wider than they draw
+    // (client_common.js kairoSmall); the output screens keep the full picture.
+    const drawn = (m.scale === 'custom' && m.customBounds ? m.customBounds.w : w) * (opts.scale || 1) * (window.devicePixelRatio || 1);
+    el.src = authed(!isVideo && opts.small && window.kairoSmall ? window.kairoSmall(m.src, Math.ceil(drawn)) : m.src);
     const fit = m.scale === 'fill' ? 'cover' : m.scale === 'stretch' ? 'fill' : 'contain';
     let css = `position:absolute;left:0;top:0;width:${w}px;height:${h}px;object-fit:${fit};object-position:${OBJ_POS[m.align] || 'center'};pointer-events:none;`;
     if (m.scale === 'custom' && m.customBounds) {

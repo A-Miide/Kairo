@@ -25,7 +25,7 @@
 // (sendVerseToServer is wrapped while the mode is on) and TAKE sends them to
 // Program; verses the detection engine sends by itself go live exactly as they
 // do without the mode, and a verse they held back (Auto-send off) waits on the Detected chip.
-// Slide and media clicks are staged too (a double-click sends at once); overlays are not. With a
+// Slide, media and camera clicks are staged too (a double-click sends at once); overlays are not (they live in Settings and are on, on Preview and the Output, as soon as they are switched on). With a
 // Slides/Songs/Media sheet open over the Director (Preview hidden), they send at once as on the normal screen.
 'use strict';
 (function () {
@@ -70,11 +70,22 @@
     frame.style.width = '1920px';
     frame.style.height = '1080px';
     box.appendChild(frame);
-    if (kind === 'pvw') frame.addEventListener('load', () => syncPreviewFrame());   // a (re)loaded Preview picks its state back up
+    if (kind === 'pvw') frame.addEventListener('load', () => { resetPvwCache(); syncPreviewFrame(); });   // a (re)loaded Preview picks its state back up
     const name = vEl('span', 'vd-frame-name');
     box.appendChild(name);
     if (kind === 'pgm') box.appendChild(vEl('span', 'vd-live-badge', 'Live'));
-    const ro = new ResizeObserver(() => { frame.style.transform = `scale(${box.clientWidth / 1920})`; });
+    // The page inside lays itself out as a full 1920×1080 screen scaled to whatever size the frame is
+    // (display.html's #kroot), so the frame can be laid out near its drawn size: twice it for a crisp
+    // downscale, at most the full 1920. A frame laid out at 1920×1080 and shrunk from out here costs a
+    // full-size drawing buffer (~70 MB each) however small it is drawn.
+    const ro = new ResizeObserver(() => {
+      const drawn = box.clientWidth;
+      if (!drawn) return;
+      const lw = Math.min(1920, Math.max(640, Math.round(drawn * 2)));
+      frame.style.width = `${lw}px`;
+      frame.style.height = `${Math.round(lw * 9 / 16)}px`;
+      frame.style.transform = `scale(${drawn / lw})`;
+    });
     ro.observe(box);
     D.frames[kind] = { box, frame, name, ro };
     // Drop an input on either screen to send it there; drop a slide on Preview to stage it.
@@ -105,7 +116,27 @@
     f.frame.title = kind === 'pvw' ? 'Preview' : 'Output';
     f.frame.src = src;
   }
+  // Preview is only told what changed: the same message again would be drawn again, with its fade, which showed as
+  // flicker (owner, 2026-10-19). Each kind of content keeps the last thing sent; a reloaded Preview starts over.
+  const lastPvw = {};
+  const resetPvwCache = () => { for (const k of Object.keys(lastPvw)) delete lastPvw[k]; };
+  function pvwDedupe(msg) {
+    const keys = { 'vd-source': 'src', 'vd-layers': 'layers', 'vd-frame': 'frame', overlays: 'overlays', detection: 'content', media: 'media', 'timer-slide': 'timer' };
+    if (msg.type === 'clear') {
+      if (lastPvw.content === 'CLEAR' && lastPvw.media === 'CLEAR') return true;
+      lastPvw.content = 'CLEAR'; lastPvw.media = 'CLEAR';
+      return false;
+    }
+    let key = keys[msg.type] || null;
+    if (msg.type === 'clear-layer') key = msg.layer === 'media' ? 'media' : (msg.layer === 'slide' || msg.layer === 'all') ? 'content' : null;
+    if (!key) return false;
+    const sig = msg.type === 'clear-layer' ? 'CLEAR' : msg.type === 'timer-slide' && msg.clear ? 'CLEAR' : JSON.stringify(msg);
+    if (lastPvw[key] === sig) return true;
+    lastPvw[key] = sig;
+    return false;
+  }
   function post(kind, msg) {
+    if (kind === 'pvw' && msg && pvwDedupe(msg)) return;
     const f = D.frames[kind];
     try { f && f.frame.contentWindow && f.frame.contentWindow.postMessage({ kairoPreview: true, msg }, location.origin); } catch {}
   }
@@ -114,14 +145,62 @@
   // staged it shows what the Output shows (the live layout frame, slide or verse and the live input).
   const liveFrameTheme = () => themeById(frameMap()[PRIMARY_DISPLAY]);
   const hasZone = (t) => !!(t && (t.layers || []).some(l => l && l.type === 'videozone'));
-  function pvwFrameTheme() { return D.pendingLook ? (D.pendingLook.themeId ? themeById(D.pendingLook.themeId) : null) : liveFrameTheme(); }
+  // What a Layout has room for (owner, 2026-10-19): a Layout constrains what shows, and a kind it has no place
+  // for does not show at all. The countdown needs a content zone (a lower third has none); video needs a video zone.
+  // `which`: 'pvw' (the Layout on Preview) or 'pgm' (the one on the Output). No Layout: everything fits.
+  const hasContentZone = (t) => !!(t && (t.layers || []).some(l => l && l.type === 'contentzone' && l.visible !== false));
+  function layoutAllows(kind, which) {
+    if (!D.active) return true;
+    const t = which === 'pgm' ? liveFrameTheme() : pvwFrameTheme();
+    if (!t) return true;
+    const zoneFor = (k) => (t.layers || []).some(l => l && l.visible !== false && (l.type === k + 'zone' || l.type === 'contentzone'));
+    if (kind === 'video') return hasZone(t);
+    if (kind === 'timer') return zoneFor('timer');
+    if (kind === 'media') return zoneFor('media');
+    // Words (slides): a Layout that styles the verse text itself (a lower third) needs no area for them.
+    if (kind === 'words') return zoneFor('slide') || (t.layers || []).some(l => l && l.visible !== false && (l.type === 'text' || l.type === 'pp') && l.binding === 'verse');
+    return true;
+  }
+  // Why something did not go to Preview: the Layout has no area for it.
+  function layoutNote(kind) {
+    const names = { media: 'media', words: 'slides', timer: 'the timer' };
+    try { window.kairoProblem?.(`This Layout has no area for ${names[kind] || kind}. Pick another Layout or add one in Theme Studio.`, 'vd-layout'); } catch {}
+    setTimeout(() => { try { window.kairoProblemCleared?.('vd-layout'); } catch {} }, 6000);
+  }
+  // Clicking something turns its layer on (owner, 2026-10-19, as in ProPresenter): a Layout with that layer off
+  // gets it on for this Preview, and the Send puts it on the Output too. A kind the Layout has no area for
+  // stays blocked (layoutAllows): that is the Layout's rule, not an off switch.
+  const effLayers = (look) => ({ ...(look.layers || {}), ...(D.layerOn || {}) });
+  function turnOnLayer(kind) {
+    const look = D.pendingLook;
+    if (!D.active || !look || !look.layers || look.layers[kind] !== false || (D.layerOn && D.layerOn[kind])) return;
+    D.layerOn = { ...(D.layerOn || {}), [kind]: true };
+    post('pvw', { type: 'vd-layers', layers: effLayers(look) });
+  }
+  // The layers turned on this way go on the Output with the Send.
+  function applyLayerOn() {
+    const on = D.layerOn || {};
+    const keys = Object.keys(on);
+    if (!keys.length) return;
+    const changed = [];
+    for (const o of layoutTargets()) for (const k of keys) { if (k === 'video' || !o.monitor) setOutputLayerIf(o.id, k, true, changed); }
+    if (changed.length) recordChanges({ layers: changed });
+  }
+  function pvwFrameTheme() { return D.noLayoutPending ? null : D.pendingLook ? (D.pendingLook.themeId ? themeById(D.pendingLook.themeId) : null) : liveFrameTheme(); }
   function syncPreviewFrame() {
     const ps = programState();
-    const src = D.previewId != null ? D.previewId : (ps.mixed ? null : (ps.id || null));
+    const blank = D.pvwBlank && !D.staged && !D.timer && D.previewId == null;   // Preview was cleared: it shows nothing until something goes in
+    const src = D.previewId != null ? D.previewId : (blank || ps.mixed ? null : (ps.id || null));
     post('pvw', { type: 'vd-source', sourceId: src });
-    post('pvw', { type: 'vd-layers', layers: D.pendingLook ? D.pendingLook.layers : null });
+    post('pvw', { type: 'vd-layers', layers: D.pendingLook ? effLayers(D.pendingLook) : null });
     post('pvw', { type: 'vd-frame', look: pvwFrameTheme() });
     if (liveOverlays) post('pvw', liveOverlays);
+    if (blank) {
+      post('pvw', { type: 'clear' });
+      post('pvw', { type: 'clear-layer', layer: 'media' });
+      post('pvw', { type: 'timer-slide', target: 'viewer', clear: true });
+      return;
+    }
     if (D.staged && D.staged.media) {
       const m = D.staged.media;
       post('pvw', { type: 'clear' });
@@ -136,6 +215,14 @@
       if (D.liveMedia) post('pvw', { type: 'media', target: 'viewer', src: D.liveMedia.src, kind: D.liveMedia.kind, fit: D.liveMedia.fit });
       else post('pvw', { type: 'clear-layer', layer: 'media' });
     }
+    // The Bible supersedes everything but the overlays: a verse the Output has is on Preview above what is staged.
+    if (D.staged && (D.staged.slide || D.staged.media) && D.liveMsg && isBibleMsg(D.liveMsg)) {
+      post('pvw', { type: 'detection', target: 'viewer', verses: D.liveMsg.verses, look: D.liveMsg.look || null, next: D.liveMsg.next });
+    }
+    // The timer is its own layer: the one staged (a countdown that has not started), else the one on the Output.
+    if (D.timer) post('pvw', D.timer.body);
+    else if (D.liveTimer) post('pvw', D.liveTimer);
+    else post('pvw', { type: 'timer-slide', target: 'viewer', clear: true });
   }
   // What the Output is showing, from the server's broadcasts (app.js hands them over).
   // The overlays live on the Output (logo, lower-thirds), kept even while Director mode is off so
@@ -144,14 +231,19 @@
   function onServerMessage(msg) {
     if (msg && msg.type === 'overlays') { liveOverlays = msg; if (D.active) post('pvw', msg); return; }
     if (!D.active || !msg) return;
+    if (msg.type === 'timer-slide') { D.liveTimer = msg.clear ? null : msg; if (!D.timer) post('pvw', msg); refresh(); return; }
+    // The countdown's ticks: Preview counts down with the Output when no timer is staged.
+    if (msg.type === 'action' && D.liveTimer && !D.timer) { post('pvw', msg); return; }
     let changed = false;
+    if (msg.type === 'detection' && msg.target === 'viewer' && msg.verses && msg.verses.length && !msg.retranslated && isBibleMsg(msg)) D.pvwBlank = false;   // the Bible supersedes: a verse is on Preview
     if (msg.type === 'detection' && msg.target === 'viewer' && msg.verses && msg.verses.length && !msg.retranslated) { D.liveMsg = msg; D.outSeq++; changed = true; showVerseOverLayout(msg); }
     else if (msg.type === 'media' && msg.target === 'viewer') { D.liveMedia = msg; changed = true; }
     else if (msg.type === 'clear-layer') {
       if (msg.layer === 'slide' || msg.layer === 'all') { D.liveMsg = null; D.outSeq++; changed = true; }
       if (msg.layer === 'media' || msg.layer === 'all') { D.liveMedia = null; changed = true; }
+      if (msg.layer === 'timer' || msg.layer === 'all') { D.liveTimer = null; if (!D.timer) post('pvw', { type: 'timer-slide', target: 'viewer', clear: true }); refresh(); }
     }
-    if (changed && !D.staged) syncPreviewFrame();
+    if (changed) { syncPreviewFrame(); refresh(); }
   }
 
   // ── Staging ──────────────────────────────────────────────────────────────
@@ -198,18 +290,149 @@
     else if (fromDetection) showInViewerNow([verse], 'direct', 1.0);   // as normal mode's Send to Air
   }
   function stage(verse, look, opts = {}) {
+    D.pvwBlank = false;
     D.staged = { verse, look: look || null, fromDetection: !!opts.fromDetection };
     D.detected = null;
     syncPreviewFrame();
     refresh();
   }
+  // A timer staged from the Timer view: Preview shows it, Send starts it.
+  function stageTimer(seg, body) {
+    if (!D.active || !body || !layoutAllows('timer', 'pvw')) return false;
+    D.pvwBlank = false;
+    D.timer = { seg, body };
+    turnOnLayer('timer');
+    syncPreviewFrame(); refresh();
+    return true;
+  }
+  // ── Layer strip: what each screen carries, layer by layer (display only) ──
+  // On Preview a click drops that layer from what is staged; on the Output it clears that layer on screen.
+  // Where a layer may go is still set under Outputs; this switches nothing on.
+  const LAYER_ICONS = {
+    video: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10.5l5-3v9l-5-3z"/></svg>',
+    media: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="M4 18l5-5 4 4 3-3 4 4"/></svg>',
+    words: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10h10M7 14h6"/></svg>',
+    timer: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="13" r="7"/><path d="M12 13V9M9.5 3h5"/></svg>',
+    bible: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5A1.5 1.5 0 0 1 6.5 3H19v16H6.5A1.5 1.5 0 0 0 5 20.5z"/><path d="M5 20.5A1.5 1.5 0 0 0 6.5 22H19v-3M12 7v6M9.5 9.5h5"/></svg>',
+    overlay: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 12l9 5 9-5M3 16l9 5 9-5"/></svg>',
+  };
+  // Bottom to top, as the Output stacks them: the Bible and overlays are above everything.
+  const LAYER_NAMES = { video: 'Video', media: 'Media', words: 'Slide', timer: 'Timer', bible: 'Bible', overlay: 'Overlay' };
+  function layerStrip(side) {
+    const el = vEl('div', 'vd-layers');
+    el.setAttribute('role', 'group');
+    el.setAttribute('aria-label', side === 'pvw' ? 'Layers on Preview' : 'Layers on the Output');
+    D.ui.layers = D.ui.layers || {};
+    const btns = {};
+    // Preview's icons act on Preview only; the Output's clear that layer on the Output (owner, 2026-10-19). Overlays
+    // are switched in Settings, so the Output has no clear for them.
+    const keys = Object.keys(LAYER_ICONS).filter(k => side === 'pvw' || k !== 'overlay');
+    for (const k of keys) {
+      const b = vEl('button', 'vd-layer');
+      b.type = 'button';
+      b.innerHTML = LAYER_ICONS[k];
+      b.addEventListener('click', () => (side === 'pvw' ? dropFromPreview(k) : clearOnOutput(k)));
+      el.appendChild(b); btns[k] = b;
+    }
+    D.ui.layers[side] = btns;
+    return el;
+  }
+  function dropFromPreview(k) {
+    if (k === 'video') setPreview(null);
+    else if (k === 'timer') { D.timer = null; syncPreviewFrame(); refresh(); }
+    else if (D.staged && stagedKind() === k) { D.staged = null; D.stageKey = null; D.heldViewer = null; syncPreviewFrame(); refresh(); }
+  }
+  function clearOnOutput(k) {
+    if (k === 'video') { if (programState().on.length) sendToProgram(null); return; }
+    if (typeof clearOutputLayer !== 'function') return;
+    if (k === 'words') clearOutputLayer('slide');
+    else if (k === 'bible' || k === 'media' || k === 'timer') clearOutputLayer(k);
+  }
+  const isBibleMsg = (m) => !!(m && m.verses && m.verses[0] && m.verses[0].book && m.verses[0].book !== 'Service');
+  // What is staged, as a layer: a slide ('words'), media, or a verse ('bible').
+  const stagedKind = () => (!D.staged ? null : D.staged.media ? 'media' : D.staged.slide ? 'words' : 'bible');
+  const timerLive = () => !!(D.liveTimer || (window.KairoService && window.KairoService.hasLiveTimer && window.KairoService.hasLiveTimer()));
+  const overlaysLive = () => !!(liveOverlays && Array.isArray(liveOverlays.items) && liveOverlays.items.length);
+  function drawLayers(ps) {
+    if (!D.ui.layers) return;
+    const bibleLive = isBibleMsg(D.liveMsg), sk = stagedKind();
+    // Preview carries what is staged and, above it, what the Output has of the Bible and overlays (they supersede all).
+    const pvwHas = {
+      video: D.previewId != null || (!ps.mixed && !!ps.id),
+      media: D.staged ? sk === 'media' : !!D.liveMedia,
+      words: D.staged ? sk === 'words' : !!(D.liveMsg && !bibleLive),
+      timer: !!(D.timer || timerLive()),
+      bible: sk === 'bible' || bibleLive,
+      overlay: overlaysLive(),
+    };
+    const pvwCan = { video: D.previewId != null, media: sk === 'media', words: sk === 'words', timer: !!D.timer, bible: sk === 'bible', overlay: false };
+    const outHas = {
+      video: !!(ps.on.length && (ps.mixed || ps.id)),
+      media: !!D.liveMedia,
+      words: !!(D.liveMsg && !bibleLive),
+      timer: timerLive(),
+      bible: bibleLive,
+      overlay: overlaysLive(),
+    };
+    const outCan = { video: outHas.video, media: outHas.media, words: outHas.words, timer: outHas.timer, bible: outHas.bible, overlay: false };
+    const blockedBy = (which) => ({ timer: !layoutAllows('timer', which), media: !layoutAllows('media', which), words: !layoutAllows('words', which) });
+    const blkPvw = blockedBy('pvw'), blkPgm = blockedBy('pgm');
+    for (const k of ['timer', 'media', 'words']) {
+      if (blkPvw[k]) { pvwHas[k] = false; pvwCan[k] = false; }
+      if (blkPgm[k]) { outHas[k] = false; outCan[k] = false; }
+    }
+    const paint = (btns, has, can, verbPvw) => {
+      for (const k of Object.keys(btns)) {
+        const b = btns[k];
+        b.classList.toggle('is-lit', !!has[k]);
+        b.hidden = !has[k];   // only the layers a screen carries are shown (owner, 2026-10-19: visual clutter)
+        b.disabled = !can[k];
+        const name = LAYER_NAMES[k];
+        const blocked = (verbPvw ? blkPvw : blkPgm)[k];
+        b.title = blocked ? `${name}: not in this Layout`
+          : k === 'overlay' ? (has[k] ? 'Overlay: on. Switch overlays in Settings' : 'Overlay: off. Switch overlays in Settings')
+          : !has[k] ? `${name}: nothing`
+          : can[k] ? (verbPvw ? `Take ${name.toLowerCase()} out of Preview` : `Clear ${name.toLowerCase()} on the Output`)
+          : `${name}: Preview follows the Output`;
+        b.setAttribute('aria-label', b.title);
+      }
+    };
+    if (D.ui.layers.pvw) paint(D.ui.layers.pvw, pvwHas, pvwCan, true);
+    if (D.ui.layers.pgm) paint(D.ui.layers.pgm, outHas, outCan, false);
+  }
+  // The Layout on/off switch above Preview (owner, 2026-10-19: a Layout can be turned on or off). Off: Preview drops
+  // its Layout and Send takes it off the Output. On: the Layout last used comes back on Preview (the Layouts
+  // dialog opens when none has been used yet).
+  const layoutOn = () => !D.noLayoutPending && !!(D.pendingLook || D.liveLookId);
+  function toggleLayout() {
+    if (!D.active) return;
+    if (layoutOn()) {
+      D.pendingLook = null; D.previewLookId = null; D.lookSent = false;
+      D.noLayoutPending = !!D.liveLookId;   // nothing on the Output to take off when no Layout is live
+      if (settings.directorPreviewLook) { settings.directorPreviewLook = null; saveSettingsPatch({ directorPreviewLook: null }); }
+      post('pvw', { type: 'vd-layers', layers: null });
+      syncPreviewFrame(); refresh();
+      return;
+    }
+    const look = defaultLayout();
+    if (look) { loadLookToPreview(look); refresh(); }
+    else if (D.looks) D.looks.open();
+  }
+  // Clear everything from Preview, as the normal screen's clear-all does for the Output (owner, 2026-10-19). The Layout
+  // stays: it is the canvas. Preview stays empty until something is staged or the Bible puts a verse up.
+  function clearPreviewAll() {
+    D.staged = null; D.stageKey = null; D.sentKey = null; D.timer = null; D.heldViewer = null; D.detected = null;
+    D.previewId = null; D.layerOn = {}; D.pvwBlank = true;
+    syncPreviewFrame(); refresh();
+  }
   function clearStage() {
-    D.staged = null; D.stageKey = null;
+    D.staged = null; D.stageKey = null; D.timer = null;
     syncPreviewFrame();
     refresh();
   }
   function takeVerse() {
     if (!D.staged) return;
+    applyLayerOn();
     const { verse, look, slide, media } = D.staged;
     D.staged.sent = true;   // Preview keeps showing it: it now matches the Output
     D.detected = null;
@@ -255,16 +478,18 @@
   const sheetOpen = () => document.body.classList.contains('vd-sheet');
   function stageContent(key, build, make) {
     if (!D.active) return false;
-    if (sheetOpen()) { markVerse(key.startsWith('media:') ? 'media' : null); return false; }
     const now = Date.now();
     if (D.stageKey === key && now - D.stageAt < DOUBLE_MS && fromPointer()) {
       // Quick cut: the real send goes straight out; Preview holds the same item (it now matches the Output).
       markVerse(key.startsWith('media:') ? 'media' : null);   // Undo can take the slide back
-      if (D.staged && D.staged.key === key) { D.staged.sent = true; refresh(); }
+      if (D.staged && D.staged.key === key) { D.staged.sent = true; syncPreviewFrame(); refresh(); }
       else D.sentKey = key;        // the staged copy is still being made: it is marked sent when it lands
       D.stageAt = 0;               // the next click starts staging again
+      turnOnLayer(key.startsWith('media:') ? 'media' : 'slide'); applyLayerOn();
       return false;
     }
+    turnOnLayer(key.startsWith('media:') ? 'media' : 'slide');
+    D.pvwBlank = false;
     D.stageKey = key; D.stageAt = now;
     Promise.resolve(build()).then((b) => {
       if (!b || D.stageKey !== key) return;
@@ -284,7 +509,7 @@
   // The real dblclick event, as a fallback where the second-click timing above did not catch it, and for
   // playlist rows (a double-click sends their first slide). Director mode wins over the rename dblclick.
   function onDblClick(e) {
-    if (!D.active || sheetOpen()) return;   // in a sheet each click has already sent
+    if (!D.active) return;
     const svc = window.KairoService;
     if (!svc || !svc.service) return;
     const t = e.target && e.target.closest ? e.target : null;
@@ -310,20 +535,23 @@
     // item's first slide on air here, a habit from the normal screen turned into a send.
   }
   function stageSlideSend(item, index, build) {
+    if (D.active && !layoutAllows('words', 'pvw')) { layoutNote('words'); return true; }
     return stageContent(`slide:${item.id}:${index}`, build, (b) => ({ verse: b.verse, look: b.look || null, next: b.next || null, slide: { item, index } }));
   }
   function stageMediaSend(item, fit, build) {
+    if (D.active && !layoutAllows('media', 'pvw')) { layoutNote('media'); return true; }
     return stageContent(`media:${item.url}`, build, (b) => ({ verse: { reference: item.name || 'Media' }, media: { item, fit, src: b.src, kind: b.kind || item.kind } }));
   }
   // The slide staged now, as "itemId:index" (what the next Next/Previous steps from).
   // None while a sheet is open: its Next/Previous step from the live slide (they send, see sheetOpen).
-  const stagedSlideKey = () => (!sheetOpen() && D.staged && D.staged.slide ? `${D.staged.slide.item.id}:${D.staged.slide.index}` : null);
+  const stagedSlideKey = () => (D.staged && D.staged.slide ? `${D.staged.slide.item.id}:${D.staged.slide.index}` : null);
   // Orange outline on the tile of whatever is staged.
   function markStaged() {
     document.querySelectorAll('.is-staged').forEach(n => n.classList.remove('is-staged'));
     // The dock's slide tiles show which slide is live.
     const live = window.KairoService && window.KairoService.liveSlideKey && window.KairoService.liveSlideKey();
     document.querySelectorAll('.vd-dock .svc-slide[data-vd-item], [data-vd-item].svc-slide').forEach(n => n.classList.toggle('live', !!live && live === `${n.dataset.vdItem}:${n.dataset.index}`));
+    if (D.timer) document.querySelectorAll(`.timer-card[data-id="${CSS.escape(String(D.timer.seg.id))}"]`).forEach(n => n.classList.add('is-staged'));
     if (!D.staged) return;
     let sel = null;
     if (D.staged.slide) sel = `.svc-card[data-id="${CSS.escape(String(D.staged.slide.item.id))}"] .svc-slide[data-index="${D.staged.slide.index}"], .svc-slide[data-vd-item="${CSS.escape(String(D.staged.slide.item.id))}"][data-index="${D.staged.slide.index}"]`;
@@ -367,12 +595,25 @@
     saveSettingsPatch({ videoTransition: mode });
     publishTransition();
   }
+  // The Displays' Cut | Fade and its length govern the words too (owner, 2026-10-19: slides and verses obey the set
+  // transition): they ride the same setting the Scripture header's Verse transition writes, only when it changes.
+  let lastWords = '';
+  function publishWords() {
+    const animation = transitionPref() === 'fade' ? 'fade' : 'cut';
+    const speed = Math.max(0.05, Math.round(fadeMs() / 300 * 100) / 100);
+    const key = animation + '|' + speed;
+    if (key === lastWords) return;
+    lastWords = key;
+    try { KairoTransitions.words({ animation, speed }); } catch {}
+  }
   function publishTransition() {
     KairoTransitions.video(transitionPref());
+    publishWords();
   }
   const fadeMs = () => { const n = Number(settings.videoFadeMs); return Number.isFinite(n) && n >= 0 && n <= 5000 ? Math.round(n) : 300; };
   function publishFade() {
     KairoTransitions.videoFade(fadeMs());
+    publishWords();
   }
   // The state a one-step Undo goes back to.
   function snapshot() {
@@ -467,6 +708,7 @@
       clearTimeout(D.sendTimer); D.sendTimer = setTimeout(() => D.ui.take && D.ui.take.classList.remove('is-sending'), ms + 60);
     }
     const mode = transitionPref();
+    D.pvwBlank = false;
     D.composite = true;
     // This Send is its own Undo step (an older camera cut is not part of it), unless it sends
     // nothing: then the previous step stays undoable.
@@ -479,8 +721,16 @@
   }
   function takeStagedInner(mode) {
     const hadVerse = !!(D.staged && !D.staged.sent);
+    const timer = D.timer; D.timer = null;
+    if (timer && window.KairoService && window.KairoService.startTimer) window.KairoService.startTimer(timer.seg);
     const hadLook = D.pendingLook && !D.lookSent ? D.pendingLook : null;
-    if (hadLook) { snapshot(); applyLook(hadLook); }
+    if (D.noLayoutPending) {
+      // The Layout was switched off on Preview: Send takes it off the screens too.
+      D.noLayoutPending = false;
+      snapshot(); applyScreenTheme(null); D.liveLookId = null; noteLiveLayout(null);
+    }
+    if (hadLook) { snapshot(); applyLook({ ...hadLook, layers: effLayers(hadLook) }); }
+    applyLayerOn();
     const ps = programState();
     if (hadVerse) takeVerse();
     const verseInfo = hadVerse && D.last && D.last.verse;   // a camera take below starts a new snapshot
@@ -495,13 +745,14 @@
   const firstReady = () => (videoSourceList().filter(x => x.enabled !== false && VSRC.stateOf(x, videoState.devices) === 'ready')[0] || {}).id || null;
   const lookVideo = (look) => (look.videoId === '@first' ? firstReady() : look.videoId);
   function loadLookToPreview(look) {
+    D.noLayoutPending = false; D.layerOn = {};
     D.pendingLook = look;
     D.lookSent = false;
     if (settings.directorPreviewLook !== look.id) { settings.directorPreviewLook = look.id; saveSettingsPatch({ directorPreviewLook: look.id }); }
     D.previewLookId = look.id;
-    D.previewId = lookVideo(look) || null;
+    D.previewId = inputsOff() ? null : (lookVideo(look) || null);
     syncPreviewFrame();
-    post('pvw', { type: 'vd-layers', layers: look.layers });
+    post('pvw', { type: 'vd-layers', layers: effLayers(look) });
     post('pvw', { type: 'vd-frame', look: look.themeId ? themeById(look.themeId) : null });
     refresh();
   }
@@ -586,11 +837,29 @@
   function defaultLayout() {
     if (!D.looks) return null;
     const id = settings.directorDefaultLayout;
-    if (id === null) return null;   // chosen: None
-    if (id && id !== '@lower-third') { const l = D.looks.byId(id); if (l) return l; }
-    return D.looks.all().find(l => l.themeId === 'screen-lower-third') || null;   // never chosen (or gone): Lower third
+    // Never chosen, or chosen: None. A Layout is a setup of Preview, so none is on until the operator has used one
+    // (owner, 2026-10-19); after that the last one used comes back.
+    if (id === null || id === undefined) return null;
+    if (id !== '@lower-third') { const l = D.looks.byId(id); if (l) return l; }
+    return D.looks.all().find(l => l.themeId === 'screen-lower-third') || null;   // '@lower-third' chosen in Settings (or the saved one is gone)
   }
-  function startFromDefaultLayout() {
+  // The app has just opened (owner, 2026-10-19): the Output is empty — no camera on air, no Layout on
+  // the screens — and the default Layout waits on Preview for the operator to send. Only the first start
+  // per app run does this; reopening the Director screen later keeps what is on air.
+  function emptyOutputsOnOpen() {
+    try { setVideoLiveFor(videoOutputs().map(o => o.id), null); } catch {}
+    try { applyScreenTheme(null); } catch {}
+    try { restoreBaseline(); } catch {}
+    noteLiveLayout(null);
+  }
+  function startFromDefaultLayout(opts = {}) {
+    if (opts.stage) {
+      const look = defaultLayout();
+      if (!look) return false;
+      loadLookToPreview(look);   // staged, not sent: Send puts it (and its camera) on the Output
+      refresh();
+      return true;
+    }
     const live = settings.directorLiveLayout && D.looks ? D.looks.byId(settings.directorLiveLayout) : null;
     // Preview starts on the Layout the outputs have (owner, 2026-10-18: Lower third set, Preview showed
     // the split left over from last time): nothing staged, so Preview and Output agree.
@@ -605,7 +874,7 @@
     // Its video input, when no camera is on air yet.
     const ps = programState();
     const vid = lookVideo(look);
-    if (ps.on.length && !ps.mixed && !ps.id && vid) setVideoLiveFor(ps.on.map(o => o.id), vid);
+    if (ps.on.length && !ps.mixed && !ps.id && vid && !inputsOff()) setVideoLiveFor(ps.on.map(o => o.id), vid);
     try { window.kairoLog && window.kairoLog('director-default-layout', { layout: look.name }); } catch {}
     showOnPreview(look);
     return true;
@@ -645,6 +914,7 @@
   // Esc: cancel what is staged and not yet sent. Something already sent stays held in Preview.
   function clearStaging() {
     if (D.staged && !D.staged.sent) D.staged = null;
+    D.timer = null; D.noLayoutPending = false; D.layerOn = {};
     D.heldViewer = null;
     if (D.pendingLook && !D.lookSent) {
       D.pendingLook = null; D.previewLookId = null;
@@ -679,6 +949,8 @@
   // One click on an input tile: straight to Program with the current transition,
   // or with `mode` for this one send (Fade to black).
   function sendToProgram(id, mode) {
+    if (id && inputsOff()) { inputsOffNote(); return; }
+    if (id) { turnOnLayer('video'); applyLayerOn(); }   // clicking turns the layer on
     const ps = programState();
     if (!ps.on.length) {
       // What goes to a screen is set under Outputs only (owner, 2026-10-17): the Director never
@@ -695,11 +967,31 @@
       clearTimeout(D.transTimer); D.transTimer = setTimeout(publishTransition, fadeMs() + 400);
     } else publishTransition();
     setVideoLiveFor(ps.on.map(o => o.id), id || null);
+    if (id) { D.previewId = id; D.pvwBlank = false; }   // a double-click shows it on both screens (owner, 2026-10-19)
     syncPreviewFrame();   // with nothing staged, Preview follows the Output's input
     refresh();
   }
 
+  // The Input switch at the top of Inputs (owner, 2026-10-19). Off: no camera is on Preview or the Output, none
+  // opens (cameras open only while Preview or the Output uses one), and a tile click says why nothing happened.
+  const inputsOff = () => settings.videoInputsOff === true;
+  function inputsOffNote() {
+    try { window.kairoProblem?.('Input is off. Switch it on at the top of Inputs to use a camera.', 'vd-input-off'); } catch {}
+    setTimeout(() => { try { window.kairoProblemCleared?.('vd-input-off'); } catch {} }, 5000);
+  }
+  function toggleInputs() {
+    const off = !inputsOff();
+    settings.videoInputsOff = off; saveSettingsPatch({ videoInputsOff: off });
+    if (off) {
+      try { setVideoLiveFor(videoOutputs().map(o => o.id), null); } catch {}
+      D.previewId = null;
+      syncPreviewFrame();
+    } else { try { window.kairoProblemCleared?.('vd-input-off'); } catch {} }
+    refresh();
+  }
   function setPreview(id) {
+    if (id && inputsOff()) { inputsOffNote(); return; }
+    if (id) { turnOnLayer('video'); D.pvwBlank = false; }
     D.previewId = id || null;
     syncPreviewFrame();
     refresh();
@@ -740,12 +1032,13 @@
     const { top } = D.layout;
     // Columns as clamps: Inputs no narrower than 170px, Scripture sends no narrower than 300px,
     // and the displays take everything else.
-    const tw = D.top.clientWidth || 1200;
+    const tw = D.main.clientWidth || 1200;
     // Untouched, the Inputs column is its minimum in a narrow window so the displays keep the room.
     const dragged = Math.abs(D.layout.c1 - layoutDefaults.c1) > 0.002;
     const c1px = Math.max(200, tw < 1100 && !dragged ? 0 : Math.round(D.layout.c1 * tw));
     const c3px = Math.max(300, Math.round(Math.max(0.12, 1 - D.layout.c1 - D.layout.c2) * tw));
-    D.top.style.gridTemplateColumns = `${c1px}px 8px minmax(0, 1fr) 8px ${c3px}px`;
+    D.top.style.gridTemplateColumns = `${c1px}px 8px minmax(0, 1fr)`;
+    D.sendsHost.style.flex = `0 0 ${c3px}px`;
     D.top.style.flexGrow = String(top);
     D.bottomWrap.style.flexGrow = String(1 - top);
     // The playlist sits under Inputs, exactly as wide, and the media bin under the displays and
@@ -785,11 +1078,10 @@
   // width, or what the height leaves above the transition bar.
   // ── The "?" popover: the Director keys. ──
   const KEY_HELP = [
-    ['1 to 9', 'Send input to the Output'],
-    ['Shift + 1 to 9', 'Stage input on Preview'],
+    ['1 to 9', 'Stage input on Preview'],
     ['Alt + 1 to 9', 'Load Layout into Preview'],
     ['Space', 'Send Preview to the Output'],
-    ['Double-click', 'Send a slide, verse or media straight out'],
+    ['Double-click', 'Send a camera, slide, verse or media straight out'],
     ['Esc', 'Clear what is staged'],
     ['Cmd/Ctrl + Z', 'Undo the last send'],
   ];
@@ -836,12 +1128,14 @@
     // Send sits in the middle, so each side gets half of what is left, and the wider side decides.
     // (A fixed 170 px for the left side let "Camera Cut Fade 300 ms" spill over the group's edge.)
     const sideW = (sel) => { const el = D.ui.strip.querySelector(sel); return el ? el.scrollWidth : 0; };
-    const SIDES = Math.max(200, 2 * Math.max(sideW('.vd-cl-left'), sideW('.vd-cl-right')) + 2 * gap);
+    // Send is centred with Cut | Fade beside it, the cluster as a whole centred (owner, 2026-10-19), so the
+    // room it needs is Send plus what is beside it, not twice the wider side.
+    const SIDES = Math.max(120, sideW('.vd-cl-left') + sideW('.vd-cl-right') + 2 * gap);
     const ROW = 46, WRAP = 88;
-    // Send is as wide as the gap between the displays' centres, but gives way (down to 170px)
-    // so the whole cluster stays on one row for as long as it can.
+    // Send is a button, not a bar: at most 260px, giving way (down to 170px) so the whole cluster stays
+    // on one row for as long as it can.
     const MINSEND = 170;
-    const sendFor = (stack, fw) => Math.max(MINSEND, Math.min(stack ? Math.min(Math.max(fw, 200), 300) : fw + gap, w - SIDES - 16));
+    const sendFor = (stack, fw) => Math.max(MINSEND, Math.min(stack ? Math.min(Math.max(fw, 200), 300) : Math.min(fw + gap, 260), w - SIDES - 16));
     const mkUnder = (stack) => {
       const fwOf = (u) => (stack ? Math.min(w, ((h - u - head * 2 - gap) / 2) * 16 / 9) : Math.min((w - gap) / 2, (h - head - u) * 16 / 9));
       let fw = fwOf(ROW), wrap = false;
@@ -892,19 +1186,21 @@
       layout: 'column',
     });
     const ictl = vEl('div', 'vd-gh-ctl');
-    // How a camera change goes out (Cut | Fade and its length): opened from here, beside the inputs it moves.
-    // Icon only, the same button and picture as the Scripture header's verse transition; what it is set
-    // to is in its tooltip, not written beside it.
-    D.ui.camTrans = vBtn('', 'Camera transition', (e) => openVideoPanel(e.currentTarget, 'Camera transition', () => D.ui.camSeg), 'vd-hbtn vd-cam-trans');
-    D.ui.camTrans.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="6" width="12" height="12" rx="2"/><path d="M9.5 6V4.5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H14.5"/></svg>';
-    ictl.append(D.ui.camTrans, vBtn('+ Add', 'Add an input without leaving Director mode', (e) => openAddInputPanel(e.currentTarget), 'vd-mini vd-add'));
+    // A toggle, like the others in Inputs (owner, 2026-10-19: not a button).
+    const inWrap = vEl('label', 'vd-tgl');
+    inWrap.title = 'Camera input on or off: off takes every camera off Preview and the Output';
+    const inBox = vEl('label', 'output-toggle');
+    D.ui.inputToggle = vEl('input'); D.ui.inputToggle.type = 'checkbox'; D.ui.inputToggle.checked = !inputsOff();
+    D.ui.inputToggle.setAttribute('aria-label', 'Camera input');
+    D.ui.inputToggle.addEventListener('change', toggleInputs);
+    inBox.append(D.ui.inputToggle, vEl('span', 'output-toggle-track'));
+    inWrap.append(vEl('span', 'vd-tgl-text', 'Input'), inBox);
+    ictl.append(inWrap, vBtn('+ Add', 'Add an input without leaving Director mode', (e) => openAddInputPanel(e.currentTarget), 'vd-mini vd-add'));
     ihead.append(D.grid.controls, ictl);   // Grid | List beside the title, + Add at the right end
     const ifoot = vEl('div', 'vd-section-foot');
-    D.ui.noVideo = vBtn('No video', 'Send no video to Output', () => sendToProgram(null), 'vd-mini');
     D.ui.ready = vBtn('Ready check', 'List anything not ready before going live', (e) => openReadyCheck(e.currentTarget), 'vd-mini vd-ready');
     ifoot.append(
       D.ui.ready,
-      D.ui.noVideo,
       vBtn('Manage', 'Add, rename, reorder, switch off or remove inputs', (e) => openCameraManager(e.currentTarget), 'vd-mini'),
     );
     inputs.append(ihead, D.grid.el, ifoot);
@@ -920,16 +1216,10 @@
     D.ui.pvwRef = vEl('span', 'vd-ref');
     // Drops only the staged verse or slide: the Preview camera and a waiting
     // Layout stay (Esc clears all of them).
-    D.ui.clearStage = vBtn('×', 'Clear the staged verse (the Preview camera stays)', clearStage, 'vd-mini vd-clear-stage');
-    D.ui.clearStage.setAttribute('aria-label', 'Clear the staged verse');
-    D.ui.clearStage.hidden = true;
-    // Edit the Layout Preview shows (its layers, theme and video input), not a theme: a Layout is
-    // not a theme (owner, 2026-10-18). No Layout on Preview: the Layouts dialog, to pick one.
-    D.ui.editLook = vBtn('Edit', 'Edit the Layout on Preview: its layers, theme and video input', () => {
-      const id = D.previewLookId || D.liveLookId;
-      if (!(D.looks && id && D.looks.edit(id))) D.looks && D.looks.open();
-    }, 'vd-mini vd-edit-look');
-    pvwHead.append(D.ui.pvwRef, D.ui.clearStage, D.ui.editLook);
+    D.ui.clearStage = vBtn('', 'Clear everything from Preview (the Layout stays)', clearPreviewAll, 'vd-mini vd-icon-btn vd-clear-stage');
+    D.ui.clearStage.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
+    D.ui.clearStage.setAttribute('aria-label', 'Clear everything from Preview');
+    pvwHead.append(D.ui.pvwRef, layerStrip('pvw'), D.ui.clearStage);   // Preview's clear-everything sits at the right end
     pvw.append(pvwHead, buildFrame('pvw'));
     if (window.KairoVideoLooks) {
       D.looks = window.KairoVideoLooks.create({
@@ -937,6 +1227,7 @@
         takeNow: takeStaged,
         capture: captureLook,
         onToggle: (open) => { if (D.ui.looksBtn) { D.ui.looksBtn.classList.toggle('is-open', open); D.ui.looksBtn.setAttribute('aria-expanded', String(open)); } },
+        layoutOn, toggleLayout,
         previewLookId: () => D.previewLookId,
         liveLookId: () => D.liveLookId,
         videoName: (look) => { const id = lookVideo(look); const x = videoSourceList().find(v => v.id === id); return x ? x.name : 'No video'; },
@@ -985,10 +1276,12 @@
     D.ui.fade = bare(vBtn('Fade', '', () => { setTransition('fade'); refresh(); }, 'vd-take'), 'Camera: fade');
     const seg2 = vEl('div', 'vd-seg2');
     seg2.setAttribute('role', 'group'); seg2.setAttribute('aria-label', 'Camera transition');
-    seg2.appendChild(vEl('span', 'vd-seg-label', 'Camera'));
     // In the Displays header with Record and Layouts (owner, 2026-10-18); under the displays only Send.
     D.ui.black = bare(vBtn('Fade to black', '', () => fadeToBlack(), 'vd-mini vd-ftb'), 'Fade to black: no video, and the verse, slide and timer come down');
-    D.ui.blackText = D.ui.black.firstChild;
+    // An icon, to keep the Output's header quiet (owner, 2026-10-19: visual clutter); its name is in the tooltip.
+    D.ui.black.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5a8.5 8.5 0 0 0 0 17z" fill="currentColor"/></svg>';
+    D.ui.black.classList.add('vd-icon-btn');
+    D.ui.blackText = null;
     const dur = vEl('label', 'vd-dur');
     const durIn = vEl('input'); durIn.type = 'number'; durIn.min = '0'; durIn.max = '5000'; durIn.step = '50'; durIn.value = String(fadeMs());
     durIn.setAttribute('aria-label', 'Fade length in milliseconds');
@@ -1001,12 +1294,11 @@
     D.ui.dur = dur;
     seg2.append(D.ui.cut, D.ui.fade, dur);
     // No Undo button (owner, 2026-10-18): Cmd/Ctrl+Z still undoes the last send.
-    // The camera's Cut | Fade lives in the Inputs header (a button that opens it), as the verse
-    // transition lives in the Scripture header; under the displays only Send and Fade to black.
-    D.ui.camSeg = seg2;
-    const cluster = vEl('div', 'vd-cluster vd-cluster-one');
+    // Send, with how it goes out always in view beside it (owner, 2026-10-19, as OBS and ATEM do): Cut | Fade and the fade length.
     const left = vEl('div', 'vd-cl-left');
     const right = vEl('div', 'vd-cl-right');
+    right.append(seg2);
+    const cluster = vEl('div', 'vd-cluster vd-cluster-one');
     cluster.append(left, D.ui.take, right);
     bar.append(cluster);
     D.ui.strip = bar;
@@ -1042,26 +1334,17 @@
     D.ui.detChip.hidden = true;
     const helpBtn = vBtn('?', 'Keyboard shortcuts', (e) => toggleKeyHelp(e.currentTarget), 'vd-mini vd-help-btn');
     helpBtn.setAttribute('aria-label', 'Keyboard shortcuts'); helpBtn.setAttribute('aria-haspopup', 'dialog');
-    // Clear: what the outputs show, one kind at a time, beside Fade to black (owner, 2026-10-18). Each
-    // item presses the app's own button (the normal screen's clear row), so it does exactly what that does.
-    const clearBtn = vBtn('Clear', 'Clear what the outputs show', (e) => openVideoPanel(e.currentTarget, 'Clear the outputs', (close) => {
-      const box = vEl('div', 'vd-clear-menu');
-      [['clear-bible-layer-btn', 'Scripture', 'The verse comes down (⌘K)'],
-       ['clear-slide-layer-btn', 'Slide', 'The slide or song words come down'],
-       ['clear-media-layer-btn', 'Media', 'The picture or video comes down'],
-       ['clear-timer-layer-btn', 'Timer', 'The countdown or clock stops'],
-       ['clear-all-layers-btn', 'Everything', 'All of the above'],
-       ['output-back-btn', 'Back', 'What was on screen before the last change comes back'],
-      ].forEach(([id, label, hint]) => {
-        if (!document.getElementById(id)) return;
-        const b = vBtn(label, hint, () => { document.getElementById(id)?.click(); close(); refresh(); }, 'vd-mini vd-clear-item');
-        if (id === 'output-back-btn') box.appendChild(vEl('div', 'vd-clear-sep'));
-        box.appendChild(b);
-      });
-      return box;
-    }), 'vd-mini vd-clear-btn');
-    clearBtn.setAttribute('aria-haspopup', 'dialog');
-    dctl.append(D.ui.detChip, D.ui.looksChip, D.ui.black, clearBtn, looksBtn, helpBtn);
+    // Clear everything, as an icon like the normal screen's (owner, 2026-10-19: icons, not a Clear menu; no Undo button: Cmd/Ctrl+Z).
+    // One layer at a time is the layer strip's job (each screen's header). Each presses the app's own button.
+    const iconBtn = (id, title, svg) => {
+      const b = vBtn('', title, () => { document.getElementById(id)?.click(); refresh(); }, 'vd-mini vd-icon-btn');
+      b.innerHTML = svg; b.setAttribute('aria-label', title);
+      return b;
+    };
+    const clearBtn = iconBtn('clear-all-layers-btn', 'Clear everything on the outputs', '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>');
+    // Fade to black and Clear everything belong to the Output (owner, 2026-10-19): they sit at the top of its screen.
+    pgmHead.append(layerStrip('pgm'), D.ui.black, clearBtn);
+    dctl.append(D.ui.detChip, D.ui.looksChip, looksBtn, helpBtn);
     D.ui.dctl = dctl;
     dhead.appendChild(dctl);
     displays.append(dhead, band);
@@ -1075,15 +1358,15 @@
     const top = vEl('div', 'vd-top');
     const split1 = splitter('v', (x, y, step) => {
       if (step) { D.layout.c1 = clamp(D.layout.c1 + step, 0.14, 0.40, D.layout.c1); return; }
-      const r = top.getBoundingClientRect();
+      const r = D.main.getBoundingClientRect();
       D.layout.c1 = clamp((x - r.left) / r.width, 0.14, 0.40, D.layout.c1);
     }, 'Resize Inputs');
     const split2 = splitter('v', (x, y, step) => {
       if (step) { D.layout.c2 = clamp(D.layout.c2 + step, 0.35, 0.75, D.layout.c2); return; }
-      const r = top.getBoundingClientRect();
+      const r = D.main.getBoundingClientRect();
       D.layout.c2 = clamp((x - r.left) / r.width - D.layout.c1, 0.35, 0.75, D.layout.c2);
     }, 'Resize the displays');
-    top.append(inputs, split1, displays, split2, sends);
+    top.append(inputs, split1, displays);   // Scripture sends runs the full height beside them (owner, 2026-10-19)
 
     // ── Bottom half, and the horizontal split ──
     const bottomWrap = vEl('div', 'vd-bottom-wrap');
@@ -1097,14 +1380,16 @@
     }, 'Resize the top and bottom halves');
 
     const wrap = vEl('div', 'vd-main');
-    wrap.append(top, hsplit, bottomWrap);
+    const leftStack = vEl('div', 'vd-left');
+    leftStack.append(top, hsplit, bottomWrap);
+    wrap.append(leftStack, split2, sends);
     center.appendChild(wrap);
     D.main = wrap; D.top = top; D.bottomWrap = bottomWrap;
     D.root = band;
     D.fitObs = new ResizeObserver(() => fitScreens());
     D.fitObs.observe(band);
     D.topObs = new ResizeObserver(() => applyLayout());
-    D.topObs.observe(top);
+    D.topObs.observe(wrap);
     D.onResize = () => { if (sizeClass() !== D.layout.cls) { D.layout = readLayout(); } applyLayout(); };
     window.addEventListener('resize', D.onResize);
     applyLayout();
@@ -1171,14 +1456,22 @@
     if (!D.active) return;
     if (!D.root) return;
     const sources = videoSourceList();
-    if (D.previewId && !sources.some(s => s.id === D.previewId)) D.previewId = null;
+    // The Preview's input must still be one the app can open: removed or switched off (a camera
+    // added again gets a new id and the old one is disabled), it goes back to the staged Look's
+    // video, else to following the Output. It used to stay on the dead id and Preview showed no picture.
+    const usable = (id) => !!id && sources.some(s => s.id === id && s.enabled !== false);
+    if (D.previewId && !usable(D.previewId)) {
+      const fromLook = D.pendingLook && !D.lookSent ? lookVideo(D.pendingLook) : null;
+      D.previewId = usable(fromLook) ? fromLook : null;
+      syncPreviewFrame();
+    }
     const ps = programState();
     D.programState = ps;
 
     // Program screen follows the first output that carries video, else the primary.
     const pgmOut = (ps.on[0] && ps.on[0].id) || PRIMARY_DISPLAY;
-    setFrameSrc('pgm', `/display.html?output=${encodeURIComponent(pgmOut)}&monitor=1&shared=1`);
-    setFrameSrc('pvw', `/display.html?output=${encodeURIComponent(PRIMARY_DISPLAY)}&preview=1`);
+    setFrameSrc('pgm', `/display.html?output=${encodeURIComponent(pgmOut)}&monitor=1&shared=1&fit=1`);
+    setFrameSrc('pvw', `/display.html?output=${encodeURIComponent(PRIMARY_DISPLAY)}&preview=1&fit=1`);
     const pgmSource = ps.mixed ? null : sources.find(s => s.id === ps.id);
     D.ui.pgmOff.hidden = ps.on.length > 0;
     // The headers only name the screens (owner, 2026-10-18); what is on air is read from the frame itself.
@@ -1190,7 +1483,6 @@
       if (D.lastPub !== pub) { D.lastPub = pub; localStorage.setItem('kairo-video-director', pub); emitDirectorChange('program'); }
     } catch {}
     D.grid.render();
-    D.ui.noVideo.classList.toggle('is-on', !ps.mixed && ps.on.length > 0 && !ps.id);
     fitScreens();
     paintReady();
     D.ui.pgm.classList.toggle('is-live', isOnAir());
@@ -1200,8 +1492,11 @@
     const pvwSource = sources.find(s => s.id === D.previewId);
     const staged = D.staged ? (D.staged.verse.reference || D.staged.verse.ref || D.staged.verse.label || 'Staged') : '';
     markStaged();
+    drawLayers(ps);
+    if (D.ui.inputToggle) { const off = inputsOff(); D.ui.inputToggle.checked = !off; if (D.grid && D.grid.el) D.grid.el.classList.toggle('vd-inputs-off', off); }
+    if (D.ui.looksBtn) D.ui.looksBtn.classList.toggle('is-active', layoutOn());   // the Layouts button is lit while a Layout is on
     D.ui.pvwRef.textContent = screenNames;
-    if (D.ui.clearStage) D.ui.clearStage.hidden = !(D.staged && !D.staged.sent);
+    if (D.ui.clearStage) D.ui.clearStage.hidden = false;
     dockTopButtons(true);
     // The empty-picture label sits inside the video zone when the layout has one, not over the frame.
     if (D.frames.pvw) D.frames.pvw.box.classList.toggle('has-zone', hasZone(pvwFrameTheme()));
@@ -1209,11 +1504,8 @@
     const black = isBlack();
     D.ui.black.classList.toggle('is-on', black);
     if (D.ui.blackText) D.ui.blackText.textContent = black ? 'Fade up' : 'Fade to black';
+    D.ui.black.title = black ? 'Fade up' : 'Fade to black';
     D.ui.black.setAttribute('aria-label', black ? 'Fade up: the outputs come back from black' : 'Fade to black: every output fades to black, and back up when pressed again');
-    if (D.ui.camTrans) {
-      const t = `Camera transition: ${transitionPref() === 'fade' ? `Fade, ${fadeMs()} ms` : 'Cut'}`;
-      D.ui.camTrans.title = t; D.ui.camTrans.setAttribute('aria-label', t);
-    }
     if (D.frames.pvw) D.frames.pvw.name.textContent = pvwSource ? pvwSource.name : '';
     const canTake = ps.on.length > 0;
     const cur = transitionPref();
@@ -1224,7 +1516,7 @@
     }
     // Send is live when there is a verse or slide staged, or a Preview source that differs from Output.
     const videoDiff = canTake && D.previewId != null && D.previewId !== (ps.mixed ? undefined : (ps.id || null));
-    const ready = !!((D.staged && !D.staged.sent) || videoDiff || (D.pendingLook && !D.lookSent));
+    const ready = !!((D.staged && !D.staged.sent) || D.timer || D.noLayoutPending || videoDiff || (D.pendingLook && !D.lookSent));
     D.ui.take.disabled = !ready;
     D.ui.take.classList.toggle('is-ready', ready);
     if (ready) D.ui.take.removeAttribute('title'); else D.ui.take.title = 'Nothing staged';
@@ -1292,7 +1584,7 @@
       return;
     }
     if (e.metaKey || e.ctrlKey || e.altKey) return;
-    // A key an input was given of its own (its right-click settings) puts it on air; Shift stages it.
+    // A key an input was given of its own (its right-click settings) stages it on Preview; Space sends it.
     // A digit by its key, not its character: Shift+2 is "@" on most keyboards, and must stage the
     // input whose key is 2, not the input in place 2.
     const digit = /^(?:Digit|Numpad)(\d)$/.exec(e.code || '');
@@ -1302,7 +1594,7 @@
       if (own) {
         if (VSRC.stateOf(own, videoState.devices) !== 'ready') return;
         e.preventDefault();
-        if (e.shiftKey) setPreview(own.id); else sendToProgram(own.id);
+        setPreview(own.id);   // a key stages; Space sends
         return;
       }
     }
@@ -1311,7 +1603,7 @@
       const src = videoSourceList().filter(x => x.enabled !== false)[Number(m[1]) - 1];
       if (!src || VSRC.stateOf(src, videoState.devices) !== 'ready') return;
       e.preventDefault();
-      if (e.shiftKey) setPreview(src.id); else sendToProgram(src.id);
+      setPreview(src.id);   // a key stages; Space sends
       return;
     }
     if (e.code === 'Space') {
@@ -1358,7 +1650,7 @@
       // The same line as the one between Inputs and the displays: moving either moves both.
       const bsplit = splitter('v', (x, y, step) => {
         if (step) { D.layout.c1 = clamp(D.layout.c1 + step, 0.14, 0.40, D.layout.c1); return; }
-        const r = D.top.getBoundingClientRect();
+        const r = D.main.getBoundingClientRect();
         D.layout.c1 = clamp((x - r.left) / r.width, 0.14, 0.40, D.layout.c1);
       }, 'Resize the inputs and playlist column');
       D.bottomHost.insertBefore(bsplit, D.bottomHost.children[1]);
@@ -1375,7 +1667,9 @@
     // Never start black: a Fade to black left on when the app last closed (or crashed) would leave the
     // screens dark with nothing on this screen saying why (owner, 2026-10-18).
     if (isBlack()) fadeToBlack(false);
-    const started = startFromDefaultLayout();
+    const firstOpen = !D.openedOnce;
+    if (firstOpen) { D.openedOnce = true; emptyOutputsOnOpen(); }
+    const started = startFromDefaultLayout({ stage: firstOpen });
     // The Layout that was on Preview when the app last closed comes back (staged, not sent), only when
     // no Layout is on the outputs: otherwise Preview shows that one.
     if (!started && D.restoreLook && D.looks) {
@@ -1384,7 +1678,7 @@
       else { settings.directorPreviewLook = null; saveSettingsPatch({ directorPreviewLook: null }); }
     }
     // A Preview frame needs its page up before it can be fed.
-    D.frames.pvw.frame.addEventListener('load', syncPreviewFrame);
+    D.frames.pvw.frame.addEventListener('load', () => { resetPvwCache(); syncPreviewFrame(); });
   }
 
   // Mode off: the verse on screen stays; the video goes to nothing with a
@@ -1402,7 +1696,7 @@
     document.removeEventListener('keydown', onKey);
     document.removeEventListener('dblclick', onDblClick, true);
     unwrapSend();
-    D.staged = null;   // a staged verse is dropped, never sent: the screen keeps what it shows
+    D.staged = null; D.timer = null; D.liveTimer = null;   // a staged verse is dropped, never sent: the screen keeps what it shows
     document.removeEventListener('click', trackClick, true);
     D.liveObserver?.disconnect();
     unmountSettings();
@@ -1471,7 +1765,9 @@
     // For the dock's input tiles.
     state: () => ({ previewId: D.previewId, program: D.programState, transition: transitionPref(), active: D.active }),
     setPreview, sendToProgram, mountSettings,
-    stageSlide: stageSlideSend, stageMedia: stageMediaSend, stagedSlideKey, onServerMessage,
+    stageSlide: stageSlideSend, stageMedia: stageMediaSend, stageTimer, markStaged, layoutAllows, layoutNote,
+    // A timer that started (a double-click, or Send) is no longer waiting on Preview: Preview shows it counting.
+    timerStarted: (seg) => { if (D.timer && seg && D.timer.seg.id === seg.id) { D.timer = null; syncPreviewFrame(); refresh(); } }, ensureLayer: (k) => { turnOnLayer(k); applyLayerOn(); }, stagedSlideKey, onServerMessage,
     // Remote and OSC actions (app_startup.js). Each is a no-op when Director mode is off, and never throws.
     send() { try { if (!D.active) return false; if (D.ui.take && D.ui.take.disabled) return false; takeStaged(); return true; } catch { return false; } },
     fadeToBlack() { try { if (!D.active) return false; fadeToBlack(); return true; } catch { return false; } },
@@ -1512,7 +1808,7 @@
   function dockTopButtons(on) {
     const btns = [document.getElementById('record-btn')].filter(Boolean);
     if (on && D.active && D.ui.dctl) {
-      const before = D.ui.black || D.ui.looksBtn || null;   // Record, then Fade to black, then Layouts
+      const before = D.ui.looksBtn || null;   // Record, then Layouts (Fade to black is on the Output's header)
       btns.forEach(b => { if (b.parentNode !== D.ui.dctl) D.ui.dctl.insertBefore(b, before); b.classList.add('vd-docked'); });
       return;
     }

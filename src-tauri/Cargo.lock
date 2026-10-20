@@ -2629,6 +2629,7 @@ dependencies = [
  "flate2",
  "futures-util",
  "getrandom 0.3.4",
+ "image",
  "kairo-bible",
  "kairo-detect",
  "kairo-semantic",

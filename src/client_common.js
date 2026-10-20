@@ -47,6 +47,13 @@ function _kairoLogFlush() {
   _kairoLogQueue.splice(0).forEach(([e, d]) => _kairoPostLog(e, d));
 }
 window.kairoLog = kairoLog;
+// A smaller copy of a picture imported from a ProPresenter file, for the operator's own tiles and
+// previews: a 4K slide image costs ~33 MB of memory once the web view decodes it, however small it
+// is drawn. The output screens keep the full picture. Anything else comes back as it was.
+window.kairoSmall = function (url, width) {
+  const u = String(url || '');
+  return u.includes('/api/pp-assets/') && !u.includes('?') ? `${u}?w=${width}` : u;
+};
 (window.__kairoEarlyLog || []).splice(0).forEach(([e, d]) => kairoLog(e, d));
 // A page that never loads the token (or a token that never comes) still gets its lines out.
 setTimeout(_kairoLogFlush, 8000);

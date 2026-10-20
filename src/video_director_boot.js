@@ -101,7 +101,7 @@
     panes.appendChild(pane);
     dmToggle = pane.querySelector('#dm-toggle');
     dmArmed = pane.querySelector('#dm-armed');
-    // Default Layout: the saved Layouts, or None. Never chosen: Lower third (video_director.js defaultLayout).
+    // Default Layout: the saved Layouts, or None. Never chosen: None (video_director.js defaultLayout).
     const defSel = pane.querySelector('#dm-default-layout');
     const fillDefault = () => {
       if (!defSel || defSel === document.activeElement) return;
@@ -116,7 +116,7 @@
       list.forEach(l => opt(l.id, l.name));
       const cur = settings.directorDefaultLayout;
       const notChosen = lower ? lower.id : '@lower-third';
-      defSel.value = cur === null ? '' : (cur && list.some(l => l.id === cur) ? cur : notChosen);
+      defSel.value = cur === null || cur === undefined ? '' : (cur && list.some(l => l.id === cur) ? cur : notChosen);
     };
     if (defSel) {
       defSel.addEventListener('change', () => {

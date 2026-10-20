@@ -86,7 +86,7 @@ impl Engine {
         // A range read to its last verse holds only a little while after:
         // with nothing left to read, a quote from elsewhere is the sermon
         // moving on (Joel 2 finished, then Acts 2:16 "spoken by the prophet Joel").
-        let range_holds = self.range.current.is_some() && (!self.range.queue.is_empty() || now.saturating_sub(self.range.moved_at) < FINISHED_RANGE_HOLD_MS);
+        let range_holds = self.range.current.is_some() && !self.range.soft && (!self.range.queue.is_empty() || now.saturating_sub(self.range.moved_at) < FINISHED_RANGE_HOLD_MS);
         let range_collision = match self.range.current {
             Some(_) if range_holds && !self.range.all.contains(&top) => Some(!self.speech_favours_over_range(top)),
             _ => None,

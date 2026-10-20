@@ -29,9 +29,14 @@ pub const CHAPTER_KEYWORD_MIN_IDF: f32 = 14.0;
 pub const CHAPTER_KEYWORD_MIN_MARGIN: f32 = 2.0;
 /// The verse a range left can't come straight back without its own words for this long.
 const LEFT_VERSE_HOLD_MS: u64 = 8_000;
+/// A single cited verse holds this many verses after it, topped up as each is read.
+const SOFT_AHEAD: usize = 2;
+/// A held continuation lets go when nothing has moved it for this long.
+const SOFT_RANGE_TTL_MS: u64 = 120_000;
 
 impl Engine {
     pub(crate) fn set_range(&mut self, verses: Vec<VerseId>, now: u64) {
+        self.range.soft = false;
         self.range.all = verses.clone();
         self.range.current = verses.first().copied();
         self.range.queue = verses.iter().skip(1).copied().collect();
@@ -41,8 +46,46 @@ impl Engine {
         }
     }
 
+    /// The verses after `v` in its chapter, at most `n`.
+    fn verses_after(&self, v: VerseId, n: usize) -> Vec<VerseId> {
+        let r = self.r(v);
+        let mut out = Vec::new();
+        let mut id = v.0 + 1;
+        while out.len() < n && (id as usize) < self.k.corpus.len() {
+            let next = VerseId(id);
+            let nr = self.r(next);
+            if nr.book != r.book || nr.chapter != r.chapter {
+                break;
+            }
+            out.push(next);
+            id += 1;
+        }
+        out
+    }
+
+    /// A single verse cited ("Ezra 4:4"): the next verses wait in case the preacher reads on. Unlike a
+    /// cited range it isn't shown as one, and it moves only when the verse's end and then the next
+    /// verse's own opening words are heard (or the next verse is found or called outright).
+    pub(crate) fn set_soft_range(&mut self, v: VerseId, now: u64) {
+        let next = self.verses_after(v, SOFT_AHEAD);
+        if next.is_empty() {
+            self.clear_range(now);
+            return;
+        }
+        let had = self.range.current.is_some() && !self.range.soft;
+        self.range.soft = true;
+        self.range.all = std::iter::once(v).chain(next.iter().copied()).collect();
+        self.range.current = Some(v);
+        self.range.queue = next.into_iter().collect();
+        self.range_moved(None, now);
+        if had {
+            self.effect(Effect::RangeCleared);
+        }
+    }
+
     pub(crate) fn clear_range(&mut self, now: u64) {
-        let had = self.range.current.is_some();
+        let had = self.range.current.is_some() && !self.range.soft;
+        self.range.soft = false;
         self.range.all.clear();
         self.range.queue.clear();
         self.range.current = None;
@@ -93,7 +136,15 @@ impl Engine {
         let from = self.range.current;
         self.range.current = Some(next);
         self.range_moved(from, now);
-        self.effect(Effect::RangeMoved { current: next, remaining: self.range.queue.len() });
+        if self.range.soft {
+            // Read on: hold the next ones again.
+            let last = self.range.queue.back().copied().unwrap_or(next);
+            let more = self.verses_after(last, SOFT_AHEAD.saturating_sub(self.range.queue.len()));
+            self.range.all.extend(more.iter().copied());
+            self.range.queue.extend(more);
+        } else {
+            self.effect(Effect::RangeMoved { current: next, remaining: self.range.queue.len() });
+        }
         self.put_up(next, Method::Direct, now);
         true
     }
@@ -105,26 +156,40 @@ impl Engine {
         self.range.current = Some(v);
         self.range.queue = self.range.all[i + 1..].iter().copied().collect();
         self.range_moved(from, now);
-        self.effect(Effect::RangeMoved { current: v, remaining: self.range.queue.len() });
+        if !self.range.soft {
+            self.effect(Effect::RangeMoved { current: v, remaining: self.range.queue.len() });
+        }
         true
     }
 
     fn can_advance(&self, now: u64) -> bool {
-        self.range.current.is_some() && !self.range.queue.is_empty() && now.saturating_sub(self.range.last_advance_at) >= ADVANCE_COOLDOWN_MS
+        self.range.current.is_some()
+            && !self.range.queue.is_empty()
+            && now.saturating_sub(self.range.last_advance_at) >= ADVANCE_COOLDOWN_MS
+            && !(self.range.soft && now.saturating_sub(self.range.moved_at) > SOFT_RANGE_TTL_MS)
     }
 
     /// Most of the current verse's last three words heard just now — each as
     /// many times as the verse says it.
     pub(crate) fn advance_range_on_last_words(&mut self, now: u64) {
-        if !self.can_advance(now) {
+        // A held continuation never moves on the verse's end alone: the preacher may stop there.
+        if !self.can_advance(now) || self.range.soft {
             return;
         }
-        let text = self.verse_text(self.range.current.unwrap()).to_string();
+        if self.current_ending_heard() {
+            self.request_range_advance(now);
+        }
+    }
+
+    /// The current verse's last words heard just now (most of its last three, each as often as it says it).
+    fn current_ending_heard(&self) -> bool {
+        let Some(current) = self.range.current else { return false };
+        let text = self.verse_text(current).to_string();
         let verse_words = meaningful_words(&text);
         let last3: Vec<&String> = verse_words.iter().rev().take(3).collect::<Vec<_>>().into_iter().rev().collect();
         let ending: Vec<&String> = { let mut e: Vec<&String> = Vec::new(); for w in &last3 { if !e.contains(w) { e.push(w); } } e };
         if ending.is_empty() {
-            return;
+            return false;
         }
         let heard_all = self.range_heard_words();
         let keep = text.split_whitespace().count() + READING_SLACK;
@@ -133,14 +198,16 @@ impl Engine {
         let recent: HashSet<&String> = heard.iter().rev().take(ENDING_SPAN).collect();
         let times = |list: &[String], w: &String| list.iter().filter(|x| *x == w).count();
         let reached = ending.iter().filter(|w| recent.contains(**w) && times(&heard, w) >= times(&verse_words, w)).count();
-        if reached >= ending.len().min(2) {
-            self.request_range_advance(now);
-        }
+        reached >= ending.len().min(2)
     }
 
     /// The next verse's opening heard — words of its own, not the current verse's.
     pub(crate) fn advance_range_on_next_opening(&mut self, fresh: &str, now: u64) {
         if !self.can_advance(now) {
+            return;
+        }
+        // A held continuation: the verse on screen read to its end first, then the next one's own opening.
+        if self.range.soft && !self.current_ending_heard() {
             return;
         }
         let current = self.range.current.unwrap();

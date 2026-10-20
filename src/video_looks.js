@@ -7,7 +7,7 @@
 // sent to the screen. Looks persist in settings.directorLooks. They live in a
 // dialog opened from the Displays header: a grid of tiles, each a 16:9 picture of
 // the screen with the name and Alt+number under it and one row of layer icons.
-// Click loads it into Preview and closes the dialog (Shift-click keeps it open);
+// Click loads it into Preview and keeps the dialog open (the Layout switch and Save are in it);
 // the "..." menu (or right-click) renames, updates from the current output,
 // duplicates, picks the screen theme and deletes (with an undo). Tiles drag to
 // reorder. Alt+1-9 load the nth Look without opening the dialog.
@@ -15,7 +15,8 @@
 (function () {
   // What this feature is called, in one place: a rename is a one-line change.
   const LABEL = { many: 'Layouts', one: 'Layout' };
-  const LAYER_KEYS = ['bible', 'slide', 'media', 'timer', 'video'];
+  // Shown in the order the layers stack, bottom to top, left to right (as the Preview strip and the clear buttons).
+  const LAYER_KEYS = ['video', 'media', 'slide', 'timer', 'bible'];
   // Over live video the words are a lower third or a split (owner, 2026-10-18). "Scripture over video"
   // (the output's own theme over the camera, its background dropped) is no longer a starter; a saved one stays.
   const LOWER_THIRD = { name: 'Lower third', videoId: '@first', layers: { bible: true, slide: true, media: true, timer: true, video: true }, overlays: null, themeId: 'screen-lower-third' };
@@ -228,16 +229,24 @@
       c.appendChild(row);
       const icons = el('div', 'vd-lk-icons');
       for (const k of LAYER_KEYS) {
-        const i = el('span', 'vd-lk-ic' + (look.layers[k] ? ' is-on' : '')); i.innerHTML = LAYER_ICONS[k];
-        i.title = `${LAYER_LABELS[k]} ${look.layers[k] ? 'on' : 'off'}`;
-        i.setAttribute('role', 'img'); i.setAttribute('aria-label', i.title);
+        const i = el('button', 'vd-lk-ic' + (look.layers[k] ? ' is-on' : '')); i.type = 'button'; i.innerHTML = LAYER_ICONS[k];
+        i.title = `${LAYER_LABELS[k]} ${look.layers[k] ? 'on' : 'off'}. Click to switch it ${look.layers[k] ? 'off' : 'on'}`;
+        i.setAttribute('aria-pressed', String(!!look.layers[k])); i.setAttribute('aria-label', i.title);
+        i.addEventListener('click', (e) => {
+          e.stopPropagation();
+          look.layers[k] = !look.layers[k]; persist(); ctx.onChange();
+          if (ctx.previewLookId() === look.id) ctx.loadToPreview(look);
+          render();
+        });
         icons.appendChild(i);
       }
       c.appendChild(icons);
       const info = infoLine(look);
       if (info) c.appendChild(el('div', 'vd-lk-info', info));
 
-      const load = (e) => { ctx.loadToPreview(look); if (!e.shiftKey) close(); };
+      // Choosing a Layout turns it on and keeps the dialog open: the switch above says so and can turn it off;
+      // Save closes (owner, 2026-10-19).
+      const load = () => { ctx.loadToPreview(look); render(); };
       c.addEventListener('click', load);
       c.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target === c) { e.preventDefault(); load(e); } });
       c.addEventListener('contextmenu', (e) => { e.preventDefault(); openMenu(look, more); });
@@ -274,22 +283,13 @@
         b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
         menu.appendChild(b);
       };
-      item('Edit…', () => { closeMenu(); edit(look.id); });
+      // One Edit, and it is the theme editor (owner, 2026-10-19): the screen's frames and zones. The layer icons on the
+      // card switch each layer on or off.
+      item('Edit', () => { closeMenu(); if (editInStudio(look.id)) close(); else edit(look.id); });
       item('Rename', () => { closeMenu(); renaming = look.id; render(); const i = modal.querySelector('.vd-card-input'); if (i) { i.focus(); i.select(); } });
       item('Update from current', () => { closeMenu(); updateFromCurrent(look.id); });
       item('Duplicate', () => { closeMenu(); duplicate(look.id); });
       if (ctx.screenThemes && ctx.screenThemes().length) item('Theme', () => openThemes(look, anchor));
-      if (ctx.customizeTheme) {
-        const has = !!themeOf(look);
-        item(has ? 'Customize in Theme Studio' : 'Create a theme…', () => {
-          closeMenu();
-          const id = ctx.customizeTheme(look);
-          if (!id) return;
-          look.themeId = id; persist(); ctx.onChange();
-          close();   // the dialog reopens with the new picture when you come back
-        });
-        menu.lastChild.title = 'Built-in themes are copied first, so the original stays as it is.';
-      }
       menu.appendChild(el('div', 'vd-lk-sep'));
       item('Delete', () => { closeMenu(); remove(look.id); }, 'is-danger');
       modal.querySelector('.modal-content').appendChild(menu);
@@ -334,6 +334,7 @@
     }
 
     function render() {
+      if (paintSwitch) paintSwitch();
       if (!modal) return;
       closeMenu();
       const grid = modal.querySelector('.vd-cards');
@@ -347,6 +348,7 @@
     }
 
     function focusables() { return [...modal.querySelectorAll('button, input, [tabindex="0"]')].filter(e => !e.disabled && e.offsetParent !== null); }
+    let paintSwitch = null;
     function open() {
       if (modal) return;
       prevFocus = document.activeElement;
@@ -359,11 +361,30 @@
       const title = el('div', 'vd-lk-title'); title.append(el('h2', null, LABEL.many), el('span', 'vd-lk-sub', 'Loads into Preview. Nothing goes out until you send it. Layers apply to the display screens; NDI, Syphon and DeckLink keep their own.'));
       const x = el('button', 'modal-close-btn'); x.type = 'button'; x.textContent = 'Close';
       x.addEventListener('click', close);
-      head.append(title, x);
+      // The Layout on/off switch (owner, 2026-10-19): on while a Layout is on Preview or the Output; off drops it
+      // (Send takes it off the Output). The Layouts button above lights while it is on.
+      const sw = el('label', 'vd-lk-switch');
+      const swBox = el('label', 'output-toggle');
+      const swIn = el('input'); swIn.type = 'checkbox'; swIn.setAttribute('aria-label', 'Layout');
+      swBox.append(swIn, el('span', 'output-toggle-track'));
+      sw.append(el('span', 'vd-lk-switch-text', 'Layout'), swBox);
+      paintSwitch = () => {
+        const on = !!(ctx.layoutOn && ctx.layoutOn());
+        swIn.checked = on;
+        sw.title = on ? 'A Layout is on. Switch it off to take it off Preview (Send takes it off the Output)' : 'No Layout is on. Switch on to bring back the last one';
+      };
+      swIn.addEventListener('change', () => { if (ctx.toggleLayout) ctx.toggleLayout(); render(); });
+      paintSwitch();
+      head.append(title, sw);   // Save, at the bottom, closes the dialog (owner, 2026-10-19)
       const body = el('div', 'modal-body vd-lk-body');
       body.appendChild(el('div', 'vd-cards'));
       const toast = el('div', 'vd-lk-toast'); toast.hidden = true; toast.setAttribute('role', 'status');
-      content.append(head, body, toast);
+      // Every choice here already applies; Save closes the dialog.
+      const foot = el('div', 'vd-lk-footer');
+      const save = el('button', 'modal-btn primary'); save.type = 'button'; save.textContent = 'Save';
+      save.addEventListener('click', close);
+      foot.appendChild(save);
+      content.append(head, body, toast, foot);
       modal.append(overlay, content);
       document.body.appendChild(modal);
       keyHandler = (e) => {
@@ -381,7 +402,7 @@
       render();
       paintToast();
       ctx.onToggle && ctx.onToggle(true);
-      const f = focusables(); (f[0] || x).focus();
+      const f = focusables(); (f[0] || save).focus();
       // Overlay names for the info line arrive a moment later.
       if (window.KairoOverlays && window.KairoOverlays.load) {
         window.KairoOverlays.load().then(items => { overlayNames = Object.fromEntries((items || []).map(i => [i.id, i.name || i.label || ''])); if (modal) render(); }).catch(() => {});
@@ -489,8 +510,20 @@
       if (prevFocus && prevFocus.focus && prevFocus.isConnected) prevFocus.focus();
     }
 
+    // Edit the Layout's screen in Theme Studio, where every element is editable: the video frame, the content
+    // frame, lower-third bands, backgrounds, logos (owner, 2026-10-19). A built-in screen theme is copied first.
+    function editInStudio(id) {
+      const look = byId(id);
+      if (!look || !ctx.customizeTheme) return false;
+      const tid = ctx.customizeTheme(look);
+      if (!tid) return false;
+      look.themeId = tid; persist(); ctx.onChange();
+      if (ctx.previewLookId() === look.id) ctx.loadToPreview(look);
+      return true;
+    }
+
     return {
-      open, close, render, edit,
+      open, close, render, edit, editInStudio,
       all: () => looks,
       byId,
       loadIndex(n) { const l = looks[n]; if (l) ctx.loadToPreview(l); return !!l; },

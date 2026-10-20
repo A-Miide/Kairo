@@ -122,6 +122,20 @@
       if (b && bar.contains(b) && TAB_IDS.includes(b.id)) setTimeout(syncSheet, 30);
     };
     bar?.addEventListener('click', L.tabClick);
+    // The dock's Slides / Timer / Media Bin choice lights the matching top-bar button, and the top-bar
+    // Media Bin button (the basic screen's shelf toggle) chooses the dock's Media Bin view.
+    const DOCK_BTN = { slides: 'slides-btn', timer: 'timer-btn', media: 'media-bin-toggle-btn' };
+    const lit = (view) => Object.entries(DOCK_BTN).forEach(([v, id]) => document.getElementById(id)?.classList.toggle('vd-dock-lit', v === view));
+    L.dockView = (e) => lit(e.detail);
+    document.addEventListener('kairo-dock-view', L.dockView);
+    L.binClick = (e) => {
+      const b = e.target && e.target.closest ? e.target.closest('#media-bin-toggle-btn') : null;
+      if (!b || !window.KairoVideoDock || !window.KairoVideoDock.isMounted()) return;
+      e.preventDefault(); e.stopImmediatePropagation();
+      window.KairoVideoDock.show('media');
+    };
+    document.addEventListener('click', L.binClick, true);
+    lit(window.KairoVideoDock && window.KairoVideoDock.view && window.KairoVideoDock.view());
     // Esc goes back to the Director screen.
     L.sheetEsc = (e) => {
       if (e.key !== 'Escape' || !document.body.classList.contains('vd-sheet')) return;
@@ -136,6 +150,9 @@
   function unpinView() {
     document.querySelector('.top-bar-center')?.removeEventListener('click', L.tabClick);
     L.tabClick = null;
+    if (L.dockView) { document.removeEventListener('kairo-dock-view', L.dockView); L.dockView = null; }
+    if (L.binClick) { document.removeEventListener('click', L.binClick, true); L.binClick = null; }
+    document.querySelectorAll('.vd-dock-lit').forEach(b => b.classList.remove('vd-dock-lit'));
     if (L.sheetEsc) { document.removeEventListener('keydown', L.sheetEsc, true); L.sheetEsc = null; }
     document.body.classList.remove('vd-sheet');
     if (L.sheetBar) { L.sheetBar.remove(); L.sheetBar = null; }
@@ -220,45 +237,10 @@
     L.np = { pop, home, node, off, esc };
   }
 
-  // The Auto badge becomes a real switch in Director mode. It reads and writes the same
-  // setting as Settings > Bible, so the two never disagree. Returns an undo function.
-  function makeAutoSwitch(badge) {
-    if (!badge) return null;
-    const isOn = () => (typeof settings !== 'undefined' ? settings.autoSend !== false : !badge.classList.contains('off'));
-    const sync = () => badge.setAttribute('aria-checked', String(isOn()));
-    const flip = () => {
-      const next = !isOn();
-      if (typeof settings !== 'undefined') settings.autoSend = next;
-      const box = document.getElementById('auto-send-settings'); if (box) box.checked = next;
-      if (typeof updateAutoDeployBadge === 'function') updateAutoDeployBadge();
-      if (typeof saveSettingsPatch === 'function') saveSettingsPatch({ autoSend: next });
-      sync();
-    };
-    // A mouse click mustn't leave the switch focused: Space would flip it back
-    // instead of sending the staged verse (e.detail is 0 for a keyboard click).
-    const onClick = (e) => { e.preventDefault(); flip(); if (e.detail > 0) badge.blur(); };
-    const onKey = (e) => { if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); flip(); } };
-    badge.setAttribute('role', 'switch');
-    badge.setAttribute('tabindex', '0');
-    badge.setAttribute('aria-label', 'Auto-send verses');
-    badge.classList.add('vd-auto-switch');
-    badge.addEventListener('click', onClick);
-    badge.addEventListener('keydown', onKey);
-    const obs = new MutationObserver(sync);
-    obs.observe(badge, { attributes: true, attributeFilter: ['class'] });
-    sync();
-    return () => {
-      obs.disconnect();
-      badge.removeEventListener('click', onClick);
-      badge.removeEventListener('keydown', onKey);
-      ['role', 'tabindex', 'aria-label', 'aria-checked'].forEach(a => badge.removeAttribute(a));
-      badge.classList.remove('vd-auto-switch');
-    };
-  }
-
   function fillSends(host) {
     if (!host || L.sends) return;
-    const parts = [document.querySelector('.cs-lookup'), document.getElementById('live-queue-section')].filter(Boolean);
+    // The Message box and Possible Matches sit in this column as on the basic screen (owner, 2026-10-19), not behind icons.
+    const parts = [document.querySelector('.cs-lookup'), document.getElementById('live-queue-section'), document.getElementById('monitor-message-bar'), document.querySelector('.rs-candidates')].filter(Boolean);
     L.sends = { host, parts: parts.map(node => { const home = document.createComment('vd-home'); node.before(home); return { node, home }; }) };
     const S = L.sends;
 
@@ -269,54 +251,17 @@
     title.className = 'vd-label vd-sends-title vd-gh-title';
     title.textContent = 'Scripture sends';
     head.appendChild(title);
-    // Auto-deploy beside the title (the queue has no header of its own).
-    S.auto = makeAutoSwitch(document.getElementById('cs-auto-badge'));
-    moveTo(document.getElementById('cs-auto-badge'), head);
+    // Auto-send is set in Settings → Bible only (owner, 2026-10-19): no switch and no badge for it here.
     const theme = document.getElementById('bible-theme-btn');
     if (theme) { S.themeTitle = theme.title; theme.title = 'Theme'; theme.setAttribute('aria-label', 'Theme'); moveTo(theme, head); }
     const spacer = document.createElement('span'); spacer.className = 'vd-sends-spacer'; head.appendChild(spacer);
 
-    // Monitor message: an icon that opens the app's own message bar in a small popover.
-    const bar = document.getElementById('monitor-message-bar');
-    S.monBtn = hb('vd-hbtn', 'Monitor message', ICONS.monitor, (e) => {
-      if (S.pop) { closePop(); return; }
-      const b = document.getElementById('monitor-message-bar');
-      if (!b) return;
-      const pop = document.createElement('div');
-      pop.className = 'vd-pop';
-      S.popHome = document.createComment('vd-home');
-      b.before(S.popHome);
-      b.classList.remove('hidden');
-      pop.appendChild(b);
-      openOverlay(e.currentTarget, pop);
-      S.pop = pop;
-      b.querySelector('input')?.focus();
-    });
-    if (bar) {
-      const sync = () => { S.monBtn.hidden = bar.classList.contains('hidden') && !S.pop; };
-      S.monObs = new MutationObserver(sync);
-      S.monObs.observe(bar, { attributes: true, attributeFilter: ['class'] });
-      sync();
-    }
-    head.appendChild(S.monBtn);
 
-    // Order: title, Auto, then on the right the Bible select, the message button and Theme together.
+    // Order: title, then on the right the Bible select, the verse transition and Theme together.
     // How verse text arrives (Fade / Slide / Cut): the app's own bar, in a small popover.
     S.verseBtn = hb('vd-hbtn', 'Verse transition', ICONS.verse, (e) => nodePopover(e.currentTarget, document.getElementById('rs-transition-bar'), 'vd-pop-verse'));
-    // Possible Matches: the same list as the normal screen (same detection, same Send to Air),
-    // opened from here. Always shown (owner, 2026-10-18), dimmed while there are none.
-    const matches = document.querySelector('.rs-candidates');
-    S.matchBtn = hb('vd-hbtn vd-match-btn', 'Possible matches', '', (e) => nodePopover(e.currentTarget, matches, 'vd-pop-matches'));
-    const syncMatches = () => {
-      const n = Number(document.getElementById('suggestion-count-badge')?.textContent) || 0;
-      S.matchBtn.textContent = `Matches ${n}`;
-      S.matchBtn.classList.toggle('is-empty', n === 0);
-    };
-    const badge = document.getElementById('suggestion-count-badge');
-    if (badge) { S.matchObs = new MutationObserver(syncMatches); S.matchObs.observe(badge, { childList: true, characterData: true, subtree: true }); }
-    syncMatches();
     moveTo(document.getElementById('translation-select'), head);   // with a home marker, so it goes back when Director mode ends
-    [spacer, S.matchBtn, document.getElementById('translation-select'), S.monBtn, S.verseBtn, theme].forEach(n => n && head.appendChild(n));
+    [spacer, document.getElementById('translation-select'), S.verseBtn, theme].forEach(n => n && head.appendChild(n));
     host.appendChild(head);
     S.head = head;
     parts.forEach(n => host.appendChild(n));
@@ -338,7 +283,6 @@
     monObs && monObs.disconnect();
     matchObs && matchObs.disconnect();
     if (L.np) closeNodePop();   // the Matches list or transition bar goes back to its own place
-    L.sends.auto && L.sends.auto();
     if (queueEl) queueEl.textContent = queueLabel;
     const theme = document.getElementById('bible-theme-btn');
     if (theme) { theme.title = themeTitle || ''; theme.removeAttribute('aria-label'); }
