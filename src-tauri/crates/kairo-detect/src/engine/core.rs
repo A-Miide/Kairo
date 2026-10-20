@@ -518,6 +518,14 @@ impl Engine {
     /// Puts a verse on screen directly (the operator, an advancing range).
     pub(crate) fn put_up(&mut self, v: VerseId, method: Method, now: u64) {
         self.effect(Effect::Show { verses: vec![v], method, score: 1.0, target: Target::Screen, corrected_from: None });
+        // A text match of the same verse a moment later is then a repeat, not a new send,
+        // and the next verse of the chapter is reading on (as after any send).
+        self.screen.last_detected = Some((v, now, method));
+        self.screen.recent_detections.insert(v, now);
+        if self.cfg.auto_send {
+            self.screen.last_sent = Some((v, now));
+            self.screen.last_sent_book = Some((self.r(v).book, now));
+        }
         self.mark_shown(v, now);
     }
 

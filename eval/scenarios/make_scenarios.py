@@ -125,6 +125,32 @@ S["chapter-number-next"] = [
     ("you are getting speed tonight, first Kings eighteen and", []),
     ("forty six, and the hand of the Lord was on Elijah, and he ran before Ahab", [("citation", "1 Kings 18:46")]),
 ]
+# ── 10. Read on from a cited verse, split as the live recogniser splits it (dev build log, 2026-10-19) ──
+S["hold-daniel6-live"] = [
+    ('Help me, help me. Daniel', []),
+    ('chapter what? Chapter', []),
+    ('six from verse three. I want you to', [("citation", "Daniel 6:3")]),
+    ('see what happened there', []),
+    ('Then this Daniel', []),
+    ('was preferred above', []),
+    ('the presidents and', []),
+    ('princes because an excellent', []),
+    ('spirit was in', []),
+    ('him and the', []),
+    ('king thought to set', []),
+    ('him over the old realm.', []),
+    ('Look at what', []),
+    ('happened then they what', []),
+    ('president and the princes', [("quote", "Daniel 6:4")]),
+    ('sought to find', []),
+    ('what occasion against', []),
+    ('Daniel concerning the kingdom', []),
+    ('but they could', []),
+    ('not find none occasion', []),
+    ('of all for', []),
+    ('as much it', []),
+    ('was faithful. I', []),
+]
 S_LANG = {"num-spanish": "es", "num-french": "fr", "num-portuguese": "pt", "num-german": "de", "num-spanish-mixed": "es"}
 
 def answer(kind, ref, at):
