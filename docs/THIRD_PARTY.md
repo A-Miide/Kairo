@@ -78,3 +78,15 @@ checksum (`src-tauri/crates/kairo-eval/src/bin/bundle-data.rs`):
 - **ms-marco-MiniLM-L-12-v2** (Apache 2.0), as the int8 ONNX export
   [`Xenova/ms-marco-MiniLM-L-12-v2`](https://huggingface.co/Xenova/ms-marco-MiniLM-L-12-v2)
   — the cross-encoder that rereads the shortlist.
+
+## Sound models (`databases/vad`)
+
+- **Silero VAD** (`silero_vad.onnx`, MIT, <https://github.com/snakers4/silero-vad>):
+  tells speech from silence for the interpreter check (`kairo-server/src/interpretation.rs`).
+- **YAMNet** (`yamnet.onnx`, Apache 2.0, Copyright 2022 Google LLC; AudioSet labels CC BY 4.0):
+  tells singing from preaching (`kairo-server/src/music.rs`). It is Google's YAMNet v1 as converted
+  to ONNX by <https://huggingface.co/audiomagic/yamnet-onnx> (`yamnet.onnx`, SHA-256
+  `d3835ffbbd4a1bb3e777f0ca217b5007907f5171dd5d17c4236b95b2af8f908e`), with its weights stored
+  as 8-bit integers (onnxruntime dynamic quantisation, 16.1 → 5.0 MB; shipped file SHA-256
+  `c0ff18ff08a7c90a657832c0c868b31c75c1608d504c5c5ba2b68b3a34af312f`). On eight service recordings
+  it switched singing on and off at the same moments as the original, give or take a few short spans.
