@@ -54,6 +54,7 @@ async fn note_audio(app: &Shared, data: &bytes::Bytes) -> Option<tokio::sync::mp
     if let Some(change) = crate::interpretation::with(|i| i.audio(&samples)) {
         crate::detect::announce_interpretation(&app.hub, change);
     }
+    crate::music::audio(&samples);
     app.audio.lock().await.clone()
 }
 
