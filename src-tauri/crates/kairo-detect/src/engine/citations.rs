@@ -626,8 +626,8 @@ impl Engine {
         }
     }
 
-    /// `explicit`: the verse number was called out ("…Matthew 11, say, come to me. 28, …");
-    /// otherwise the verse was picked from the words that followed — offered, not sent.
+    /// `explicit`: the verse number was called out ("…Matthew 11, say, come to me. 28, …"),
+    /// or the words read after the chapter chose it; otherwise offered, not sent.
     fn send_chapter_keyword(&mut self, book: Book, chapter: u32, v: VerseId, explicit: bool, now: u64) -> bool {
         let mut candidate = Candidate::new(vec![v], Method::ChapterKeyword, DIRECT_PARTIAL_SCORE, Target::Screen);
         if !explicit {
@@ -663,9 +663,17 @@ impl Engine {
         None
     }
 
-    /// The verse, and whether its number was called out (else picked by its words).
+    /// The verse, and whether it may go up: its number was called out, or the
+    /// words said after the chapter pick it on their own. A pick that leans on
+    /// words from before the chapter ("…the sky became black … First Kings 18
+    /// and | 46") is only offered: the verse number may still be coming.
     pub(crate) fn chapter_by_keywords(&self, book: Book, chapter: u32, text: &str) -> Option<(VerseId, bool)> {
-        self.chapter_callout(book, chapter, text).map(|v| (v, true)).or_else(|| self.pick_chapter_verse_by_idf(book, chapter, text).map(|v| (v, false)))
+        if let Some(v) = self.chapter_callout(book, chapter, text) {
+            return Some((v, true));
+        }
+        let v = self.pick_chapter_verse_by_idf(book, chapter, text)?;
+        let after = text_after_book_mention(text, book, chapter);
+        Some((v, self.pick_chapter_verse_by_idf(book, chapter, &after) == Some(v)))
     }
 
     /// The chapter's verse sharing clearly the most identifying words with `text`.

@@ -114,6 +114,17 @@ S["num-french"] = [("Romains huit verset vingt-huit", [("citation", "Romans 8:28
 S["num-portuguese"] = [("Romanos oito versículo vinte e oito", [("citation", "Romans 8:28")])]
 S["num-german"] = [("Römer acht Vers achtundzwanzig", [("citation", "Romans 8:28")])]
 S["num-spanish-mixed"] = [("Romanos ocho versículo veinti 8", [("citation", "Romans 8:28")])]
+# ── 9. A chapter named with no verse: the words read next pick the verse ─────────────
+S["chapter-then-words"] = [
+    ("favour came on Solomon, look at first Kings three", []),
+    ("and that which thou hast not asked I have also given thee, both riches and honour", [("quote", "1 Kings 3:13")]),
+]
+# The verse number comes on the next line: words from before the chapter must not pick one.
+S["chapter-number-next"] = [
+    ("Elijah prayed, the sky became black, he said get on your way before the rain stops you", []),
+    ("you are getting speed tonight, first Kings eighteen and", []),
+    ("forty six, and the hand of the Lord was on Elijah, and he ran before Ahab", [("citation", "1 Kings 18:46")]),
+]
 S_LANG = {"num-spanish": "es", "num-french": "fr", "num-portuguese": "pt", "num-german": "de", "num-spanish-mixed": "es"}
 
 def answer(kind, ref, at):

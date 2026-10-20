@@ -1,0 +1,24 @@
+{
+ "videoId": "scn-chapter-then-words",
+ "title": "Scenario: chapter-then-words",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "favour came on Solomon, look at first Kings three"
+  },
+  {
+   "startMs": 4500,
+   "text": "and that which thou hast not asked I have also given thee, both riches and honour"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "1 Kings",
+   "chapter": 3,
+   "kind": "quote",
+   "startMs": 4500,
+   "verse": 13
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}
