@@ -13,3 +13,4 @@ kairo-server = { path = "../kairo-server" }
 serde_json.workspace = true
 sha2 = "0.10"
 ort = "=2.0.0-rc.13"
+sherpa-onnx = "1.13.8"

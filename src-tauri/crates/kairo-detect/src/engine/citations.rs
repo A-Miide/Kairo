@@ -303,6 +303,36 @@ impl Engine {
         // The preacher asking the room and answering: "Daniel chapter what? Chapter six".
         static ASKED: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| re(r"(?i)\b(chapter|verse)\s+what\W*\s+(chapter|verse)\b"));
         let text = ASKED.replace_all(text, "$2");
+        // The offline recogniser spells a book's number ("one John chapter five", "Two Chronicles
+        // chapter twenty", "one Samuel chapter one"): read as the digit, as "1 John" is.
+        static BOOK_NUMBER: std::sync::LazyLock<regex::Regex> =
+            std::sync::LazyLock::new(|| re(r"(?i)\b(one|two|three)\s+(samuel|kings|chronicles|corinthians|thessalonians|timothy|peter|john)\b"));
+        let text = BOOK_NUMBER.replace_all(&text, |c: &regex::Captures| {
+            let n = match c[1].to_lowercase().as_str() {
+                "one" => "1",
+                "two" => "2",
+                _ => "3",
+            };
+            format!("{n} {}", &c[2])
+        });
+        // "Psalm" misheard by the offline recogniser ("I'm thirty and plus five", "some seventy eight
+        // verse sixty nine", "some one one nine from verse nine seven"), only in a citation's shape:
+        // a number, then verse/and/plus, then a number. In every transcript we have, nothing else matches.
+        static PSALM_HEARD: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+            let n = r"(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|zero|\d+)";
+            re(&format!(r"(?i)\b(?:i'm|im|i am|sam|some|sum|song|salm|sarm)\s+({n}(?:[\s-]+{n}){{0,3}})\s*,?\s+(?:and\s+plus|and\s+verse|from\s+verse|verses|verse|plus|and)\s+({n}(?:[\s-]+{n}){{0,3}})\b"))
+        });
+        // Said digit by digit ("one one nine", "nine seven"), a number is the digits in turn.
+        let digits = |s: &str| -> String {
+            const D: [&str; 10] = ["zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine"];
+            let words: Vec<String> = s.split(|c: char| c.is_whitespace() || c == '-').filter(|w| !w.is_empty()).map(str::to_lowercase).collect();
+            let each: Option<String> = words.iter().map(|w| D.iter().position(|d| d == w).map(|i| char::from(b'0' + i as u8))).collect();
+            match each {
+                Some(d) if words.len() > 1 => d,
+                _ => s.to_string(),
+            }
+        };
+        let text = PSALM_HEARD.replace_all(&text, |c: &regex::Captures| format!("Psalm {} verse {}", digits(&c[1]), digits(&c[2])));
         self.k.parser(self.cfg.lang).parse_all(&text, self.active(now))
     }
 
