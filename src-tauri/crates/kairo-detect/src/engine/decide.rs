@@ -326,7 +326,7 @@ impl Engine {
 
     /// The text-match guards (rule 9).
     fn text_match_held(&self, c: &Candidate, top: VerseId, now: u64) -> bool {
-        if self.screen.non_scripture_live {
+        if self.screen.non_scripture_live || self.screen.singing {
             return true;
         }
         if self.shown_verse_returns_without_new_evidence(top, now) || self.range_left_verse_returns_without_new_evidence(top, now) {

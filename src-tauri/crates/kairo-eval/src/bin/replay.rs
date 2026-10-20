@@ -297,7 +297,30 @@ fn replay(k: &Arc<Knowledge>, golden: &Value, audio: bool, m: Option<&MeaningSer
             }
         }
     };
+    // `MUSIC_DIR=<dir>`: the sound classifier's frames for this recording (<dir>/<source>.csv,
+    // from `music-check`) switch singing on and off as the app would.
+    let mut singing: std::collections::VecDeque<(u64, bool)> = std::env::var("MUSIC_DIR")
+        .ok()
+        .and_then(|dir| std::fs::read_to_string(std::path::Path::new(&dir).join(format!("{}.csv", golden["source"].as_str().unwrap_or("")))).ok())
+        .map(|csv| {
+            let mut gate = kairo_detect::music::MusicGate::default();
+            csv.lines()
+                .skip(1)
+                .filter_map(|l| {
+                    let f: Vec<f32> = l.split(',').filter_map(|x| x.parse().ok()).collect();
+                    (f.len() == 4).then(|| gate.push(f[1], f[3]).map(|on| ((f[0] * 1000.0) as u64, on))).flatten()
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     for (t, cue, text, fin, speech_final, continues_live) in timeline(golden, audio) {
+        while singing.front().is_some_and(|s| s.0 <= t) {
+            let (at, on) = singing.pop_front().unwrap();
+            if std::env::var("MUSIC_LOG").is_ok() {
+                eprintln!("[music] {} singing {}", golden["source"].as_str().unwrap_or(""), if on { format!("on at {:.1}m", at as f64 / 60000.0) } else { format!("off at {:.1}m", at as f64 / 60000.0) });
+            }
+            engine.handle(Event::Singing(on), at);
+        }
         // Timers due before this input fire first.
         wakes.sort_by_key(|w| w.0);
         while wakes.first().is_some_and(|w| w.0 <= t) {
