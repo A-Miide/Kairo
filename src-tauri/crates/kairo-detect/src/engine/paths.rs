@@ -24,6 +24,8 @@ const CLAUSE_WINDOW_WORDS: usize = 14;
 const CLAUSE_WINDOW_STEP: usize = 7;
 const VERBATIM_MIN_WORDS: usize = 6;
 const VERBATIM_LIMIT: usize = 3;
+/// Two verses matched this evenly, in different places, are the same words.
+const VERBATIM_TIE: f32 = 0.02;
 /// Shared opening wording: two confirmed alignments this close are tied.
 const TIE_MATCHED: u32 = 2;
 const TIE_BREAK_CONTINUITY_WINDOW_MS: u64 = 8_000;
@@ -206,9 +208,23 @@ impl Engine {
         // Capped, not just "intent": `intent` is never read, so a four-word
         // phrase like "Jesus Christ from the dead" (weight 18.3) put 1 Peter 1:3
         // on screen on its own (live test, 2026-10-14).
-        let weak = via_idf && !corroborated;
+        let mut weak = via_idf && !corroborated;
+        let mut verses: Vec<VerseId> = screen.iter().map(|h| h.verse).collect();
+        // Word for word in more than one place ("heaven and earth shall pass away": Matthew,
+        // Mark and Luke): the passage in play picks one, else every one is offered.
+        let place = |v: VerseId| (self.r(v).book, self.r(v).chapter);
+        let tied: Vec<VerseId> = screen.iter().filter(|h| top.score - h.score < VERBATIM_TIE && place(h.verse) != place(top.verse)).map(|h| h.verse).collect();
+        if !tied.is_empty() {
+            let all: Vec<VerseId> = std::iter::once(top.verse).chain(tied).collect();
+            match self.settle_stream_tie(&all, now) {
+                Some(w) => verses = vec![w],
+                None => {
+                    verses = all;
+                    weak = true;
+                }
+            }
+        }
         let intent = if weak { Target::Suggestions } else { Target::Screen };
-        let verses = screen.iter().map(|h| h.verse).collect();
         let candidate = Candidate::new(verses, Method::Verbatim, score, intent).evidence(evidence(&top)).from_text(&found_in);
         self.decide(if weak { candidate.capped() } else { candidate }, now);
         if top.score >= READ_SIMILARITY {

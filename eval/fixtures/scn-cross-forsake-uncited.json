@@ -1,0 +1,12 @@
+{
+ "videoId": "scn-cross-forsake-uncited",
+ "title": "Scenario: cross-forsake-uncited",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "he will not fail thee, nor forsake thee"
+  }
+ ],
+ "groundTruth": [],
+ "note": "eval/scenarios/make_scenarios.py"
+}

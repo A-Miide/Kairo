@@ -1,0 +1,12 @@
+{
+ "videoId": "scn-cross-heaven-earth-uncited",
+ "title": "Scenario: cross-heaven-earth-uncited",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "heaven and earth shall pass away, but my words shall not pass away"
+  }
+ ],
+ "groundTruth": [],
+ "note": "eval/scenarios/make_scenarios.py"
+}

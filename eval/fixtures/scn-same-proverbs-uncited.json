@@ -1,0 +1,12 @@
+{
+ "videoId": "scn-same-proverbs-uncited",
+ "title": "Scenario: same-proverbs-uncited",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "there is a way that seemeth right unto a man, but the end thereof are the ways of death"
+  }
+ ],
+ "groundTruth": [],
+ "note": "eval/scenarios/make_scenarios.py"
+}

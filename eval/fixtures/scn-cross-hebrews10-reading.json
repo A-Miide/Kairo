@@ -1,0 +1,46 @@
+{
+ "videoId": "scn-cross-hebrews10-reading",
+ "title": "Scenario: cross-hebrews10-reading",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "Hebrews chapter ten verse thirty six"
+  },
+  {
+   "startMs": 3300,
+   "text": "for ye have need of patience, that, after ye have done the will of God, ye might receive the promise"
+  },
+  {
+   "startMs": 12200,
+   "text": "for yet a little while, and he that shall come will come, and will not tarry"
+  },
+  {
+   "startMs": 19500,
+   "text": "now the just shall live by faith: but if any man draw back, my soul shall have no pleasure in him"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Hebrews",
+   "chapter": 10,
+   "kind": "citation",
+   "startMs": 0,
+   "verse": 36
+  },
+  {
+   "book": "Hebrews",
+   "chapter": 10,
+   "kind": "quote",
+   "startMs": 12200,
+   "verse": 37
+  },
+  {
+   "book": "Hebrews",
+   "chapter": 10,
+   "kind": "quote",
+   "startMs": 19500,
+   "verse": 38
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

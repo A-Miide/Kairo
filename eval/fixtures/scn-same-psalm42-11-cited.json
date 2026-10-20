@@ -1,0 +1,24 @@
+{
+ "videoId": "scn-same-psalm42-11-cited",
+ "title": "Scenario: same-psalm42-11-cited",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "Psalm forty two verse eleven"
+  },
+  {
+   "startMs": 2900,
+   "text": "why art thou cast down, O my soul? and why art thou disquieted within me? hope thou in God: for I shall yet praise him, who is the health of my countenance, and my God"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Psalm",
+   "chapter": 42,
+   "kind": "citation",
+   "startMs": 0,
+   "verse": 11
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

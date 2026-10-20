@@ -1,0 +1,24 @@
+{
+ "videoId": "scn-cross-micah43-cited",
+ "title": "Scenario: cross-micah43-cited",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "Micah four three"
+  },
+  {
+   "startMs": 2100,
+   "text": "and they shall beat their swords into plowshares, and their spears into pruninghooks: nation shall not lift up a sword against nation, neither shall they learn war any more"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Micah",
+   "chapter": 4,
+   "kind": "citation",
+   "startMs": 0,
+   "verse": 3
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

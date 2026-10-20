@@ -1,0 +1,42 @@
+{
+ "source": "scn-same-proverbs-uncited",
+ "kind": "scenario",
+ "lang": "en",
+ "songLive": false,
+ "cues": [
+  {
+   "text": "there is a way that seemeth right unto a man, but the end thereof are the ways of death",
+   "audioMs": 0
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "there is a way",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "there is a way that seemeth right unto",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "there is a way that seemeth right unto a man, but the",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "there is a way that seemeth right unto a man, but the end thereof are the",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "there is a way that seemeth right unto a man, but the end thereof are the ways of death",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}
