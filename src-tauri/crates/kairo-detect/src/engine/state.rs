@@ -168,6 +168,8 @@ pub struct Screen {
     pub corrected_away: Option<CorrectedAway>,
     /// A song or other non-scripture slide is live.
     pub non_scripture_live: bool,
+    /// People are singing (heard, not a slide): scripture in the lyrics is only offered.
+    pub singing: bool,
     /// Verse → when it was last offered.
     pub recent_suggestions: HashMap<VerseId, u64>,
     /// When a spoken citation last went through (suppresses redundant suggestions).

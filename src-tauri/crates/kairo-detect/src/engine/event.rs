@@ -32,6 +32,8 @@ pub enum Event {
     Restored { up: Option<VerseId>, taken_down: Option<VerseId> },
     /// A song, announcement or other non-scripture slide went live.
     NonScriptureLive,
+    /// Singing heard in the room (a sound classifier), or no longer.
+    Singing(bool),
     /// The screen was cleared or stepped back.
     ScreenCleared,
     RangeNext,

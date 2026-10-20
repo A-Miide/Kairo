@@ -207,6 +207,7 @@ impl Engine {
             Event::OperatorCited(verses) => self.operator_cited(verses, now),
             Event::Restored { up, taken_down } => self.restored(up, taken_down, now),
             Event::NonScriptureLive => self.screen.non_scripture_live = true,
+            Event::Singing(on) => self.screen.singing = on,
             Event::ScreenCleared => self.screen.up = None,
             Event::RangeNext => {
                 self.request_range_advance(now);
