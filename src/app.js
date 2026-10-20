@@ -159,6 +159,12 @@ const closeSettingsBtn   = document.getElementById('close-settings');
 const cancelSettingsBtn  = document.getElementById('cancel-settings');
 const saveSettingsBtn    = document.getElementById('save-settings');
 const autoSendSettings   = document.getElementById('auto-send-settings');
+// Applies at once (and the Auto-Deploy badge follows); Save keeps it too.
+autoSendSettings?.addEventListener('change', () => {
+  settings.autoSend = autoSendSettings.checked;
+  try { saveSettingsPatch({ autoSend: settings.autoSend }); } catch {}
+  updateAutoDeployBadge();
+});
 
 // The Live Queue's "Auto-Deploy" badge used to be static markup — always
 // claimed auto-send was live regardless of the real Settings > Bible >
@@ -1073,7 +1079,7 @@ function renderPreviewScreen(text, reference, look, translatedText = '', image =
       themed.classList.remove('hidden');
       themed.innerHTML = '';
       const img = document.createElement('img');
-      img.src = image;
+      img.src = window.kairoSmall(image, 1280);
       img.style.cssText = `position:absolute;inset:0;width:100%;height:100%;object-fit:${fit};`;
       themed.appendChild(img);
     } else if (effectiveLook && themed && window.KairoService?.paintLookLayers) {
@@ -1221,7 +1227,7 @@ function renderMediaPreviewNow(src, kind, fit) {
     host.appendChild(v);
   } else {
     const img = document.createElement('img');
-    img.src = src;
+    img.src = window.kairoSmall(src, 1280);
     img.style.objectFit = objectFit;
     host.appendChild(img);
   }
@@ -1477,7 +1483,9 @@ window.KairoSlideOffer = function (o) {
 // within 500ms count as a double-click, regardless of the platform's own
 // (stricter) dblclick detection. Ignores clicks on nested buttons — those
 // already have their own single-click handlers.
-function wireDoubleClickSend(el, handler) {
+// single: in Director mode a single click puts the verse on Preview (owner, 2026-10-19: a single click sends to
+// Preview everywhere, a double-click to Preview and the Output). The normal screen keeps double-click only.
+function wireDoubleClickSend(el, handler, single) {
   let lastClickAt = 0;
   el.addEventListener('click', (e) => {
     if (e.target.closest('button')) return;
@@ -1487,6 +1495,7 @@ function wireDoubleClickSend(el, handler) {
       handler(e);
     } else {
       lastClickAt = now;
+      if (single && window.KairoVideoDirector?.isShown?.()) single(e);
     }
   });
 }
@@ -1536,7 +1545,8 @@ function buildCandidateCard(v, method, isSent = false) {
   // Candidates matches the Live Queue/range-card shortcut instead of being
   // the one surface where you have to hit the button precisely.
   // A double-click sends straight to the screen, even in Video director mode (where a single send stages).
-  wireDoubleClickSend(card, () => { showInViewer([v], method || 'direct', 1.0); sendVerseToServer(v, null, { direct: true }); });
+  wireDoubleClickSend(card, () => { showInViewer([v], method || 'direct', 1.0); sendVerseToServer(v, null, { direct: true }); },
+    () => { showInViewer([v], method || 'direct', 1.0); sendVerseToServer(v); });
   return card;
 }
 
@@ -1595,7 +1605,7 @@ function buildQueueRow(v, method, correctedFrom = null) {
     // Flash feedback
     card.classList.add('sent-pulse');
     setTimeout(() => card.classList.remove('sent-pulse'), 600);
-  });
+  }, () => { showInViewer([v], method || 'direct', 1.0); sendVerseToServer(v); });
   return card;
 }
 
@@ -1765,14 +1775,13 @@ function buildRangeCard(v, isActive) {
     syncRangeJumpIfNeeded(v);
   });
 
-  card.addEventListener('dblclick', (e) => {
-    e.preventDefault();
+  wireDoubleClickSend(card, () => {
     updateViewerDisplay(v);   // update preview only — card stays in place
     sendVerseToServer(v, null, { direct: true });
     syncRangeJumpIfNeeded(v);
     card.classList.add('sent-pulse');
     setTimeout(() => card.classList.remove('sent-pulse'), 600);
-  });
+  }, () => sendVerseToServer(v));
 
   return card;
 }
@@ -1876,7 +1885,7 @@ function captureIsVirtualInput() {
 // mid-bar, and a one-line verdict. While listening it reads the live capture;
 // with Settings open on Audio and not listening, it previews the selected
 // input on its own, so the feed can be checked before a service.
-const inputLevel = { recent: [], clippedAt: 0, gain: null, meterPeak: 0 };
+const inputLevel = { recent: [], clippedAt: 0, gain: null, meterPeak: 0, wavePeak: 0 };
 function noteInputLevel(peak, clipped, gain) {
   const now = Date.now();
   inputLevel.recent.push({ at: now, peak });
@@ -1884,6 +1893,7 @@ function noteInputLevel(peak, clipped, gain) {
   if (clipped) inputLevel.clippedAt = now;
   inputLevel.gain = gain;
   if (peak > inputLevel.meterPeak) inputLevel.meterPeak = peak;
+  if (peak > inputLevel.wavePeak) inputLevel.wavePeak = peak;
 }
 setInterval(() => {
   const wrap = document.getElementById('input-level');
@@ -1916,6 +1926,33 @@ setInterval(() => {
   wrap.dataset.state = verdict.state;
   status.textContent = verdict.text;
 }, 100);
+
+// The Start Listening button shows the input level as a moving wave while listening (owner, 2026-10-19), and
+// the microphone's name is its tooltip rather than text in the top bar (Settings → Audio has it too).
+(function wireListenWave() {
+  const wrap = listenBtn?.querySelector('.listen-wave');
+  if (!wrap) return;
+  const bars = [...wrap.children];
+  const hist = new Array(bars.length).fill(0);
+  setInterval(() => {
+    const p = Math.min(1, inputLevel.wavePeak);
+    inputLevel.wavePeak = 0;
+    if (!isListening) { if (hist.some(v => v)) { hist.fill(0); bars.forEach(b => { b.style.transform = ''; }); } return; }
+    const db = p > 0 ? 20 * Math.log10(p) : -90;
+    hist.push(Math.max(0, Math.min(1, (db + 54) / 54)));
+    hist.shift();
+    bars.forEach((b, i) => { b.style.transform = `scaleY(${(0.16 + 0.84 * hist[i]).toFixed(3)})`; });
+  }, 80);
+  const name = () => (micDisplay?.textContent || '').trim();
+  const sync = () => {
+    const n = name();
+    const t = !n || /no mic/i.test(n) ? 'No microphone selected: choose one in Settings → Audio' : `Microphone: ${n}`;
+    listenBtn.title = t;
+    listenBtn.setAttribute('aria-label', `${listenText?.textContent || 'Start Listening'}. ${t}`);
+  };
+  if (micDisplay) new MutationObserver(sync).observe(micDisplay, { childList: true, characterData: true, subtree: true });
+  sync();
+})();
 
 // The Settings preview: its own short-lived capture of the selected input,
 // only while Settings shows Audio and nothing is listening.
@@ -4558,7 +4595,9 @@ if (document.documentElement.classList.contains('platform-darwin')) {
   // widths there was almost nothing to grab.
   const bar = document.querySelector('.top-bar');
   if (!bar) return;
-  const INTERACTIVE = 'button, a, input, select, textarea, label, [role="button"], [contenteditable], .tb-group, .window-controls, .listen-btn, #mic-display';
+  // Controls only. The mic label and the gaps inside the tab pill are not controls (the label has no click
+  // of its own), so they drag too (owner, 2026-10-19: dragging on "No mic selected" did nothing).
+  const INTERACTIVE = 'button, a, input, select, textarea, label, [role="button"], [contenteditable], .window-controls';
   bar.addEventListener('mousedown', (e) => {
     if (e.button !== 0) return; // left-click only — matches native drag-region behavior
     if (e.target.closest(INTERACTIVE)) return;
@@ -4575,7 +4614,7 @@ if (document.documentElement.classList.contains('platform-darwin')) {
   document.getElementById('close-btn')?.addEventListener('click', () => win()?.close?.().catch(() => {}));
   // Double-clicking the empty part of the bar maximises, as on every desktop.
   document.querySelector('.top-bar')?.addEventListener('dblclick', (e) => {
-    if (e.target.closest('button, a, input, select, textarea, label, [role="button"], .tb-group, .window-controls')) return;
+    if (e.target.closest('button, a, input, select, textarea, label, [role="button"], .window-controls')) return;
     win()?.toggleMaximize?.().catch(() => {});
   });
 })();

@@ -45,10 +45,57 @@ pub fn router() -> Router<Shared> {
 }
 
 /// A picture or video imported from a ProPresenter file (see propresenter.rs's Assets).
+/// With `?w=480` a picture comes back at most that wide (a copy made once and kept in
+/// `small/`): the operator's tiles and previews don't need the 4K original, which the web view
+/// decodes to ~33 MB however small it is drawn. The output screens ask without `w`.
 async fn pp_asset(State(app): State<Shared>, Path(file): Path<String>, req: Request) -> Response {
     let ok = file.split_once('.').is_some_and(|(h, e)| h.len() == 32 && h.bytes().all(|c| c.is_ascii_hexdigit()) && !e.is_empty() && e.bytes().all(|c| c.is_ascii_alphanumeric()));
-    let p = crate::propresenter::Assets::new(&app.cfg.app_data_dir).dir().join(&file);
-    if ok && p.is_file() { send_file(p, req).await } else { StatusCode::NOT_FOUND.into_response() }
+    let dir = crate::propresenter::Assets::new(&app.cfg.app_data_dir).dir().to_path_buf();
+    let p = dir.join(&file);
+    if !(ok && p.is_file()) {
+        return StatusCode::NOT_FOUND.into_response();
+    }
+    let width = req.uri().query().and_then(|q| q.split('&').find_map(|kv| kv.strip_prefix("w="))).and_then(|w| w.parse::<u32>().ok());
+    let p = match width {
+        Some(w) => {
+            let source = p.clone();
+            tokio::task::spawn_blocking(move || smaller_copy(&dir, &source, w)).await.ok().flatten().unwrap_or(p)
+        }
+        None => p,
+    };
+    send_file(p, req).await
+}
+
+/// The picture at `source` no wider than `width` (rounded up to a multiple of 160, at most 1920),
+/// made once and kept under `dir/small/`. `None` when it is already that small, isn't a PNG or
+/// JPEG, or can't be read: the caller then serves the original.
+fn smaller_copy(dir: &std::path::Path, source: &std::path::Path, width: u32) -> Option<std::path::PathBuf> {
+    let width = width.clamp(160, 1920).div_ceil(160) * 160;
+    let ext = source.extension()?.to_str()?.to_ascii_lowercase();
+    let format = match ext.as_str() {
+        "png" => image::ImageFormat::Png,
+        "jpg" | "jpeg" => image::ImageFormat::Jpeg,
+        _ => return None,
+    };
+    let out = dir.join("small").join(format!("{}-{width}.{ext}", source.file_stem()?.to_str()?));
+    if out.is_file() {
+        return Some(out);
+    }
+    let img = image::open(source).ok()?;
+    if img.width() <= width {
+        return None;
+    }
+    let height = ((img.height() as u64 * width as u64) / img.width() as u64).max(1) as u32;
+    let small = img.resize_exact(width, height, image::imageops::FilterType::Triangle);
+    std::fs::create_dir_all(out.parent()?).ok()?;
+    let tmp = out.with_extension(format!("{ext}.tmp"));
+    // A JPEG has no alpha channel; a PNG keeps its own.
+    let saved = if format == image::ImageFormat::Jpeg { image::DynamicImage::ImageRgb8(small.to_rgb8()).save_with_format(&tmp, format) } else { small.save_with_format(&tmp, format) };
+    if saved.is_err() || std::fs::rename(&tmp, &out).is_err() {
+        let _ = std::fs::remove_file(&tmp);
+        return None;
+    }
+    Some(out)
 }
 
 /// The file on disk behind one of the media addresses the UI uses.
@@ -310,5 +357,36 @@ async fn folder_file(State(app): State<Shared>, Path((id, name)): Path<(String, 
     match app.media.folder_file(&id, &name) {
         Some(p) => send_file(p, req).await,
         None => StatusCode::NOT_FOUND.into_response(),
+    }
+}
+
+#[cfg(test)]
+mod pp_asset_tests {
+    use super::smaller_copy;
+
+    fn temp(name: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("kairo-pp-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    #[test]
+    fn a_big_picture_gets_a_smaller_copy_made_once_and_a_small_one_is_left_alone() {
+        let dir = temp("small");
+        let big = dir.join("0123456789abcdef0123456789abcdef.png");
+        image::RgbaImage::from_pixel(1600, 900, image::Rgba([10, 20, 30, 128])).save(&big).unwrap();
+        let out = smaller_copy(&dir, &big, 500).expect("a smaller copy");
+        let got = image::open(&out).unwrap();
+        assert_eq!((got.width(), got.height()), (640, 360), "500 rounds up to 640, aspect kept");
+        assert!(got.color().has_alpha(), "a PNG keeps its transparency");
+        assert_eq!(smaller_copy(&dir, &big, 500).as_deref(), Some(out.as_path()), "the second ask reuses it");
+        assert!(smaller_copy(&dir, &big, 1920).is_none(), "already narrower than the width asked: serve the original");
+        let jpg = dir.join("fedcba9876543210fedcba9876543210.jpg");
+        image::RgbImage::from_pixel(1000, 500, image::Rgb([200, 100, 50])).save(&jpg).unwrap();
+        let j = smaller_copy(&dir, &jpg, 480).expect("a JPEG copy");
+        assert_eq!(image::open(&j).unwrap().width(), 480);
+        assert!(smaller_copy(&dir, &dir.join("x.gif"), 480).is_none());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

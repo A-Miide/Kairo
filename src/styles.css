@@ -214,6 +214,12 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* The app never lays itself out smaller than the Director screen can hold: a window smaller than this scrolls
+   (owner, 2026-10-19: "the UI breaks when we shrink it"). Only the app's own page; the output pages are other files. */
+html.kairo-app, html.kairo-app body { min-width: 1180px; min-height: 700px; }
+/* Scrollbars only while the window is smaller than that: above it the page fits and clips as before. */
+@media (max-width: 1179px), (max-height: 699px) { html.kairo-app { overflow: auto; } }
+
 /* The rest of the app disables selection above, so the only place text ever
    gets selected is inputs/contentEditable (rename fields, Flow's slide text,
    search boxes) — exactly where input.select() highlights everything on
@@ -469,6 +475,8 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
   flex-shrink: 0;
 }
 
+/* The microphone's name is the Start Listening button's tooltip and Settings → Audio; no text for it in the bar. */
+.mic-label { display: none; }
 .mic-label {
   font-size: 11px;
   font-weight: 400;
@@ -7575,7 +7583,9 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 
 /* Six controls share the row since Back joined — labels stay on one line. */
 .rs-layer-clear-bar .rs-layer-clear-btn { white-space: nowrap; flex: 1 1 auto; min-width: 0; padding-left: 3px; padding-right: 3px; }
-.rs-layer-clear-bar .rs-layer-clear-all-icon { flex: 0 0 auto; }
+/* The row reads "Clear" and then one square per layer, sharing the width evenly (owner, 2026-10-19: no balance with the icons alone). */
+.rs-layer-clear-bar .rs-layer-clear-all-icon { flex: 1 1 0; width: auto; height: 30px; }
+.rs-layer-clear-label { flex: 0 0 auto; align-self: center; padding: 0 6px 0 2px; font-size: 10px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-3); }
 
 /* ── Back button ─────────────────────────────────────────────────────────── */
 .rs-layer-clear-btn.rs-layer-back:hover { color: var(--text); border-color: var(--selected-border); }
@@ -8329,7 +8339,7 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 }
 /* A narrow left column: the title gives way before the Clear button does. */
 .ls-transcript-header > :first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.audio-out-volume { flex: 1; min-width: 0; accent-color: var(--brand); }
+.audio-out-volume { flex: 1; min-width: 0; accent-color: var(--accent); }
 .audio-out-volume-val { min-width: 38px; text-align: right; font-variant-numeric: tabular-nums; color: var(--text-2); font-size: 12px; }
 .audio-cols { align-items: start; }
 
@@ -8597,8 +8607,8 @@ input[type="checkbox"], input[type="radio"], input[type="range"], progress, mete
 .dl-row .dl-what { flex: 1 1 auto; white-space: normal; }
 
 /* Video zone in Theme Studio (screen themes, Director mode only). */
-#ts-add-videozone-btn, #ts-add-contentzone-btn { display: none; }
-body.video-director #ts-add-videozone-btn, body.video-director #ts-add-contentzone-btn { display: inline-flex; }
+#ts-add-videozone-btn, #ts-add-contentzone-btn, #ts-add-slidezone-btn, #ts-add-mediazone-btn, #ts-add-timerzone-btn { display: none; }
+body.video-director #ts-add-videozone-btn, body.video-director #ts-add-contentzone-btn, body.video-director #ts-add-slidezone-btn, body.video-director #ts-add-mediazone-btn, body.video-director #ts-add-timerzone-btn { display: inline-flex; }
 .ts-videozone.is-content { background: rgba(255,255,255,0.07); outline-style: solid; outline-color: rgba(255,255,255,0.35); }
 .ts-videozone {
   display: flex; align-items: center; justify-content: center;
@@ -8669,3 +8679,67 @@ body.video-director #ts-add-videozone-btn, body.video-director #ts-add-contentzo
 .rp-pre { max-height: 160px; overflow: auto; margin: 6px 0 0; padding: 8px; font-size: 11px; background: var(--bg); border-radius: var(--radius); white-space: pre-wrap; word-break: break-word; color: var(--text-2); }
 .rp-status { min-height: 18px; margin: 0; font-size: 12.5px; color: var(--text-2); }
 .rp-bar { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* A setting that is one switch: its words on the left, the switch on the right. */
+.setting-switch-row { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding: 4px 0 14px; }
+.setting-switch-text { flex: 1 1 auto; min-width: 0; }
+.setting-switch-text .setting-label { margin-bottom: 4px; }
+.setting-switch-text .setting-hint { margin: 0; }
+
+/* Start Listening shows the input level as a moving wave while listening. */
+.listen-wave { display: none; align-items: center; gap: 2px; height: 14px; }
+.listen-wave i { display: block; width: 2px; height: 14px; border-radius: 1px; background: currentColor; transform: scaleY(0.16); transition: transform 80ms linear; }
+.tb-listen-btn.active .listen-wave { display: inline-flex; }
+.tb-listen-btn.active > svg { display: none; }
+
+/* The card (or button) a popover belongs to, while it is open. */
+.is-popover-anchor { outline: 2px solid var(--selected-border); outline-offset: 2px; }
+
+/* The top bar: the app icon, then the KAIRO wordmark from the splash screen (not text). */
+.app-logo .app-wordmark { display: block; height: 12px; width: auto; }
+
+/* ══ Button system (owner, 2026-10-19: "unify the buttons app wide, consistent ui/ux behavior") ══════════════════
+   Four kinds, one set of behaviours. Shape: primary 8px, secondary and icon 6px, chips and tabs pills. Every one has
+   hover, pressed, keyboard focus and disabled states. Sizes are left as each place set them (no layout shifts);
+   colours: brand fill only for primary, an orange outline only for "needs attention" (Ready check), red only for live. */
+:root { --r-btn: 8px; --r-btn-sm: 6px; --btn-hover: rgba(255,255,255,0.07); --btn-line-hover: rgba(255,255,255,0.26); }
+
+/* Behaviours shared by every kind. */
+:is(.modal-btn, .btn-brand, .vd-mini, .vd-chip, .vd-hbtn, .vd-take, .tb-studio-btn, .tb-icon-btn, .tb-listen-btn, .ls-icon-btn,
+    .svc-card-icon-btn, .modal-close-btn, .scripture-action-btn, .scripture-note-btn, .rs-clear-btn, .rs-layer-clear-btn,
+    .cs-clear-btn, .cs-theme-btn, .range-nav-btn, .svc-edit-btn, .ts-add-btn, .ts-icon-btn, .toggle-btn, .svc-popover-item,
+    .tb-menu-item, .svc-playlist-switcher):not(:disabled) { cursor: pointer; }
+:is(.modal-btn, .btn-brand, .vd-mini, .vd-chip, .vd-hbtn, .vd-take, .tb-studio-btn, .tb-icon-btn, .tb-listen-btn, .ls-icon-btn,
+    .svc-card-icon-btn, .modal-close-btn, .scripture-action-btn, .scripture-note-btn, .rs-clear-btn, .rs-layer-clear-btn,
+    .cs-clear-btn, .cs-theme-btn, .range-nav-btn, .svc-edit-btn, .ts-add-btn, .ts-icon-btn, .toggle-btn, .svc-playlist-switcher):focus-visible {
+  outline: 2px solid var(--selected-border); outline-offset: 2px;
+}
+:is(.modal-btn, .btn-brand, .vd-mini, .vd-chip, .vd-hbtn, .vd-take, .tb-studio-btn, .tb-icon-btn, .ls-icon-btn, .svc-card-icon-btn,
+    .modal-close-btn, .scripture-action-btn, .scripture-note-btn, .rs-clear-btn, .rs-layer-clear-btn, .cs-clear-btn, .cs-theme-btn,
+    .range-nav-btn, .svc-edit-btn, .ts-add-btn, .ts-icon-btn, .toggle-btn):active:not(:disabled) { transform: scale(0.97); }
+:is(.modal-btn, .btn-brand, .vd-mini, .vd-chip, .vd-hbtn, .vd-take, .tb-studio-btn, .tb-icon-btn, .ls-icon-btn, .svc-card-icon-btn,
+    .modal-close-btn, .scripture-action-btn, .scripture-note-btn, .rs-clear-btn, .rs-layer-clear-btn, .cs-clear-btn, .cs-theme-btn,
+    .range-nav-btn, .svc-edit-btn, .ts-add-btn, .ts-icon-btn, .toggle-btn):disabled { opacity: 0.45; cursor: default; }
+
+/* Primary: brand fill. */
+:is(.modal-btn.primary, .btn-brand, .vd-mini-primary) { border-radius: var(--r-btn); }
+:is(.modal-btn.primary, .btn-brand, .vd-mini-primary):hover:not(:disabled) { background: var(--brand-hover); color: #fff; }
+:is(.modal-btn.primary, .btn-brand, .vd-mini-primary):active:not(:disabled) { filter: brightness(0.92); }
+
+/* Secondary: grey outline. */
+:is(.modal-btn.secondary, .vd-mini:not(.vd-mini-primary), .scripture-action-btn, .scripture-note-btn, .rs-clear-btn, .rs-layer-clear-btn,
+    .cs-clear-btn, .range-nav-btn, .svc-edit-btn, .ts-add-btn) { border-radius: var(--r-btn-sm); }
+:is(.modal-btn.secondary, .vd-mini:not(.vd-mini-primary):not(.is-on), .scripture-action-btn, .scripture-note-btn, .rs-clear-btn,
+    .rs-layer-clear-btn, .cs-clear-btn, .range-nav-btn, .svc-edit-btn):hover:not(:disabled) {
+  background: var(--btn-hover); color: var(--text); border-color: var(--btn-line-hover);
+}
+
+/* Icon: a quiet square that lights on hover. */
+:is(.ls-icon-btn:not(.ls-icon-btn-labeled), .modal-close-btn, .svc-card-icon-btn, .vd-hbtn, .ts-icon-btn) { border-radius: var(--r-btn-sm); }
+:is(.ls-icon-btn, .modal-close-btn, .svc-card-icon-btn, .vd-hbtn, .ts-icon-btn):hover:not(:disabled) { background: var(--btn-hover); color: var(--text); }
+
+/* Chips and tabs: pills that lift on hover. */
+:is(.tb-studio-btn, .vd-chip, .tb-icon-btn):hover:not(:disabled):not(.active):not(.is-on) { background: var(--btn-hover); color: var(--text); }
+
+/* Back (undo) has no button on the screen (owner, 2026-10-19): Cmd/Ctrl+Z, the menu and Director's Undo press this one. */
+#output-back-btn[hidden] { display: none; }

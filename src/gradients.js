@@ -65,5 +65,15 @@
       [[24, 30, 56, 48, '#9f37ae']]),
     g('night-ocean', 'Ocean Night', 150, [[0, '#185a86'], [52, '#142e5d'], [100, '#101741']],
       [[24, 30, 56, 48, '#2796be']]),
+    // The Timer cards' own: seven hues spread round the wheel, each one tone (same saturation, same light to dark),
+    // no glow — so they read as a set and as seven different colours (owner, 2026-10-19: the Night set's mid-tones
+    // all ran into one navy and "were the same"; a glow read as a smudge on a small card).
+    g('tone-crimson', 'Crimson Tone', 150, [[0, '#8c2c3c'], [52, '#5c1f21'], [100, '#311411']]),
+    g('tone-magenta', 'Magenta Tone', 150, [[0, '#8c2c6f'], [52, '#5c1f41'], [100, '#31111f']]),
+    g('tone-purple', 'Purple Tone', 150, [[0, '#6f2c8c'], [52, '#521f5c'], [100, '#301131']]),
+    g('tone-indigo', 'Indigo Tone', 150, [[0, '#392c8c'], [52, '#2f1f5c'], [100, '#1e1131']]),
+    g('tone-blue', 'Blue Tone', 150, [[0, '#2c558c'], [52, '#1f315c'], [100, '#111731']]),
+    g('tone-teal', 'Teal Tone', 150, [[0, '#2c858c'], [52, '#1f505c'], [100, '#112631']]),
+    g('tone-green', 'Green Tone', 150, [[0, '#2c8c5f'], [52, '#1f5c47'], [100, '#11312b']]),
   ];
 })();

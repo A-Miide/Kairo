@@ -7,8 +7,8 @@
 //   Grid on: tiles (two columns, or as many as fit); grid off: one input per row
 //   as a list. No pages: the column scrolls. Only the tiles in view hold a capture, at the
 //   hub's thumbnail size and rate, and none while the grid is off screen.
-//   Click a tile: send it to Program. Shift-click or its Preview button: stage
-//   it on Preview.
+//   Click a tile or its Preview button: stage it on Preview. Double-click: put it on
+//   air.
 'use strict';
 (function () {
   function h(tag, cls, text) {
@@ -191,8 +191,8 @@
       const t = h('div', 'vg-tile' + (onAir ? ' is-pgm' : '') + (staged ? ' is-pvw' : ''));
       t.tabIndex = 0;
       t.setAttribute('role', 'button');
-      t.setAttribute('aria-label', `${source.name}${onAir ? ', on air' : staged ? ', on Preview' : ''}. Click to send to Program, Shift-click for Preview`);
-      t.title = `Click: on air. Shift-click: Preview. Right-click: settings.${source.key ? ` Key ${source.key.toUpperCase()}, Shift+${source.key.toUpperCase()} for Preview.` : index < 9 ? ` Key ${index + 1}, Shift+${index + 1} for Preview.` : ''}`;
+      t.setAttribute('aria-label', `${source.name}${onAir ? ', on air' : staged ? ', on Preview' : ''}. Click to stage on Preview, double-click to put on air`);
+      t.title = `Click: stage on Preview. Double-click: on air. Right-click: settings.${source.key ? ` Key ${source.key.toUpperCase()} stages it.` : index < 9 ? ` Key ${index + 1} stages it.` : ''} Space sends what is staged.`;
       const v = h('video'); v.muted = true; v.playsInline = true; v.setAttribute('aria-hidden', 'true');
       t.appendChild(v);
       const devId = V.resolveDevice(source, opts.getDevices());
@@ -209,10 +209,11 @@
       const pv = h('button', 'vg-pvw', 'Preview'); pv.type = 'button'; pv.title = `Stage ${source.name} on Preview`;
       pv.addEventListener('click', (e) => { e.stopPropagation(); opts.onPreview(source.id); });
       t.appendChild(pv);
-      const go = (e) => (e.shiftKey ? opts.onPreview(source.id) : opts.onProgram(source.id));
+      // Preview is the staging screen: a click stages the input there, a double-click puts it on air
+      // (Space then sends what is staged). Nothing goes live from a single click.
+      const go = () => opts.onPreview(source.id);
       t.addEventListener('click', go);
-      // Double-click shows it in Preview (also where nothing carries video yet).
-      t.addEventListener('dblclick', (e) => { e.preventDefault(); opts.onPreview(source.id); });
+      t.addEventListener('dblclick', (e) => { e.preventDefault(); opts.onProgram(source.id); });
       // Right-click: this input's settings.
       t.addEventListener('contextmenu', (e) => { if (!opts.onSettings) return; e.preventDefault(); opts.onSettings(source.id, t); });
       // Enter sends it; Space is the Take key of the whole screen.
@@ -251,7 +252,7 @@
         }
         const state = t.querySelector('.vg-state');
         if (state) state.textContent = word || 'Ready';
-        if (!opts.readOnly) t.setAttribute('aria-label', `${source.name}${onAir ? ', on air' : staged ? ', on Preview' : ''}. Click to send to Program, Shift-click for Preview`);
+        if (!opts.readOnly) t.setAttribute('aria-label', `${source.name}${onAir ? ', on air' : staged ? ', on Preview' : ''}. Click to stage on Preview, double-click to put on air`);
       });
     }
 

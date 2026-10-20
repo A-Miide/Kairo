@@ -449,8 +449,8 @@ impl Engine {
                     if self.range.all != verses {
                         self.set_range(verses.clone(), now);
                     }
-                } else {
-                    self.clear_range(now);
+                } else if !(self.range.soft && self.range.all.first() == verses.first()) {
+                    self.set_soft_range(verses[0], now);   // the next verses held in case they're read on
                 }
                 // Already put up from this utterance's interim.
                 if verses.len() == 1 && sent_from_interim.contains(&verses[0]) {
@@ -550,7 +550,7 @@ impl Engine {
         if verses.len() > 1 {
             self.set_range(verses.clone(), now);
         } else {
-            self.clear_range(now);
+            self.set_soft_range(verses[0], now);   // the next verses held in case they're read on
         }
         self.note_cited(r.book, Some(b.chapter), Some(b.from), true, now);
         self.reading.update(r.book, Some(b.chapter as u32), now);

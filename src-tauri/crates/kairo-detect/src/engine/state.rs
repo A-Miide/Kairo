@@ -194,6 +194,9 @@ pub struct Range {
     pub heard_open: String,
     /// Words of the open segment already said when it moved.
     pub spent: usize,
+    /// A single verse cited, with the next verses held in case they are read on (owner, 2026-10-19):
+    /// moved only on strong evidence, shown nowhere as a range, and let go after a while.
+    pub soft: bool,
 }
 
 /// A passage cited or read recently (the sermon's context).

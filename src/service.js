@@ -617,26 +617,39 @@
   // need-translation-check) as an arbitrary, unrelated theme whenever the
   // operator had reordered/deleted themes such that a different one ended
   // up at index 0.
-  // A timer segment nobody has designed yet: the plain countdown on one of the
-  // Night gradients (gradients.js), its own per segment, so the Timer cards
-  // differ and still read as one set (owner, 2026-10-01: the mesh pictures
+  // A timer segment nobody has designed yet: the plain countdown on one of three
+  // Night gradients (gradients.js), taken in turn down the
+  // list, so the Timer cards differ and still read as one set (owner, 2026-10-01: the mesh pictures
   // "lack the visual balance, and it's very stimulating to the eye"; before
   // them the stage-lights picture on every card was "hideous"). A real
   // gradient fill, not a picture, so the canvas opens on Gradient and its
   // colours can be changed ("it should be gradient"). Only while the countdown
   // theme still has its stock picture — a canvas someone has changed is theirs.
-  const SEGMENT_GRADIENTS = { 'prayer': 'night-indigo', 'worship': 'night-raspberry', 'the word': 'night-teal', 'testimony': 'night-ember', 'ministration': 'night-violet' };
-  const SEGMENT_GRADIENT_POOL = ['night-indigo', 'night-raspberry', 'night-teal', 'night-ember', 'night-violet', 'night-ocean'];
+  // Seven tone gradients (gradients.js `tone-*`), hues spread round the wheel and alternating warm and cool, taken
+  // in turn down the list so neighbours never match and up to seven segments never repeat a colour (owner,
+  // 2026-10-19: bright gradients "have no harmony"; the Night set "ran out of colors" and looked the same).
+  // Drawn without a glow: a radial spot read as a smudge on a small card.
+  const SEGMENT_GRADIENT_POOL = ['tone-crimson', 'tone-teal', 'tone-purple', 'tone-green', 'tone-magenta', 'tone-blue', 'tone-indigo'];
   function segmentDefaultLook(item, base) {
-    const canvas = (base?.layers || []).find(l => l.type === 'background' && !l.pos);
-    if (!canvas || canvas.fill !== 'image' || !/backgrounds\/stage\.jpg$/.test(canvas.src || '')) return base;
+    const canvas = (base?.layers || []).find(l => l.role === 'backdrop') || (base?.layers || []).find(l => l.type === 'background' && !l.pos);
+    // Stock: the old stage-lights picture, or the brand gradient the countdown theme opens on now (its guard
+    // only knew the picture, so every card came out the same orange-red; owner, 2026-10-19: "so orange").
+    const brand = (window.KairoGradients || []).find(x => x.id === 'kairo');
+    const stops = (c) => JSON.stringify((c.gradientStops || []).map(st => [st.pos, st.color]));
+    const stock = !!canvas && (canvas.fill === 'image'
+      ? /backgrounds\/stage\.jpg$/.test(canvas.src || '')
+      : canvas.fill === 'gradient' && !!brand && canvas.angle === brand.angle && stops(canvas) === JSON.stringify(brand.stops.map(st => [st.pos, st.color])));
+    if (!stock) return base;
     const name = String(item.name || item.title || '').trim().toLowerCase();
-    let id = SEGMENT_GRADIENTS[name];
-    if (!id) {
-      let h = 0;
-      for (const ch of String(item.id || name)) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
-      id = SEGMENT_GRADIENT_POOL[h % SEGMENT_GRADIENT_POOL.length];
+    // Its place in the Timer list (not the raw order number, which can skip), so the colours really do run in turn.
+    // Only cards on this default count: one with a theme or scenes of its own does not use up a colour.
+    let n = (typeof segmentList !== 'undefined' ? segmentList : []).filter(x => !x.themeId && !(x.scenes && x.scenes.length)).sort((a, b) => a.order - b.order).findIndex(x => x.id === item.id);
+    if (n < 0) n = Number(item.order);
+    if (!Number.isFinite(n)) {
+      n = 0;
+      for (const ch of String(item.id || name)) n = (n * 31 + ch.charCodeAt(0)) >>> 0;
     }
+    const id = SEGMENT_GRADIENT_POOL[((n % SEGMENT_GRADIENT_POOL.length) + SEGMENT_GRADIENT_POOL.length) % SEGMENT_GRADIENT_POOL.length];
     const p = (window.KairoGradients || []).find(x => x.id === id);
     if (!p) return base;
     const { src, ...rest } = canvas;
@@ -644,7 +657,6 @@
       ...rest, fill: 'gradient', angle: p.angle,
       color: p.stops[0].color, color2: p.stops[p.stops.length - 1].color,
       gradientStops: p.stops.map(st => ({ ...st })),
-      ...(p.glows ? { gradientGlows: p.glows.map(gl => ({ ...gl })) } : {}),
     };
     return { ...base, layers: base.layers.map(l => (l === canvas ? fill : l)) };
   }
@@ -2536,7 +2548,7 @@
     const preview = document.createElement('div');
     preview.className = 'svc-slide-preview';
     if (s.image) {
-      preview.style.backgroundImage = `url('${s.image}')`;
+      preview.style.backgroundImage = `url('${window.kairoSmall(s.image, 480)}')`;
       preview.classList.add('is-image');
       // Wins over .is-image's hardcoded `background-size: cover` (styles.css)
       // — background-size has no 'fill' keyword, unlike object-fit, so 'fill'
@@ -2683,13 +2695,30 @@
   // forever (it only ever unregistered itself on the OUTSIDE-click branch),
   // piling up one stale capture-phase document listener per open/pick cycle.
   let activePopoverClose = null;
+  let activePopoverScroll = null;   // follows the anchor while a grid behind it scrolls
+  let activePopoverAnchor = null;
   function openPopover(anchor, build) {
     const pop = document.getElementById('svc-popover');
     if (!pop) return;
     if (activePopoverClose) { document.removeEventListener('mousedown', activePopoverClose, true); activePopoverClose = null; }
+    if (activePopoverScroll) { document.removeEventListener('scroll', activePopoverScroll, true); activePopoverScroll = null; }
+    activePopoverAnchor?.classList.remove('is-popover-anchor');
     pop.innerHTML = '';
     build(pop);
     pop.classList.remove('hidden');
+    // The thing being edited stays marked while its popover is open, and the popover moves with it when the
+    // list behind scrolls (it used to stay put while the card slid away: "where am I editing?").
+    anchor.classList.add('is-popover-anchor');
+    activePopoverAnchor = anchor;
+    activePopoverScroll = () => {
+      if (!anchor.isConnected) { closePopover(); return; }
+      const a = anchor.getBoundingClientRect();
+      if (a.bottom < 40 || a.top > window.innerHeight - 20) { closePopover(); return; }
+      pop.style.left = Math.max(4, Math.min(a.left, window.innerWidth - pop.offsetWidth - 4)) + 'px';
+      const below = a.bottom + 4;
+      pop.style.top = (below + pop.offsetHeight > window.innerHeight - 4 ? Math.max(4, a.top - pop.offsetHeight - 4) : below) + 'px';
+    };
+    document.addEventListener('scroll', activePopoverScroll, true);
     // Fixed positioning + raw viewport coordinates from getBoundingClientRect()
     // — no offsetParent math. offsetParent-relative positioning (the previous
     // approach) silently broke whenever the popover's nearest positioned
@@ -2736,6 +2765,9 @@
   function closePopover() {
     document.getElementById('svc-popover')?.classList.add('hidden');
     if (activePopoverClose) { document.removeEventListener('mousedown', activePopoverClose, true); activePopoverClose = null; }
+    if (activePopoverScroll) { document.removeEventListener('scroll', activePopoverScroll, true); activePopoverScroll = null; }
+    activePopoverAnchor?.classList.remove('is-popover-anchor');
+    activePopoverAnchor = null;
   }
   // Escape is the standard way to dismiss any context menu/popover — closing
   // only on an outside click (the previous behavior) left keyboard-driven
@@ -3546,7 +3578,7 @@
       // An element imported from ProPresenter, drawn exactly (pp_render.js).
       if (layer.type === 'pp') {
         if (layer.binding === 'reference' && hasVerseLayer && !content?.verseText) return;
-        host.appendChild(window.KairoPP.render(layer, content || {}, { motion: motionMode, scale }));
+        host.appendChild(window.KairoPP.render(layer, content || {}, { motion: motionMode, scale, small: true }));
         return;
       }
 
@@ -3564,6 +3596,7 @@
         } else {
           d.style.inset = '0';
         }
+        if (layer.fill === 'none') return;   // the canvas paints nothing: its colour is the Background shape
         if (layer.fill === 'transparent') { host.classList.add('is-alpha'); return; }
         if (layer.fill === 'gradient') {
           d.style.background = gradientCss(layer, c => hexA(c, layer.opacity));
@@ -3579,7 +3612,7 @@
         return;
       }
       // A content zone: where slides and verses show. Thumbnails mark it with a soft panel.
-      if (layer.type === 'contentzone') {
+      if (layer.type === 'contentzone' || layer.type === 'slidezone' || layer.type === 'mediazone' || layer.type === 'timerzone') {
         const p = layer.pos || { x: 0, y: 0, w: DESIGN_W, h: DESIGN_H };
         const d = document.createElement('div');
         d.style.cssText = 'position:absolute;background:rgba(255,255,255,0.12);';
@@ -4181,7 +4214,7 @@
       content = document.createElement('div');
       content.className = 'svc-flow-image';
       const img = document.createElement('img');
-      img.src = slide.image;
+      img.src = window.kairoSmall(slide.image, 1280);
       img.style.objectFit = item.fit || 'contain';
       content.appendChild(img);
       const replace = document.createElement('button');
@@ -5707,6 +5740,13 @@
     syncClockToggle();
   }
 
+  // The Timer screen's content (segments, clock switch) without switching the centre view: for Director
+  // mode's dock, which shows the screen itself in its own area (the top-bar button does both).
+  function refreshTimerView() {
+    loadSegments().then(renderTimerGrid);
+    syncClockToggle();
+  }
+
   function statusLabel(status) {
     return status === 'live' ? 'Live' : status === 'done' ? 'Done' : 'Pending';
   }
@@ -5716,10 +5756,21 @@
   // header (see renderItemTimerControls in app.js), same PUT the "Quick
   // edit" popover and its Set-end-time flow already use, so both surfaces
   // read/write the exact same underlying trigger params.
-  async function updateSegmentParams(id, params) {
+  async function updateSegmentParams(id, params, opts = {}) {
     await fetchWithTimeout(`${SERVER}/api/segments/${id}`, {
       method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ params }),
     });
+    // The Timer cards read the time from this segment and a running countdown from the server: a Full edit used
+    // to save and then leave both as they were until the app restarted (owner, 2026-10-19). The cards repaint
+    // now; a segment that is running and was re-timed starts again on its new time; a recolour just re-sends.
+    const seg = segmentList.find(s => s.id === id);
+    if (!seg) return;
+    seg.trigger = seg.trigger || {};
+    seg.trigger.params = { ...(seg.trigger.params || {}), ...params };
+    renderTimerGrid();
+    if (seg.status === 'live') {
+      if (opts.retimed) { await startSegmentNow(seg); } else { resendLiveTimer(); }
+    }
   }
 
   // Persists a timer item's scenes (its slide storyboard — see
@@ -5800,6 +5851,19 @@
     }, 2500);
   }
 
+  // Director mode: a click puts the timer in Preview, Send (or a double-click) starts it.
+  // Returns true when Preview took it (or the time popover is open to set it).
+  function stageSegment(seg, anchorEl) {
+    const dir = window.KairoVideoDirector;
+    if (!dir || !dir.stageTimer || !dir.isShown() || seg.status === 'live') return false;
+    if (!dir.layoutAllows('timer', 'pvw')) { flashCardError(seg, 'Not in this Layout'); return true; }
+    const p = seg.trigger?.params || {};
+    const hasTarget = p.mode === 'duration' ? Number(p.durationSec) > 0 : !!p.endAtTime;
+    if (!hasTarget) { openSegmentTimePopover(anchorEl, seg, { autoStart: true, stage: true }); return true; }
+    const body = timerPreviewBody(seg);
+    return !!(body && dir.stageTimer(seg, body));
+  }
+
   async function toggleSegment(seg, anchorEl) {
     try {
       if (seg.status === 'live') {
@@ -5810,6 +5874,9 @@
         if (!r.ok) flashCardError(seg, 'Could not stop');
         return;
       }
+      // A Layout with no place for a countdown (a lower third) shows none, so none is started.
+      if (window.KairoVideoDirector?.isShown?.() && !window.KairoVideoDirector.layoutAllows('timer', 'pgm')) { flashCardError(seg, 'Not in this Layout'); return; }
+      if (window.KairoVideoDirector?.isShown?.()) window.KairoVideoDirector.ensureLayer('timer');   // clicking turns the layer on
       const p = seg.trigger?.params || {};
       const hasTarget = p.mode === 'duration' ? Number(p.durationSec) > 0 : !!p.endAtTime;
       if (!hasTarget) {
@@ -5847,6 +5914,7 @@
     // Clear Timer removes just this. themeForItem's timer branch resolves a
     // countdown-shaped look even for an un-customised segment.
     await sendTimerSegment(seg);
+    try { window.KairoVideoDirector?.timerStarted?.(seg); } catch {}
     await loadSegments(); renderTimerGrid();
     return { ok: true };
   }
@@ -5857,7 +5925,8 @@
   // [data-binding="timer"], which lives in that layer).
   // opts.resend: an edit to the countdown already running (resendLiveTimer),
   // which the outputs repaint in place instead of starting it over.
-  async function sendTimerSegment(seg, opts = {}) {
+  // What the outputs are sent to paint a segment's countdown (null when it has no theme to paint).
+  function timerSendBody(seg, opts = {}) {
     const p = seg.trigger?.params || {};
     // Fold this segment's warning/overtime colour choices onto every
     // Countdown-bound text layer so the output recolours through them as
@@ -5881,22 +5950,44 @@
       scenes.forEach(sc => foldWarnColors(sc.layers));
     } else {
       const base = themeForItem(seg);
-      if (!base) return;
+      if (!base) return null;
       look = JSON.parse(JSON.stringify(base));
       foldWarnColors(look.layers);
     }
+    return {
+      look,
+      scenes,
+      pace: scenes ? (seg.scenePace || null) : null,
+      style: seg.slideStyles?.[0] || {},
+      label: seg.name || 'Timer',
+      timerText: opts.timerText || '0:00',
+      resend: !!opts.resend,
+    };
+  }
+  // The value a countdown that is not running yet would start from: its length, or the time left until its end time.
+  function timerStartText(seg) {
+    const p = seg.trigger?.params || {};
+    let sec = 0;
+    if (p.mode === 'duration') sec = Number(p.durationSec) || 0;
+    else if (p.endAtTime) {
+      const m = /^(\d{1,2}):(\d{2})$/.exec(p.endAtTime);
+      if (m) { const t = new Date(); t.setHours(Number(m[1]), Number(m[2]), 0, 0); sec = Math.max(0, Math.round((t - Date.now()) / 1000)); }
+    }
+    const h = Math.floor(sec / 3600), mm = Math.floor((sec % 3600) / 60), ss = sec % 60;
+    return h ? `${h}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}` : `${mm}:${String(ss).padStart(2, '0')}`;
+  }
+  // The message Director mode's Preview draws for a timer that is staged, not started.
+  function timerPreviewBody(seg) {
+    const body = timerSendBody(seg, { timerText: timerStartText(seg) });
+    return body ? { type: 'timer-slide', target: 'viewer', ...body } : null;
+  }
+  async function sendTimerSegment(seg, opts = {}) {
+    const body = timerSendBody(seg, opts);
+    if (!body) return;
     try {
       await fetchWithTimeout(`${SERVER}/api/service/send-timer`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          look,
-          scenes,
-          pace: scenes ? (seg.scenePace || null) : null,
-          style: seg.slideStyles?.[0] || {},
-          label: seg.name || 'Timer',
-          timerText: '0:00',
-          resend: !!opts.resend,
-        }),
+        body: JSON.stringify(body),
       });
     } catch (err) {
       if (typeof toast === 'function') toast('Could not send timer to output: ' + err.message, 'error');
@@ -5909,10 +6000,21 @@
   // of this file's enclosing IIFE). Was a byte-identical copy-paste shared
   // with app.js's own Quick-edit popover.
 
+  // Times are shown the way this computer shows them (12- or 24-hour, from its own settings) everywhere the
+  // Timer talks about the clock; what is saved stays HH:MM (24-hour).
+  const clock12 = (() => { try { return new Intl.DateTimeFormat([], { hour: 'numeric' }).resolvedOptions().hour12 !== false; } catch { return true; } })();
+  const fmtClock = (d) => d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+  const fmtHHMM = (hhmm) => {
+    const m = /^(\d{1,2}):(\d{2})$/.exec(hhmm || '');
+    if (!m) return hhmm || '';
+    const d = new Date(); d.setHours(Number(m[1]), Number(m[2]), 0, 0);
+    return fmtClock(d);
+  };
+
   // Set (or change) a segment's end time — the only control that used to
   // live directly on the card face and now lives behind right-click /
   // the auto-prompt in toggleSegment above.
-  function openSegmentTimePopover(anchor, seg, { autoStart } = {}) {
+  function openSegmentTimePopover(anchor, seg, { autoStart, stage } = {}) {
     if (typeof openPopover !== 'function' || !anchor) return;
     openPopover(anchor, (pop) => {
       const params = seg.trigger?.params || {};
@@ -5927,10 +6029,8 @@
       //    takes, so it's the one that unblocks a fast test.
       let mode = params.mode === 'duration' ? 'duration' : 'endAt';
 
-      const hint = document.createElement('div');
-      hint.className = 'svc-popover-hint';
-      hint.textContent = seg.name;
-      pop.appendChild(hint);
+      // No name line: the card being edited is outlined behind it, and the toggle leads (owner, 2026-10-19).
+      pop.setAttribute('aria-label', `Set the time for ${seg.name}`);
 
       // makeChips is a top-level fn in app.js — both scripts share the page,
       // and this handler only runs on user interaction, long after parse.
@@ -5951,7 +6051,7 @@
       const submitBtn = document.createElement('button');
       submitBtn.className = 'modal-btn primary';
       submitBtn.style.cssText = 'width:100%;justify-content:center;margin-top:8px;';
-      submitBtn.textContent = autoStart ? 'Set & Start' : 'Set time';
+      submitBtn.textContent = autoStart && !stage ? 'Set & Start' : 'Set time';
       pop.appendChild(submitBtn);
 
       // Set by renderField() to a fn returning the {params} to PUT, or null
@@ -5967,6 +6067,7 @@
         // native time control until every sub-field is confirmed, which
         // silently defeated this popover on a real launch once. Our own
         // formatting/validation sidesteps the whole class of bug.
+        let extra = null;   // a line under the field
         const inp = document.createElement('input');
         inp.type = 'text';
         inp.inputMode = 'numeric';
@@ -5977,16 +6078,23 @@
           inp.placeholder = 'Minutes';
           inp.maxLength = 4;
           inp.value = params.durationSec ? String(Math.round(params.durationSec / 60)) : '';
-          inp.addEventListener('input', () => { inp.value = inp.value.replace(/\D/g, '').slice(0, 4); });
+          const endsNote = document.createElement('div');
+          endsNote.className = 'svc-popover-hint';
+          endsNote.style.cssText = 'margin:2px 0 6px;min-height:15px;';
+          const showEnd = () => { const n = parseInt(inp.value, 10); endsNote.textContent = n > 0 ? `Ends at ${fmtClock(new Date(Date.now() + n * 60000))} if started now` : ''; };
+          inp.addEventListener('input', () => { inp.value = inp.value.replace(/\D/g, '').slice(0, 4); showEnd(); });
+          requestAnimationFrame(showEnd);
+          extra = endsNote;
           readParams = () => {
             const n = parseInt(inp.value, 10);
             if (!(n > 0)) { showErr('Enter a number of minutes, e.g. 15'); return null; }
             return { mode: 'duration', durationSec: n * 60 };
           };
         } else {
-          inp.placeholder = 'HH:MM or H:MM AM/PM';
+          inp.placeholder = clock12 ? 'e.g. 11:45 AM' : 'e.g. 11:45';
           inp.maxLength = 8;
-          inp.value = params.endAtTime || '';
+          // Starts on the time it is now (or the saved time), so there is something to adjust, not a blank to fill.
+          inp.value = params.endAtTime ? fmtHHMM(params.endAtTime) : fmtClock(new Date());
           inp.addEventListener('input', () => {
             // Only auto-format (digits-only, auto-insert the colon) while
             // it's STILL plain digits — the moment a space or an am/pm
@@ -5998,12 +6106,38 @@
               inp.value = d.length > 2 ? `${d.slice(0, 2)}:${d.slice(2)}` : d;
             }
           });
+          // Says how the time was read and whether it is still ahead, as it is typed.
+          const when = (resolved) => { const [h, m] = resolved.split(':').map(Number); const t = new Date(); t.setHours(h, m, 0, 0); return t; };
+          const status = document.createElement('div');
+          status.className = 'svc-popover-hint';
+          status.style.cssText = 'margin:2px 0 6px;min-height:15px;';
+          let edited = false;
+          const check = () => {
+            const now = new Date();
+            status.style.color = '';
+            if (!edited) { status.textContent = `Now ${fmtClock(now)} · ${clock12 ? '12' : '24'}-hour device clock`; return; }
+            const r = resolveFlexibleTime(inp.value);
+            if (!r) { status.textContent = clock12 ? 'Use a time like 11:45 AM.' : 'Use a time like 11:45.'; return; }
+            const t = when(r); const diff = t - now;
+            if (diff <= 0) { status.textContent = `${fmtClock(t)} has already passed (it is ${fmtClock(now)}).`; status.style.color = 'var(--red)'; return; }
+            const mins = Math.round(diff / 60000);
+            status.textContent = `Ends in ${mins < 60 ? `${mins} min` : `${Math.floor(mins / 60)} h ${mins % 60} min`}, at ${fmtClock(t)}.`;
+          };
+          inp.addEventListener('input', () => { edited = true; err.style.display = 'none'; check(); });
           readParams = () => {
             const resolved = resolveFlexibleTime(inp.value);
-            if (!resolved) { showErr('Enter a valid time, e.g. 19:30 or 7:30 PM'); return null; }
+            if (!resolved) { showErr(clock12 ? 'Enter a time like 11:45 AM' : 'Enter a time like 11:45'); return null; }
+            const t = when(resolved);
+            if (t <= new Date()) { showErr('Pick a later time, or use "Run for".'); return null; }
             return { mode: 'endAt', endAtTime: resolved };
           };
+          // The one line of words sits above the field, the button below it (owner, 2026-10-19: a lot of text).
+          fieldWrap.append(status, inp);
+          check();
+          requestAnimationFrame(() => { inp.focus(); inp.select(); });
+          return;
         }
+        if (extra) fieldWrap.appendChild(extra);
         fieldWrap.appendChild(inp);
         requestAnimationFrame(() => inp.focus());
       }
@@ -6022,7 +6156,10 @@
           // just saved, not a stale one.
           seg.trigger = seg.trigger || {};
           seg.trigger.params = { ...seg.trigger.params, ...p };
-          if (autoStart) {
+          if (autoStart && stage) {
+            const body = timerPreviewBody(seg);
+            if (body && window.KairoVideoDirector?.stageTimer) window.KairoVideoDirector.stageTimer(seg, body);
+          } else if (autoStart) {
             const result = await startSegmentNow(seg);
             if (!result.ok) { showErr(result.error || 'Could not start'); submitBtn.disabled = false; return; }
           }
@@ -6101,7 +6238,7 @@
     const preview = document.createElement('div');
     preview.className = 'timer-card-preview' + (seg.status !== 'live' ? ' is-pending' : '');
     preview.id = `timer-preview-${seg.id}`;
-    preview.title = (seg.status === 'live' ? 'Double-click to stop' : 'Double-click to start') + ' · right-click for more';
+    preview.title = (seg.status === 'live' ? 'Double-click to stop' : window.KairoVideoDirector?.isShown?.() ? 'Click for Preview · double-click to start' : 'Double-click to start') + ' · right-click for more';
 
     // The card used to be a plain black box regardless of what theme/
     // background media the segment actually carries — same idea as
@@ -6130,9 +6267,10 @@
       : (() => {
           const p = seg.trigger?.params || {};
           if (p.mode === 'duration' && Number(p.durationSec) > 0) return `${Math.round(p.durationSec / 60)} min`;
-          if (p.endAtTime) return `Ends ${p.endAtTime}`;
+          if (p.endAtTime) return `Ends ${fmtHHMM(p.endAtTime)}`;
           return 'No time set';
         })();
+    readout.classList.toggle('is-unset', readout.textContent === 'No time set');
     const label = document.createElement('div');
     label.className = 'timer-card-label';
     label.textContent = seg.name;
@@ -6143,6 +6281,7 @@
     foot.append(label, readout);
     preview.appendChild(foot);
 
+    preview.addEventListener('click', () => { stageSegment(seg, preview); });
     preview.addEventListener('dblclick', () => toggleSegment(seg, preview));
     preview.addEventListener('contextmenu', (e) => {
       e.preventDefault();
@@ -6208,6 +6347,7 @@
       return;
     }
     segmentList.slice().sort((a, b) => a.order - b.order).forEach(seg => grid.appendChild(buildSegmentCard(seg)));
+    window.KairoVideoDirector?.markStaged?.();   // the staged timer's outline survives a redraw
   }
 
   document.getElementById('segment-add-btn')?.addEventListener('click', async () => {
@@ -6239,16 +6379,17 @@
   async function syncClockToggle() {
     const toggle = document.getElementById('clock-toggle');
     if (!toggle) return;
-    // Live clock is ON by default — only off if the operator explicitly
-    // turned it off before (persisted). A server restart drops the trigger's
-    // interval, so re-fire it here on load whenever it should be showing.
-    let pref = '1';
-    try { pref = localStorage.getItem('kairo-live-clock') ?? '1'; } catch {}
+    // Live clock is OFF until the operator switches it on (owner, 2026-10-19: the Output is empty when the app
+    // opens, and a clock in its corner was not). Once switched on it stays on across restarts: a server
+    // restart drops the trigger's interval, so it is fired again here on load whenever it should be showing.
+    let pref = '0';
+    try { pref = localStorage.getItem('kairo-live-clock') ?? '0'; } catch {}
     const on = pref === '1';
     toggle.checked = on;
     try {
       const id = await ensureClockTrigger();
-      if (id && on) await fetchWithTimeout(`${SERVER}/api/triggers/${id}/fire`, { method: 'POST' });
+      // Off means off: a clock a previous run left going (the default used to be on) is stopped too.
+      if (id) await fetchWithTimeout(`${SERVER}/api/triggers/${id}/${on ? 'fire' : 'stop'}`, { method: 'POST' });
     } catch {}
   }
   document.getElementById('clock-toggle')?.addEventListener('change', async (e) => {
@@ -7460,7 +7601,9 @@
     paintLookLayers, renderLookThumbnail, buildThemeTree, slideThemeIdOf, hasSlideThemes, mediaMuted: () => mediaMutedState, saveService, openContextMenu, openThemePopover, themeForItem,
     showMediaLibrary, onMediaStatus, onMediaFolderChanged, setMediaTransportVisible, onMediaLive,
     openAddContent: (anchor) => openAddContentPopover(anchor),
-    showTimerLibrary, onTimerAction, onClockAction, getTimerItem, updateSegmentParams, saveTimerScenes, saveScenePace,
+    hasLiveTimer: () => segmentList.some(x => x.status === 'live'),
+    startTimer: async (seg) => { const r = await startSegmentNow(seg); if (!r.ok) flashCardError(seg, r.error || 'Could not start'); return r.ok; },
+    showTimerLibrary, refreshTimerView, onTimerAction, onClockAction, getTimerItem, updateSegmentParams, saveTimerScenes, saveScenePace,
     onTranscript, setAutoFollow, get autoFollow() { return autoFollow; },
     noteBibleVerse, onLayerState,
     themeLookFor, keepThemeVersion, themeUsage, updateToCurrentTheme,

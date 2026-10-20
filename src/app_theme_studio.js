@@ -1250,6 +1250,37 @@ let looks = (function loadLooks() {
   const custom = Array.isArray(legacy) ? legacy.filter(l => l && !LEGACY_BUILTIN_IDS.has(l.id)) : [];
   return [...DEFAULT_LOOKS, ...custom];
 })();
+
+// The canvas is the artboard: its size, nothing else (owner, 2026-10-19, as ProPresenter). Its colour, gradient or
+// picture is a full-size shape layer named Background just above it (role 'backdrop'), which can be moved,
+// hidden or deleted like any shape; the canvas itself paints nothing ('none'), or is see-through for keying
+// ('transparent'). The renderers still draw an older canvas fill (a deck pinned to an earlier theme version).
+function splitCanvasFill(look) {
+  const layers = look && Array.isArray(look.layers) ? look.layers : null;
+  if (!layers) return false;
+  const i = layers.findIndex(l => l && l.type === 'background' && !l.pos);
+  if (i < 0) return false;
+  const canvas = layers[i];
+  if (canvas.fill === 'none' || canvas.fill === 'transparent') return false;
+  const { id, type, name, visible, pos, role, ...fill } = canvas;
+  let back = layers.find(l => l && l.role === 'backdrop');
+  if (back) Object.assign(back, fill);
+  else {
+    const W = window.KAIRO_DESIGN_W || 1920, H = window.KAIRO_DESIGN_H || 1080;
+    // The Background takes the canvas's id, so a slide's own background override (kept by layer id) still lands on it.
+    back = { ...fill, id: canvas.id, type: 'background', name: 'Background', role: 'backdrop', visible: true, radius: 0, pos: { x: 0, y: 0, w: W, h: H } };
+    layers.splice(i + 1, 0, back);
+    canvas.id = layers.some(l => l !== canvas && l.id === 'canvas') ? 'canvas-' + Date.now() : 'canvas';
+  }
+  for (const k of Object.keys(fill)) delete canvas[k];
+  canvas.name = 'Canvas'; canvas.visible = true; canvas.fill = 'none';
+  return true;
+}
+{
+  let split = false;
+  looks.forEach(l => { if (splitCanvasFill(l)) split = true; });
+  if (split) { try { localStorage.setItem(LOOKS_KEY, JSON.stringify(looks)); } catch {} }
+}
 let activeLook  = looks[0];
 let activeLayer = null; // currently selected (primary) layer object
 
@@ -1357,6 +1388,7 @@ function refreshThemeUsage() {
 rememberSavedThemes(); // the themes as loaded, before any edit this session
 
 function saveLooks() {
+  looks.forEach(splitCanvasFill);
   keepDeckThemeVersions();
   refreshThemeUsage();
   // A large embedded layer (e.g. an uncapped video data: URI — see
@@ -1840,6 +1872,9 @@ function renderLayersList() {
                          : layer.type === 'motion' ? '✺'
                          : layer.type === 'videozone' ? '▶'
                          : layer.type === 'contentzone' ? '▤'
+                         : layer.type === 'slidezone' ? '▤'
+                         : layer.type === 'mediazone' ? '▣'
+                         : layer.type === 'timerzone' ? '◷'
                          : layer.type === 'background' ? '■'
                          : 'T';
 
@@ -2159,6 +2194,11 @@ function renderStage() {
       const div = document.createElement('div');
       div.style.cssText = 'position:absolute;inset:0;';
 
+      if (layer.fill === 'none') {
+        // The canvas paints nothing (its colour is the Background shape), but stays the surface a click selects.
+        if (!layer.pos) { stage.appendChild(div); tsDecorateLayerEl(div, layer, false); }
+        return;
+      }
       if (layer.fill === 'transparent') {
         stage.classList.add('ts-transparent-bg');
         // Nothing to paint, but it's still the canvas's own surface: a click
@@ -2313,10 +2353,10 @@ function renderStage() {
 
     // Video zone (Director mode screen themes): a window for the live picture.
     // Here it is a striped placeholder you can move and resize like any box.
-    if (layer.type === 'videozone' || layer.type === 'contentzone') {
+    if (isZoneType(layer.type)) {
       const p = layer.pos || { x: 0, y: 0, w: TS_DESIGN_W, h: TS_DESIGN_H };
       const div = document.createElement('div');
-      div.className = 'ts-videozone' + (layer.type === 'contentzone' ? ' is-content' : '');
+      div.className = 'ts-videozone' + (layer.type !== 'videozone' ? ' is-content' : '');
       div.style.cssText = `
         position:absolute;
         left:${(p.x / TS_DESIGN_W * 100)}%;
@@ -2324,9 +2364,10 @@ function renderStage() {
         width:${(p.w / TS_DESIGN_W * 100)}%;
         height:${(p.h / TS_DESIGN_H * 100)}%;
         border-radius:${(layer.radius || 0) / TS_DESIGN_H * 100}vh;
-        ${layer.frameWidth > 0 ? `box-shadow:0 0 0 ${layer.frameWidth / TS_DESIGN_H * 100}vh ${layer.frameColor || '#ffffff'};` : ''}
+        ${(() => { const v = n => (n / TS_DESIGN_H * 100) + 'vh'; const sh = []; if (layer.frameWidth > 0) sh.push(`0 0 0 ${v(layer.frameWidth)} ${layer.frameColor || '#ffffff'}`); if (layer.shadow > 0) sh.push(`0 ${v(layer.shadow * 0.3)} ${v(layer.shadow)} rgba(0,0,0,${(layer.shadowOpacity ?? 60) / 100})`); return sh.length ? `box-shadow:${sh.join(',')};` : ''; })()}
+        ${layer.type !== 'videozone' && layer.cardOpacity > 0 ? `background:${hexOpacity(layer.cardColor || '#000000', layer.cardOpacity)};` : ''}
       `;
-      div.textContent = layer.type === 'contentzone' ? 'Slides and verses' : 'Video';
+      div.textContent = ZONE_INFO[layer.type].canvas;
       stage.appendChild(div);
       tsDecorateLayerEl(div, layer, true);
       return;
@@ -3759,7 +3800,7 @@ function renderProps() {
     renderImageCycleProps(panel, activeLayer);
   } else if (activeLayer.type === 'motion') {
     renderMotionProps(panel, activeLayer);
-  } else if (activeLayer.type === 'videozone' || activeLayer.type === 'contentzone') {
+  } else if (isZoneType(activeLayer.type)) {
     renderVideoZoneProps(panel, activeLayer);
   } else if (activeLayer.type === 'pp') {
     renderPPProps(panel, activeLayer);
@@ -4735,8 +4776,9 @@ function transformControls(layer) {
     parts.rotation = rot;
   }
   // Escape hatch back to the layout preset once a layer has been freed — an
-  // icon in the row's icon column, as a design tool's small actions are.
-  if (layer.pos) {
+  // icon in the row's icon column, as a design tool's small actions are. Not for a shape: without its box it
+  // would become a second canvas.
+  if (layer.pos && layer.type !== 'background') {
     const reset = document.createElement('button');
     reset.type = 'button';
     reset.className = 'ts-aspect-link ts-row-icon';
@@ -4850,6 +4892,27 @@ function renderSlideLayout(panel) {
   // drag on the canvas with it), it's a whole-slide choice, same as Layout
   // right above it, so it moved in here with it (2026-09-30).
   const designBtn = fieldBtn('Design…', () => { if (activeLook) openDesignGallery(); }, 'Templates to start from, backgrounds, your own image, or none');
+  // A Layout's screen (Director mode): its zones are placed from here, not from the tools over the canvas
+  // (owner, 2026-10-19). Each zone is optional; a Layout with none for something shows none of it.
+  if (activeLook.groupId === 'grp-screen') {
+    const rows = ['videozone', 'contentzone', 'slidezone', 'mediazone', 'timerzone'].map(type => {
+      const zone = activeLook.layers.find(l => l.type === type);
+      const label = ZONE_INFO[type].name;
+      if (!zone) {
+        return fieldRow([fieldBtn(`Add ${label}`, () => {
+          if (type === 'videozone') addVideoZone();
+          else if (type === 'contentzone') addContentZone();
+          else addZone(type);
+        }, ZONE_INFO[type].hint)]);
+      }
+      // A zone that is there: its own controls (position, frame, shadow, card…) one click away, or take it out.
+      return fieldRow([
+        fieldBtn(label, () => { activeLayer = zone; multiSelectedLayerIds.clear(); activePropsTab = 'style'; renderLayersList(); renderProps(); renderPreview(); }, `Edit the ${label}: where it sits, its frame, shadow${type === 'videozone' ? ' and how the picture fits' : ', card and padding'}`),
+        fieldBtn('Remove', () => { activeLook.layers = activeLook.layers.filter(l => l.type !== type); if (activeLayer && activeLayer.type === type) activeLayer = null; up(); renderProps(); }, `Take the ${label} out of this Layout`),
+      ], { cols: 2 });
+    });
+    panel.appendChild(section('layout', 'Zones', ...rows));
+  }
   panel.appendChild(section('layout', 'Slide', prop('Layout', layoutSel), fieldRow([designBtn])));
 
   // Size — was a plain preset dropdown off in the tool bar under the canvas;
@@ -4883,6 +4946,18 @@ function renderSlideLayout(panel) {
 // Background layer properties — a shape, or the canvas itself (always the
 // whole screen: its layout is the slide's, see renderSlideLayout).
 function renderBgProps(panel, layer) {
+  // The canvas: only see-through or not. Its colour is the Background shape (splitCanvasFill).
+  if (!layer.pos) {
+    const box = document.createElement('label'); box.className = 'output-toggle';
+    const inp = document.createElement('input'); inp.type = 'checkbox'; inp.checked = layer.fill === 'transparent';
+    inp.addEventListener('change', () => { layer.fill = inp.checked ? 'transparent' : 'none'; up(); renderProps(); });
+    const track = document.createElement('span'); track.className = 'output-toggle-track';
+    box.append(inp, track);
+    const hint = document.createElement('p'); hint.className = 'setting-hint';
+    hint.textContent = 'The canvas is the size of the design. Transparent lets a video mixer key it out. For a colour, gradient or picture, use the Background layer (or add a shape).';
+    panel.appendChild(section('style', 'Canvas', prop('Transparent', box), hint));
+    return;
+  }
   if (layer.pos) renderLayoutProps(panel, layer);
 
   // Shape (a shape layer only — the canvas fill is always the whole screen):
@@ -5260,16 +5335,52 @@ function renderVideoZoneProps(panel, layer) {
   renderLayoutProps(panel, layer);
   const hint = document.createElement('p');
   hint.className = 'setting-hint';
-  hint.textContent = layer.type === 'contentzone'
-    ? 'Slides and Bible verses show here, each with its own theme and branding. To style the verse text from this theme instead, add a verse text layer to it.'
-    : 'The live picture from the video input shows here when this theme is on the screen.';
-  panel.appendChild(section('style', layer.type === 'contentzone' ? 'Content zone' : 'Video zone',
-    fieldRow([numField('Corners', layer.radius || 0, { min: 0, max: 200, unit: 'px', onChange: v => { layer.radius = v ?? 0; up(); } })]),
-    fieldRow([
-      numField('Frame', layer.frameWidth || 0, { min: 0, max: 60, unit: 'px', title: 'A coloured border around it', onChange: v => { layer.frameWidth = v ?? 0; up(); } }),
-      swatchField('Frame colour', layer.frameColor || '#ffffff', v => { layer.frameColor = v; up(); }),
-    ], { cols: 2 }),
-    hint));
+  hint.textContent = ZONE_INFO[layer.type].hint;
+  const isVideo = layer.type === 'videozone';
+  const rows = [];
+  // Video: fill the zone (cropping the picture) or fit the whole picture inside it.
+  if (isVideo) rows.push(prop('Picture', makeSelect([{ label: 'Fill the zone', value: 'cover' }, { label: 'Fit inside', value: 'contain' }], layer.fit === 'contain' ? 'contain' : 'cover', v => { layer.fit = v; up(); })));
+  rows.push(fieldRow([numField('Corners', layer.radius || 0, { min: 0, max: 200, unit: 'px', onChange: v => { layer.radius = v ?? 0; up(); } })]));
+  rows.push(fieldRow([
+    numField('Frame', layer.frameWidth || 0, { min: 0, max: 60, unit: 'px', title: 'A coloured border around it', onChange: v => { layer.frameWidth = v ?? 0; up(); } }),
+    swatchField('Frame colour', layer.frameColor || '#ffffff', v => { layer.frameColor = v; up(); }),
+  ], { cols: 2 }));
+  rows.push(fieldRow([
+    numField('Shadow', layer.shadow || 0, { min: 0, max: 120, unit: 'px', title: 'A soft drop shadow under it (0: none)', onChange: v => { layer.shadow = v ?? 0; up(); } }),
+    numField('Strength', layer.shadowOpacity ?? 60, { min: 0, max: 100, unit: '%', onChange: v => { layer.shadowOpacity = v ?? 60; up(); } }),
+  ], { cols: 2 }));
+  // Content areas: a card behind what shows there, and padding to keep it in from the edges.
+  if (!isVideo) {
+    rows.push(fieldRow([
+      numField('Card', layer.cardOpacity || 0, { min: 0, max: 100, unit: '%', title: 'A coloured card behind the content (0: none)', onChange: v => { layer.cardOpacity = v ?? 0; up(); } }),
+      swatchField('Card colour', layer.cardColor || '#000000', v => { layer.cardColor = v; up(); }),
+    ], { cols: 2 }));
+    rows.push(fieldRow([numField('Padding', layer.padding || 0, { min: 0, max: 200, unit: 'px', title: 'Keeps the content in from the zone\u2019s edges', onChange: v => { layer.padding = v ?? 0; up(); } })]));
+  }
+  rows.push(hint);
+  panel.appendChild(section('style', ZONE_INFO[layer.type].name, ...rows));
+}
+// The areas a screen theme (a Layout's screen, Director mode) can place. Each is optional: a Layout with no
+// area for something shows none of it (owner, 2026-10-19). The content zone holds anything with no area of its own.
+const ZONE_INFO = {
+  videozone:   { name: 'Video zone',   canvas: 'Video',  hint: 'The live picture from the video input shows here when this theme is on the screen.' },
+  contentzone: { name: 'Content zone', canvas: 'Slides and verses', hint: 'Slides, Bible verses, media and the countdown show here, each with its own theme and branding, unless the theme has an area of its own for them. To style the verse text from this theme instead, add a verse text layer to it.' },
+  slidezone:   { name: 'Slide zone',   canvas: 'Slide',  hint: 'Slides and Bible verses show here, each with its own theme and branding. Without a Slide zone they use the Content zone.' },
+  mediazone:   { name: 'Media zone',   canvas: 'Media',  hint: 'Pictures and video from the Media Bin show here. Without a Media zone they use the Content zone; with neither, none show.' },
+  timerzone:   { name: 'Timer zone',   canvas: 'Timer',  hint: 'The countdown shows here. Without a Timer zone it uses the Content zone; with neither, no countdown shows.' },
+};
+const isZoneType = (t) => Object.prototype.hasOwnProperty.call(ZONE_INFO, t);
+function addZone(type) {
+  if (!activeLook || !isZoneType(type) || type === 'videozone') return;
+  const sameKind = activeLook.layers.filter(l => l.type === type).length;
+  const layer = {
+    id: type + '-' + Date.now(), type, name: ZONE_INFO[type].name, visible: true,
+    radius: 36, frameWidth: 0, frameColor: '#ffffff', opacity: 100,
+    pos: { x: 960 + sameKind * 40, y: 160 + sameKind * 40, w: 900, h: 760 },
+  };
+  activeLook.layers.push(layer);
+  activeLayer = layer; multiSelectedLayerIds.clear();
+  up(); renderProps();
 }
 // Adds a content zone (screen themes, Director mode): where slides and verses show.
 function addContentZone() {
@@ -5657,14 +5768,19 @@ function galleryTile(grid, { name, blurb, art, active, onPick }) {
 // one gallery and its button are gone.
 
 // The theme's (or slide's) canvas fill, made if it has none.
+// The theme's Background shape (its colour, gradient or picture), made just above the canvas if it has none.
 function canvasFillLayer() {
-  let bg = baseBgLayer();
-  if (!bg && activeLook) {
+  if (!activeLook) return null;
+  let back = activeLook.layers.find(l => l.role === 'backdrop');
+  if (!back) {
+    let canvas = baseBgLayer();
+    if (!canvas) { canvas = { id: 'canvas', type: 'background', name: 'Canvas', visible: true, fill: 'none' }; activeLook.layers.unshift(canvas); }
     const id = activeLook.layers.some(l => l.id === 'bg') ? 'bg-' + Date.now() : 'bg';
-    bg = { id, type: 'background', name: 'Canvas', visible: true, fill: 'transparent', color: '#000000', opacity: 100, color2: '#000000', angle: 0 };
-    activeLook.layers.unshift(bg);
+    back = { id, type: 'background', name: 'Background', role: 'backdrop', visible: true, fill: 'solid', color: '#000000', color2: '#000000', opacity: 100, angle: 0, radius: 0,
+      pos: { x: 0, y: 0, w: TS_DESIGN_W, h: TS_DESIGN_H } };
+    activeLook.layers.splice(activeLook.layers.indexOf(canvas) + 1, 0, back);
   }
-  return bg;
+  return back;
 }
 function afterCanvasFill(bg) {
   activeLayer = bg; multiSelectedLayerIds.clear();
@@ -5682,7 +5798,7 @@ function afterCanvasFill(bg) {
 // background under a blank countdown.
 function openDesignGallery({ addSlideFor = null } = {}) {
   const pack = window.KairoAnnouncements;
-  const current = addSlideFor ? null : baseBgLayer();
+  const current = addSlideFor ? null : (activeLook?.layers.find(l => l.role === 'backdrop') || baseBgLayer());
   const { group } = openGalleryShell(addSlideFor ? 'Add a slide' : 'Design');
   if (pack && (addSlideFor || tsMode !== 'item')) {
     pack.designs().forEach(set => {
@@ -5726,11 +5842,13 @@ function openDesignGallery({ addSlideFor = null } = {}) {
   galleryTile(other, {
     name: 'None', blurb: 'Nothing behind the content',
     art: a => a.classList.add('ts-bg-tile-none'),
-    active: current?.fill === 'transparent',
+    active: !current || current.fill === 'transparent',
     onPick: () => {
-      const c = canvasFillLayer(); if (!c) return;
-      if (c.fill !== 'transparent') { c.fillBefore = c.fill; c.fill = 'transparent'; }
-      afterCanvasFill(c);
+      // Nothing behind the content: no Background shape, and the canvas see-through.
+      if (!activeLook) return;
+      activeLook.layers = activeLook.layers.filter(l => l.role !== 'backdrop');
+      const c = baseBgLayer(); if (c) c.fill = 'transparent';
+      afterCanvasFill(c || activeLook.layers[0]);
     },
   });
 }
@@ -6202,13 +6320,10 @@ function renderItemTimerControls() {
   function save(patch) {
     item.trigger = item.trigger || { params: {} };
     item.trigger.params = { ...item.trigger.params, ...patch };
-    window.KairoService.updateSegmentParams(item.id, item.trigger.params);
-    // If this segment is the one live on the output, push the change now
-    // (warn/overtime colour, or a re-timed countdown) instead of making the
-    // operator stop and restart it.
-    if (patch.warnColor || patch.overtimeColor) {
-      setTimeout(() => window.KairoService?.resendLiveTimer?.(), 150);
-    }
+    // updateSegmentParams repaints the Timer cards and, for the segment that is live, starts it again on a new
+    // time (a re-timed countdown) or re-sends it (a colour), so the output follows the edit without a stop and start.
+    const retimed = ['mode', 'endAtTime', 'durationSec'].some(k => k in patch);
+    window.KairoService.updateSegmentParams(item.id, item.trigger.params, { retimed });
   }
 }
 // How a timer's slides share its countdown (segment.scenePace — see
@@ -7800,6 +7915,9 @@ const tsImageFile = document.getElementById('ts-image-file');
 // slides — a countdown's "+ Add Slide" — each fully editable.)
 document.getElementById('ts-add-videozone-btn')?.addEventListener('click', () => addVideoZone());
 document.getElementById('ts-add-contentzone-btn')?.addEventListener('click', () => addContentZone());
+document.getElementById('ts-add-slidezone-btn')?.addEventListener('click', () => addZone('slidezone'));
+document.getElementById('ts-add-mediazone-btn')?.addEventListener('click', () => addZone('mediazone'));
+document.getElementById('ts-add-timerzone-btn')?.addEventListener('click', () => addZone('timerzone'));
 document.getElementById('ts-add-image-btn')?.addEventListener('click', (e) => {
   const r = e.currentTarget.getBoundingClientRect();
   window.KairoService.openContextMenu(r.left, r.bottom + 4, [[

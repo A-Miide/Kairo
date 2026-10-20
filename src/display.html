@@ -42,6 +42,7 @@
            slide and timer, so scripture and slides draw over the picture. */
         #video-layer { position: fixed; inset: 0; z-index: 0; overflow: hidden; pointer-events: none; }
         #video-layer video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+        #video-layer[data-fit="contain"] video { object-fit: contain; }
         /* An empty video zone of a layout frame says so, inside the zone. */
         html.is-monitor body:not(.has-video) #video-layer[data-zone]::after { content: 'No video'; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 2.4vh; font-weight: 600; letter-spacing: 0.04em; color: rgba(255,255,255,0.45); }
         /* Capture windows (NDI, Syphon, DeckLink, the stream) never show the 'No video' hint: the
@@ -396,6 +397,36 @@
     <script src="pp_render.js"></script>
     <script src="slide_markers.js"></script>
     <script>
+    // A live copy of the output inside the operator window (the director's Preview and Output, which ask
+    // with ?fit=1) is laid out as a full 1920×1080 screen and drawn smaller by one scale, so it looks exactly
+    // like the real screen at any size it is shown at. The frame itself can then be small: a frame
+    // laid out at 1920×1080 and shrunk from outside costs the web view a full-size drawing buffer
+    // (~70 MB each on a Retina screen), however small it appears. Everything but the scripts goes into
+    // #kroot; this page then believes its window is the design size (innerWidth/innerHeight), and
+    // #kroot is scaled to the window's real width. A real output window, and the pop-out Monitor (which shows
+    // an output at its own resolution), are never touched.
+    (function () {
+        const q = new URLSearchParams(location.search);
+        if (q.get('fit') !== '1') return;   // only the director's Preview and Output frames ask for this
+        const W = window.KAIRO_DESIGN_W || 1920, H = window.KAIRO_DESIGN_H || 1080;
+        const real = () => ({ w: document.documentElement.clientWidth || W, h: document.documentElement.clientHeight || H });
+        const style = document.createElement('style');
+        style.textContent = '#kroot{position:absolute;left:0;top:0;width:' + W + 'px;height:' + H + 'px;overflow:hidden;transform-origin:0 0}'
+            + '#kroot #stage{width:' + W + 'px;height:' + H + 'px}'
+            + '#kroot #message-banner{bottom:' + (H * 0.06) + 'px;max-width:' + (W * 0.84) + 'px}';
+        document.head.appendChild(style);
+        const root = document.createElement('div');
+        root.id = 'kroot';
+        for (const c of [...document.body.children]) if (c.tagName !== 'SCRIPT') root.appendChild(c);
+        document.body.insertBefore(root, document.body.firstChild);
+        Object.defineProperty(window, 'innerWidth', { get: () => W, configurable: true });
+        Object.defineProperty(window, 'innerHeight', { get: () => H, configurable: true });
+        const fit = () => { const r = real(); root.style.transform = 'scale(' + Math.min(r.w / W, r.h / H) + ')'; };
+        fit();
+        window.addEventListener('resize', fit);
+    })();
+    </script>
+    <script>
     'use strict';
 
     // ── URL params (legacy fallback) ───────────────────────────────────────
@@ -529,8 +560,8 @@
         if (STREAM_CAP) queueStreamReport();
         const host = document.getElementById('video-layer');
         if (!host) return;
-        const props = ['inset', 'left', 'top', 'width', 'height', 'z-index', 'border-radius', 'box-shadow'];
-        if (!z) { if (host.dataset.zone) { host.removeAttribute('data-zone'); props.forEach(k => host.style.removeProperty(k)); } return; }
+        const props = ['inset', 'left', 'top', 'width', 'height', 'z-index', 'border-radius', 'box-shadow', 'opacity'];
+        if (!z) { if (host.dataset.zone) { host.removeAttribute('data-zone'); host.removeAttribute('data-fit'); props.forEach(k => host.style.removeProperty(k)); } return; }
         const p = z.pos || { x: 0, y: 0, w: DESIGN_W, h: DESIGN_H };
         host.dataset.zone = '1';
         // A zone over the whole screen (the Lower third) is the picture under everything: the theme's
@@ -544,8 +575,14 @@
         host.style.setProperty('height', (p.h / DESIGN_H * 100) + '%');
         host.style.setProperty('z-index', whole ? '0' : '2');
         host.style.setProperty('border-radius', ((z.radius || 0) / DESIGN_H * 100) + 'vh');
-        if (z.frameWidth > 0) host.style.setProperty('box-shadow', `0 0 0 ${z.frameWidth / DESIGN_H * 100}vh ${z.frameColor || '#ffffff'}`);
-        else host.style.removeProperty('box-shadow');
+        // Fill the zone (crop) or fit inside it; its opacity; its frame and a drop shadow (Theme Studio).
+        host.dataset.fit = z.fit === 'contain' ? 'contain' : 'cover';
+        if ((z.opacity ?? 100) < 100) host.style.setProperty('opacity', String(Math.max(0, z.opacity) / 100)); else host.style.removeProperty('opacity');
+        const vh = (n) => (n / DESIGN_H * 100) + 'vh';
+        const shadows = [];
+        if (z.frameWidth > 0) shadows.push(`0 0 0 ${vh(z.frameWidth)} ${z.frameColor || '#ffffff'}`);
+        if (Number(z.shadow) > 0) shadows.push(`0 ${vh(z.shadow * 0.3)} ${vh(z.shadow)} rgba(0,0,0,${(z.shadowOpacity ?? 60) / 100})`);
+        if (shadows.length) host.style.setProperty('box-shadow', shadows.join(',')); else host.style.removeProperty('box-shadow');
     }
 
     // ── Stream capture: tell the engine the camera and its place, and cut its window ──
@@ -596,34 +633,87 @@
     const frameHasText = (look) => (look.layers || []).some(l => (l.type === 'text' || l.type === 'pp') && l.visible !== false && l.binding === 'verse');
     const frameContentZone = (look) => (look.layers || []).find(l => l.type === 'contentzone' && l.visible !== false) || null;
     function frameBaseLook() { return frameLook && frameDictates ? frameLook : assignedLook; }
-    function resetContentBox() {
-        ['translate', 'scale', 'transform-origin', 'overflow', 'border-radius'].forEach(k => slideLayer.style.removeProperty(k));
+    // The layout's content zone holds everything that is not the camera: the slide, the media and the
+    // countdown are each laid out as a whole 16:9 screen and shrunk into it (owner, 2026-10-19: a layout
+    // constrains them; a layout with no content zone has nowhere for a countdown, so none shows).
+    const zoneLayers = () => [slideLayer, mediaLayer, timerLayer];
+    function clearTimerLayerForLayout() {
+        try {
+            if (!timerLayer.childElementCount && !(timerScenes && timerScenes.length)) return;
+            timerLayer.innerHTML = '';
+            if (timerScenes && timerScenes.length) renderMediaStage(null);
+            timerScenes = null; activeSceneIndex = -1; activeSceneSlot = -1;
+        } catch {}
     }
+    function resetContentBox() {
+        zoneLayers().forEach(el => ['translate', 'scale', 'transform-origin', 'overflow', 'border-radius'].forEach(k => el.style.removeProperty(k)));
+    }
+    // The area a kind of content has in the layout: its own zone (a slide, media or timer zone), else the
+    // content zone, else none. A kind with no area shows none of it (owner, 2026-10-19), except the Bible,
+    // which is the core of the app and falls back to the whole screen.
+    const zoneOf = (kind) => {
+        if (!frameLook || !frameMode) return null;
+        const ls = frameLook.layers || [];
+        const ok = (l) => l.visible !== false && l.pos;
+        return ls.find(l => l.type === kind + 'zone' && ok(l)) || ls.find(l => l.type === 'contentzone' && ok(l)) || null;
+    };
+    // Words need no zone when the layout styles them itself (a lower third).
+    const layoutBlocks = (kind) => !!frameLook && !(kind === 'slide' && frameDictates) && !zoneOf(kind);
+    const layoutBlocksTimer = () => layoutBlocks('timer');
+    const sameZone = (a, b) => !!(a && b && a.id === b.id);
+    // Lays the slide, media and countdown layers into their areas and hides what the layout has no area for.
+    // A countdown takes the slide's area over while it runs when they share one; the Bible covers both.
     function layoutContentBox() {
-        const ring = screenLayerEl.querySelector('.content-ring');
-        if (ring) ring.remove();
-        if (!frameMode) { resetContentBox(); return; }
-        const c = frameContentZone(frameLook);
-        if (!c || !c.pos) { resetContentBox(); return; }
+        screenLayerEl.querySelectorAll('.content-ring').forEach(r => r.remove());
+        const isBible = slideLayer.classList.contains('is-bible');
+        const mediaKind = timerScenes && timerScenes.length ? 'timer' : 'media';   // a countdown's scene backdrop rides on the media layer
+        if (!frameMode) {
+            resetContentBox();
+            slideLayer.style.visibility = '';
+            mediaLayer.style.visibility = layoutBlocks(mediaKind) ? 'hidden' : '';
+            timerLayer.style.visibility = layoutBlocks('timer') ? 'hidden' : '';
+            return;
+        }
         const vw = window.innerWidth, vh = window.innerHeight;
         const sx = vw / DESIGN_W, sy = vh / DESIGN_H;
-        const rx = c.pos.x * sx, ry = c.pos.y * sy, rw = c.pos.w * sx, rh = c.pos.h * sy;
-        const k = Math.min(rw / vw, rh / vh);
-        const left = rx + (rw - vw * k) / 2, top = ry + (rh - vh * k) / 2;
-        slideLayer.style.transformOrigin = '0 0';
-        // translate and scale are their own properties, so the layer's fade and slide (transform) keep working.
-        slideLayer.style.translate = `${left}px ${top}px`;
-        slideLayer.style.scale = String(k);
-        slideLayer.style.overflow = 'hidden';
-        const radius = (c.radius || 0) * sy;
-        slideLayer.style.borderRadius = (radius / k) + 'px';
-        if (c.frameWidth > 0) {
+        const rings = new Map();
+        for (const [el, kind] of [[slideLayer, 'slide'], [mediaLayer, mediaKind], [timerLayer, 'timer']]) {
+            const c = zoneOf(kind);   // the Bible sits in the slide's area too (owner, 2026-10-19); with none it covers the screen
+            if (!c) { ['translate', 'scale', 'transform-origin', 'overflow', 'border-radius'].forEach(k => el.style.removeProperty(k)); continue; }
+            // Padding keeps the content in from the zone's edges (the card, frame and shadow stay at the edge).
+            const pad = Math.max(0, Number(c.padding) || 0);
+            const px = pad * sx, py = pad * sy;
+            const rx = c.pos.x * sx + px, ry = c.pos.y * sy + py, rw = Math.max(1, c.pos.w * sx - 2 * px), rh = Math.max(1, c.pos.h * sy - 2 * py);
+            const k = Math.min(rw / vw, rh / vh);
+            const left = rx + (rw - vw * k) / 2, top = ry + (rh - vh * k) / 2;
+            const radius = (c.radius || 0) * sy;
+            el.style.transformOrigin = '0 0';
+            // translate and scale are their own properties, so the layer's fade and slide (transform) keep working.
+            el.style.translate = `${left}px ${top}px`;
+            el.style.scale = String(k);
+            el.style.overflow = 'hidden';
+            el.style.borderRadius = (radius / k) + 'px';
+            const card = Number(c.cardOpacity) > 0, shadow = Number(c.shadow) > 0;
+            if ((c.frameWidth > 0 || card || shadow) && !rings.has(c.id)) rings.set(c.id, { c, left: left - px, top: top - py, w: vw * k + 2 * px, h: vh * k + 2 * py, radius });
+        }
+        for (const { c, left, top, w, h, radius } of rings.values()) {
             const r = document.createElement('div');
             r.className = 'content-ring';
-            r.style.cssText = `position:absolute;left:${left}px;top:${top}px;width:${vw * k}px;height:${vh * k}px;border-radius:${radius}px;box-shadow:0 0 0 ${c.frameWidth * sy}px ${c.frameColor || '#ffffff'};`;
+            // The zone's own look: a card behind the content, its frame and a drop shadow (Theme Studio).
+            const shadows = [];
+            if (c.frameWidth > 0) shadows.push(`0 0 0 ${c.frameWidth * sy}px ${c.frameColor || '#ffffff'}`);
+            if (Number(c.shadow) > 0) shadows.push(`0 ${c.shadow * 0.3 * sy}px ${c.shadow * sy}px rgba(0,0,0,${(c.shadowOpacity ?? 60) / 100})`);
+            const bg = Number(c.cardOpacity) > 0 ? hexOpacity(c.cardColor || '#000000', c.cardOpacity) : 'transparent';
+            r.style.cssText = `position:absolute;left:${left}px;top:${top}px;width:${w}px;height:${h}px;border-radius:${radius}px;background:${bg};${shadows.length ? 'box-shadow:' + shadows.join(',') + ';' : ''}`;
             screenLayerEl.appendChild(r);
         }
+        const timerOn = timerLayer.childElementCount > 0;
+        const slideGone = !isBible && (layoutBlocks('slide') || (timerOn && sameZone(zoneOf('timer'), zoneOf('slide'))));
+        slideLayer.style.visibility = slideGone ? 'hidden' : '';
+        mediaLayer.style.visibility = layoutBlocks(mediaKind) ? 'hidden' : '';
+        timerLayer.style.visibility = layoutBlocks('timer') ? 'hidden' : '';
     }
+    const syncTimerOverSlide = layoutContentBox;
     let requestedFrame = null, lastFrameKey = '';
     function setFrame(look, force = false) {
         requestedFrame = look && Array.isArray(look.layers) ? look : null;
@@ -643,22 +733,27 @@
         const content = lastContentLook || assignedLook;
         if (!frameLook) {
             resetContentBox();
+            slideLayer.style.visibility = '';
             applyVideoZone(null);
             if (wasDictating && content && activeLook !== content) applyLook(content, false);
             return;
         }
         if (frameDictates) {
             resetContentBox();
+            clearTimerLayerForLayout();
+            syncTimerOverSlide();
             activeLook = frameLook;
             renderStage(currentVerseText, currentVerseRef, false, currentTranslatedText, currentStyleByLayerId, currentTimerText);
             return;
         }
-        const bare = { ...frameLook, layers: frameLook.layers.filter(l => l.type !== 'text' && l.type !== 'pp' && l.type !== 'contentzone') };
+        const bare = { ...frameLook, layers: frameLook.layers.filter(l => l.type !== 'text' && l.type !== 'pp' && l.type !== 'contentzone' && l.type !== 'slidezone' && l.type !== 'mediazone' && l.type !== 'timerzone') };
         const { frag } = buildLayerDOM(bare, '', '', '', {}, '', false, { zone: true });   // places the video zone too
         screenLayerEl.appendChild(frag);
         frameMode = true;
         if (wasDictating && content && activeLook !== content) applyLook(content, false);
         layoutContentBox();
+        if (layoutBlocksTimer()) clearTimerLayerForLayout();
+        syncTimerOverSlide();
     }
     window.addEventListener('resize', () => { try { layoutContentBox(); } catch {} });
 
@@ -895,8 +990,9 @@
                 const bgOv = (styleByLayerId || {})[layer.id] || {};
                 if (bgOv.visible === false) return;
                 layer = withFillOverride(layer, bgOv);
-                // A keyed output shows its key colour where the canvas would be.
-                if (!layer.pos && outputKeying !== 'none') return;
+                // A keyed output shows its key colour where the canvas would be (the Background shape stands for it).
+                if ((!layer.pos || layer.role === 'backdrop') && outputKeying !== 'none') return;
+                if (layer.fill === 'none') return;   // the canvas paints nothing: its colour is the Background shape
                 // The Split themes' dimmed "camera half": on a keyed output (Transparent, Chroma, Luma)
                 // or a capture (NDI, Syphon, DeckLink fill and key) it would turn the key green murky or
                 // darken the camera in the mixer, so there that half is left clear (2026-10-18).
@@ -1993,6 +2089,8 @@
     }
 
     function renderMediaStage(src, kind, fit, motion) {
+        // The layout has no area for media (or for the countdown's backdrop): none plays, and none is heard.
+        if (src && layoutBlocks(timerScenes && timerScenes.length ? 'timer' : 'media')) { lastMediaArgs = [src, kind, fit, motion]; mediaLayer.innerHTML = ''; try { layoutContentBox(); } catch {} return; }
         // Media goes out on the full theme only — and a text-only or stage
         // screen must not play a video's sound alongside the main screen.
         // Kept, to put back if this output goes back to its theme.
@@ -2252,7 +2350,7 @@
     // media layer show through, the same way a cleared front layer in
     // ProPresenter reveals whatever's behind it.
     function clearDisplay() {
-        slideLayer.classList.remove('is-bible');
+        slideLayer.classList.remove('is-bible'); try { layoutContentBox(); } catch {}
         currentImageSlide = null;
         currentVerseText = '';
         currentVerseRef  = '';
@@ -2413,7 +2511,7 @@
             if (verse) noteConfidenceSlide(verse, isBible, msg.next);
             if (verse) {
                 currentSlideIsBible = isBible;
-                slideLayer.classList.toggle('is-bible', isBible);
+                slideLayer.classList.toggle('is-bible', isBible); try { layoutContentBox(); } catch {}
                 if (!verse.image) currentImageSlide = null;
                 // A playlist item may carry its own theme (lyrics vs scripture).
                 // Anything without one falls back to this output's assigned theme.
@@ -2439,7 +2537,7 @@
             if (verse) {
                 noteConfidenceSlide(verse, true, null);
                 currentSlideIsBible = true;
-                slideLayer.classList.add('is-bible');
+                slideLayer.classList.add('is-bible'); try { layoutContentBox(); } catch {}
                 currentImageSlide = null;
                 showVerse(verse.text || verse.verse || '', verse.reference || verse.ref || '', true, verse.translatedText || '');
             } else {
@@ -2522,6 +2620,7 @@
         // exactly as it was.
         if (msg.type === 'timer-slide') {
             if (!outputLayers.timer) return;
+            if (!msg.clear && layoutBlocksTimer()) return;   // this layout has no place for a countdown
             // Uses the look carried in the message directly — never touches
             // activeLook, so the slide layer's own theme is unaffected.
             if (msg.clear) {
@@ -2557,6 +2656,7 @@
                 activeSceneSlot = -1;
                 renderTimerLayer(msg.look, msg.style || {}, msg.timerText || '0:00', { builds: true });
             }
+            syncTimerOverSlide();
             return;
         }
 
@@ -3070,6 +3170,31 @@
     //    URL carries it; falls back to unauthed when not running under Tauri).
     try { applyFadeToBlack(); } catch {}   // a window opened while the outputs are faded to black starts black
     if (!PREVIEW) loadAuthToken().finally(connect);   // the Preview is fed by its parent, not the socket
+
+    // ── Close button, while this output covers the app ──────────────────────
+    // An output on the screen the app itself is on hides the app, with no way back to it (owner,
+    // 2026-10-19: "like ProPresenter"). While the mouse is moving over such an output a Close output
+    // button shows in a corner, and Esc does the same; the app (app_outputs.js) says which outputs
+    // cover it, and switches this one off. Outputs on another screen never show it.
+    if (!PREVIEW && !MONITOR && !CAPTURE) {
+        const covering = () => { try { return JSON.parse(localStorage.getItem('kairo-outputs-covering-app') || '[]').includes(OUTPUT_KEY); } catch { return false; } };
+        const closeOutput = () => { try { localStorage.setItem('kairo-close-output', JSON.stringify({ id: OUTPUT_KEY, at: Date.now() })); } catch {} };
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.textContent = 'Close output  \u00d7';
+        btn.setAttribute('aria-label', 'Close this output and go back to Kairo');
+        btn.style.cssText = 'position:fixed;top:2.2vh;right:2.2vh;z-index:2147483647;padding:1vh 2vh;font:600 2.2vh/1 system-ui,-apple-system,sans-serif;color:#fff;background:rgba(20,20,20,0.82);border:1px solid rgba(255,255,255,0.35);border-radius:1vh;cursor:pointer;opacity:0;pointer-events:none;transition:opacity 0.2s;';
+        btn.addEventListener('click', closeOutput);
+        document.documentElement.appendChild(btn);
+        let hideTimer = null;
+        document.addEventListener('mousemove', () => {
+            if (!covering()) return;
+            btn.style.opacity = '1'; btn.style.pointerEvents = 'auto';
+            clearTimeout(hideTimer);
+            hideTimer = setTimeout(() => { btn.style.opacity = '0'; btn.style.pointerEvents = 'none'; }, 2500);
+        });
+        document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && covering()) closeOutput(); });
+    }
 
     // 4. Reveal the window now that its own dark CSS has actually settled.
     // openDisplayWindow (index.html) creates this window hidden — same

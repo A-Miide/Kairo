@@ -431,6 +431,7 @@
     .tb-stream-btn.is-trouble { border-color: #b5832c; background: #4a3512; color: #ffeccc; }
     /* Record: a red dot, like every record button; while recording, a red button with the dot pulsing. */
     .tb-record-btn { display: inline-flex; align-items: center; gap: 7px; }
+    .tb-record-btn[hidden] { display: none; }   /* Record is for Director mode (owner, 2026-10-19); the display rule above had it showing in basic mode */
     .tb-record-btn::before { content: ''; width: 10px; height: 10px; border-radius: 50%; background: #ff3b30; flex: none; }
     .tb-record-btn:hover { border-color: #ff3b30; }
     .tb-record-btn.is-live { border-color: #ff3b30; background: #8a1d17; color: #fff; }

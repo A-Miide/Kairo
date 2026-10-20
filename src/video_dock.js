@@ -30,7 +30,7 @@
   const VIEWS = ['slides', 'media', 'timer'];
   function setView(view) { K.md.view = VIEWS.includes(view) ? view : 'slides'; writePref(VIEW_KEY, K.md.view); }
   const TILE_KEY = 'kairo-vd-tile';
-  function loadTile() { try { const n = Number(localStorage.getItem(TILE_KEY)); return n >= 90 && n <= 240 ? n : 120; } catch { return 120; } }
+  function loadTile() { try { const n = Number(localStorage.getItem(TILE_KEY)); return n >= 90 && n <= 240 ? n : 150; } catch { return 150; } }   // 150: about four across at the app's default size
   function applyTile(n) { if (K.md.body) K.md.body.style.setProperty('--vd-tile', n + 'px'); }
 
   // For the Slides and Media tabs in the top bar: show that view.
@@ -170,8 +170,11 @@
     if (tv && K.md.timerHome && K.md.timerHome.parentNode) { K.md.timerHome.after(tv); tv.classList.add('hidden'); tv.classList.remove('vd-in-dock'); }
     K.md.timerHome?.remove(); K.md.timerHome = null;
   }
+  // What the area shows is announced, so the top bar can light the matching button (video_director_layout.js).
+  const announceView = (view) => { try { document.dispatchEvent(new CustomEvent('kairo-dock-view', { detail: view })); } catch {} };
   function renderMedia() {
     if (!K.mounted) return;
+    announceView(K.md.view);
     releaseTimer();
     toggleRow();
     const body = K.md.body;
@@ -188,6 +191,8 @@
         // area it stays shown.
         K.md.timerWatch = new MutationObserver(() => { if (tv.classList.contains('hidden')) tv.classList.remove('hidden'); });
         K.md.timerWatch.observe(tv, { attributes: true, attributeFilter: ['class'] });
+        // The top-bar Timer button also loads the segments; choosing the dock's tab must too, or it shows nothing.
+        try { svc() && svc().refreshTimerView && svc().refreshTimerView(); } catch {}
       } else body.appendChild(vEl('p', 'vd-empty', 'The timer is not available here.'));
       return;
     }
@@ -285,7 +290,8 @@
     K.pl.headHome?.remove(); K.pl.headHome = null;
     K.md.addBtn = null;
     K.root?.replaceChildren(); K.root = null;
+    announceView(null);
   }
 
-  window.KairoVideoDock = { mount, unmount, show, isMounted: () => K.mounted, refresh: () => { if (K.mounted) { K.md.fetched = 0; loadFolders(); markSelected(); } } };
+  window.KairoVideoDock = { mount, unmount, show, view: () => (K.mounted ? K.md.view : null), isMounted: () => K.mounted, refresh: () => { if (K.mounted) { K.md.fetched = 0; loadFolders(); markSelected(); } } };
 })();

@@ -53,6 +53,42 @@ function seedMonitorOutput() {
 // Every screen, primary first — used for theme assignment and broadcasting.
 // The primary's own name is renameable too (settings.primaryDisplayName —
 // see renderDisplayDetail), same as every other output.
+// Switches a display output off: it forgets its screen and its window closes. Used by the output's own
+// switch under Settings → Outputs, and by the Close button an output window shows when it covers the app.
+function switchOffDisplay(id) {
+  if (outputScreenMap()[id]) lastDisplayScreen[id] = outputScreenMap()[id];
+  displaysWaiting.delete(id); delete displayStateText[id];
+  setOutputScreen(id, null);
+  const label = `kairo-${id}`;
+  if (typeof closeDisplayWindow === 'function') closeDisplayWindow(label);
+  else logDisplayLifecycleFallback('switchOffDisplay', { outputId: id, reason: 'closeDisplayWindow not a function' });
+  if (typeof renderOutputsList === 'function') { renderOutputsList(); if (selectedOutputId === id && typeof renderOutputsDetail === 'function') renderOutputsDetail(); }
+}
+
+// An output on the screen the app itself is on covers the app. Which outputs those are is published for
+// the output windows (display.html), so each can show a Close button, and Esc, while it covers the app
+// (as ProPresenter does). An output on another screen never shows them.
+function publishOutputsCoveringApp() {
+  let ids = [];
+  try {
+    const cx = window.screenX + window.outerWidth / 2, cy = window.screenY + window.outerHeight / 2;
+    const map = outputScreenMap();
+    ids = Object.keys(map).filter((id) => { const r = map[id]; return r && cx >= r.left && cx < r.left + r.width && cy >= r.top && cy < r.top + r.height; });
+  } catch {}
+  try {
+    const next = JSON.stringify(ids);
+    if (localStorage.getItem('kairo-outputs-covering-app') !== next) localStorage.setItem('kairo-outputs-covering-app', next);
+  } catch {}
+}
+setInterval(publishOutputsCoveringApp, 1500);
+window.addEventListener('storage', (e) => {
+  if (e.key !== 'kairo-close-output' || !e.newValue) return;
+  try {
+    const { id } = JSON.parse(e.newValue);
+    if (id && outputScreenMap()[id]) { switchOffDisplay(id); publishOutputsCoveringApp(); }
+  } catch {}
+});
+
 function displayOutputs() {
   return [{ id: PRIMARY_DISPLAY, name: settings.primaryDisplayName || 'External Display' }, ...extraDisplays()];
 }
@@ -679,12 +715,7 @@ function buildOutputRowToggle(o) {
         setOutputScreen(o.id, { width: s.width, height: s.height, left: s.left, top: s.top });
         if (typeof openDisplayOutput === 'function') openDisplayOutput({ id: o.id, name: o.id });
       } else {
-        if (outputScreenMap()[o.id]) lastDisplayScreen[o.id] = outputScreenMap()[o.id];
-        displaysWaiting.delete(o.id); delete displayStateText[o.id];
-        setOutputScreen(o.id, null);
-        const label2 = `kairo-${o.id}`;
-        if (typeof closeDisplayWindow === 'function') closeDisplayWindow(label2);
-        else logDisplayLifecycleFallback('buildOutputRowToggle(display)', { outputId: o.id, reason: 'closeDisplayWindow not a function' });
+        switchOffDisplay(o.id);
       }
       renderOutputsList();
       if (selectedOutputId === o.id) renderOutputsDetail();
