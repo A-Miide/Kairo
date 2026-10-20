@@ -300,7 +300,10 @@ impl Engine {
     }
 
     fn parse(&self, text: &str, now: u64) -> Vec<Citation> {
-        self.k.parser(self.cfg.lang).parse_all(text, self.active(now))
+        // The preacher asking the room and answering: "Daniel chapter what? Chapter six".
+        static ASKED: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| re(r"(?i)\b(chapter|verse)\s+what\W*\s+(chapter|verse)\b"));
+        let text = ASKED.replace_all(text, "$2");
+        self.k.parser(self.cfg.lang).parse_all(&text, self.active(now))
     }
 
     fn references(&mut self, text: &str, is_final: bool, sent_from_interim: &HashSet<VerseId>, continues_live: bool, now: u64) -> bool {
@@ -337,6 +340,13 @@ impl Engine {
                         refs = joined_refs;
                         joined_text = Some(joined);
                     }
+                }
+            }
+            // Split twice: "…Daniel" | "chapter what? Chapter" | "six from verse three".
+            if refs.is_empty() {
+                if let Some((joined, found)) = self.join_two_finals_back(text, now) {
+                    refs = found;
+                    joined_text = Some(joined);
                 }
             }
         } else if opens_with_number(text) && text.split_whitespace().count() > 1 {
@@ -505,6 +515,26 @@ impl Engine {
             }
         }
         true
+    }
+
+    /// A citation spread over this final and the two before it (the book, then
+    /// "chapter", then the numbers), all within the join window: only citations
+    /// the join creates.
+    fn join_two_finals_back(&self, text: &str, now: u64) -> Option<(String, Vec<Cite>)> {
+        let n = self.t.finals.len();
+        let (first, second) = (self.t.finals.get(n.checked_sub(3)?)?, self.t.finals.get(n - 2)?);
+        if self.t.segment_started.saturating_sub(first.at) >= PREV_FINAL_JOIN_WINDOW_MS || first.has_ref || second.has_ref {
+            return None;
+        }
+        let before = format!("{} {}", first.text, second.text);
+        let before_keys: HashSet<String> = self.parse(&before, now).iter().map(cite_key).collect();
+        let joined = format!("{before} {text}");
+        let fresh: Vec<Citation> = self.parse(&joined, now).into_iter().filter(|c| !before_keys.contains(&cite_key(c))).collect();
+        if fresh.is_empty() {
+            return None;
+        }
+        let refs = self.resolve_ambiguous(fresh, now);
+        (!refs.is_empty()).then_some((joined, refs))
     }
 
     /// "First John 4:4 … John 5:19": a preacher staying in a numbered book

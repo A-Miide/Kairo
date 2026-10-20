@@ -1,0 +1,115 @@
+{
+ "videoId": "scn-hold-daniel6-live",
+ "title": "Scenario: hold-daniel6-live",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "Help me, help me. Daniel"
+  },
+  {
+   "startMs": 2900,
+   "text": "chapter what? Chapter"
+  },
+  {
+   "startMs": 5000,
+   "text": "six from verse three. I want you to"
+  },
+  {
+   "startMs": 9100,
+   "text": "see what happened there"
+  },
+  {
+   "startMs": 11600,
+   "text": "Then this Daniel"
+  },
+  {
+   "startMs": 13700,
+   "text": "was preferred above"
+  },
+  {
+   "startMs": 15800,
+   "text": "the presidents and"
+  },
+  {
+   "startMs": 17900,
+   "text": "princes because an excellent"
+  },
+  {
+   "startMs": 20400,
+   "text": "spirit was in"
+  },
+  {
+   "startMs": 22500,
+   "text": "him and the"
+  },
+  {
+   "startMs": 24600,
+   "text": "king thought to set"
+  },
+  {
+   "startMs": 27100,
+   "text": "him over the old realm."
+  },
+  {
+   "startMs": 30000,
+   "text": "Look at what"
+  },
+  {
+   "startMs": 32100,
+   "text": "happened then they what"
+  },
+  {
+   "startMs": 34600,
+   "text": "president and the princes"
+  },
+  {
+   "startMs": 37100,
+   "text": "sought to find"
+  },
+  {
+   "startMs": 39200,
+   "text": "what occasion against"
+  },
+  {
+   "startMs": 41300,
+   "text": "Daniel concerning the kingdom"
+  },
+  {
+   "startMs": 43800,
+   "text": "but they could"
+  },
+  {
+   "startMs": 45900,
+   "text": "not find none occasion"
+  },
+  {
+   "startMs": 48400,
+   "text": "of all for"
+  },
+  {
+   "startMs": 50500,
+   "text": "as much it"
+  },
+  {
+   "startMs": 52600,
+   "text": "was faithful. I"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Daniel",
+   "chapter": 6,
+   "kind": "citation",
+   "startMs": 5000,
+   "verse": 3
+  },
+  {
+   "book": "Daniel",
+   "chapter": 6,
+   "kind": "quote",
+   "startMs": 34600,
+   "verse": 4
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}
