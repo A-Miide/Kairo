@@ -316,7 +316,13 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
                 let held = to == Route::Staged;
                 let viewer = to == Route::Screen || held;
                 if viewer {
-                    bible.apply_translation(&mut list, &p.translation);
+                    // A verse from another passage ends a translation the preacher asked for: it goes up
+                    // in the church's own (spoken.rs).
+                    let ended = (to == Route::Screen)
+                        .then(|| list.first().and_then(|v| Some((v["book"].as_str()?.to_string(), v["chapter"].as_u64()?))))
+                        .flatten()
+                        .and_then(|(b, c)| crate::spoken::on_send(&b, c));
+                    bible.apply_translation(&mut list, ended.as_deref().unwrap_or(&p.translation));
                     bible.apply_language(&mut list, &p.language);
                 }
                 let mut msg = json!({

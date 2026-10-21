@@ -124,6 +124,10 @@ async fn get_settings(State(app): State<Shared>) -> Json<Value> {
 }
 
 async fn post_settings(State(app): State<Shared>, Json(body): Json<Map<String, Value>>) -> Response {
+    // The operator choosing a translation ends a spoken one: nothing to put back later.
+    if body.contains_key("translation") {
+        crate::spoken::clear();
+    }
     let mut incoming = body.clone();
     let current_key = app.settings.str("deepgramApiKey").await.unwrap_or_default();
     // The redacted key coming back unchanged isn't a new key.
@@ -849,6 +853,19 @@ fn song_live(app: &Shared, live: bool) {
 /// The preacher asked for another translation ("switch to the NIV", "can I have it in NLT"):
 /// it becomes the translation, as if chosen in Settings, and the verse on screen is shown again
 /// in it. One this install doesn't have (the Message) is only logged.
+/// A verse on screen this recently is the one the spoken translation was asked for.
+const SPOKEN_FOR_SCREEN_MS: u64 = 15_000;
+
+/// The spoken translation's passage is over: the church's translation again. The verse going up
+/// already carries it (detect.rs), so nothing is re-sent.
+pub(crate) async fn restore_translation(app: &Shared, code: String) {
+    write_debug_global("server:translation-restored", json!({ "code": code }));
+    let mut patch = Map::new();
+    patch.insert("translation".into(), json!(code));
+    let _ = app.settings.merge(patch).await;
+    app.refresh_presentation().await;
+}
+
 pub(crate) async fn spoken_translation(app: &Shared, code: &'static str) {
     let Some((bible, _)) = app.ready() else { return };
     let available = code == "KJV" || code == "NLT" || bible.db_dir.join("translations").join(format!("{code}.json")).is_file();
@@ -857,12 +874,19 @@ pub(crate) async fn spoken_translation(app: &Shared, code: &'static str) {
     if !available || current.eq_ignore_ascii_case(code) {
         return;
     }
+    // For this passage only: the verse on screen if it went up just now (the one cited with the
+    // request), else the next one sent (spoken.rs).
+    let now = crate::util::lock(&app.hub.live).screen_now.clone();
+    let passage = now.as_ref().filter(|n| crate::util::epoch_ms().saturating_sub(n["timestamp"].as_u64().unwrap_or(0)) < SPOKEN_FOR_SCREEN_MS).and_then(|n| {
+        let v = n["verses"].get(0)?;
+        Some((v["book"].as_str()?.to_string(), v["chapter"].as_u64()?))
+    });
+    crate::spoken::begin(current, passage);
     let mut patch = Map::new();
     patch.insert("translation".into(), json!(code));
     let _ = app.settings.merge(patch).await;
     app.refresh_presentation().await;
     // The verse on screen, again, in the new translation (the windows repaint it, no new send).
-    let now = crate::util::lock(&app.hub.live).screen_now.clone();
     let Some(now) = now else { return };
     let ids: Vec<_> = now["verses"].as_array().into_iter().flatten()
         .filter_map(|v| bible.find(v["book"].as_str()?, v["chapter"].as_u64()?, v["verse"].as_u64()?))
