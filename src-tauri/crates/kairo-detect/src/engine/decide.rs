@@ -4,10 +4,9 @@ use kairo_bible::VerseId;
 
 use super::core::{Candidate, Engine, Held};
 use super::evidence::fits_first_at_least_as_well;
-use super::event::Effect;
 use super::scoring::{self, ScoreContext, SAME_BOOK_WINDOW_MS};
 use super::twins::TwinOutcome;
-use super::types::{Method, OnScreen, Target};
+use super::types::{Hold, Method, OnScreen, Target};
 
 use std::collections::HashSet;
 
@@ -65,7 +64,13 @@ impl Engine {
     pub(crate) fn decide(&mut self, mut c: Candidate, now: u64) -> Target {
         let Some(&top) = c.verses.first() else { return Target::Drop };
 
-        // 0. A quote of a verse just cited by its numbers alone names the book.
+        // 0. A range the preacher cited moving on: its next verse goes up as named, no scoring.
+        if c.reading_on {
+            self.put_up(top, c.method, now);
+            return Target::Screen;
+        }
+
+        // 0b. A quote of a verse just cited by its numbers alone names the book.
         if c.method.is_text_match() {
             if let Some(cited) = self.bare_citation_quoted(&c, now) {
                 return self.decide(cited, now);
@@ -74,19 +79,19 @@ impl Engine {
             // unless the beast of the field multiply" put Exodus 23:29 up before "little by little"
             // showed it was Deuteronomy 7:22 (Oyedepo, dev build 2026-10-21).
             if self.bare_numbers_disagree(&c, now) {
-                c.cap = true;
+                c.hold = Some(Hold::BareNumbersDisagree);
             }
         }
 
         // 1. A cited range's next verse moves the range, from any method.
         match self.try_range_advance_by_detection(&c, now) {
             RangeAdvance::Moved => return Target::Screen,
-            RangeAdvance::Held => c.cap = true,
+            RangeAdvance::Held => c.hold = Some(Hold::RangeNotReadOnYet),
             RangeAdvance::No => {}
         }
 
         // 2. A verse continuing the chapter on screen is promoted.
-        let continuity = !c.verbatim_disagreed && !c.cap && self.continues_chapter(&c, now);
+        let continuity = !c.verbatim_disagreed && c.hold.is_none() && self.continues_chapter(&c, now);
         if continuity {
             c.intent = Target::Screen;
         }
@@ -149,14 +154,15 @@ impl Engine {
                 s.total,
                 if continuity { " (continues the chapter)" } else { "" },
                 if corroborated { " (corroborated)" } else { "" },
-                if c.cap { " (capped)" } else { "" }
+                c.hold.map_or(String::new(), |h| format!(" (held: {h:?})"))
             )
         });
         let mut target = if continuity { Target::Screen } else { decided };
         let score = if continuity { c.score.max(s.total) } else { s.total };
 
-        // 5. What the path knew and the score can't see only ever demotes.
-        if target == Target::Screen && ((c.verbatim_disagreed && !continuity) || c.cap) {
+        // 5. What the path knew and the score can't see only ever demotes: a named hold (types::Hold)
+        // keeps it to Possible Matches whatever the score.
+        if target == Target::Screen && ((c.verbatim_disagreed && !continuity) || c.hold.is_some()) {
             target = Target::Suggestions;
         }
 
@@ -270,8 +276,8 @@ impl Engine {
             }
         }
 
-        // 13.
-        self.effect(Effect::Show { verses: c.verses.clone(), method: c.method, score, target, corrected_from: c.corrected_from });
+        // 13. Out, the one way a verse leaves the engine.
+        self.show(c.verses.clone(), c.method, score, target, c.corrected_from);
         if target == Target::Screen && self.cfg.auto_send {
             let fresh_send = self.screen.last_sent.is_none_or(|(v, t)| v != top || now.saturating_sub(t) >= SEND_DEDUP_MS);
             if fresh_send {
@@ -330,7 +336,7 @@ impl Engine {
     pub(crate) fn hold_for_corroboration(&mut self, c: Candidate, now: u64) {
         let top = c.verses[0];
         let mut held = c;
-        held.cap = false;
+        held.hold = None;
         held.intent = Target::Screen;
         self.awaiting.insert(top, Held { candidate: held, at: now });
     }

@@ -15,7 +15,7 @@ use super::paths::{PathState, ReadingMode};
 use super::twins::TwinState;
 use super::scoring::Ledger;
 use super::state::{Cited, Range, Screen, Transcript};
-use super::types::{Evidence, Method, Target};
+use super::types::{Evidence, Hold, Method, Target};
 use crate::knowledge::Knowledge;
 use crate::lexical::StreamMatcher;
 use crate::reference::{Active, Lang, ReadingContext};
@@ -50,8 +50,10 @@ pub struct Candidate {
     /// Where the path would put it.
     pub intent: Target,
     pub evidence: Evidence,
-    /// The path judged its evidence too weak to send alone.
-    pub cap: bool,
+    /// Why it may only be offered, if the path judged its evidence too weak to send alone.
+    pub hold: Option<Hold>,
+    /// A cited range moving on to its next verse: it goes up as the preacher named it.
+    pub reading_on: bool,
     /// The full-index cross-check picked another verse.
     pub verbatim_disagreed: bool,
     /// Already chosen over its near-duplicate twin.
@@ -69,7 +71,8 @@ impl Candidate {
             score,
             intent,
             evidence: Evidence { similarity: Some(score), ..Default::default() },
-            cap: false,
+            hold: None,
+            reading_on: false,
             verbatim_disagreed: false,
             twin_resolved: false,
             corrected_from: None,
@@ -87,8 +90,15 @@ impl Candidate {
         self
     }
 
-    pub fn capped(mut self) -> Candidate {
-        self.cap = true;
+    /// Offered only, for this reason.
+    pub fn held(mut self, why: Hold) -> Candidate {
+        self.hold = Some(why);
+        self
+    }
+
+    /// The next verse of a range the preacher cited.
+    pub fn reading_on(mut self) -> Candidate {
+        self.reading_on = true;
         self
     }
 }
@@ -540,9 +550,15 @@ impl Engine {
         })
     }
 
-    /// Puts a verse on screen directly (the operator, an advancing range).
+    /// The one way a verse leaves the engine, for the screen or Possible Matches (the server then
+    /// routes a screen verse by Auto-send and Director mode).
+    pub(crate) fn show(&mut self, verses: Vec<VerseId>, method: Method, score: f32, target: Target, corrected_from: Option<VerseId>) {
+        self.effect(Effect::Show { verses, method, score, target, corrected_from });
+    }
+
+    /// A cited range's next verse going up (decide's step 0, for `Candidate::reading_on`).
     pub(crate) fn put_up(&mut self, v: VerseId, method: Method, now: u64) {
-        self.effect(Effect::Show { verses: vec![v], method, score: 1.0, target: Target::Screen, corrected_from: None });
+        self.show(vec![v], method, 1.0, Target::Screen, None);
         // A text match of the same verse a moment later is then a repeat, not a new send,
         // and the next verse of the chapter is reading on (as after any send).
         self.screen.last_detected = Some((v, now, method));

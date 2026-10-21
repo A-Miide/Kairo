@@ -104,3 +104,40 @@ pub struct OnScreen {
     pub verse: VerseRef,
     pub at_ms: u64,
 }
+
+/// Why a candidate may only be offered (Possible Matches), never sent on its own. The path that
+/// finds a verse names the reason; `decide` is the one place it takes effect, and the trace says
+/// which ("… → Suggestions (held: ThinStream)").
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Hold {
+    /// A citation that could be several books ("Timothy 3:16"): every reading is offered.
+    AmbiguousCitation,
+    /// The other reading of a citation whose words picked one ("chapter" restated or not).
+    OtherReading,
+    /// A chapter's verse picked by words said before the chapter, or by everyday words alone.
+    ChapterPickUnsure,
+    /// A well-known passage named in passing ("the prodigal son").
+    NamedPassage,
+    /// A paraphrase the meaning model wasn't sure enough of to send.
+    ParaphraseUnsure,
+    /// Part of a verse's wording, below the word-for-word bar.
+    QuoteBelowBar,
+    /// A quote the reading has already moved past (the end-of-utterance sweep).
+    QuoteBehindReading,
+    /// Another verse the speech touched explains the quote better.
+    QuoteExplainedElsewhere,
+    /// A quote certain by weight alone, with no other method agreeing.
+    QuoteUncorroborated,
+    /// The same words in several places, with nothing to choose between them.
+    QuoteTie,
+    /// A stream alignment with few or no identifying words and nothing pointing at it.
+    ThinStream,
+    /// "verse N" in a chapter never named, with nothing of the verse heard.
+    StrayVerseNumber,
+    /// "verse N" after the reading context lapsed, with nothing of the verse heard.
+    VerseNumberAfterLapse,
+    /// A quote at other numbers than the chapter and verse just said without a book.
+    BareNumbersDisagree,
+    /// The range's next verse matched by its wording before any of its own words were heard.
+    RangeNotReadOnYet,
+}

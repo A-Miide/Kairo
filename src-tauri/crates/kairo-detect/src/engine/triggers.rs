@@ -9,7 +9,7 @@ use kairo_bible::{VerseId, VerseRef};
 use super::citations::{ends_on_growable_number, interim_looks_incomplete, opens_with_number, tokens, DIRECT_PARTIAL_SCORE, INTERIM_STABLE_WINDOW_MS, PREV_FINAL_JOIN_WINDOW_MS};
 use super::core::{Candidate, Engine};
 use super::evidence::{meaningful_words, stem_lite};
-use super::types::{Method, Target};
+use super::types::{Hold, Method, Target};
 use crate::re::re;
 use crate::reference::i18n::localize;
 use crate::reference::numbers::{consume_number, is_ambiguous_number_word};
@@ -176,7 +176,7 @@ impl Engine {
         let Some(v) = self.k.id(VerseRef::new(p.citation.book, p.citation.chapter as u16, verse as u16)) else { return };
         self.jump_range_to(v, now);
         let candidate = Candidate::new(vec![v], partial_method(&p), DIRECT_PARTIAL_SCORE, Target::Screen);
-        let sent = self.decide(if self.partial_may_send(&p, &[v], text) { candidate } else { candidate.capped() }, now);
+        let sent = self.decide(if self.partial_may_send(&p, &[v], text) { candidate } else { candidate.held(Hold::StrayVerseNumber) }, now);
         self.partial_confirms_context(sent, v, &p, now);
     }
 
@@ -277,7 +277,7 @@ impl Engine {
         // said puts it up; otherwise it is offered. Not in the sermon's announced passage: that is
         // where the preacher is (MacArthur's "go back to verse thirteen" in Mark 4).
         if !self.in_announced_passage(r.book, r.chapter) && !self.own_word_heard(&verses, text) {
-            self.decide(Candidate::new(verses, partial_method(&p), DIRECT_PARTIAL_SCORE, Target::Suggestions).capped(), now);
+            self.decide(Candidate::new(verses, partial_method(&p), DIRECT_PARTIAL_SCORE, Target::Suggestions).held(Hold::VerseNumberAfterLapse), now);
             return true;
         }
         if verses.len() > 1 {
@@ -319,7 +319,7 @@ impl Engine {
             outside_range = !self.jump_range_to(verses[0], now);
         }
         let candidate = Candidate::new(verses.clone(), partial_method(&p), DIRECT_PARTIAL_SCORE, Target::Screen);
-        let sent = self.decide(if self.partial_may_send(&p, &verses, text) { candidate } else { candidate.capped() }, now);
+        let sent = self.decide(if self.partial_may_send(&p, &verses, text) { candidate } else { candidate.held(Hold::StrayVerseNumber) }, now);
         // A demoted stray number mustn't destroy the range.
         if outside_range && sent == Target::Screen {
             self.clear_range(now);
