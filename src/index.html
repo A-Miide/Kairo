@@ -342,7 +342,7 @@
                      just KJV/NLT when the other four turned out to be
                      unwired labels; restored once the real source files
                      were found and connected. -->
-                <select id="translation-select" class="cs-select cs-translation-select" title="Primary — the main displayed Bible version">
+                <select id="translation-select" class="cs-select cs-translation-select" title="English translation: the version a verse goes up in (another scripture language uses its own Bible)">
                     <option value="KJV" selected>KJV</option>
                     <option value="NKJV">NKJV</option>
                     <option value="NLT">NLT</option>
@@ -1409,7 +1409,7 @@
 
                 <div class="setting-row-2col">
                     <div class="setting-group">
-                        <label class="setting-label" for="translation-select-settings">Translation</label>
+                        <label class="setting-label" for="translation-select-settings">English translation</label>
                         <select id="translation-select-settings" class="setting-input">
                             <option value="KJV" selected>KJV</option>
                             <option value="NKJV">NKJV</option>
@@ -1418,7 +1418,7 @@
                             <option value="ESV">ESV</option>
                             <option value="NASB">NASB</option>
                         </select>
-                        <p class="setting-hint">The version a verse goes up in.</p>
+                        <p class="setting-hint">The version a verse goes up in when scripture shows in English. Another language (Settings → Language) uses its own Bible instead. The preacher can ask for one out loud ("John 3:16 in the NIV") for that passage.</p>
                     </div>
 
                     <div class="setting-group setting-checks">
@@ -1714,7 +1714,7 @@
                                 <p>Under <strong>Settings → Language</strong>: <em>Spoken language</em> is what the preacher is actually speaking (it drives transcription). <em>Scripture shows in</em> is the language a matched verse appears in, picked from the Bibles that come with Kairo, all of them working offline. If the preacher's language has a Bible and the screen isn't showing it, a line offers to switch. <em>Also show beside it</em> adds a second language next to the verse and on slides, for the Multi-Language theme. <em>Languages on this computer</em> lists each language's Bible (always included) and its slide translation, which is the one download.</p>
                                 <p>For a service preached in <strong>Spanish, Portuguese, French or German</strong>, set the spoken language and Kairo understands citations in that language ("Juan capítulo tres versículo dieciséis", "siguiente versículo") and matches verses read aloud against that language's Bible. Other spoken languages are transcribed, but detection follows English citations and readings.</p>
                                 <p><strong>Spoken languages</strong> (Settings → Language → Spoken language): English (US, UK, Australia, India), Spanish, Portuguese (Brazil), French, German, Italian, Dutch, Swedish, Polish, Ukrainian, Russian, Hindi, Indonesian, Korean, Japanese, Chinese (Mandarin), or Auto-detect. Deepgram covers all of them. Offline, English is built in; the others need the <em>offline model for other languages</em> (about 475 MB, Settings → Speech Engine → Offline).</p>
-                                <p><strong>Bibles that come with Kairo</strong>, all offline: English — KJV and NLT, plus NIV, ESV, NASB and NKJV (Settings → Bible translation) — and, under <em>Scripture shows in</em>, Spanish, Portuguese, French, German, Yoruba, Igbo, Hausa and Swahili.</p>
+                                <p><strong>Bibles that come with Kairo</strong>, all offline: English — KJV and NLT, plus NIV, ESV, NASB and NKJV (Settings → Bible translation) — and, under <em>Scripture shows in</em>, Spanish, Portuguese, French, German, Yoruba, Igbo, Hausa and Swahili (New Testament only). These change what a verse is shown in; what Kairo listens for is the spoken language. In any language but English, the English translation setting doesn't apply.</p>
                                 <p><strong>Church vocabulary</strong> (same page) — names and words your services use that transcription may mishear: the pastor, the church, local places. One per line; used from the next Start Listening (English and auto-detect services).</p>
                                 
                                 <p><strong>Slide Translation Models</strong> are separate — they translate ordinary (non-scripture) slide/sermon text for the Multi-Language split theme, using a small bundled local model with no setup, API key, or internet connection required once downloaded.</p>
@@ -1779,6 +1779,7 @@
                     <div class="setting-group">
                     <label class="setting-label" for="stt-language">Spoken language</label>
                     <select id="stt-language" class="setting-input">
+                        <optgroup label="Citations and readings detected">
                                 <option value="en-US">English (US)</option>
                                 <option value="en-GB">English (UK)</option>
                                 <option value="en-AU">English (Australia)</option>
@@ -1787,6 +1788,8 @@
                                 <option value="pt-BR">Portuguese (Brazil)</option>
                                 <option value="fr">French</option>
                                 <option value="de">German</option>
+                        </optgroup>
+                        <optgroup label="Transcribed only (detection follows English)">
                                 <option value="it">Italian</option>
                                 <option value="nl">Dutch</option>
                                 <option value="sv">Swedish</option>
@@ -1799,8 +1802,9 @@
                                 <option value="ja">Japanese</option>
                                 <option value="zh">Chinese (Mandarin)</option>
                                 <option value="multi">Auto-detect (multilingual)</option>
+                        </optgroup>
                             </select>
-                    <p class="setting-hint">What the preacher speaks. Drives live transcription — set it before the service starts.</p>
+                    <p class="setting-hint">What the preacher speaks: what Kairo listens for. Set it before the service starts. Offline, languages other than English need the offline model for other languages (Speech Engine).</p>
                 </div>
                 <div class="setting-group">
                     <label class="setting-label" for="custom-keyterms">Church vocabulary</label>
@@ -1828,7 +1832,7 @@
                 <div class="setting-group">
                     <label class="setting-label">Scripture shows in</label>
                     <div class="lang-pills" id="lang-screen-pills"></div>
-                    <p class="setting-hint">The language a matched verse appears in. All of these are inside Kairo and work offline.</p>
+                    <p class="setting-hint">The language a verse is shown in, not what Kairo listens for (that's Spoken language). All of these are inside Kairo and work offline. Any language but English uses its own Bible, so the English translation (Settings → Bible) doesn't apply.</p>
                     <div class="lang-suggest" id="lang-suggest" hidden></div>
                     <details class="lang-sources"><summary>Bible sources</summary><p class="setting-hint scripture-credits" id="scripture-credits"></p></details>
                 </div>
