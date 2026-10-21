@@ -42,6 +42,7 @@ mod routes_misc;
 mod translate;
 mod util;
 pub mod settings;
+mod spoken;
 mod video;
 mod ndi_runtime;
 mod osc;
@@ -234,9 +235,14 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         let cfg = kairo_detect::engine::Config { auto_send: p.auto_send, ..Default::default() };
         let detector = Detector::start(bible.clone(), starting.hub.clone(), cfg, starting.presentation.clone(), rt.clone(), starting.log.clone());
         let (a, h) = (starting.clone(), rt);
+        let (a2, h2) = (a.clone(), h.clone());
         detector.on_translation(move |code| {
             let a = a.clone();
             h.spawn(async move { routes::spoken_translation(&a, code).await });
+        });
+        spoken::on_restore(move |code| {
+            let a = a2.clone();
+            h2.spawn(async move { routes::restore_translation(&a, code).await });
         });
         let _ = starting.bible.set(bible);
         let _ = starting.detector.set(detector);
