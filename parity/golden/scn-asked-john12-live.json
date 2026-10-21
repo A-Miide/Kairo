@@ -1,0 +1,281 @@
+{
+ "source": "scn-asked-john12-live",
+ "kind": "scenario",
+ "lang": "en",
+ "songLive": false,
+ "cues": [
+  {
+   "text": "Hear me",
+   "audioMs": 0
+  },
+  {
+   "text": "What number are",
+   "audioMs": 1700
+  },
+  {
+   "text": "we now? Number what",
+   "audioMs": 3800
+  },
+  {
+   "text": "number three that means",
+   "audioMs": 6300
+  },
+  {
+   "text": "you are following me.",
+   "audioMs": 8800
+  },
+  {
+   "text": "I want you",
+   "audioMs": 11300
+  },
+  {
+   "text": "to pray. Can",
+   "audioMs": 13400
+  },
+  {
+   "text": "I have the",
+   "audioMs": 15500
+  },
+  {
+   "text": "Book of John",
+   "audioMs": 17600
+  },
+  {
+   "text": "chapter what twelve from verse ten?",
+   "audioMs": 19700
+  },
+  {
+   "text": "I want you to",
+   "audioMs": 23000
+  },
+  {
+   "text": "see it one wickedness there and I want",
+   "audioMs": 25500
+  },
+  {
+   "text": "you to relate",
+   "audioMs": 29600
+  },
+  {
+   "text": "it here if you",
+   "audioMs": 31700
+  },
+  {
+   "text": "understand what happened",
+   "audioMs": 34200
+  },
+  {
+   "text": "in John chapter eleven,",
+   "audioMs": 36300
+  },
+  {
+   "text": "then this script,",
+   "audioMs": 38800
+  },
+  {
+   "text": "this verse should",
+   "audioMs": 40900
+  },
+  {
+   "text": "strike you. He",
+   "audioMs": 43000
+  },
+  {
+   "text": "said, but the chief priest",
+   "audioMs": 45100
+  },
+  {
+   "text": "consulted that what",
+   "audioMs": 48000
+  },
+  {
+   "text": "the same Lazarus that resurrected",
+   "audioMs": 50100
+  },
+  {
+   "text": "am I making sense, you",
+   "audioMs": 53000
+  },
+  {
+   "text": "know, there are",
+   "audioMs": 55900
+  },
+  {
+   "text": "people that your congratulation",
+   "audioMs": 58000
+  },
+  {
+   "text": "has started they",
+   "audioMs": 60500
+  },
+  {
+   "text": "want to kill it",
+   "audioMs": 62600
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "Hear me",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "What number are",
+   "isFinal": true
+  },
+  {
+   "cue": 2,
+   "text": "we now? Number what",
+   "isFinal": true
+  },
+  {
+   "cue": 3,
+   "text": "number three that means",
+   "isFinal": true
+  },
+  {
+   "cue": 4,
+   "text": "you are following me.",
+   "isFinal": true
+  },
+  {
+   "cue": 5,
+   "text": "I want you",
+   "isFinal": true
+  },
+  {
+   "cue": 6,
+   "text": "to pray. Can",
+   "isFinal": true
+  },
+  {
+   "cue": 7,
+   "text": "I have the",
+   "isFinal": true
+  },
+  {
+   "cue": 8,
+   "text": "Book of John",
+   "isFinal": true
+  },
+  {
+   "cue": 9,
+   "text": "chapter what twelve from",
+   "isFinal": false
+  },
+  {
+   "cue": 9,
+   "text": "chapter what twelve from verse ten?",
+   "isFinal": true
+  },
+  {
+   "cue": 10,
+   "text": "I want you to",
+   "isFinal": true
+  },
+  {
+   "cue": 11,
+   "text": "see it one wickedness",
+   "isFinal": false
+  },
+  {
+   "cue": 11,
+   "text": "see it one wickedness there and I want",
+   "isFinal": true
+  },
+  {
+   "cue": 12,
+   "text": "you to relate",
+   "isFinal": true
+  },
+  {
+   "cue": 13,
+   "text": "it here if you",
+   "isFinal": true
+  },
+  {
+   "cue": 14,
+   "text": "understand what happened",
+   "isFinal": true
+  },
+  {
+   "cue": 15,
+   "text": "in John chapter eleven,",
+   "isFinal": true
+  },
+  {
+   "cue": 16,
+   "text": "then this script,",
+   "isFinal": true
+  },
+  {
+   "cue": 17,
+   "text": "this verse should",
+   "isFinal": true
+  },
+  {
+   "cue": 18,
+   "text": "strike you. He",
+   "isFinal": true
+  },
+  {
+   "cue": 19,
+   "text": "said, but the chief",
+   "isFinal": false
+  },
+  {
+   "cue": 19,
+   "text": "said, but the chief priest",
+   "isFinal": true
+  },
+  {
+   "cue": 20,
+   "text": "consulted that what",
+   "isFinal": true
+  },
+  {
+   "cue": 21,
+   "text": "the same Lazarus that",
+   "isFinal": false
+  },
+  {
+   "cue": 21,
+   "text": "the same Lazarus that resurrected",
+   "isFinal": true
+  },
+  {
+   "cue": 22,
+   "text": "am I making sense,",
+   "isFinal": false
+  },
+  {
+   "cue": 22,
+   "text": "am I making sense, you",
+   "isFinal": true
+  },
+  {
+   "cue": 23,
+   "text": "know, there are",
+   "isFinal": true
+  },
+  {
+   "cue": 24,
+   "text": "people that your congratulation",
+   "isFinal": true
+  },
+  {
+   "cue": 25,
+   "text": "has started they",
+   "isFinal": true
+  },
+  {
+   "cue": 26,
+   "text": "want to kill it",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}
