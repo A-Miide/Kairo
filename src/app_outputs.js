@@ -382,6 +382,7 @@ function renderLangPacks() {
     credits.textContent = LANG_PACKS.map(p => `${p.name}: ${p.translations}`).join(' \u00b7 ');
   }
   renderLangPills();
+  renderLangCapability();
   if (typeof renderMtModelList === 'function') renderMtModelList(); // now that every language is known
 }
 
@@ -446,11 +447,107 @@ function renderLangPills() {
   }
 }
 
+// ── Service language: what Kairo listens for, and what that language gets ──
+// Spoken languages whose citations and readings Kairo understands (the others are transcribed,
+// and verses are found when cited or read in English). Keep in step with kairo-detect i18n.
+const DETECTS_IN = { en: 'English', es: 'Spanish', pt: 'Portuguese', fr: 'French', de: 'German' };
+
+function spokenCode() {
+  return String(document.getElementById('stt-language')?.value || settings.sttLanguage || 'en-US').toLowerCase();
+}
+function spokenName() {
+  const sel = document.getElementById('stt-language');
+  return sel?.selectedOptions?.[0]?.textContent || 'English';
+}
+
+// Picking the service language picks the Bible too, when that language has one here (Spanish
+// service → Reina-Valera) — but only while scripture was following the service language: a
+// deliberate choice under More (an English service shown in Yoruba) stays.
+function matchScriptureToService(previous) {
+  const base = spokenCode().split('-')[0];
+  const before = String(previous || 'en').toLowerCase().split('-')[0];
+  const bibleSel = document.getElementById('bible-language');
+  const target = LANG_PACKS.find(p => p.code === base) ? base : (base === 'multi' ? null : 'en');
+  if (!bibleSel || !target || bibleSel.value === target) return;
+  const following = bibleSel.value === before || bibleSel.value === 'en';
+  if (!following) return;
+  bibleSel.value = target;
+  bibleSel.dispatchEvent(new Event('change'));
+}
+
+// Under the service language, in three lines: is it heard (and with what), are verses found in
+// it, and which Bible they show in — with the one download it may need, right here.
+let _capPoll = null;
+async function renderLangCapability() {
+  const box = document.getElementById('lang-capability');
+  if (!box) return;
+  const code = spokenCode();
+  const base = code.split('-')[0];
+  const name = spokenName();
+  const engine = (document.querySelector('#speech-engine-toggle .toggle-btn.active')?.dataset.engine || settings.speechEngine || 'deepgram').toLowerCase();
+  const offline = engine === 'browser' || engine === 'offline';
+  const line = (ok, text) => {
+    const row = document.createElement('div');
+    row.className = 'lang-cap-row ' + (ok === true ? 'ok' : ok === false ? 'missing' : 'partial');
+    const mark = document.createElement('span');
+    mark.className = 'lang-cap-mark';
+    mark.textContent = ok === true ? '✓' : ok === false ? '!' : '–';
+    const t = document.createElement('span');
+    t.textContent = text;
+    row.append(mark, t);
+    box.appendChild(row);
+    return row;
+  };
+  let heard = null;
+  if (offline && base !== 'en') {
+    try { heard = await (await fetch(`${SERVER}/api/offline/status?model=multi`)).json(); } catch (_) { heard = null; }
+  }
+  box.innerHTML = '';
+  // Heard
+  if (!offline) line(true, `Heard by Deepgram.`);
+  else if (base === 'en') line(true, 'Heard offline (built in).');
+  else if (heard?.installed) line(true, `Heard offline (offline model for other languages).`);
+  else {
+    const row = line(false, heard?.installing
+      ? `Downloading the offline model for other languages… ${typeof heard.progress === 'number' ? heard.progress + '%' : ''}`
+      : `Offline listening in ${name} needs the offline model for other languages (about ${heard?.approxMB || 475} MB).`);
+    if (!heard?.installing) {
+      const b = document.createElement('button');
+      b.type = 'button'; b.className = 'lang-link'; b.textContent = 'Download it';
+      b.addEventListener('click', () => {
+        // The Speech Engine installer does the download and shows its steps; this follows it.
+        document.getElementById('offline-multi-install-btn')?.click();
+        setTimeout(renderLangCapability, 800);
+      });
+      row.appendChild(document.createTextNode(' '));
+      row.appendChild(b);
+    }
+    clearTimeout(_capPoll);
+    if (heard?.installing) _capPoll = setTimeout(renderLangCapability, 1500);
+  }
+  // Verses found
+  if (base === 'multi') line(null, 'Verses are found when cited or read in English, Spanish, Portuguese, French or German.');
+  else if (DETECTS_IN[base]) line(true, `Verses found when cited or read in ${DETECTS_IN[base]}.`);
+  else line(null, `${name} is transcribed; verses are found when cited or read in English.`);
+  // Shows in
+  const bibleCode = document.getElementById('bible-language')?.value || settings.bibleLanguage || 'en';
+  const pack = LANG_PACKS.find(p => p.code === bibleCode);
+  const shows = bibleCode === 'en' ? `English, ${settings.translation || 'KJV'}` : `${pack?.name || bibleCode}, ${pack?.translations || ''}`;
+  line(true, `Verses show in ${shows}.`);
+}
+window.renderLangCapability = renderLangCapability;
+
 document.getElementById('stt-language')?.addEventListener('change', (e) => {
+  const previous = settings.sttLanguage;
   settings.sttLanguage = e.target.value;
   saveSettingsPatch({ sttLanguage: e.target.value });
+  matchScriptureToService(previous);
   renderLangPills();
+  renderLangCapability();
 });
+document.getElementById('speech-engine-toggle')?.addEventListener('click', () => setTimeout(renderLangCapability, 0));
+document.getElementById('speech-engine-toggle')?.addEventListener('toggle-change', () => renderLangCapability());
+document.getElementById('translation-select-settings')?.addEventListener('change', () => setTimeout(renderLangCapability, 0));
 document.getElementById('custom-keyterms')?.addEventListener('change', (e) => {
   settings.customKeyterms = e.target.value;
   saveSettingsPatch({ customKeyterms: e.target.value });
@@ -458,6 +555,7 @@ document.getElementById('custom-keyterms')?.addEventListener('change', (e) => {
 document.getElementById('bible-language')?.addEventListener('change', (e) => {
   settings.bibleLanguage = e.target.value;
   saveSettingsPatch({ bibleLanguage: e.target.value });
+  renderLangCapability();
 });
 window.renderLangPills = renderLangPills;
 

@@ -1350,7 +1350,7 @@
                             </div>
                             <div id="offline-multi-progress-text" style="font-size:11px;color:var(--text-3);margin-top:4px;">Starting…</div>
                         </div>
-                        <p class="setting-hint">Listens offline in the language set under Language → Spoken language — Spanish, French, Portuguese, German, Korean and more.</p>
+                        <p class="setting-hint">Lets offline listening hear the other service languages (Settings → Language). Kairo finds verses cited or read in Spanish, Portuguese, French and German; in the others it transcribes, and finds verses cited or read in English.</p>
                     </div>
 
                     <div class="setting-group" id="deepgram-key-group">
@@ -1548,7 +1548,7 @@
                                 <ol>
                                     <li>Open <strong>Settings → Audio</strong> and pick the microphone (or audio-routing device, e.g. BlackHole) capturing the preacher. The level bar under it shows what that input is delivering; play something through it to check. Kairo evens out a quiet or loud feed on its own, and the line beside the bar says if the source is clipping.</li>
                                     <li>Open <strong>Settings → Outputs</strong> and turn on at least one destination — usually External Display for the projector/screen.</li>
-                                    <li>Set the spoken language under <strong>Settings → Language</strong> if it isn't English.</li>
+                                    <li>Set the service language under <strong>Settings → Language</strong> if it isn't English. It says what that language gets, and offers anything it needs.</li>
                                     <li>Press <strong>Start Listening</strong>. Live Status switches from Idle to Listening, and the Live Transcript Log starts filling in as words are heard. <strong>Stop</strong> ends the session — nothing else does: if the internet drops, the status shows <em>Reconnecting…</em> and Kairo keeps listening; the words said meanwhile are caught up when it's back.</li>
                                 </ol>
                                 <p>Everything else — playlists, slides, songs, themes — can be prepared before or during the service; detection runs independently in the background the whole time.</p>
@@ -1711,10 +1711,11 @@
                         <details class="help-group">
                             <summary>Multi-language</summary>
                             <div class="help-body">
-                                <p>Under <strong>Settings → Language</strong>: <em>Spoken language</em> is what the preacher is actually speaking (it drives transcription). <em>Scripture shows in</em> is the language a matched verse appears in, picked from the Bibles that come with Kairo, all of them working offline. If the preacher's language has a Bible and the screen isn't showing it, a line offers to switch. <em>Also show beside it</em> adds a second language next to the verse and on slides, for the Multi-Language theme. <em>Languages on this computer</em> lists each language's Bible (always included) and its slide translation, which is the one download.</p>
-                                <p>For a service preached in <strong>Spanish, Portuguese, French or German</strong>, set the spoken language and Kairo understands citations in that language ("Juan capítulo tres versículo dieciséis", "siguiente versículo") and matches verses read aloud against that language's Bible. Other spoken languages are transcribed, but detection follows English citations and readings.</p>
-                                <p><strong>Spoken languages</strong> (Settings → Language → Spoken language): English (US, UK, Australia, India), Spanish, Portuguese (Brazil), French, German, Italian, Dutch, Swedish, Polish, Ukrainian, Russian, Hindi, Indonesian, Korean, Japanese, Chinese (Mandarin), or Auto-detect. Deepgram covers all of them. Offline, English is built in; the others need the <em>offline model for other languages</em> (about 475 MB, Settings → Speech Engine → Offline).</p>
-                                <p><strong>Bibles that come with Kairo</strong>, all offline: English — KJV and NLT, plus NIV, ESV, NASB and NKJV (Settings → Bible translation) — and, under <em>Scripture shows in</em>, Spanish, Portuguese, French, German, Yoruba, Igbo, Hausa and Swahili (New Testament only). These change what a verse is shown in; what Kairo listens for is the spoken language. In any language but English, the English translation setting doesn't apply.</p>
+                                <p>Under <strong>Settings → Language</strong>, choose the <em>service language</em> — what the preacher speaks. That one choice sets what Kairo listens for and, when that language has a Bible here, the Bible verses show in. Beneath it, three lines say what the language gets: whether it's heard (and by Deepgram or offline), whether verses are found when cited or read in it, and which Bible they show in. If offline listening needs a download, it's offered right there.</p>
+                                <p>Under <em>More</em>: <em>Scripture shows in</em> shows verses in a different language from the one spoken (an English service shown in Yoruba); <em>Also show beside it</em> adds a second language next to the verse and on slides, for the Multi-Language theme; <em>Languages on this computer</em> lists each language's Bible (always included) and its slide translation, the one download.</p>
+                                <p>For a service preached in <strong>Spanish, Portuguese, French or German</strong>, set the service language and Kairo understands citations in that language ("Juan capítulo tres versículo dieciséis", "siguiente versículo") and matches verses read aloud against that language's Bible. Other languages are transcribed, and verses are found when cited or read in English.</p>
+                                <p><strong>Service languages</strong> (Settings → Language): English (US, UK, Australia, India), Spanish, Portuguese (Brazil), French, German, Italian, Dutch, Swedish, Polish, Ukrainian, Russian, Hindi, Indonesian, Korean, Japanese, Chinese (Mandarin), or Auto-detect. Deepgram covers all of them. Offline, English is built in; the others need the <em>offline model for other languages</em> (about 475 MB), offered under the service language when it's needed.</p>
+                                <p><strong>Bibles that come with Kairo</strong>, all offline: English — KJV and NLT, plus NIV, ESV, NASB and NKJV (Settings → Bible translation) — and, under <em>Scripture shows in</em>, Spanish, Portuguese, French, German, Yoruba, Igbo, Hausa and Swahili (New Testament only). These change what a verse is shown in; what Kairo listens for is the service language. In any language but English, the English translation setting doesn't apply.</p>
                                 <p><strong>Church vocabulary</strong> (same page) — names and words your services use that transcription may mishear: the pastor, the church, local places. One per line; used from the next Start Listening (English and auto-detect services).</p>
                                 
                                 <p><strong>Slide Translation Models</strong> are separate — they translate ordinary (non-scripture) slide/sermon text for the Multi-Language split theme, using a small bundled local model with no setup, API key, or internet connection required once downloaded.</p>
@@ -1768,16 +1769,16 @@
 
             <section class="settings-pane" data-pane="language">
             <!-- ── LANGUAGE ───────────────────────────────────────
-                 Three short groups (2026-10-12: the old pane read as nine
-                 things to download — scripture packs are part of the app,
-                 nothing to install): what the preacher speaks, what the
-                 screen shows, and the optional slide-translation models,
-                 the only real downloads here. -->
+                 One choice first: the language of the service. It sets what Kairo listens for
+                 and the Bible verses show in, and says plainly what that language gets (heard,
+                 verses found, which Bible) and what's missing, with the download right there
+                 (app_outputs.js renderLangCapability). Everything else — scripture in another
+                 language, a second language beside it, slide translation — is under "More". -->
             <div class="settings-section">
-                <div class="settings-section-label">Listening</div>
+                <div class="settings-section-label">Service language</div>
                 <div class="setting-row-2col">
                     <div class="setting-group">
-                    <label class="setting-label" for="stt-language">Spoken language</label>
+                    <label class="setting-label" for="stt-language">The preacher speaks</label>
                     <select id="stt-language" class="setting-input">
                         <optgroup label="Citations and readings detected">
                                 <option value="en-US">English (US)</option>
@@ -1804,7 +1805,7 @@
                                 <option value="multi">Auto-detect (multilingual)</option>
                         </optgroup>
                             </select>
-                    <p class="setting-hint">What the preacher speaks: what Kairo listens for. Set it before the service starts. Offline, languages other than English need the offline model for other languages (Speech Engine).</p>
+                    <div class="lang-capability" id="lang-capability" aria-live="polite"></div>
                 </div>
                 <div class="setting-group">
                     <label class="setting-label" for="custom-keyterms">Church vocabulary</label>
@@ -1821,18 +1822,15 @@
                 </div>
             </div>
 
-            <!-- What the room sees, in three plain questions. The two selects below
-                 are kept (hidden) because the saving and download code reads them;
-                 the pills are what the person uses (app_outputs.js renderLangPills). -->
-            <div class="settings-section" id="lang-screen-section">
-                <div class="settings-section-label">On screen</div>
+            <details class="settings-section lang-more" id="lang-screen-section">
+                <summary class="settings-section-label">More: scripture in another language, a second language beside it, slide translation</summary>
                 <select id="bible-language" hidden></select>
                 <select id="bible-translate-to-select" hidden><option value="">Off</option></select>
 
                 <div class="setting-group">
                     <label class="setting-label">Scripture shows in</label>
                     <div class="lang-pills" id="lang-screen-pills"></div>
-                    <p class="setting-hint">The language a verse is shown in, not what Kairo listens for (that's Spoken language). All of these are inside Kairo and work offline. Any language but English uses its own Bible, so the English translation (Settings → Bible) doesn't apply.</p>
+                    <p class="setting-hint">Set automatically from the service language; pick another to show scripture in a different language (an English service shown in Yoruba). All inside Kairo, offline. Any language but English uses its own Bible, so the English translation (Settings → Bible) doesn't apply.</p>
                     <div class="lang-suggest" id="lang-suggest" hidden></div>
                     <details class="lang-sources"><summary>Bible sources</summary><p class="setting-hint scripture-credits" id="scripture-credits"></p></details>
                 </div>
@@ -1851,7 +1849,7 @@
                     <div id="mt-model-list" class="dl-list"></div>
                     <p class="setting-hint">Every language comes with its Bible. Slide translation is the download. Remove one to free the space.</p>
                 </div>
-            </div>
+            </details>
             </section>
 
             <section class="settings-pane" data-pane="outputs">
