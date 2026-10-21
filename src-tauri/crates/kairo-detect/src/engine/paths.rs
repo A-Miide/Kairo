@@ -36,6 +36,8 @@ const CROSSCHECK_MIN_IDF: f32 = 10.0;
 const CROSSCHECK_COOLDOWN_MS: u64 = 20_000;
 const CROSSCHECK_WORDS: usize = 100;
 const STREAM_MIN_WEIGHTY_WORDS: u32 = 3;
+/// …and one word at least this identifying.
+const STREAM_MIN_PEAK_IDF: f32 = 4.0;
 const STREAM_RELATIVE_MS: u64 = 10_000;
 const SHOWN_RECENTLY_MS: u64 = 60_000;
 const ANCHOR_DEPTH: u32 = 4;
@@ -64,6 +66,8 @@ pub(crate) struct StreamHit {
     pub matched_idf: f32,
     pub via_backward: bool,
     pub weighty: u32,
+    /// The weightiest aligned word.
+    pub peak_idf: f32,
     pub df: u8,
     pub idf: f32,
     pub similarity: f32,
@@ -278,7 +282,7 @@ impl Engine {
         for w in words {
             let tick = self.stream.push(&self.k.lexicon, w, now);
             for a in tick.anchors {
-                let hit = StreamHit { verse: a.verse, confirmed: false, matched: ANCHOR_DEPTH, matched_idf: 0.0, via_backward: false, weighty: 0, df: a.df, idf: a.idf, similarity: anchor_similarity(a.df) };
+                let hit = StreamHit { verse: a.verse, confirmed: false, matched: ANCHOR_DEPTH, matched_idf: 0.0, via_backward: false, weighty: 0, peak_idf: 0.0, df: a.df, idf: a.idf, similarity: anchor_similarity(a.df) };
                 match anchors.iter_mut().find(|h| h.verse == a.verse) {
                     Some(h) if a.df < h.df => *h = hit,
                     Some(_) => {}
@@ -287,7 +291,7 @@ impl Engine {
             }
             for c in tick.confirmed {
                 let similarity = (0.90 + (c.matched as f32 - 6.0) * 0.01).min(0.97);
-                let hit = StreamHit { verse: c.verse, confirmed: true, matched: c.matched, matched_idf: c.matched_idf, via_backward: c.via_backward_extension, weighty: c.weighty_words, df: 0, idf: 0.0, similarity };
+                let hit = StreamHit { verse: c.verse, confirmed: true, matched: c.matched, matched_idf: c.matched_idf, via_backward: c.via_backward_extension, weighty: c.weighty_words, peak_idf: c.peak_idf, df: 0, idf: 0.0, similarity };
                 match confirmed.iter_mut().find(|h| h.verse == c.verse) {
                     Some(h) if c.matched > h.matched => *h = hit,
                     Some(_) => {}
@@ -414,7 +418,10 @@ impl Engine {
 
         // Thin on its own: nothing points at it and few weighty words aligned.
         let pointed_at = self.passage_pointed_at(lead.verse, now);
-        let thin = intent == Target::Screen && !pointed_at && lead.weighty < STREAM_MIN_WEIGHTY_WORDS && !corroborated;
+        // …or no aligned word identifies anything: "and all those things … has been" (a
+        // YouTube ad) lined up with Isaiah 66:2 on everyday words (dev build 2026-10-21).
+        let light = lead.peak_idf < STREAM_MIN_PEAK_IDF;
+        let thin = intent == Target::Screen && !pointed_at && (lead.weighty < STREAM_MIN_WEIGHTY_WORDS || light) && !corroborated;
         let mut twin_took = false;
         if thin {
             let better = match self.resolve_twin(lead.verse, now) {
