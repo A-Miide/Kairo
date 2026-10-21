@@ -221,6 +221,7 @@ fn one_chapter_books() {
     // An outline's numbers aren't the book of Numbers.
     assert!(all("That's argument number two for why you should stay. Number three the middle of verse fifteen").is_empty());
     assert!(all("And finally, observation number four verse five four exhortations").is_empty());
+    assert_eq!(all("Second Timothy chapter um one verse thirteen"), ["2 Timothy 1:13"]);
 }
 
 #[test]
@@ -313,6 +314,7 @@ fn reading_context_lasts_through_a_pause_and_stretches_for_a_slow_pace() {
     ctx.update(b("Acts"), None, 70_000);
     assert_eq!(ctx.active(70_000), Active { book: Some(b("Acts")), chapter: None }, "a new book drops the old chapter");
 }
+
 
 
 

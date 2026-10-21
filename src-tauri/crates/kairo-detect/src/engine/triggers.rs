@@ -329,6 +329,11 @@ impl Engine {
     }
 
     fn partial_confirms_context(&mut self, sent: Target, v: VerseId, p: &Partial, now: u64) {
+        // "chapter one verse thirteen" resolved in the book being read: no longer a citation
+        // waiting for its book (Habakkuk 1:13 took it, Piper, dev build).
+        if sent == Target::Screen && p.chapter_given {
+            self.cites.bare = None;
+        }
         let up_already = self.screen.recent_detections.get(&v).is_some_and(|t| now.saturating_sub(*t) < PARTIAL_CONFIRM_MAX_AGE_MS);
         if sent == Target::Screen || up_already {
             self.reading.update(p.citation.book, Some(p.citation.chapter), now);

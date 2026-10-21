@@ -33,6 +33,7 @@ use crate::re::{fre, freplace, re, words, WB};
 
 pub fn normalize(text: &str, books: &Books, lang: Lang) -> String {
     let t = if lang == Lang::En { text.to_lowercase() } else { localize(text, lang) };
+    let t = drop_fillers(&t);
     let t = roman_after_keywords(&t);
     let t = drop_possessives(&t);
     let t = join_split_digits(&t);
@@ -42,6 +43,12 @@ pub fn normalize(text: &str, books: &Books, lang: Lang) -> String {
     let t = collapse_stutters(&t);
     let t = ordinal_forms(&t, books);
     self_corrections(&t)
+}
+
+/// Hesitations inside a citation: "in chapter um one verse thirteen" (Piper, dev build 2026-10-21).
+fn drop_fillers(t: &str) -> String {
+    static RE: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?-u:\b)(?:um+|uh+|uhm|erm|er)(?-u:\b)[,.]?\s*"));
+    RE.replace_all(t, "").into_owned()
 }
 
 fn roman_after_keywords(t: &str) -> String {

@@ -180,20 +180,25 @@ pub(crate) struct CitationState {
     restated: Option<Restated>,
     decided: Vec<RestatedDecided>,
     seq: u32,
-    bare: Option<BareCitation>,
+    pub(crate) bare: Option<BareCitation>,
 }
 
 /// "17 verse seven to eight" with no book heard (dropped, or misheard): the
 /// numbers wait for a quote of a verse they fit to name the book.
 #[derive(Clone, Copy, Debug)]
-struct BareCitation {
+pub(crate) struct BareCitation {
     chapter: u16,
     from: u16,
     to: u16,
     at: u64,
+    /// A quote named its book already; the numbers still hold off other verses while fresh.
+    resolved: bool,
 }
 
 const BARE_CITATION_MS: u64 = 30_000;
+/// The verse at a bare citation's numbers that the quote's own words pick: at least this weight,
+/// and twice any other book's verse at those numbers.
+const BARE_FIT_MIN_IDF: f32 = 8.0;
 const BARE_RANGE_MAX: i64 = 6;
 
 /// The chapter and verses of "<n> verse <n> [to|through|and <n>]".
@@ -626,7 +631,7 @@ impl Engine {
     }
 
     pub(crate) fn bare_citation_quoted(&mut self, c: &Candidate, now: u64) -> Option<Candidate> {
-        let b = self.cites.bare.filter(|b| now.saturating_sub(b.at) < BARE_CITATION_MS)?;
+        let b = self.cites.bare.filter(|b| now.saturating_sub(b.at) < BARE_CITATION_MS && !b.resolved)?;
         // …or its twin: "chapter seven verse twenty two … unless the beast of the field multiply" is
         // Deuteronomy 7:22, though the words matched Exodus 23:29 first (Oyedepo, dev build).
         let with_twins: Vec<VerseId> = c.verses.iter().flat_map(|v| std::iter::once(*v).chain(self.k.lexicon.twins(*v).iter().map(|t| t.verse))).collect();
@@ -635,14 +640,20 @@ impl Engine {
             // …or the book whose verse at those numbers the speech clearly fits ("…little by little"
             // is Deuteronomy 7:22, not Exodus 23:29 it was matched to).
             None => {
-                let spoken = format!("{} {}", self.recent_speech_seconds(30).join(" "), c.source.as_deref().unwrap_or(""));
+                // Only the words the match was found in: half a minute of preaching fits some
+                // verse 1:13 somewhere ("…sound teaching" → Habakkuk 1:13, Piper, dev build).
+                let spoken = c.source.clone().unwrap_or_default();
                 let mut rows: Vec<(VerseId, f32)> = Book::all()
                     .filter_map(|book| self.k.id(VerseRef::new(book, b.chapter, b.from)))
-                    .map(|id| (id, self.shared_weight(id, &spoken).0))
+                    .map(|id| {
+                        let said: HashSet<String> = super::evidence::evidence_words(&spoken);
+                        let w: f32 = super::evidence::meaningful_words(self.verse_text(id)).iter().filter(|w| said.contains(&super::evidence::stem_lite(w))).map(|w| self.k.lexicon.idf_of(w)).sum();
+                        (id, w)
+                    })
                     .collect();
                 rows.sort_by(|x, y| y.1.total_cmp(&x.1));
                 let (best, second) = (rows.first()?, rows.get(1).map_or(0.0, |r| r.1));
-                if best.1 < super::ranges::CHAPTER_KEYWORD_MIN_IDF || best.1 - second < super::ranges::CHAPTER_KEYWORD_MIN_MARGIN * 2.0 {
+                if best.1 < BARE_FIT_MIN_IDF || best.1 < second * 2.0 {
                     return None;
                 }
                 self.r(best.0)
@@ -652,7 +663,10 @@ impl Engine {
         if verses.is_empty() {
             return None;
         }
-        self.cites.bare = None;
+        // Kept while fresh: Exodus 23:29 came straight back over Deuteronomy 7:22 once it was gone.
+        if let Some(b) = self.cites.bare.as_mut() {
+            b.resolved = true;
+        }
         self.note(|_| format!("{} quotes {} {}:{}–{}, cited without its book", c.method.wire(), r.book.name(), b.chapter, b.from, b.to));
         if verses.len() > 1 {
             self.set_range(verses.clone(), now);
@@ -670,7 +684,7 @@ impl Engine {
             let prev = self.t.finals.len().checked_sub(2).and_then(|i| self.t.finals.get(i)).filter(|f| now.saturating_sub(f.at) < PREV_FINAL_JOIN_WINDOW_MS && bare_citation(&f.text).is_none());
             let found = bare_citation(text).or_else(|| prev.and_then(|p| bare_citation(&format!("{} {text}", p.text))));
             if let Some((chapter, from, to)) = found {
-                self.cites.bare = Some(BareCitation { chapter, from, to, at: now });
+                self.cites.bare = Some(BareCitation { chapter, from, to, at: now, resolved: false });
                 self.note(|_| format!("chapter {chapter} verses {from}–{to} cited without a book"));
             }
         }
