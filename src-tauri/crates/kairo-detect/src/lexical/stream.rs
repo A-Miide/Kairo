@@ -57,6 +57,8 @@ pub struct Confirmed {
     pub via_backward_extension: bool,
     /// Aligned words that weigh something and aren't everyday preaching words.
     pub weighty_words: u32,
+    /// The weightiest aligned word.
+    pub peak_idf: f32,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -150,12 +152,14 @@ impl StreamMatcher {
                     .iter()
                     .filter(|w| lex.idf(**w) >= STREAM_WEIGHTY_IDF && !PREACHING_COMMON_WORDS.contains(lex.vocab().word(**w)))
                     .count() as u32;
+                let peak_idf = c.counted.iter().map(|w| lex.idf(*w)).fold(0.0, f32::max);
                 tick.confirmed.push(Confirmed {
                     verse: c.verse,
                     matched: c.matched,
                     matched_idf: c.matched_idf,
                     via_backward_extension: c.back_matched > 0 && !without_back,
                     weighty_words,
+                    peak_idf,
                 });
             }
             kept.push(c);
