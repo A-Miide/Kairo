@@ -161,6 +161,7 @@ impl Engine {
     /// outline's "number two?" isn't a verse).
     pub(crate) fn interim_partial(&mut self, text: &str, now: u64) {
         let Some(p) = self.k.partials(self.cfg.lang).resolve(text, self.active(now), false) else { return };
+        let p = self.announced_instead(p, text);
         let Verses::One(verse) = p.citation.verses else { return };
         if interim_looks_incomplete(text, self.cfg.lang) {
             if ends_on_growable_number(text, self.cfg.lang) {
@@ -201,6 +202,25 @@ impl Engine {
             }
         }
         self.own_word_heard(verses, text)
+    }
+
+    /// "verse N" taken against the chapter cited in passing, when the words fit verse N of the
+    /// sermon's announced passage better: Luke 6:38 cited, then "whoever has, verse twenty five, to
+    /// him more shall be given" is Mark 4:25, not Luke 6:25 (MacArthur, dev build 2026-10-20).
+    fn announced_instead(&self, mut p: Partial, text: &str) -> Partial {
+        let Some((book, chapter, _)) = self.announced.filter(|(b, c, _)| self.in_announced_passage(*b, *c)) else { return p };
+        let Verses::One(n) = p.citation.verses else { return p };
+        if p.chapter_given || (p.citation.book == book && p.citation.chapter == chapter as u32) {
+            return p;
+        }
+        let Some(there) = self.k.id(VerseRef::new(book, chapter, n as u16)) else { return p };
+        let spoken = format!("{} {text}", self.recent_speech_seconds(20).join(" "));
+        let here = self.k.id(VerseRef::new(p.citation.book, p.citation.chapter as u16, n as u16)).map_or(0.0, |h| self.shared_weight(h, &spoken).0);
+        if self.shared_weight(there, &spoken).0 >= here + super::ranges::CHAPTER_KEYWORD_MIN_MARGIN * 2.0 {
+            p.citation.book = book;
+            p.citation.chapter = chapter as u32;
+        }
+        p
     }
 
     /// An identifying word of one of the verses in what was just said, not two everyday ones
@@ -275,6 +295,7 @@ impl Engine {
             && opens_with_number(text);
         let query = if carried { format!("verse {text}") } else { text.to_string() };
         let Some(p) = self.k.partials(self.cfg.lang).resolve(&query, self.active(now), true) else { return false };
+        let p = self.announced_instead(p, &query);
         let verses = self.citation_verses(&p.citation);
         if verses.is_empty() {
             return false;

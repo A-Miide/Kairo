@@ -17,6 +17,8 @@ const TWIN_DECISION_TTL_MS: u64 = 20_000;
 const TWINS_COMPARED: usize = 4;
 /// Speech this recent is what a twin decision weighs.
 const RECENT_SPEECH_MS: u64 = 6_000;
+/// How strongly the sermon's announced passage points at its verses.
+const ANNOUNCED_AFFINITY: f32 = 2.5;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum TwinOutcome {
@@ -88,6 +90,12 @@ impl Engine {
                 if !is_switch(&best) || best.is_some_and(|(_, hits)| twin_only > hits) {
                     best = Some((TwinOutcome::Switch(t.verse), twin_only));
                 }
+            } else if aff >= ANNOUNCED_AFFINITY && cand_aff == 0.0 && cand_only < TWIN_SPEECH_MARGIN && self.passage_pointed_at(t.verse, now) {
+                // A word apart ("mysteries", "mystery") doesn't outweigh the passage the sermon is
+                // on: Mark 4:11, not Matthew 13:11 (MacArthur on Mark 4, dev build 2026-10-20).
+                if !is_switch(&best) {
+                    best = Some((TwinOutcome::Switch(t.verse), 0));
+                }
             } else if cand_only == 0 && twin_only == 0 {
                 if aff >= 2.0 && aff > cand_aff && self.passage_pointed_at(t.verse, now) {
                     if !is_switch(&best) {
@@ -128,6 +136,11 @@ impl Engine {
             x.book == r.book && x.chapter == r.chapter
         }) {
             a = a.max(3.0);
+        }
+        // The sermon's announced passage: Mark 4:11 over its twin Matthew 13:11 in a sermon on
+        // Mark 4 (MacArthur, dev build).
+        if self.in_announced_passage(r.book, r.chapter) {
+            a = a.max(ANNOUNCED_AFFINITY);
         }
         if let Some((up, at)) = self.screen.up {
             let u = self.r(up);
@@ -171,7 +184,7 @@ impl Engine {
                 return true;
             }
         }
-        self.sermon.iter().any(|c| c.named && c.book == r.book && c.chapter == Some(r.chapter) && now.saturating_sub(c.at) < CONTEXT_WINDOW_MS)
+        self.in_announced_passage(r.book, r.chapter) || self.sermon.iter().any(|c| c.named && c.book == r.book && c.chapter == Some(r.chapter) && now.saturating_sub(c.at) < CONTEXT_WINDOW_MS)
     }
 
     /// A text match explained by the passage in play: its twin (or a chapter
