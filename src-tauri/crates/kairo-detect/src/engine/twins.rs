@@ -17,6 +17,8 @@ const TWIN_DECISION_TTL_MS: u64 = 20_000;
 const TWINS_COMPARED: usize = 4;
 /// Speech this recent is what a twin decision weighs.
 const RECENT_SPEECH_MS: u64 = 6_000;
+/// The verses just after the one on screen that the reading may have reached.
+const READ_ON_VERSES: u16 = 3;
 /// How strongly the sermon's announced passage points at its verses.
 const ANNOUNCED_AFFINITY: f32 = 2.5;
 
@@ -180,7 +182,9 @@ impl Engine {
         let r = self.r(v);
         if let Some((up, at)) = self.screen.up {
             let u = self.r(up);
-            if u.book == r.book && u.chapter == r.chapter && now.saturating_sub(at) < SAME_BOOK_WINDOW_MS && (r.verse == u.verse || r.verse == u.verse + 1) {
+            // …or a few verses on: Colossians 3:4 up, 3:5 read in passing, then 3:6 is "the sons of
+            // disobedience", not its twin Ephesians 5:6 (Charles Stanley, dev build 2026-10-21).
+            if u.book == r.book && u.chapter == r.chapter && now.saturating_sub(at) < SAME_BOOK_WINDOW_MS && r.verse >= u.verse && r.verse <= u.verse + READ_ON_VERSES {
                 return true;
             }
         }
