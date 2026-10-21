@@ -205,9 +205,14 @@ fn bare_citation(text: &str) -> Option<(u16, u16, u16)> {
             continue;
         }
         // The longest number ending just before "verse" ("one twenty five").
-        let Some(chapter) = (1..=3).rev().filter_map(|back| i.checked_sub(back)).find_map(|j| consume_number(&w, j, Some(150)).filter(|n| j + n.consumed == i)) else {
+        // …and that isn't a verse number itself: "go to verse twenty three. Verse twenty three" is
+        // verse 23 said twice, not chapter 23 verse 23 (MacArthur, dev build).
+        let Some((j, chapter)) = (1..=3).rev().filter_map(|back| i.checked_sub(back)).find_map(|j| consume_number(&w, j, Some(150)).filter(|n| j + n.consumed == i).map(|n| (j, n))) else {
             continue;
         };
+        if matches!(j.checked_sub(1).map(|p| w[p]), Some("verse" | "verses")) {
+            continue;
+        }
         let Some(from) = consume_number(&w, i + 1, Some(176)) else { continue };
         let mut to = from.value;
         let k = i + 1 + from.consumed;
@@ -607,9 +612,35 @@ impl Engine {
     /// verse tries again with what's been said since.
     /// A text match of a verse the numbers just cited without a book fit:
     /// the quote names the book, and the citation goes up as said.
+    /// A chapter and verse were just said without a book, and the text match is at other numbers.
+    pub(crate) fn bare_numbers_disagree(&self, c: &Candidate, now: u64) -> bool {
+        let Some(b) = self.cites.bare.filter(|b| now.saturating_sub(b.at) < BARE_CITATION_MS) else { return false };
+        !c.verses.iter().map(|v| self.r(*v)).any(|r| r.chapter == b.chapter && (b.from..=b.to).contains(&r.verse))
+    }
+
     pub(crate) fn bare_citation_quoted(&mut self, c: &Candidate, now: u64) -> Option<Candidate> {
         let b = self.cites.bare.filter(|b| now.saturating_sub(b.at) < BARE_CITATION_MS)?;
-        let r = c.verses.iter().map(|v| self.r(*v)).find(|r| r.chapter == b.chapter && (b.from..=b.to).contains(&r.verse))?;
+        // …or its twin: "chapter seven verse twenty two … unless the beast of the field multiply" is
+        // Deuteronomy 7:22, though the words matched Exodus 23:29 first (Oyedepo, dev build).
+        let with_twins: Vec<VerseId> = c.verses.iter().flat_map(|v| std::iter::once(*v).chain(self.k.lexicon.twins(*v).iter().map(|t| t.verse))).collect();
+        let r = match with_twins.iter().map(|v| self.r(*v)).find(|r| r.chapter == b.chapter && (b.from..=b.to).contains(&r.verse)) {
+            Some(r) => r,
+            // …or the book whose verse at those numbers the speech clearly fits ("…little by little"
+            // is Deuteronomy 7:22, not Exodus 23:29 it was matched to).
+            None => {
+                let spoken = format!("{} {}", self.recent_speech_seconds(30).join(" "), c.source.as_deref().unwrap_or(""));
+                let mut rows: Vec<(VerseId, f32)> = Book::all()
+                    .filter_map(|book| self.k.id(VerseRef::new(book, b.chapter, b.from)))
+                    .map(|id| (id, self.shared_weight(id, &spoken).0))
+                    .collect();
+                rows.sort_by(|x, y| y.1.total_cmp(&x.1));
+                let (best, second) = (rows.first()?, rows.get(1).map_or(0.0, |r| r.1));
+                if best.1 < super::ranges::CHAPTER_KEYWORD_MIN_IDF || best.1 - second < super::ranges::CHAPTER_KEYWORD_MIN_MARGIN * 2.0 {
+                    return None;
+                }
+                self.r(best.0)
+            }
+        };
         let verses: Vec<VerseId> = (b.from..=b.to).filter_map(|n| self.k.id(VerseRef::new(r.book, b.chapter, n))).collect();
         if verses.is_empty() {
             return None;
@@ -628,7 +659,10 @@ impl Engine {
 
     fn no_citation(&mut self, text: &str, is_final: bool, now: u64) -> bool {
         if is_final {
-            if let Some((chapter, from, to)) = bare_citation(text) {
+            // Split over two finals: "chapter seven verse" | "twenty two is" (Oyedepo, dev build).
+            let prev = self.t.finals.len().checked_sub(2).and_then(|i| self.t.finals.get(i)).filter(|f| now.saturating_sub(f.at) < PREV_FINAL_JOIN_WINDOW_MS && bare_citation(&f.text).is_none());
+            let found = bare_citation(text).or_else(|| prev.and_then(|p| bare_citation(&format!("{} {text}", p.text))));
+            if let Some((chapter, from, to)) = found {
                 self.cites.bare = Some(BareCitation { chapter, from, to, at: now });
                 self.note(|_| format!("chapter {chapter} verses {from}–{to} cited without a book"));
             }
