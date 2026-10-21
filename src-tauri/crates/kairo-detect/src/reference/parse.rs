@@ -104,7 +104,10 @@ impl Parser<'_> {
                     }
                 }
                 if let Some(n) = numbered_prefix(w[j]) {
-                    if j + 1 < w.len() && self.books.numbered(n, w[j + 1]).is_some() {
+                    // "John three, John three" is John 3 said twice, not "John" then "3 John 3"
+                    // (MacArthur, dev build 2026-10-20): the chapter number right after the book.
+                    let repeated = j == i + consumed && consumed == 1 && w.get(j + 1) == Some(&w[i]);
+                    if j + 1 < w.len() && self.books.numbered(n, w[j + 1]).is_some() && !repeated {
                         next = j;
                         break;
                     }
@@ -122,6 +125,8 @@ impl Parser<'_> {
                     out.push(c);
                     i = next;
                 }
+                // A chapter alone isn't a citation here, but its number still isn't the next book's.
+                None if consumed == 1 && next > i + 1 && numbered_prefix(w[i + 1]).is_some() && w.get(i + 2) == Some(&w[i]) => i = next,
                 None => i += 1,
             }
         }
