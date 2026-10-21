@@ -216,6 +216,36 @@ S["cross-micah43-cited"] = [
     ("Micah four three", [("citation", "Micah 4:3")]),
     ("and they shall beat their swords into plowshares, and their spears into pruninghooks: nation shall not lift up a sword against nation, neither shall they learn war any more", [("quote", "Micah 4:3")]),
 ]
+# ── 13. The room asked, the number given straight after ("chapter what twelve"), dev build 2026-10-20 ──
+S["asked-john12-live"] = [
+    ('Hear me', []),
+    ('What number are', []),
+    ('we now? Number what', []),
+    ('number three that means', []),
+    ('you are following me.', []),
+    ('I want you', []),
+    ('to pray. Can', []),
+    ('I have the', []),
+    ('Book of John', []),
+    ('chapter what twelve from verse ten?', [("citation", "John 12:10")]),
+    ('I want you to', []),
+    ('see it one wickedness there and I want', []),
+    ('you to relate', []),
+    ('it here if you', []),
+    ('understand what happened', []),
+    ('in John chapter eleven,', []),
+    ('then this script,', []),
+    ('this verse should', []),
+    ('strike you. He', []),
+    ('said, but the chief priest', [("quote", "John 12:10")]),
+    ('consulted that what', []),
+    ('the same Lazarus that resurrected', []),
+    ('am I making sense, you', []),
+    ('know, there are', []),
+    ('people that your congratulation', []),
+    ('has started they', []),
+    ('want to kill it', []),
+]
 S_LANG = {"num-spanish": "es", "num-french": "fr", "num-portuguese": "pt", "num-german": "de", "num-spanish-mixed": "es"}
 
 def answer(kind, ref, at):

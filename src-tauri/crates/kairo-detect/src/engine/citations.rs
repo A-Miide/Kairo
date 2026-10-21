@@ -25,6 +25,8 @@ const JOIN_CARRY_WORDS: usize = 12;
 /// An unfinished interim citation acts only when parsed identically this recently.
 pub const INTERIM_STABLE_WINDOW_MS: u64 = 3_000;
 const CHAPTER_PENDING_TEXT_MAX_WORDS: usize = 50;
+/// A chapter's verse picked by the words that followed goes up only with one this identifying among them.
+const CHAPTER_PICK_SEND_MIN_IDF: f32 = 5.0;
 /// A verse resolved against a context or chosen within a named chapter.
 pub const DIRECT_PARTIAL_SCORE: f32 = 0.90;
 /// A citation in the last minute chooses among a stem's books.
@@ -303,6 +305,11 @@ impl Engine {
         // The preacher asking the room and answering: "Daniel chapter what? Chapter six".
         static ASKED: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| re(r"(?i)\b(chapter|verse)\s+what\W*\s+(chapter|verse)\b"));
         let text = ASKED.replace_all(text, "$2");
+        // …or answered straight away: "John chapter what twelve from verse ten?" (dev build 2026-10-20).
+        static ASKED_THEN_NUMBER: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+            re(r"(?i)\b(chapter|verse)\s+what[?!.,]*\s+(\d|one\b|two\b|three\b|four\b|five\b|six\b|seven\b|eight\b|nine\b|ten\b|eleven\b|twelve\b|thirteen\b|fourteen\b|fifteen\b|sixteen\b|seventeen\b|eighteen\b|nineteen\b|twenty\b|thirty\b|forty\b|fifty\b|sixty\b|seventy\b|eighty\b|ninety\b|hundred\b)")
+        });
+        let text = ASKED_THEN_NUMBER.replace_all(&text, "$1 $2");
         // The offline recogniser spells a book's number ("one John chapter five", "Two Chronicles
         // chapter twenty", "one Samuel chapter one"): read as the digit, as "1 John" is.
         static BOOK_NUMBER: std::sync::LazyLock<regex::Regex> =
@@ -733,7 +740,12 @@ impl Engine {
         }
         let v = self.pick_chapter_verse_by_idf(book, chapter, text)?;
         let after = text_after_book_mention(text, book, chapter);
-        Some((v, self.pick_chapter_verse_by_idf(book, chapter, &after) == Some(v)))
+        // …and among those words one that identifies the verse: "then this script, this verse
+        // should strike you. He said, but the chief priest" adds up for John 11:40 on everyday
+        // words alone (dev build 2026-10-20) — that is offered, not sent.
+        let said: HashSet<String> = super::evidence::meaningful_words(&after).iter().map(|w| super::evidence::stem_lite(w)).collect();
+        let identifying = super::evidence::meaningful_words(self.verse_text(v)).iter().any(|w| self.k.lexicon.idf_of(w) >= CHAPTER_PICK_SEND_MIN_IDF && said.contains(&super::evidence::stem_lite(w)));
+        Some((v, identifying && self.pick_chapter_verse_by_idf(book, chapter, &after) == Some(v)))
     }
 
     /// The chapter's verse sharing clearly the most identifying words with `text`.
