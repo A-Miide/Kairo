@@ -10,7 +10,7 @@ use std::sync::LazyLock;
 use kairo_bible::{Book, VerseRef};
 
 use super::core::{Candidate, Engine};
-use super::types::{Method, Target};
+use super::types::{Hold, Method, Target};
 use crate::re::re;
 
 const NAMED_PASSAGE_SCORE: f32 = 0.70;
@@ -89,7 +89,7 @@ impl Engine {
         for (book, chapter, verse) in named {
             if let Some(v) = self.k.id(VerseRef::new(book, chapter, verse)) {
                 let mut c = Candidate::new(vec![v], Method::NamedPassage, NAMED_PASSAGE_SCORE, Target::Suggestions);
-                c.cap = true;
+                c.hold = Some(Hold::NamedPassage);
                 self.decide(c, now);
             }
         }

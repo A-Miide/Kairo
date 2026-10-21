@@ -14,7 +14,7 @@ use kairo_bible::VerseId;
 
 use super::core::{Candidate, Engine};
 use super::event::{MeaningHit, Request};
-use super::types::{Evidence, Method, Target};
+use super::types::{Evidence, Hold, Method, Target};
 use crate::lexical::stem::heal;
 use crate::lexical::text::{is_stop_word, norm};
 use crate::re::re;
@@ -395,7 +395,7 @@ impl Engine {
                 let mut c = Candidate::new(vec![v], Method::Paraphrase, score, target)
                     .evidence(Evidence { paraphrase_score: Some(score), rerank: rr, similarity: Some(score), matched_idf: Some(lex), ..Default::default() })
                     .from_text(&windows[0]);
-                c.cap = target == Target::Suggestions;
+                c.hold = (target == Target::Suggestions).then_some(Hold::ParaphraseUnsure);
                 self.decide(c, now);
             }
         }

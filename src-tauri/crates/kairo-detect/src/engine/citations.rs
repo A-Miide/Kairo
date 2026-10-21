@@ -10,7 +10,7 @@ use super::event::{Effect, TimerId};
 use super::evidence::{evidence_words, fits_first_at_least_as_well, preaching_common};
 use super::scoring::SAME_BOOK_WINDOW_MS;
 use super::twins::TWIN_SPEECH_MARGIN;
-use super::types::{Method, Target};
+use super::types::{Hold, Method, Target};
 use crate::re::re;
 use crate::reference::numbers::{consume_number, spoken_to_number};
 use crate::reference::{book_mentions, Citation, Verses};
@@ -510,7 +510,7 @@ impl Engine {
                 }
             } else {
                 // Never sent: every reading is offered for the operator to pick.
-                self.decide(Candidate::new(verses, Method::Direct, 1.0, Target::Suggestions).capped(), now);
+                self.decide(Candidate::new(verses, Method::Direct, 1.0, Target::Suggestions).held(Hold::AmbiguousCitation), now);
                 continue;
             }
 
@@ -764,7 +764,7 @@ impl Engine {
     fn send_chapter_keyword(&mut self, book: Book, chapter: u32, v: VerseId, explicit: bool, now: u64) -> bool {
         let mut candidate = Candidate::new(vec![v], Method::ChapterKeyword, DIRECT_PARTIAL_SCORE, Target::Screen);
         if !explicit {
-            candidate = candidate.capped();
+            candidate = candidate.held(Hold::ChapterPickUnsure);
         }
         if self.decide(candidate, now) != Target::Screen {
             return false;
@@ -1109,7 +1109,7 @@ impl Engine {
         if sent == Target::Screen && !by_words {
             let other = if chosen == p.plain { &p.alt } else { &p.plain };
             if let Some(&v) = self.citation_verses(other).first() {
-                self.decide(Candidate::new(vec![v], Method::Direct, 1.0, Target::Suggestions).capped(), now);
+                self.decide(Candidate::new(vec![v], Method::Direct, 1.0, Target::Suggestions).held(Hold::OtherReading), now);
             }
         }
     }

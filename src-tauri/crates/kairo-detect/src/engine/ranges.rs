@@ -9,7 +9,7 @@ use super::decide::RangeAdvance;
 use super::event::Effect;
 use super::evidence::meaningful_words;
 use super::scoring::SAME_BOOK_WINDOW_MS;
-use super::types::Method;
+use super::types::{Method, Target};
 use crate::lexical::stem::heal;
 use crate::lexical::text::norm;
 use crate::reference::book_mentions;
@@ -197,7 +197,7 @@ impl Engine {
         } else {
             self.effect(Effect::RangeMoved { current: next, remaining: self.range.queue.len() });
         }
-        self.put_up(next, Method::Direct, now);
+        self.decide(Candidate::new(vec![next], Method::Direct, 1.0, Target::Screen).reading_on(), now);
         true
     }
 

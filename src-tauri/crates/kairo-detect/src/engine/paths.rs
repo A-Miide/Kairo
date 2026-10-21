@@ -13,7 +13,7 @@ use super::event::Effect;
 use super::evidence::explained_better_by;
 use super::scoring::{SAME_BOOK_WINDOW_MS, STREAM_IDF_FULL_CONFIDENCE, VERBATIM_CERTAIN_IDF};
 use super::twins::TwinOutcome;
-use super::types::{Evidence, Method, Target};
+use super::types::{Evidence, Hold, Method, Target};
 use crate::lexical::{fingerprint, topic_library, verbatim, Confidence, RecentCitation, VerbatimHit};
 use crate::reference::book_mentions;
 
@@ -181,7 +181,7 @@ impl Engine {
 
         let Some(&top) = screen.first() else {
             // Below the bar: offered (the scorer's floor drops weak ones).
-            self.decide(Candidate::new(vec![first.verse], Method::Verbatim, first.score, Target::Suggestions).evidence(evidence(&first)).from_text(&found_in).capped(), now);
+            self.decide(Candidate::new(vec![first.verse], Method::Verbatim, first.score, Target::Suggestions).evidence(evidence(&first)).from_text(&found_in).held(Hold::QuoteBelowBar), now);
             return;
         };
         let steps_back = self.screen.up_verse().is_some_and(|u| {
@@ -190,7 +190,7 @@ impl Engine {
         });
         // The end-of-utterance sweep mustn't resurrect a quote the reading has moved past.
         if rescan && (!self.shares_words_with(top.verse, latest) || steps_back) {
-            self.decide(Candidate::new(vec![top.verse], Method::Verbatim, top.score, Target::Suggestions).evidence(evidence(&top)).from_text(&found_in).capped(), now);
+            self.decide(Candidate::new(vec![top.verse], Method::Verbatim, top.score, Target::Suggestions).evidence(evidence(&top)).from_text(&found_in).held(Hold::QuoteBehindReading), now);
             return;
         }
         let as_match = |h: &VerbatimHit| Match { verse: h.verse, similarity: h.score, matched_idf: h.matched_idf, method: Method::Verbatim };
@@ -206,7 +206,7 @@ impl Engine {
             let texts: Vec<String> = rivals.iter().map(|v| self.match_text(*v)).collect();
             let refs: Vec<&str> = texts.iter().map(String::as_str).collect();
             if explained_better_by(&self.match_text(top.verse), &refs, if rescan { latest } else { text }).is_some() {
-                self.decide(Candidate::new(vec![top.verse], Method::Verbatim, top.score, Target::Suggestions).evidence(evidence(&top)).from_text(&found_in).capped(), now);
+                self.decide(Candidate::new(vec![top.verse], Method::Verbatim, top.score, Target::Suggestions).evidence(evidence(&top)).from_text(&found_in).held(Hold::QuoteExplainedElsewhere), now);
                 return;
             }
         }
@@ -217,7 +217,7 @@ impl Engine {
         // Capped, not just "intent": `intent` is never read, so a four-word
         // phrase like "Jesus Christ from the dead" (weight 18.3) put 1 Peter 1:3
         // on screen on its own (live test, 2026-10-14).
-        let mut weak = via_idf && !corroborated;
+        let mut hold = (via_idf && !corroborated).then_some(Hold::QuoteUncorroborated);
         // A quote running over into the next verses of the same passage goes up with them.
         let place = |v: VerseId| (self.r(v).book, self.r(v).chapter);
         let mut verses: Vec<VerseId> = screen.iter().map(|h| h.verse).filter(|v| place(*v) == place(top.verse)).collect();
@@ -239,15 +239,15 @@ impl Engine {
                 Some(w) => verses = vec![w],
                 None => {
                     verses = all;
-                    weak = true;
+                    hold = Some(Hold::QuoteTie);
                 }
             }
         }
-        let intent = if weak { Target::Suggestions } else { Target::Screen };
+        let intent = if hold.is_some() { Target::Suggestions } else { Target::Screen };
         let one_place = verses.iter().all(|v| place(*v) == place(verses[0]));
         let first = verses[0];
         let candidate = Candidate::new(verses, Method::Verbatim, score, intent).evidence(evidence(&top)).from_text(&found_in);
-        self.decide(if weak { candidate.capped() } else { candidate }, now);
+        self.decide(match hold { Some(why) => candidate.held(why), None => candidate }, now);
         // Read word for word, so cited — but not one of several places offered together: Matthew
         // 11:15 counted as cited then sent on "not everybody has ears to hear".
         if top.score >= READ_SIMILARITY && one_place {
@@ -452,7 +452,7 @@ impl Engine {
         }
         let mut c = candidate(verses, intent);
         c.verbatim_disagreed = disagreed;
-        c.cap = thin;
+        c.hold = thin.then_some(Hold::ThinStream);
         let sent = self.decide(c, now);
         if sent == Target::Screen && !pointed_at && lead.matched_idf < VERBATIM_CERTAIN_IDF {
             let relatives = self.stream_anchors_near(lead.verse, now);
