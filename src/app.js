@@ -4110,7 +4110,6 @@ const MT_LANGUAGES = [
   { code: 'es', name: 'Spanish' },
   { code: 'pt', name: 'Portuguese' },
 ];
-const _mtPollTimers = {};
 
 // ── Bible tab toolbar: Primary + Translation dropdowns ──────────────────
 // Owner: "in bible menu, there should be 2 dropdowns, 1 for primary and
@@ -4171,7 +4170,7 @@ async function renderSecondLangModel() {
     host.innerHTML = ''; host.appendChild(row);
     await streamMtInstall(code, {
       onProgress: (pct) => { sub.textContent = `Downloading ${name} translator\u2026 ${pct}%`; },
-      onComplete: () => { renderSecondLangModel(); refreshMtStatus(code); },
+      onComplete: () => { renderSecondLangModel(); renderMtModelList(); },
       onError: (msg) => { sub.textContent = `Failed: ${msg}`; },
     });
     return;
@@ -4185,7 +4184,7 @@ async function renderSecondLangModel() {
       sub.textContent = 'Connecting…';
       await streamMtInstall(code, {
         onProgress: (pct) => { sub.textContent = `Downloading ${name}… ${pct}%`; },
-        onComplete: () => { renderSecondLangModel(); refreshMtStatus(code); },
+        onComplete: () => { renderSecondLangModel(); renderMtModelList(); },
         onError: (msg) => { sub.textContent = `Failed: ${msg}`; btn.style.display = ''; },
       });
     });
@@ -4213,74 +4212,51 @@ translationSelect?.addEventListener('change', () => {
 // One compact row per language: what it is, its size and state, one action
 // — Download (the brand's primary action), or Ready with Remove to free the
 // space (2026-10-12: the old cards were twice the height for the same).
-function renderMtModelList() {
+// Manage downloads: only what's actually been downloaded to this computer — the offline speech
+// models and any slide translators — each with its size, translators with Remove. Bibles all come
+// with Kairo, and downloading a translator happens where it's chosen (Second language), so
+// nothing here offers a download.
+async function renderMtModelList() {
   const host = document.getElementById('mt-model-list');
   if (!host) return;
+  const get = async (url) => { try { return await (await fetch(url)).json(); } catch (_) { return null; } };
+  const [en, multi, ...mt] = await Promise.all([
+    get(`${SERVER}/api/offline/status?model=en`),
+    get(`${SERVER}/api/offline/status?model=multi`),
+    ...MT_LANGUAGES.map(l => get(`${SERVER}/api/translate-model/status?lang=${l.code}`)),
+  ]);
+  const rows = [];
+  if (en?.installed) rows.push({ name: 'Offline speech model', what: 'English', mb: en.approxMB });
+  if (multi?.installed) rows.push({ name: 'Offline speech model', what: 'Other languages', mb: multi.approxMB });
+  MT_LANGUAGES.forEach((l, i) => {
+    if (mt[i]?.installed) rows.push({ name: `${l.name} slide translator`, what: 'Second language', mb: mt[i].approxMB, code: l.code });
+  });
   host.innerHTML = '';
-  // One row per language: its Bible and, where one exists, its slide translation,
-  // with one Download for whatever is missing.
-  const mtCodes = new Set(MT_LANGUAGES.map(l => l.code));
-  const langs = (typeof LANG_PACKS !== 'undefined' ? LANG_PACKS : MT_LANGUAGES).filter(l => l.code !== 'en');
-  langs.forEach(({ code, name }) => {
+  if (!rows.length) {
+    const empty = document.createElement('div');
+    empty.className = 'dl-row';
+    empty.innerHTML = '<span class="dl-sub">Nothing downloaded yet.</span>';
+    host.appendChild(empty);
+  }
+  rows.forEach((r) => {
     const row = document.createElement('div');
     row.className = 'dl-row';
-    const hasMt = mtCodes.has(code);
-    const bibleHere = bibleAvailability[code] !== false; // unknown counts as here
-    row.innerHTML = `<span class="dl-name">${name}</span><span class="dl-sub dl-what">${hasMt ? (bibleHere ? 'Bible + slide text' : 'Needs Bible + slide text') : (bibleHere ? 'Bible included' : 'Bible to download')}</span><span class="dl-sub" id="lang-sub-${code}"></span>` + (hasMt ? `<span class="dl-sub" id="mt-sub-${code}">Checking\u2026</span>` : '');
-    if (hasMt) {
+    const name = document.createElement('span'); name.className = 'dl-name'; name.textContent = r.name;
+    const what = document.createElement('span'); what.className = 'dl-sub dl-what'; what.textContent = r.what;
+    const mb = document.createElement('span'); mb.className = 'dl-sub'; mb.textContent = r.mb ? `${r.mb} MB` : '';
+    row.append(name, what, mb);
+    if (r.code) {
       const btn = document.createElement('button');
-      btn.id = `mt-btn-${code}`;
-      btn.style.display = 'none';
-      btn.addEventListener('click', () => {
-        if (btn.dataset.action === 'remove') { removeMtModel(code); return; }
-        installLanguage(code, bibleAvailability[code] === false, true);
-      });
-      row.appendChild(btn);
-    } else if (!bibleHere) {
-      const btn = document.createElement('button');
-      btn.id = `lang-btn-${code}`;
-      btn.className = 'modal-btn primary dl-btn';
-      btn.textContent = 'Download';
-      btn.addEventListener('click', () => installLanguage(code, true, false));
+      btn.id = `mt-btn-${r.code}`;
+      btn.className = 'modal-btn secondary dl-btn';
+      btn.textContent = 'Remove';
+      btn.addEventListener('click', () => removeMtModel(r.code));
       row.appendChild(btn);
     }
     host.appendChild(row);
-    if (hasMt) refreshMtStatus(code);
   });
-}
-
-async function refreshMtStatus(code) {
-  const sub = document.getElementById(`mt-sub-${code}`);
-  const btn = document.getElementById(`mt-btn-${code}`);
-  if (!sub || !btn) return;
-  try {
-    const s = await fetch(`${SERVER}/api/translate-model/status?lang=${code}`).then(r => r.json());
-    const size = s.approxMB ? `${s.approxMB} MB` : '';
-    if (s.installed) {
-      sub.textContent = `Ready${size ? ' · ' + size : ''}`;
-      sub.classList.add('is-ready');
-      btn.className = 'modal-btn secondary dl-btn';
-      btn.textContent = 'Remove';
-      btn.dataset.action = 'remove';
-      btn.style.display = '';
-      clearInterval(_mtPollTimers[code]); delete _mtPollTimers[code];
-    } else if (s.installing) {
-      sub.textContent = 'Downloading…';
-      sub.classList.remove('is-ready');
-      btn.style.display = 'none';
-      if (!_mtPollTimers[code]) _mtPollTimers[code] = setInterval(() => refreshMtStatus(code), 2000);
-    } else {
-      sub.textContent = size;
-      sub.classList.remove('is-ready');
-      btn.className = 'modal-btn primary dl-btn';
-      btn.textContent = 'Download';
-      btn.dataset.action = 'download';
-      btn.style.display = '';
-      clearInterval(_mtPollTimers[code]); delete _mtPollTimers[code];
-    }
-  } catch {
-    sub.textContent = 'Cannot reach the server.';
-  }
+  const summary = document.querySelector('#mt-model-group > summary');
+  if (summary) summary.textContent = rows.length ? `Manage downloads (${rows.length})` : 'Manage downloads';
 }
 
 async function removeMtModel(code) {
@@ -4295,7 +4271,7 @@ async function removeMtModel(code) {
     toast(`Could not remove it: ${err.message}`, 'error');
   }
   if (btn) btn.disabled = false;
-  refreshMtStatus(code);
+  renderMtModelList();
   renderSecondLangModel();
 }
 
@@ -4390,45 +4366,6 @@ async function streamBibleInstall(code, { onProgress, onStep, onComplete } = {})
     }
   }
   if (!finished) onComplete?.(false, 'The download stopped.');
-}
-
-// One Download for a language: its Bible if that isn't here yet, then its slide text.
-async function installLanguage(code, needBible, needSlides) {
-  const sub = document.getElementById(`lang-sub-${code}`);
-  const btn = document.getElementById(`lang-btn-${code}`);
-  if (btn) btn.style.display = 'none';
-  const say = (t) => { if (sub) sub.textContent = t; };
-  if (needBible) {
-    say('Bible: connecting…');
-    let ok = true, why = '';
-    await streamBibleInstall(code, {
-      onProgress: (pct) => say(`Bible: downloading ${pct}%`),
-      onStep: () => say('Bible: checking…'),
-      onComplete: (success, error) => { ok = success; why = error || ''; },
-    });
-    if (!ok) { say(`Bible failed: ${why}`); if (btn) { btn.style.display = ''; btn.textContent = 'Try again'; } return; }
-    bibleAvailability[code] = true;
-    window.renderLangPills?.();
-  }
-  if (needSlides) { await installMtModel(code); }
-  await refreshBibleAvailability();
-}
-
-async function installMtModel(code) {
-  const sub = document.getElementById(`mt-sub-${code}`);
-  const btn = document.getElementById(`mt-btn-${code}`);
-  if (!sub || !btn) return;
-  btn.style.display = 'none';
-  sub.textContent = 'Connecting…';
-  await streamMtInstall(code, {
-    onProgress: (pct) => { sub.textContent = `Downloading… ${pct}%`; },
-    onDone: (already) => { sub.textContent = already ? 'Already installed.' : 'Done.'; },
-    onComplete: (ok, error) => {
-      if (ok) setTimeout(() => refreshMtStatus(code), 800);
-      else { sub.textContent = `Failed: ${error || 'unknown error'}`; btn.style.display = ''; }
-    },
-    onError: (msg) => { sub.textContent = `Failed: ${msg}`; btn.style.display = ''; },
-  });
 }
 
 // ── Inline "you need this translation pack" upsell ─────────────────────
