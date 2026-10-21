@@ -2,7 +2,7 @@
 
 use std::collections::HashSet;
 
-use kairo_bible::VerseId;
+use kairo_bible::{VerseId, VerseRef};
 
 use super::core::{Candidate, Engine};
 use super::decide::RangeAdvance;
@@ -19,6 +19,9 @@ const HEARD_MAX_WORDS: usize = 160;
 const ENDING_SPAN: usize = 8;
 const READING_SLACK: usize = 15;
 const PREFIX_MIN_IDF: f32 = 3.5;
+/// "…go through chapter four verse five" counts this soon after the citation, for at most this many verses.
+const THROUGH_CHAPTER_MS: u64 = 20_000;
+const THROUGH_CHAPTER_MAX_VERSES: usize = 60;
 /// A range this long is the sermon's passage.
 const ANNOUNCED_MIN_VERSES: usize = 3;
 const ADVANCE_MIN_SCORE: f32 = 0.50;
@@ -57,6 +60,49 @@ impl Engine {
         if let Some(current) = self.range.current {
             self.effect(Effect::RangeSet { verses, current });
         }
+    }
+
+    /// "Second Timothy chapter three. We're going to start at verse fourteen and go through chapter
+    /// four verse five" (Piper, dev build 2026-10-21): the verse just cited is read on into the
+    /// next chapter, and both chapters are the sermon's passage.
+    pub(crate) fn read_through_chapter(&mut self, text: &str, prev: Option<&(String, u64)>, now: u64) -> bool {
+        let Some((up, at)) = self.screen.up else { return false };
+        if now.saturating_sub(at) > THROUGH_CHAPTER_MS || self.screen.last_citation.is_none_or(|(c, _, _)| c != up) {
+            return false;
+        }
+        let joined = match prev {
+            Some((p, t)) if now.saturating_sub(*t) < THROUGH_CHAPTER_MS => format!("{p} {text}"),
+            _ => text.to_string(),
+        };
+        let words = super::citations::tokens(&joined);
+        let w: Vec<&str> = words.iter().map(String::as_str).filter(|x| !matches!(*x, "uh" | "um")).collect();
+        let Some(i) = w.windows(2).position(|p| matches!(p[0], "through" | "thru" | "until" | "till" | "to") && p[1] == "chapter") else { return false };
+        let Some(ch) = crate::reference::numbers::consume_number(&w, i + 2, Some(150)) else { return false };
+        let j = i + 2 + ch.consumed;
+        if w.get(j) != Some(&"verse") {
+            return false;
+        }
+        let Some(vs) = crate::reference::numbers::consume_number(&w, j + 1, Some(176)) else { return false };
+        let u = self.r(up);
+        let ch = ch.value as u16;
+        if ch <= u.chapter || ch > u.chapter + 2 {
+            return false;
+        }
+        let Some(end) = self.k.id(VerseRef::new(u.book, ch, vs.value as u16)) else { return false };
+        let verses: Vec<VerseId> = (up.0..=end.0).map(VerseId).collect();
+        if verses.len() > THROUGH_CHAPTER_MAX_VERSES {
+            return false;
+        }
+        self.note(|e| format!("reading on from {} through {}", e.label(up), e.label(end)));
+        self.set_range(verses, now);
+        for c in u.chapter..=ch {
+            self.announced.retain(|(b, x, _)| (*b, *x) != (u.book, c));
+            self.announced.push((u.book, c, now));
+        }
+        while self.announced.len() > super::core::ANNOUNCED_MAX {
+            self.announced.remove(0);
+        }
+        true
     }
 
     /// The verses after `v` in its chapter, at most `n`.
