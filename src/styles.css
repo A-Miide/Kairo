@@ -8597,6 +8597,7 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .lang-step-n { width: 20px; height: 20px; border-radius: 10px; background: var(--brand); color: #fff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
 .lang-step-hint { margin-left: 8px; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--text-3); }
 .lang-theme-tip { margin-top: 10px; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); font-size: 12px; color: var(--text-2); }
+.lang-theme-tip[hidden] { display: none; }
 .lang-theme-tip span { flex: 1; }
 .lang-theme-tip .lang-link { white-space: nowrap; font-weight: 600; }
 .tb-lang-chip { height: 28px; padding: 0 8px; margin-right: 6px; border: 1px solid var(--border); border-radius: 14px; background: transparent; color: var(--text-2); font: inherit; font-size: 11px; font-weight: 600; letter-spacing: .04em; cursor: pointer; }
