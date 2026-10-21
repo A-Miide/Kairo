@@ -426,25 +426,15 @@ function renderLangPills() {
     second.innerHTML = '';
     second.appendChild(pill('Off', cur === '', '', () => { secondSel.value = ''; secondSel.dispatchEvent(new Event('change')); renderLangPills(); }));
     Array.from(secondSel.options).filter(o => o.value).forEach((o) => {
-      second.appendChild(pill(o.textContent, cur === o.value, '', () => { secondSel.value = o.value; secondSel.dispatchEvent(new Event('change')); renderLangPills(); }));
+      second.appendChild(pill(o.textContent, cur === o.value, '', () => {
+        // Picking a language fetches its slide translator straight away (renderSecondLangModel).
+        window._secondLangPicked = true;
+        secondSel.value = o.value; secondSel.dispatchEvent(new Event('change')); renderLangPills();
+      }));
     });
   }
+  renderThemeTip();
 
-  // If the preacher's language has a Bible here and the screen isn't showing it, say so.
-  const hint = document.getElementById('lang-suggest');
-  if (hint) {
-    const spoken = String(document.getElementById('stt-language')?.value || settings.sttLanguage || 'en-US').toLowerCase().split('-')[0];
-    const match = LANG_PACKS.find(p => p.code === spoken);
-    if (match && match.code !== current) {
-      hint.hidden = false;
-      hint.innerHTML = '';
-      hint.append(`The preacher speaks ${match.name}. `);
-      const sw = document.createElement('button');
-      sw.type = 'button'; sw.className = 'lang-link'; sw.textContent = `Show scripture in ${match.name}`;
-      sw.addEventListener('click', () => { bibleSel.value = match.code; bibleSel.dispatchEvent(new Event('change')); renderLangPills(); });
-      hint.appendChild(sw);
-    } else { hint.hidden = true; }
-  }
 }
 
 // ── Service language: what Kairo listens for, and what that language gets ──
@@ -475,67 +465,89 @@ function matchScriptureToService(previous) {
   bibleSel.dispatchEvent(new Event('change'));
 }
 
-// Under the service language, in three lines: is it heard (and with what), are verses found in
-// it, and which Bible they show in — with the one download it may need, right here.
+// Under "Preacher speaks", three short lines: heard (and by what), verses found, which Bible
+// they show in. The download the language may need is the installer right below (index.html).
 let _capPoll = null;
 async function renderLangCapability() {
   const box = document.getElementById('lang-capability');
   if (!box) return;
-  const code = spokenCode();
-  const base = code.split('-')[0];
+  const base = spokenCode().split('-')[0];
   const name = spokenName();
   const engine = (document.querySelector('#speech-engine-toggle .toggle-btn.active')?.dataset.engine || settings.speechEngine || 'deepgram').toLowerCase();
   const offline = engine === 'browser' || engine === 'offline';
-  const line = (ok, text) => {
+  let model = null;
+  if (offline) {
+    try { model = await (await fetch(`${SERVER}/api/offline/status?model=${base === 'en' ? 'en' : 'multi'}`)).json(); } catch (_) { model = null; }
+  }
+  const rows = [];
+  if (!offline) rows.push([true, 'Heard by Deepgram']);
+  else if (model?.installed) rows.push([true, 'Heard offline']);
+  else if (model?.installing) rows.push([false, `Downloading the offline model${typeof model.progress === 'number' ? ` \u2026 ${model.progress}%` : '\u2026'}`]);
+  else rows.push([false, base === 'en' ? 'Needs the offline model for English' : 'Needs the offline model for other languages']);
+  if (base === 'multi') rows.push([null, 'Finds verses in English, Spanish, Portuguese, French, German']);
+  else if (DETECTS_IN[base]) rows.push([true, `Finds verses in ${DETECTS_IN[base]}`]);
+  else rows.push([null, `${name} is transcribed; finds verses in English`]);
+  const bibleCode = document.getElementById('bible-language')?.value || settings.bibleLanguage || 'en';
+  const pack = LANG_PACKS.find(p => p.code === bibleCode);
+  const bibleName = bibleCode === 'en' ? `English, ${settings.translation || 'KJV'}` : `${pack?.name || bibleCode}, ${(pack?.translations || '').replace(/\s*\(.*\)$/, '')}`;
+  rows.push([true, `Shows ${bibleName}`]);
+  box.innerHTML = '';
+  rows.forEach(([ok, text]) => {
     const row = document.createElement('div');
     row.className = 'lang-cap-row ' + (ok === true ? 'ok' : ok === false ? 'missing' : 'partial');
     const mark = document.createElement('span');
     mark.className = 'lang-cap-mark';
-    mark.textContent = ok === true ? '✓' : ok === false ? '!' : '–';
+    mark.setAttribute('aria-hidden', 'true');
+    mark.textContent = ok === true ? '\u2713' : ok === false ? '!' : '\u2013';
     const t = document.createElement('span');
     t.textContent = text;
     row.append(mark, t);
     box.appendChild(row);
-    return row;
-  };
-  let heard = null;
-  if (offline && base !== 'en') {
-    try { heard = await (await fetch(`${SERVER}/api/offline/status?model=multi`)).json(); } catch (_) { heard = null; }
-  }
-  box.innerHTML = '';
-  // Heard
-  if (!offline) line(true, `Heard by Deepgram.`);
-  else if (base === 'en') line(true, 'Heard offline (built in).');
-  else if (heard?.installed) line(true, `Heard offline (offline model for other languages).`);
-  else {
-    const row = line(false, heard?.installing
-      ? `Downloading the offline model for other languages… ${typeof heard.progress === 'number' ? heard.progress + '%' : ''}`
-      : `Offline listening in ${name} needs the offline model for other languages (about ${heard?.approxMB || 475} MB).`);
-    if (!heard?.installing) {
-      const b = document.createElement('button');
-      b.type = 'button'; b.className = 'lang-link'; b.textContent = 'Download it';
-      b.addEventListener('click', () => {
-        // The Speech Engine installer does the download and shows its steps; this follows it.
-        document.getElementById('offline-multi-install-btn')?.click();
-        setTimeout(renderLangCapability, 800);
-      });
-      row.appendChild(document.createTextNode(' '));
-      row.appendChild(b);
-    }
-    clearTimeout(_capPoll);
-    if (heard?.installing) _capPoll = setTimeout(renderLangCapability, 1500);
-  }
-  // Verses found
-  if (base === 'multi') line(null, 'Verses are found when cited or read in English, Spanish, Portuguese, French or German.');
-  else if (DETECTS_IN[base]) line(true, `Verses found when cited or read in ${DETECTS_IN[base]}.`);
-  else line(null, `${name} is transcribed; verses are found when cited or read in English.`);
-  // Shows in
-  const bibleCode = document.getElementById('bible-language')?.value || settings.bibleLanguage || 'en';
-  const pack = LANG_PACKS.find(p => p.code === bibleCode);
-  const shows = bibleCode === 'en' ? `English, ${settings.translation || 'KJV'}` : `${pack?.name || bibleCode}, ${pack?.translations || ''}`;
-  line(true, `Verses show in ${shows}.`);
+  });
+  clearTimeout(_capPoll);
+  if (model?.installing) _capPoll = setTimeout(renderLangCapability, 1500);
 }
 window.renderLangCapability = renderLangCapability;
+
+// The toolbar chip by Start Listening: the same choice as "Preacher speaks", in short codes.
+function wireLangChip() {
+  const chip = document.getElementById('tb-lang-select');
+  const full = document.getElementById('stt-language');
+  if (!chip || !full) return;
+  chip.innerHTML = '';
+  Array.from(full.options).forEach((o) => {
+    const c = document.createElement('option');
+    c.value = o.value;
+    c.textContent = o.value === 'multi' ? 'AUTO' : o.value.split('-')[0].toUpperCase() + (o.value.includes('-') && o.value !== 'pt-BR' ? '-' + o.value.split('-')[1].toUpperCase() : '');
+    c.title = o.textContent;
+    chip.appendChild(c);
+  });
+  chip.value = full.value;
+  chip.addEventListener('change', () => {
+    full.value = chip.value;
+    full.dispatchEvent(new Event('change'));
+  });
+  full.addEventListener('change', () => { chip.value = full.value; });
+}
+wireLangChip();
+window.syncLangChip = () => { const c = document.getElementById('tb-lang-select'); const f = document.getElementById('stt-language'); if (c && f) c.value = f.value; };
+
+// A second language shows on screen only in the Multi-Language theme: say so, with the switch.
+function renderThemeTip() {
+  const tip = document.getElementById('lang-theme-tip');
+  if (!tip) return;
+  const on = !!document.getElementById('bible-translate-to-select')?.value;
+  let primary = null;
+  try { primary = outputThemeMap()[typeof PRIMARY_DISPLAY !== 'undefined' ? PRIMARY_DISPLAY : 'display-1']; } catch (_) { primary = null; }
+  tip.hidden = !on || primary === 'multi-language';
+}
+document.getElementById('lang-theme-tip-btn')?.addEventListener('click', () => {
+  const key = typeof PRIMARY_DISPLAY !== 'undefined' ? PRIMARY_DISPLAY : 'display-1';
+  settings.outputThemes = { ...outputThemeMap(), [key]: 'multi-language' };
+  saveSettingsPatch({ outputThemes: settings.outputThemes });
+  if (typeof applyOutputThemes === 'function') applyOutputThemes();
+  renderThemeTip();
+});
 
 document.getElementById('stt-language')?.addEventListener('change', (e) => {
   const previous = settings.sttLanguage;

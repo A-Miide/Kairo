@@ -175,6 +175,9 @@
 
         <div class="top-bar-right">
             <span class="mic-label" id="mic-display">No mic selected</span>
+            <!-- The service language, for switching on the day (a guest minister): the same
+                 setting as Settings → Language → Preacher speaks (app_outputs.js wireLangChip). -->
+            <select id="tb-lang-select" class="tb-lang-chip" aria-label="Preacher speaks" title="Preacher speaks: takes effect when you start listening"></select>
             <button id="listen-btn" class="tb-listen-btn">
                 <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><rect x="1" y="1" width="8" height="8" rx="1.5"/></svg>
                 <span class="listen-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></span>
@@ -1322,35 +1325,12 @@
                         <p class="setting-hint" id="speech-engine-hint">Most accurate. Needs a Deepgram key ($200 free credit to start).</p>
                     </div>
 
-                    <!-- Offline model installer — shown only when "Offline" engine is selected.
-                         The startup bootstrap normally fetches this before the operator ever
-                         sees Settings; this panel is the manual fallback. -->
-                    <div class="setting-group" id="offline-installer-group" style="display:none;">
-                        <label class="setting-label">Offline Model</label>
-                        <div id="offline-status-line" class="setting-status" style="font-size:12px;color:var(--text-3);margin-bottom:8px;">Checking…</div>
-                        <button id="offline-install-btn" class="setting-input btn-brand" style="cursor:pointer;display:none;">Download offline model (~465MB)</button>
-                        <div id="offline-progress-wrap" style="display:none;margin-top:6px;">
-                            <div style="background:var(--surface-2);height:6px;border-radius:3px;overflow:hidden;">
-                                <div id="offline-progress-bar" style="background:var(--accent);height:100%;width:0%;transition:width .2s;"></div>
-                            </div>
-                            <div id="offline-progress-text" style="font-size:11px;color:var(--text-3);margin-top:4px;">Starting…</div>
-                        </div>
-                    </div>
-
-                    <!-- Other spoken languages run on their own offline model
-                         (sherpa_installer.js MODELS.multi) — a second download,
-                         needed only when the Spoken language isn't English. -->
-                    <div class="setting-group" id="offline-multi-installer-group" style="display:none;">
-                        <label class="setting-label">Offline Model</label>
-                        <div id="offline-multi-status-line" class="setting-status" style="font-size:12px;color:var(--text-3);margin-bottom:8px;">Checking…</div>
-                        <button id="offline-multi-install-btn" class="setting-input btn-brand" style="cursor:pointer;display:none;">Download offline model for other languages (~475MB)</button>
-                        <div id="offline-multi-progress-wrap" style="display:none;margin-top:6px;">
-                            <div style="background:var(--surface-2);height:6px;border-radius:3px;overflow:hidden;">
-                                <div id="offline-multi-progress-bar" style="background:var(--accent);height:100%;width:0%;transition:width .2s;"></div>
-                            </div>
-                            <div id="offline-multi-progress-text" style="font-size:11px;color:var(--text-3);margin-top:4px;">Starting…</div>
-                        </div>
-                        <p class="setting-hint">Lets offline listening hear the other service languages (Settings → Language). Kairo finds verses cited or read in Spanish, Portuguese, French and German; in the others it transcribes, and finds verses cited or read in English.</p>
+                    <!-- The offline model is chosen by the language the preacher speaks, so it is
+                         downloaded in Settings → Language, beside that choice. Here: what's
+                         installed, and a link there (app.js renderOfflineSummary). -->
+                    <div class="setting-group" id="offline-summary-group" style="display:none;">
+                        <label class="setting-label">Offline model</label>
+                        <div id="offline-summary" class="lang-capability"></div>
                     </div>
 
                     <div class="setting-group" id="deepgram-key-group">
@@ -1548,7 +1528,7 @@
                                 <ol>
                                     <li>Open <strong>Settings → Audio</strong> and pick the microphone (or audio-routing device, e.g. BlackHole) capturing the preacher. The level bar under it shows what that input is delivering; play something through it to check. Kairo evens out a quiet or loud feed on its own, and the line beside the bar says if the source is clipping.</li>
                                     <li>Open <strong>Settings → Outputs</strong> and turn on at least one destination — usually External Display for the projector/screen.</li>
-                                    <li>Set the service language under <strong>Settings → Language</strong> if it isn't English. It says what that language gets, and offers anything it needs.</li>
+                                    <li>Check <strong>Settings → Language</strong>: Kairo starts in this computer's language, says what that language gets, and offers anything it needs.</li>
                                     <li>Press <strong>Start Listening</strong>. Live Status switches from Idle to Listening, and the Live Transcript Log starts filling in as words are heard. <strong>Stop</strong> ends the session — nothing else does: if the internet drops, the status shows <em>Reconnecting…</em> and Kairo keeps listening; the words said meanwhile are caught up when it's back.</li>
                                 </ol>
                                 <p>Everything else — playlists, slides, songs, themes — can be prepared before or during the service; detection runs independently in the background the whole time.</p>
@@ -1711,11 +1691,11 @@
                         <details class="help-group">
                             <summary>Multi-language</summary>
                             <div class="help-body">
-                                <p>Under <strong>Settings → Language</strong>, choose the <em>service language</em> — what the preacher speaks. That one choice sets what Kairo listens for and, when that language has a Bible here, the Bible verses show in. Beneath it, three lines say what the language gets: whether it's heard (and by Deepgram or offline), whether verses are found when cited or read in it, and which Bible they show in. If offline listening needs a download, it's offered right there.</p>
-                                <p>Under <em>More</em>: <em>Scripture shows in</em> shows verses in a different language from the one spoken (an English service shown in Yoruba); <em>Also show beside it</em> adds a second language next to the verse and on slides, for the Multi-Language theme; <em>Languages on this computer</em> lists each language's Bible (always included) and its slide translation, the one download.</p>
+                                <p><strong>Settings → Language</strong> is set up in two places. <strong>1 Listening</strong>: pick what the <em>preacher speaks</em>. Three lines say what that language gets (heard, by Deepgram or offline; verses found; which Bible they show in), and the offline speech model it needs is offered right there. <strong>2 Bible language</strong>: which Bible verses come from. It follows the preacher, and every Bible comes with Kairo. Optionally, a <strong>second language</strong> shows verses and slides in two languages at once on the Multi-Language theme; its slide translator downloads when you pick it.</p>
+                                <p>For a guest minister, switch the language from the chip beside <strong>Start Listening</strong>, and switch it back after.</p>
                                 <p>For a service preached in <strong>Spanish, Portuguese, French or German</strong>, set the service language and Kairo understands citations in that language ("Juan capítulo tres versículo dieciséis", "siguiente versículo") and matches verses read aloud against that language's Bible. Other languages are transcribed, and verses are found when cited or read in English.</p>
-                                <p><strong>Service languages</strong> (Settings → Language): English (US, UK, Australia, India), Spanish, Portuguese (Brazil), French, German, Italian, Dutch, Swedish, Polish, Ukrainian, Russian, Hindi, Indonesian, Korean, Japanese, Chinese (Mandarin), or Auto-detect. Deepgram covers all of them. Offline, English is built in; the others need the <em>offline model for other languages</em> (about 475 MB), offered under the service language when it's needed.</p>
-                                <p><strong>Bibles that come with Kairo</strong>, all offline: English — KJV and NLT, plus NIV, ESV, NASB and NKJV (Settings → Bible translation) — and, under <em>Scripture shows in</em>, Spanish, Portuguese, French, German, Yoruba, Igbo, Hausa and Swahili (New Testament only). These change what a verse is shown in; what Kairo listens for is the service language. In any language but English, the English translation setting doesn't apply.</p>
+                                <p><strong>Service languages</strong> (Settings → Language): English (US, UK, Australia, India), Spanish, Portuguese (Brazil), French, German, Italian, Dutch, Swedish, Polish, Ukrainian, Russian, Hindi, Indonesian, Korean, Japanese, Chinese (Mandarin), or Auto-detect. Deepgram covers all of them. Offline, English uses the English model (about 465 MB) and the others the <em>offline model for other languages</em> (about 475 MB): only the one the preacher's language needs is offered.</p>
+                                <p><strong>Bibles that come with Kairo</strong>, all offline: English — KJV and NLT, plus NIV, ESV, NASB and NKJV (Settings → Bible translation) — and, under <em>Bible language</em>, Spanish, Portuguese, French, German, Yoruba, Igbo, Hausa and Swahili (New Testament only). These change what a verse is shown in; what Kairo listens for is what the preacher speaks. In any language but English, the English translation setting doesn't apply.</p>
                                 <p><strong>Church vocabulary</strong> (same page) — names and words your services use that transcription may mishear: the pastor, the church, local places. One per line; used from the next Start Listening (English and auto-detect services).</p>
                                 
                                 <p><strong>Slide Translation Models</strong> are separate — they translate ordinary (non-scripture) slide/sermon text for the Multi-Language split theme, using a small bundled local model with no setup, API key, or internet connection required once downloaded.</p>
@@ -1769,16 +1749,17 @@
 
             <section class="settings-pane" data-pane="language">
             <!-- ── LANGUAGE ───────────────────────────────────────
-                 One choice first: the language of the service. It sets what Kairo listens for
-                 and the Bible verses show in, and says plainly what that language gets (heard,
-                 verses found, which Bible) and what's missing, with the download right there
-                 (app_outputs.js renderLangCapability). Everything else — scripture in another
-                 language, a second language beside it, slide translation — is under "More". -->
+                 Two places to set up, then one optional extra:
+                 1 Listening: what the preacher speaks, and the one speech model it needs
+                   (downloaded here, beside the choice; never in Audio);
+                 2 Bible language: which Bible verses come from (all bundled);
+                 Second language: verses and slides in two languages at once (its slide
+                 translator downloads when picked). app_outputs.js renderLangCapability. -->
             <div class="settings-section">
-                <div class="settings-section-label">Service language</div>
+                <div class="settings-section-label lang-step"><span class="lang-step-n">1</span>Listening</div>
                 <div class="setting-row-2col">
                     <div class="setting-group">
-                    <label class="setting-label" for="stt-language">The preacher speaks</label>
+                    <label class="setting-label" for="stt-language">Preacher speaks</label>
                     <select id="stt-language" class="setting-input">
                         <optgroup label="Citations and readings detected">
                                 <option value="en-US">English (US)</option>
@@ -1806,7 +1787,38 @@
                         </optgroup>
                             </select>
                     <div class="lang-capability" id="lang-capability" aria-live="polite"></div>
-                </div>
+                    <!-- Offline model installer — shown only when "Offline" engine is selected.
+                         The startup bootstrap normally fetches this before the operator ever
+                         sees Settings; this panel is the manual fallback. -->
+                    <div class="setting-group" id="offline-installer-group" style="display:none;">
+                        
+                        <div id="offline-status-line" class="setting-status" style="font-size:12px;color:var(--text-3);margin-bottom:8px;">Checking…</div>
+                        <button id="offline-install-btn" class="setting-input btn-brand" style="cursor:pointer;display:none;">Download offline model for English (~465MB)</button>
+                        <div id="offline-progress-wrap" style="display:none;margin-top:6px;">
+                            <div style="background:var(--surface-2);height:6px;border-radius:3px;overflow:hidden;">
+                                <div id="offline-progress-bar" style="background:var(--accent);height:100%;width:0%;transition:width .2s;"></div>
+                            </div>
+                            <div id="offline-progress-text" style="font-size:11px;color:var(--text-3);margin-top:4px;">Starting…</div>
+                        </div>
+                    </div>
+
+                    <!-- Other spoken languages run on their own offline model
+                         (sherpa_installer.js MODELS.multi) — a second download,
+                         needed only when the Spoken language isn't English. -->
+                    <div class="setting-group" id="offline-multi-installer-group" style="display:none;">
+                        
+                        <div id="offline-multi-status-line" class="setting-status" style="font-size:12px;color:var(--text-3);margin-bottom:8px;">Checking…</div>
+                        <button id="offline-multi-install-btn" class="setting-input btn-brand" style="cursor:pointer;display:none;">Download offline model for other languages (~475MB)</button>
+                        <div id="offline-multi-progress-wrap" style="display:none;margin-top:6px;">
+                            <div style="background:var(--surface-2);height:6px;border-radius:3px;overflow:hidden;">
+                                <div id="offline-multi-progress-bar" style="background:var(--accent);height:100%;width:0%;transition:width .2s;"></div>
+                            </div>
+                            <div id="offline-multi-progress-text" style="font-size:11px;color:var(--text-3);margin-top:4px;">Starting…</div>
+                        </div>
+                        <p class="setting-hint">Lets offline listening hear the other service languages (Settings → Language). Kairo finds verses cited or read in Spanish, Portuguese, French and German; in the others it transcribes, and finds verses cited or read in English.</p>
+                    </div>
+
+                    </div>
                 <div class="setting-group">
                     <label class="setting-label" for="custom-keyterms">Church vocabulary</label>
                     <textarea id="custom-keyterms" class="setting-input" rows="3" placeholder="Pastor Mensah&#10;Grace Chapel&#10;Shiloh"></textarea>
@@ -1822,34 +1834,32 @@
                 </div>
             </div>
 
-            <details class="settings-section lang-more" id="lang-screen-section">
-                <summary class="settings-section-label">More: scripture in another language, a second language beside it, slide translation</summary>
+            <div class="settings-section" id="lang-screen-section">
+                <div class="settings-section-label lang-step"><span class="lang-step-n">2</span>Bible language</div>
                 <select id="bible-language" hidden></select>
-                <select id="bible-translate-to-select" hidden><option value="">Off</option></select>
-
                 <div class="setting-group">
-                    <label class="setting-label">Scripture shows in</label>
+                    <label class="setting-label">Verses come from</label>
                     <div class="lang-pills" id="lang-screen-pills"></div>
-                    <p class="setting-hint">Set automatically from the service language; pick another to show scripture in a different language (an English service shown in Yoruba). All inside Kairo, offline. Any language but English uses its own Bible, so the English translation (Settings → Bible) doesn't apply.</p>
-                    <div class="lang-suggest" id="lang-suggest" hidden></div>
                     <details class="lang-sources"><summary>Bible sources</summary><p class="setting-hint scripture-credits" id="scripture-credits"></p></details>
                 </div>
+                <details class="lang-sources" id="mt-model-group">
+                    <summary>Manage downloads</summary>
+                    <div id="mt-model-list" class="dl-list"></div>
+                </details>
+            </div>
 
+            <div class="settings-section">
+                <div class="settings-section-label">Second language <span class="lang-step-hint">Verses and slides in two languages at once.</span></div>
+                <select id="bible-translate-to-select" hidden><option value="">Off</option></select>
                 <div class="setting-group">
-                    <label class="setting-label">Also show beside it</label>
                     <div class="lang-pills" id="lang-second-pills"></div>
                     <div class="dl-list" id="second-lang-model" hidden></div>
-                    <p class="setting-hint">A second language next to the verse and on slides, on the Multi-Language theme.</p>
+                    <div class="lang-theme-tip" id="lang-theme-tip" hidden>
+                        <span>Shows on screen with the Multi-Language theme.</span>
+                        <button type="button" class="lang-link" id="lang-theme-tip-btn">Use Multi-Language theme</button>
+                    </div>
                 </div>
-
-                <!-- The slide-translation models (mt.rs): one per language, downloaded
-                     once, on this computer — only for slide text, never scripture. -->
-                <div class="setting-group" id="mt-model-group">
-                    <label class="setting-label">Languages on this computer</label>
-                    <div id="mt-model-list" class="dl-list"></div>
-                    <p class="setting-hint">Every language comes with its Bible. Slide translation is the download. Remove one to free the space.</p>
-                </div>
-            </details>
+            </div>
             </section>
 
             <section class="settings-pane" data-pane="outputs">
@@ -2070,7 +2080,7 @@
                     </div>
                         <p id="onboarding-speech-warning" class="hidden" style="margin:12px 0 0;padding:8px 10px;background:rgba(255,180,60,0.1);border:1px solid rgba(255,180,60,0.3);border-radius:6px;font-size:12px;line-height:1.5;color:var(--text-2);">
                         You haven't set up a Deepgram key or downloaded the offline model yet —
-                        you can finish this anytime in Settings → Audio before starting a session.
+                        you can finish this anytime in Settings → Language before starting a session.
                     </p>
                     </div>
                 </section>
