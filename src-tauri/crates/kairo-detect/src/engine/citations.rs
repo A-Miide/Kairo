@@ -317,6 +317,13 @@ impl Engine {
             re(r"(?i)\b(chapter|verse)\s+what[?!.,]*\s+(\d|one\b|two\b|three\b|four\b|five\b|six\b|seven\b|eight\b|nine\b|ten\b|eleven\b|twelve\b|thirteen\b|fourteen\b|fifteen\b|sixteen\b|seventeen\b|eighteen\b|nineteen\b|twenty\b|thirty\b|forty\b|fifty\b|sixty\b|seventy\b|eighty\b|ninety\b|hundred\b)")
         });
         let text = ASKED_THEN_NUMBER.replace_all(&text, "$1 $2");
+        // A number counting something isn't a verse: "Luke three. Eighteen years" (Oyedepo on the
+        // silent years, dev build 2026-10-21) is Luke 3, not Luke 3:18.
+        static COUNTED: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+            let n = r"(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)";
+            re(&format!(r"(?i)\b{n}(?:[\s-]+{n})*\s+(years?|months?|weeks?|days?|hours?|minutes?|times)\b"))
+        });
+        let text = COUNTED.replace_all(&text, "many $1");
         // The offline recogniser spells a book's number ("one John chapter five", "Two Chronicles
         // chapter twenty", "one Samuel chapter one"): read as the digit, as "1 John" is.
         static BOOK_NUMBER: std::sync::LazyLock<regex::Regex> =
