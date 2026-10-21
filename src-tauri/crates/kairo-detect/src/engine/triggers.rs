@@ -187,6 +187,11 @@ impl Engine {
         if p.chapter_given || self.sermon.iter().any(|c| c.named && c.book == p.citation.book && c.chapter == Some(p.citation.chapter as u16)) {
             return true;
         }
+        // The sermon's announced passage, however long ago: "Mark chapter four verses twenty one
+        // to thirty four" at the start, "verse twenty four" eight minutes in (MacArthur, dev build).
+        if self.in_announced_passage(p.citation.book, p.citation.chapter as u16) {
+            return true;
+        }
         // A verse of the chapter went up moments ago: the reading is still there ("…verse 12 and
         // then gets us up on our high places, verse 14", Isaiah 58:12 up 9 s before).
         if let Some((up, at)) = self.screen.up {
@@ -243,8 +248,9 @@ impl Engine {
         }
         // The context has lapsed, so the preacher may have moved to a passage
         // never named: only an identifying word of the verse in what was just
-        // said puts it up; otherwise it is offered.
-        if !self.own_word_heard(&verses, text) {
+        // said puts it up; otherwise it is offered. Not in the sermon's announced passage: that is
+        // where the preacher is (MacArthur's "go back to verse thirteen" in Mark 4).
+        if !self.in_announced_passage(r.book, r.chapter) && !self.own_word_heard(&verses, text) {
             self.decide(Candidate::new(verses, partial_method(&p), DIRECT_PARTIAL_SCORE, Target::Suggestions).capped(), now);
             return true;
         }

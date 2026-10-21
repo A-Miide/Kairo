@@ -25,7 +25,10 @@ const CLAUSE_WINDOW_STEP: usize = 7;
 const VERBATIM_MIN_WORDS: usize = 6;
 const VERBATIM_LIMIT: usize = 3;
 /// Two verses matched this evenly, in different places, are the same words.
-const VERBATIM_TIE: f32 = 0.02;
+/// A verse number said this recently picks between word-for-word matches.
+const VERSE_NUMBER_SAID_MS: u64 = 20_000;
+/// Word-for-word matches in other places this close to the best are the same saying.
+const VERBATIM_TWIN_SPREAD: f32 = 0.10;
 /// Shared opening wording: two confirmed alignments this close are tied.
 const TIE_MATCHED: u32 = 2;
 const TIE_BREAK_CONTINUITY_WINDOW_MS: u64 = 8_000;
@@ -209,14 +212,24 @@ impl Engine {
         // phrase like "Jesus Christ from the dead" (weight 18.3) put 1 Peter 1:3
         // on screen on its own (live test, 2026-10-14).
         let mut weak = via_idf && !corroborated;
-        let mut verses: Vec<VerseId> = screen.iter().map(|h| h.verse).collect();
-        // Word for word in more than one place ("heaven and earth shall pass away": Matthew,
-        // Mark and Luke): the passage in play picks one, else every one is offered.
+        // A quote running over into the next verses of the same passage goes up with them.
         let place = |v: VerseId| (self.r(v).book, self.r(v).chapter);
-        let tied: Vec<VerseId> = screen.iter().filter(|h| top.score - h.score < VERBATIM_TIE && place(h.verse) != place(top.verse)).map(|h| h.verse).collect();
+        let mut verses: Vec<VerseId> = screen.iter().map(|h| h.verse).filter(|v| place(*v) == place(top.verse)).collect();
+        // Word for word in more than one place ("heaven and earth shall pass away": Matthew,
+        // Mark and Luke; "if any man have ears to hear" scored under "he that hath ears to hear"):
+        // the verse number just said or the passage in play picks one, else every one is offered.
+        // Never all of them on screen: Matthew 11:15, 13:9 and Mark 4:23 went up together, and
+        // Matthew 11 then took "verse twenty four" (MacArthur, Mark 4, dev build 2026-10-20).
+        let tied: Vec<VerseId> = screen.iter().filter(|h| top.score - h.score < VERBATIM_TWIN_SPREAD && place(h.verse) != place(top.verse)).map(|h| h.verse).collect();
         if !tied.is_empty() {
             let all: Vec<VerseId> = std::iter::once(top.verse).chain(tied).collect();
-            match self.settle_stream_tie(&all, now) {
+            // The number said most ("go to verse twenty three. Verse twenty three … he said that back
+            // in verse nine").
+            let said = self.verse_numbers_said(now);
+            let times = |v: VerseId| said.iter().filter(|n| **n == self.r(v).verse).count();
+            let most = all.iter().map(|v| times(*v)).max().unwrap_or(0);
+            let numbered: Vec<VerseId> = all.iter().copied().filter(|v| most > 0 && times(*v) == most).collect();
+            match (numbered.len() == 1).then(|| numbered[0]).or_else(|| self.settle_stream_tie(&all, now)) {
                 Some(w) => verses = vec![w],
                 None => {
                     verses = all;
@@ -225,9 +238,14 @@ impl Engine {
             }
         }
         let intent = if weak { Target::Suggestions } else { Target::Screen };
+        let one_place = verses.iter().all(|v| place(*v) == place(verses[0]));
+        let first = verses[0];
         let candidate = Candidate::new(verses, Method::Verbatim, score, intent).evidence(evidence(&top)).from_text(&found_in);
         self.decide(if weak { candidate.capped() } else { candidate }, now);
-        if top.score >= READ_SIMILARITY {
+        // Read word for word, so cited — but not one of several places offered together: Matthew
+        // 11:15 counted as cited then sent on "not everybody has ears to hear".
+        if top.score >= READ_SIMILARITY && one_place {
+            let top = screen.iter().find(|h| h.verse == first).copied().unwrap_or(top);
             let r = self.r(top.verse);
             self.note_cited(r.book, Some(r.chapter), Some(r.verse), false, now);
             self.track_reading_mode(top.verse, top.score, now);
@@ -436,6 +454,22 @@ impl Engine {
 
     /// Among tied alignments, exactly one in the passage in play (not behind
     /// the verse on screen) wins.
+    /// Verse numbers said in the last few seconds ("go to verse twenty three").
+    fn verse_numbers_said(&self, now: u64) -> Vec<u16> {
+        let recent: Vec<&str> = self.t.finals.iter().filter(|f| now.saturating_sub(f.at) < VERSE_NUMBER_SAID_MS).map(|f| f.text.as_str()).chain(std::iter::once(self.t.interim.as_str())).collect();
+        let text = recent.join(" ").to_lowercase().replace(|c: char| !c.is_alphanumeric() && c != ' ', " ");
+        let words: Vec<&str> = text.split_whitespace().collect();
+        let mut out = Vec::new();
+        for (i, w) in words.iter().enumerate() {
+            if matches!(*w, "verse" | "verses") {
+                if let Some(n) = crate::reference::numbers::consume_number(&words, i + 1, Some(176)) {
+                    out.push(n.value as u16);
+                }
+            }
+        }
+        out
+    }
+
     fn settle_stream_tie(&self, tied: &[VerseId], now: u64) -> Option<VerseId> {
         let behind = |v: VerseId| {
             self.screen.up_verse().is_some_and(|u| {

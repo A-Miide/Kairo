@@ -19,6 +19,8 @@ const HEARD_MAX_WORDS: usize = 160;
 const ENDING_SPAN: usize = 8;
 const READING_SLACK: usize = 15;
 const PREFIX_MIN_IDF: f32 = 3.5;
+/// A range this long is the sermon's passage.
+const ANNOUNCED_MIN_VERSES: usize = 3;
 const ADVANCE_MIN_SCORE: f32 = 0.50;
 const CONTENT_LOOKAHEAD: usize = 3;
 /// What "just said" means for skipping ahead: at least this many words.
@@ -41,6 +43,13 @@ impl Engine {
         self.range.current = verses.first().copied();
         self.range.queue = verses.iter().skip(1).copied().collect();
         self.range_moved(None, now);
+        // A passage of several verses is what the sermon is on.
+        if let (Some(first), Some(last)) = (verses.first(), verses.last()) {
+            let (a, b) = (self.r(*first), self.r(*last));
+            if verses.len() >= ANNOUNCED_MIN_VERSES && a.book == b.book && a.chapter == b.chapter {
+                self.announced = Some((a.book, a.chapter, now));
+            }
+        }
         if let Some(current) = self.range.current {
             self.effect(Effect::RangeSet { verses, current });
         }
@@ -225,6 +234,16 @@ impl Engine {
         let book = self.r(current).book;
         if book_mentions(fresh, self.k.books, self.cfg.lang).iter().any(|b| *b != book) {
             return;
+        }
+        // The verse on screen read first: Mark 4:21–34 cited, "…the kind of soil that produces
+        // nothing" (the background, before any reading) moved it to 4:22's "nothing hid" (dev build).
+        let next_words: HashSet<String> = meaningful_words(self.verse_text(next)).into_iter().collect();
+        let current_own: Vec<String> = current_words.iter().filter(|w| !next_words.contains(*w) && self.k.lexicon.idf_of(w) >= PREFIX_MIN_IDF).cloned().collect();
+        if !current_own.is_empty() {
+            let heard: HashSet<String> = meaningful_words(&format!("{} {fresh}", self.range_heard_words().join(" "))).into_iter().collect();
+            if !current_own.iter().any(|w| heard.contains(w)) {
+                return;
+            }
         }
         let said: HashSet<String> = meaningful_words(fresh).into_iter().collect();
         let hit = |list: &[&String]| list.iter().collect::<HashSet<_>>().into_iter().filter(|w| said.contains(**w)).count();
