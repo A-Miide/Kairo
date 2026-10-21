@@ -68,6 +68,8 @@ pub(crate) struct StreamHit {
     pub weighty: u32,
     /// The weightiest aligned word.
     pub peak_idf: f32,
+    /// …that the other verses opening with the same phrase lack.
+    pub distinct_peak_idf: f32,
     pub df: u8,
     pub idf: f32,
     pub similarity: f32,
@@ -282,7 +284,7 @@ impl Engine {
         for w in words {
             let tick = self.stream.push(&self.k.lexicon, w, now);
             for a in tick.anchors {
-                let hit = StreamHit { verse: a.verse, confirmed: false, matched: ANCHOR_DEPTH, matched_idf: 0.0, via_backward: false, weighty: 0, peak_idf: 0.0, df: a.df, idf: a.idf, similarity: anchor_similarity(a.df) };
+                let hit = StreamHit { verse: a.verse, confirmed: false, matched: ANCHOR_DEPTH, matched_idf: 0.0, via_backward: false, weighty: 0, peak_idf: 0.0, distinct_peak_idf: 0.0, df: a.df, idf: a.idf, similarity: anchor_similarity(a.df) };
                 match anchors.iter_mut().find(|h| h.verse == a.verse) {
                     Some(h) if a.df < h.df => *h = hit,
                     Some(_) => {}
@@ -291,7 +293,7 @@ impl Engine {
             }
             for c in tick.confirmed {
                 let similarity = (0.90 + (c.matched as f32 - 6.0) * 0.01).min(0.97);
-                let hit = StreamHit { verse: c.verse, confirmed: true, matched: c.matched, matched_idf: c.matched_idf, via_backward: c.via_backward_extension, weighty: c.weighty_words, peak_idf: c.peak_idf, df: 0, idf: 0.0, similarity };
+                let hit = StreamHit { verse: c.verse, confirmed: true, matched: c.matched, matched_idf: c.matched_idf, via_backward: c.via_backward_extension, weighty: c.weighty_words, peak_idf: c.peak_idf, distinct_peak_idf: c.distinct_peak_idf, df: 0, idf: 0.0, similarity };
                 match confirmed.iter_mut().find(|h| h.verse == c.verse) {
                     Some(h) if c.matched > h.matched => *h = hit,
                     Some(_) => {}
@@ -420,7 +422,7 @@ impl Engine {
         let pointed_at = self.passage_pointed_at(lead.verse, now);
         // …or no aligned word identifies anything: "and all those things … has been" (a
         // YouTube ad) lined up with Isaiah 66:2 on everyday words (dev build 2026-10-21).
-        let light = lead.peak_idf < STREAM_MIN_PEAK_IDF;
+        let light = lead.peak_idf < STREAM_MIN_PEAK_IDF || (!pointed_at && lead.distinct_peak_idf < STREAM_MIN_PEAK_IDF);
         // The passage in play excuses few weighty words, never none: an announced passage lasts 40 minutes.
         let thin = intent == Target::Screen && ((!pointed_at && lead.weighty < STREAM_MIN_WEIGHTY_WORDS) || light) && !corroborated;
         let mut twin_took = false;

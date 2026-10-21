@@ -59,6 +59,11 @@ pub struct Confirmed {
     pub weighty_words: u32,
     /// The weightiest aligned word.
     pub peak_idf: f32,
+    /// The weightiest aligned word that the other verses sharing the opening phrase don't have:
+    /// "I heard a voice from heaven" opens four verses of Revelation, and "…the voice of" told
+    /// none of them apart (Revelation 14:2 sent on "I hear a voice from heaven, and it's the voice
+    /// of mercy", dev build 2026-10-20).
+    pub distinct_peak_idf: f32,
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -81,6 +86,8 @@ struct Candidate {
     misses: u32,
     confirmed: bool,
     fired_at: u64,
+    /// The opening phrase it was found by.
+    gram: u32,
 }
 
 /// One service's streaming state.
@@ -153,6 +160,13 @@ impl StreamMatcher {
                     .filter(|w| lex.idf(**w) >= STREAM_WEIGHTY_IDF && !PREACHING_COMMON_WORDS.contains(lex.vocab().word(**w)))
                     .count() as u32;
                 let peak_idf = c.counted.iter().map(|w| lex.idf(*w)).fold(0.0, f32::max);
+                let siblings: HashSet<WordId> = lex
+                    .anchor_entries(c.gram)
+                    .iter()
+                    .filter(|e| e.verse != c.verse)
+                    .flat_map(|e| lex.slot_words(e.verse, e.own).iter().copied())
+                    .collect();
+                let distinct_peak_idf = c.counted.iter().filter(|w| !siblings.contains(*w)).map(|w| lex.idf(*w)).fold(0.0, f32::max);
                 tick.confirmed.push(Confirmed {
                     verse: c.verse,
                     matched: c.matched,
@@ -160,6 +174,7 @@ impl StreamMatcher {
                     via_backward_extension: c.back_matched > 0 && !without_back,
                     weighty_words,
                     peak_idf,
+                    distinct_peak_idf,
                 });
             }
             kept.push(c);
@@ -211,6 +226,7 @@ impl StreamMatcher {
                 misses: ALIGN_MISS_BUDGET,
                 confirmed: false,
                 fired_at: now_ms,
+                gram,
             });
         }
     }
