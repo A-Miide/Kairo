@@ -72,6 +72,8 @@ fn route(screen: bool, explicit: bool, p: &Presentation) -> Route {
 #[derive(Clone)]
 pub struct Detector {
     tx: mpsc::Sender<Command>,
+    /// Told when the preacher asks for another translation ("switch to the NIV").
+    on_translation: Arc<std::sync::OnceLock<Box<dyn Fn(&'static str) + Send + Sync>>>,
 }
 
 /// What this service put on screen and how — the sermon notes read it.
@@ -88,12 +90,17 @@ pub use crate::util::epoch_ms;
 impl Detector {
     pub fn start(bible: Arc<Bible>, hub: Arc<Hub>, cfg: Config, presentation: Arc<std::sync::RwLock<Presentation>>, rt: tokio::runtime::Handle, log: Log) -> Detector {
         let (tx, rx) = mpsc::channel::<Command>();
-        let me = Detector { tx: tx.clone() };
+        let me = Detector { tx: tx.clone(), on_translation: Default::default() };
         std::thread::Builder::new()
             .name("detection".into())
             .spawn(move || run(bible, hub, cfg, presentation, rt, tx, rx, log))
             .expect("detection thread");
         me
+    }
+
+    /// What to do when a spoken command asks for another translation (set once, at start).
+    pub fn on_translation(&self, f: impl Fn(&'static str) + Send + Sync + 'static) {
+        let _ = self.on_translation.set(Box::new(f));
     }
 
     pub fn send(&self, e: Event) {
@@ -142,6 +149,11 @@ impl Detector {
         // Finished stretches go in debug.log, so a run can be diagnosed from the log alone.
         if is_final {
             crate::routes::write_debug_global("server:transcript", json!({ "text": text, "speechFinal": speech_final, "continues": continues_live }));
+            if let Some(code) = kairo_detect::reference::translation_command::translation_command(text) {
+                if let Some(f) = self.on_translation.get() {
+                    f(code);
+                }
+            }
         } else if std::env::var_os("KAIRO_LOG_INTERIMS").is_some() {
             // Live text too, so a test run can be replayed as it was heard (off unless asked for).
             crate::routes::write_debug_global("server:interim", json!({ "text": text }));
