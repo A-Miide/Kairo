@@ -220,6 +220,7 @@ fn one_chapter_books() {
     assert!(!all("your Bible to John 3 John three. His name").iter().any(|r| r.starts_with("3 John")));
     // An outline's numbers aren't the book of Numbers.
     assert!(all("That's argument number two for why you should stay. Number three the middle of verse fifteen").is_empty());
+    assert!(all("And finally, observation number four verse five four exhortations").is_empty());
 }
 
 #[test]
