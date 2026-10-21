@@ -2319,13 +2319,13 @@ async function startListeningInner() {
       const missingKey   = serverEngine === 'deepgram' && /no deepgram api key/i.test(d.error);
       const missingModel = serverEngine === 'offline'  && /model missing/i.test(d.error);
       if (missingKey || missingModel) {
-        // The other-languages model is offered where the service language is chosen (Settings →
-        // Language); before, its error didn't match /model missing/ and Listen failed silently.
-        const otherLanguages = missingModel && /other languages/i.test(d.error);
+        // Both offline models are offered where the service language is chosen (Settings →
+        // Language); before, the other-languages error didn't match /model missing/ and Listen
+        // failed silently.
         settingsModal?.classList.remove('hidden');
-        showSettingsPane(otherLanguages ? 'language' : 'audio');
-        if (otherLanguages) window.renderLangCapability?.();
-        const field = document.getElementById(missingKey ? 'deepgram-key' : otherLanguages ? 'lang-capability' : 'offline-install-btn');
+        showSettingsPane(missingModel ? 'language' : 'audio');
+        if (missingModel) window.renderLangCapability?.();
+        const field = document.getElementById(missingKey ? 'deepgram-key' : 'lang-capability');
         field?.scrollIntoView({ block: 'center' });
         field?.focus?.();
       } else {
@@ -2903,9 +2903,15 @@ async function loadSettings() {
     if (typeof applyOutputFrames === "function") applyOutputFrames();
     if (typeof applyMonitorLooks === "function") applyMonitorLooks();
     applyOutputModes();
-    // Language
+    // Language — the first time, the computer's own language (a Mac set to French starts in
+    // French), so a church that skips every setup step still gets the right model offered.
     const sttLang = document.getElementById('stt-language');
+    if (!settings.sttLanguage) {
+      const guess = defaultServiceLanguage();
+      if (guess !== 'en-US') { settings.sttLanguage = guess; saveSettingsPatch({ sttLanguage: guess }); }
+    }
     if (sttLang) sttLang.value = settings.sttLanguage || 'en-US';
+    window.syncLangChip?.();
     const vocab = document.getElementById('custom-keyterms');
     if (vocab) vocab.value = settings.customKeyterms || '';
     renderLearnedTerms();
@@ -3816,6 +3822,16 @@ window.applyMediaSink = applyMediaSink;
 // logic can drive a SECOND instance of this widget in the first-run modal
 // (its own engine choice, not just Settings) without duplicating any of the
 // NDJSON-streaming logic below — only the element ids differ per instance.
+// The service language this computer's own language suggests, as a Spoken language value.
+function defaultServiceLanguage() {
+  const loc = String((navigator.languages && navigator.languages[0]) || navigator.language || 'en-US').toLowerCase();
+  const [lang, region] = loc.split('-');
+  if (lang === 'en') return ({ gb: 'en-GB', au: 'en-AU', in: 'en-IN' })[region] || 'en-US';
+  if (lang === 'pt') return 'pt-BR';
+  const known = ['es', 'fr', 'de', 'it', 'nl', 'sv', 'pl', 'uk', 'ru', 'hi', 'id', 'ko', 'ja', 'zh'];
+  return known.includes(lang) ? lang : 'en-US';
+}
+
 function wireOfflineModelInstaller(ids) {
   // ids.model: 'en' (English) or 'multi' (every other spoken language) — the
   // two offline downloads (sherpa_installer.js MODELS); ids.name: what the
@@ -4024,11 +4040,56 @@ wireOfflineModelInstaller({
   progressWrap: 'offline-multi-progress-wrap', progressBar: 'offline-multi-progress-bar', progressText: 'offline-multi-progress-text',
   engineToggle: 'speech-engine-toggle',
 });
-wireOfflineModelInstaller({
-  group: 'first-run-offline-group', statusLine: 'first-run-offline-status-line', installBtn: 'first-run-offline-install-btn',
-  progressWrap: 'first-run-offline-progress-wrap', progressBar: 'first-run-offline-progress-bar', progressText: 'first-run-offline-progress-text',
-  engineToggle: 'first-run-engine-toggle', alwaysEnglish: true,
-});
+// First-run setup offers the model this computer's language needs — never English by default
+// for a French Mac (the other-languages model covers French).
+(function () {
+  const multi = !defaultServiceLanguage().startsWith('en');
+  const btn = document.getElementById('first-run-offline-install-btn');
+  if (btn && multi) btn.textContent = 'Download offline model for other languages';
+  wireOfflineModelInstaller({
+    model: multi ? 'multi' : 'en', name: multi ? 'Offline model for other languages' : 'Offline model',
+    group: 'first-run-offline-group', statusLine: 'first-run-offline-status-line', installBtn: 'first-run-offline-install-btn',
+    progressWrap: 'first-run-offline-progress-wrap', progressBar: 'first-run-offline-progress-bar', progressText: 'first-run-offline-progress-text',
+    engineToggle: 'first-run-engine-toggle', alwaysEnglish: true,
+  });
+})();
+
+// Settings → Audio no longer downloads models: it says what's installed and where to get the
+// one the service language needs (Settings → Language).
+async function renderOfflineSummary() {
+  const group = document.getElementById('offline-summary-group');
+  const box = document.getElementById('offline-summary');
+  if (!group || !box) return;
+  const active = document.querySelector('#speech-engine-toggle .toggle-btn.active')?.dataset.engine;
+  group.style.display = active === 'browser' ? '' : 'none';
+  if (active !== 'browser') return;
+  const spoken = String(settings.sttLanguage || 'en-US').toLowerCase();
+  const need = spoken.startsWith('en') ? 'en' : 'multi';
+  const get = async (m) => { try { return await (await fetch(`${SERVER}/api/offline/status?model=${m}`)).json(); } catch (_) { return null; } };
+  const [en, multi] = await Promise.all([get('en'), get('multi')]);
+  box.innerHTML = '';
+  const row = (ok, text, link) => {
+    const r = document.createElement('div');
+    r.className = 'lang-cap-row ' + (ok ? 'ok' : 'missing');
+    const m = document.createElement('span'); m.className = 'lang-cap-mark'; m.setAttribute('aria-hidden', 'true'); m.textContent = ok ? '\u2713' : '!';
+    const t = document.createElement('span'); t.textContent = text;
+    r.append(m, t);
+    if (link) {
+      const a = document.createElement('button'); a.type = 'button'; a.className = 'lang-link'; a.textContent = 'Set up in Language';
+      a.addEventListener('click', () => { showSettingsPane('language'); window.renderLangCapability?.(); });
+      r.append(document.createTextNode(' '), a);
+    }
+    box.appendChild(r);
+  };
+  if (en?.installed) row(true, 'English model installed');
+  if (multi?.installed) row(true, 'Other-languages model installed');
+  const needed = need === 'en' ? en : multi;
+  if (!needed?.installed) row(false, need === 'en' ? 'English needs the offline model' : `${document.getElementById('stt-language')?.selectedOptions?.[0]?.textContent || 'This language'} needs the offline model for other languages`, true);
+}
+document.getElementById('speech-engine-toggle')?.addEventListener('click', () => setTimeout(renderOfflineSummary, 0));
+document.getElementById('speech-engine-toggle')?.addEventListener('toggle-change', () => renderOfflineSummary());
+document.getElementById('stt-language')?.addEventListener('change', () => setTimeout(renderOfflineSummary, 0));
+renderOfflineSummary();
 
 // ── Local translation-model installer UI ─────────────────────────────────
 // Same NDJSON-progress pattern as the offline-model installer above, for the
@@ -4100,6 +4161,17 @@ async function renderSecondLangModel() {
   } else if (s.installing) {
     sub.textContent = `Downloading ${name}…`;
     _secondLangTimer = setTimeout(renderSecondLangModel, 2000);
+  } else if (window._secondLangPicked) {
+    // Just picked: fetch its slide translator now, no extra click.
+    window._secondLangPicked = false;
+    sub.textContent = `Downloading ${name} translator\u2026`;
+    host.innerHTML = ''; host.appendChild(row);
+    await streamMtInstall(code, {
+      onProgress: (pct) => { sub.textContent = `Downloading ${name} translator\u2026 ${pct}%`; },
+      onComplete: () => { renderSecondLangModel(); refreshMtStatus(code); },
+      onError: (msg) => { sub.textContent = `Failed: ${msg}`; },
+    });
+    return;
   } else {
     sub.textContent = `${name} slide text needs a download${size}`;
     const btn = document.createElement('button');

@@ -8580,7 +8580,6 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .lang-pill { padding: 5px 14px; border: 1px solid var(--border); border-radius: 14px; background: transparent; color: var(--text-2); font-size: 12px; cursor: pointer; }
 .lang-pill:hover { border-color: var(--border-md); color: var(--text); }
 .lang-pill.active { border-color: var(--brand); background: var(--brand-dim); color: var(--text); }
-.lang-suggest { margin-top: 8px; font-size: 12px; color: var(--text-2); }
 .lang-link { border: none; background: transparent; padding: 0; color: var(--brand); text-decoration: underline; cursor: pointer; font-size: 12px; }
 .lang-sources { margin-top: 6px; font-size: 12px; color: var(--text-3); }
 .lang-sources summary { cursor: pointer; }
@@ -8593,6 +8592,15 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .lang-cap-row .lang-link { white-space: nowrap; }
 .lang-cap-row.missing .lang-cap-mark { color: var(--warning, #d29922); }
 .lang-more > summary { cursor: pointer; list-style: revert; }
+/* Language page: the two numbered setup places, then the optional second language */
+.lang-step { display: flex; align-items: center; gap: 8px; }
+.lang-step-n { width: 20px; height: 20px; border-radius: 10px; background: var(--brand); color: #fff; font-size: 11px; font-weight: 700; display: inline-flex; align-items: center; justify-content: center; }
+.lang-step-hint { margin-left: 8px; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--text-3); }
+.lang-theme-tip { margin-top: 10px; display: flex; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); font-size: 12px; color: var(--text-2); }
+.lang-theme-tip span { flex: 1; }
+.lang-theme-tip .lang-link { white-space: nowrap; font-weight: 600; }
+.tb-lang-chip { height: 28px; padding: 0 8px; margin-right: 6px; border: 1px solid var(--border); border-radius: 14px; background: transparent; color: var(--text-2); font: inherit; font-size: 11px; font-weight: 600; letter-spacing: .04em; cursor: pointer; }
+.tb-lang-chip:hover { border-color: var(--border-md); color: var(--text); }
 
 .dl-row .dl-what { color: var(--text-3); }
 .dl-row .dl-what { flex: 1; white-space: nowrap; }

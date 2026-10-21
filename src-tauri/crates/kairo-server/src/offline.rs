@@ -345,7 +345,7 @@ pub async fn start(app: Shared) -> Result<Session, Value> {
         let msg = if model == "multi" {
             "Offline model missing for this language: offline listening in it needs the offline model for other languages. Download it from Settings → Language, or listen with Deepgram."
         } else {
-            "Offline model missing. Open Settings → Speech Engine → Offline and hit \"Download offline model\"."
+            "Offline model missing: download it from Settings → Language, or listen with Deepgram."
         };
         state(&app, "error", Some(("model-missing", msg.into())));
         return Err(json!({ "error": msg }));
