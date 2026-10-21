@@ -1,7 +1,7 @@
 //! What happens to a spoken citation once it's parsed
 //! (`detection-spec/02-citations.md`).
 
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use kairo_bible::{Book, VerseId, VerseRef};
 
@@ -743,8 +743,13 @@ impl Engine {
         // …and among those words one that identifies the verse: "then this script, this verse
         // should strike you. He said, but the chief priest" adds up for John 11:40 on everyday
         // words alone (dev build 2026-10-20) — that is offered, not sent.
-        let said: HashSet<String> = super::evidence::meaningful_words(&after).iter().map(|w| super::evidence::stem_lite(w)).collect();
-        let identifying = super::evidence::meaningful_words(self.verse_text(v)).iter().any(|w| self.k.lexicon.idf_of(w) >= CHAPTER_PICK_SEND_MIN_IDF && said.contains(&super::evidence::stem_lite(w)));
+        // The word as said must be rare too: "they call him" shares a stem with "calleth", rare only
+        // because it is archaic (John 11:28 sent, dev build 2026-10-20).
+        let said: HashMap<String, f32> = super::evidence::meaningful_words(&after).iter().map(|w| (super::evidence::stem_lite(w), self.k.lexicon.idf_of(w))).collect();
+        let identifying = super::evidence::meaningful_words(self.verse_text(v)).iter().any(|w| {
+            let idf = self.k.lexicon.idf_of(w);
+            said.get(&super::evidence::stem_lite(w)).is_some_and(|&spoken| (if spoken > 0.0 { idf.min(spoken) } else { idf }) >= CHAPTER_PICK_SEND_MIN_IDF)
+        });
         Some((v, identifying && self.pick_chapter_verse_by_idf(book, chapter, &after) == Some(v)))
     }
 
