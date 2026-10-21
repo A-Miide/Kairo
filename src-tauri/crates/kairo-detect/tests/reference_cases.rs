@@ -218,6 +218,8 @@ fn one_chapter_books() {
     // A book said twice with its chapter, not "3 John 3".
     assert!(!all("Open your Bible to John three John three. His name").iter().any(|r| r.starts_with("3 John")));
     assert!(!all("your Bible to John 3 John three. His name").iter().any(|r| r.starts_with("3 John")));
+    // An outline's numbers aren't the book of Numbers.
+    assert!(all("That's argument number two for why you should stay. Number three the middle of verse fifteen").is_empty());
 }
 
 #[test]
@@ -310,5 +312,6 @@ fn reading_context_lasts_through_a_pause_and_stretches_for_a_slow_pace() {
     ctx.update(b("Acts"), None, 70_000);
     assert_eq!(ctx.active(70_000), Active { book: Some(b("Acts")), chapter: None }, "a new book drops the old chapter");
 }
+
 
 
