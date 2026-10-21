@@ -31,6 +31,13 @@ pub async fn root(State(app): State<Shared>, uri: Uri, headers: HeaderMap, ws: R
 }
 
 pub(crate) async fn forward_audio(app: &Shared, data: bytes::Bytes) {
+    // The server is capturing the input itself: a window streaming the same input too would feed
+    // the engine every sound twice, interleaved, and it hears almost nothing. That happened when
+    // listening was started from outside the window (OSC, a second window): the window "resumed"
+    // its own capture before the server's was registered (dev build, 2026-10-20).
+    if crate::util::lock(&app.capture).is_some() {
+        return;
+    }
     if let Some(tx) = note_audio(app, &data).await {
         if tx.try_send(data).is_err() {
             crate::audio_stats::STATS.dropped.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
