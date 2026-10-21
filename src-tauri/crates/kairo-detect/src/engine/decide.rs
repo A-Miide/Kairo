@@ -389,7 +389,10 @@ impl Engine {
     /// on screen at least as well.
     fn on_screen_explains_speech_better(&self, v: VerseId, source: Option<&str>, now: u64) -> bool {
         let Some((up, at)) = self.screen.up else { return false };
-        if now.saturating_sub(at) > SAME_BOOK_WINDOW_MS || up == v || self.range.all.contains(&v) {
+        // A verse of the range being read is reading on — but in a hold from a single cited verse only
+        // the next one is: Ezra 3:11 cited, "…shout when they praised the" jumped to 3:13 (dev build).
+        let reading_on = self.range.all.contains(&v) && !(self.range.soft && self.range.queue.front() != Some(&v));
+        if now.saturating_sub(at) > SAME_BOOK_WINDOW_MS || up == v || reading_on {
             return false;
         }
         // Only the newest words: reaching further back reaches the verse on
