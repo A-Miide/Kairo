@@ -27,6 +27,8 @@ pub const INTERIM_STABLE_WINDOW_MS: u64 = 3_000;
 const CHAPTER_PENDING_TEXT_MAX_WORDS: usize = 50;
 /// A chapter's verse picked by the words that followed goes up only with one this identifying among them.
 const CHAPTER_PICK_SEND_MIN_IDF: f32 = 5.0;
+/// …found in at most this many other verses of the chapter.
+const CHAPTER_PICK_WORD_MAX_OTHERS: usize = 1;
 /// A verse resolved against a context or chosen within a named chapter.
 pub const DIRECT_PARTIAL_SCORE: f32 = 0.90;
 /// A citation in the last minute chooses among a stem's books.
@@ -746,9 +748,19 @@ impl Engine {
         // The word as said must be rare too: "they call him" shares a stem with "calleth", rare only
         // because it is archaic (John 11:28 sent, dev build 2026-10-20).
         let said: HashMap<String, f32> = super::evidence::meaningful_words(&after).iter().map(|w| (super::evidence::stem_lite(w), self.k.lexicon.idf_of(w))).collect();
+        // …and one the chapter's other verses don't share: "Pharisees" is in four verses of Luke 5,
+        // "parables" in six of Matthew 13 (MacArthur, dev build).
+        let chapter_words: Vec<HashSet<String>> = (1..=self.k.corpus.verse_count(book, chapter as u16).unwrap_or(0))
+            .filter_map(|n| self.k.id(VerseRef::new(book, chapter as u16, n)))
+            .filter(|id| *id != v)
+            .map(|id| super::evidence::meaningful_words(self.verse_text(id)).iter().map(|w| super::evidence::stem_lite(w)).collect())
+            .collect();
         let identifying = super::evidence::meaningful_words(self.verse_text(v)).iter().any(|w| {
             let idf = self.k.lexicon.idf_of(w);
-            said.get(&super::evidence::stem_lite(w)).is_some_and(|&spoken| (if spoken > 0.0 { idf.min(spoken) } else { idf }) >= CHAPTER_PICK_SEND_MIN_IDF)
+            let stem = super::evidence::stem_lite(w);
+            let elsewhere = chapter_words.iter().filter(|ws| ws.contains(&stem)).count();
+            elsewhere <= CHAPTER_PICK_WORD_MAX_OTHERS
+                && said.get(&stem).is_some_and(|&spoken| (if spoken > 0.0 { idf.min(spoken) } else { idf }) >= CHAPTER_PICK_SEND_MIN_IDF)
         });
         Some((v, identifying && self.pick_chapter_verse_by_idf(book, chapter, &after) == Some(v)))
     }
