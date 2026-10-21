@@ -89,7 +89,10 @@ fn short(v: &Value) -> Option<String> {
 /// The last events of debug.log as short lines: "10:42:05 client:director on=true".
 /// Events about detection, transcripts and verses are left out entirely.
 fn recent_events(log: &Path) -> String {
-    let Ok(raw) = std::fs::read_to_string(log) else { return String::new() };
+    // Just after a rollover the newest lines are few: the previous file goes first.
+    let before = std::fs::read_to_string(log.with_extension("log.1")).unwrap_or_default();
+    let Ok(now) = std::fs::read_to_string(log) else { return String::new() };
+    let raw = format!("{before}{now}");
     let lines: Vec<&str> = raw.lines().rev().take(400).collect();
     let mut out: Vec<String> = Vec::new();
     for l in lines.into_iter().rev() {

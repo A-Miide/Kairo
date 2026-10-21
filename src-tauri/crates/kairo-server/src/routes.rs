@@ -800,18 +800,20 @@ fn debug_log_sender() -> &'static std::sync::Mutex<std::sync::mpsc::Sender<(std:
                 if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
                     let _ = f.write_all(line.as_bytes());
                 }
-                // It keeps itself small: past 2 MB the older half goes.
-                if std::fs::metadata(&path).is_ok_and(|m| m.len() > 2 * 1024 * 1024) {
-                    if let Ok(s) = std::fs::read_to_string(&path) {
-                        let lines: Vec<&str> = s.lines().collect();
-                        let _ = std::fs::write(&path, lines[lines.len() / 2..].join("\n") + "\n");
-                    }
+                // It keeps itself small: past 8 MB it becomes debug.log.1 (the one before goes) and a
+                // new one starts, so a whole service is always in the two files. Halving it in place
+                // lost the start of a long run, and rewrote 2 MB on every line once full.
+                if std::fs::metadata(&path).is_ok_and(|m| m.len() > DEBUG_LOG_MAX_BYTES) {
+                    let _ = std::fs::rename(&path, path.with_extension("log.1"));
                 }
             }
         });
         std::sync::Mutex::new(tx)
     })
 }
+
+/// debug.log rolls over to debug.log.1 past this size.
+const DEBUG_LOG_MAX_BYTES: u64 = 8 * 1024 * 1024;
 
 pub(crate) fn set_debug_log_path(path: std::path::PathBuf) {
     let _ = DEBUG_LOG_PATH.set(path);
