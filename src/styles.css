@@ -8584,6 +8584,14 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .lang-link { border: none; background: transparent; padding: 0; color: var(--brand); text-decoration: underline; cursor: pointer; font-size: 12px; }
 .lang-sources { margin-top: 6px; font-size: 12px; color: var(--text-3); }
 .lang-sources summary { cursor: pointer; }
+/* What the service language gets: heard, verses found, shows in */
+.lang-capability { margin-top: 10px; display: grid; gap: 4px; font-size: 12px; color: var(--text-2); }
+.lang-cap-row { display: flex; gap: 8px; align-items: baseline; }
+.lang-cap-mark { width: 14px; flex: none; text-align: center; font-weight: 600; color: var(--text-3); }
+.lang-cap-row.ok .lang-cap-mark { color: var(--success, #3fb950); }
+.lang-cap-row.missing { color: var(--text); }
+.lang-cap-row.missing .lang-cap-mark { color: var(--warning, #d29922); }
+.lang-more > summary { cursor: pointer; list-style: revert; }
 
 .dl-row .dl-what { color: var(--text-3); }
 .dl-row .dl-what { flex: 1; white-space: nowrap; }

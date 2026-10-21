@@ -343,7 +343,7 @@ pub async fn start(app: Shared) -> Result<Session, Value> {
     state(&app, "connecting", None);
     if !present(&dir) {
         let msg = if model == "multi" {
-            "Offline listening in this language needs the other-languages model. Open Settings → Speech Engine → Offline and hit \"Download other languages\", or set Spoken language to English."
+            "Offline model missing for this language: offline listening in it needs the offline model for other languages. Download it from Settings → Language, or listen with Deepgram."
         } else {
             "Offline model missing. Open Settings → Speech Engine → Offline and hit \"Download offline model\"."
         };

@@ -2319,9 +2319,13 @@ async function startListeningInner() {
       const missingKey   = serverEngine === 'deepgram' && /no deepgram api key/i.test(d.error);
       const missingModel = serverEngine === 'offline'  && /model missing/i.test(d.error);
       if (missingKey || missingModel) {
+        // The other-languages model is offered where the service language is chosen (Settings →
+        // Language); before, its error didn't match /model missing/ and Listen failed silently.
+        const otherLanguages = missingModel && /other languages/i.test(d.error);
         settingsModal?.classList.remove('hidden');
-        showSettingsPane('audio');
-        const field = document.getElementById(missingKey ? 'deepgram-key' : 'offline-install-btn');
+        showSettingsPane(otherLanguages ? 'language' : 'audio');
+        if (otherLanguages) window.renderLangCapability?.();
+        const field = document.getElementById(missingKey ? 'deepgram-key' : otherLanguages ? 'lang-capability' : 'offline-install-btn');
         field?.scrollIntoView({ block: 'center' });
         field?.focus?.();
       } else {
@@ -3911,7 +3915,7 @@ function wireOfflineModelInstaller(ids) {
         installBtn.style.display = 'none';
       } else {
         statusLine.textContent = s.needed === model && model === 'multi'
-          ? `${name} not installed — the spoken language set in Settings needs it.`
+          ? `${name} not installed — the service language (Settings → Language) needs it.`
           : `${name} not installed.`;
         statusLine.style.color = '';
         installBtn.textContent = downloadLabel;
