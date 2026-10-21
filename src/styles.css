@@ -8590,6 +8590,7 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .lang-cap-mark { width: 14px; flex: none; text-align: center; font-weight: 600; color: var(--text-3); }
 .lang-cap-row.ok .lang-cap-mark { color: var(--success, #3fb950); }
 .lang-cap-row.missing { color: var(--text); }
+.lang-cap-row .lang-link { white-space: nowrap; }
 .lang-cap-row.missing .lang-cap-mark { color: var(--warning, #d29922); }
 .lang-more > summary { cursor: pointer; list-style: revert; }
 
