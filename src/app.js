@@ -3929,10 +3929,11 @@ function wireOfflineModelInstaller(ids) {
         statusLine.textContent = `✓ ${name} installed`;
         statusLine.style.color = 'var(--accent)';
         installBtn.style.display = 'none';
+        // Under "Preacher speaks" the status lines already say "Heard offline": nothing to show.
+        if (ids.hideWhenInstalled) group.style.display = 'none';
+        window.renderLangCapability?.();
       } else {
-        statusLine.textContent = s.needed === model && model === 'multi'
-          ? `${name} not installed — the service language (Settings → Language) needs it.`
-          : `${name} not installed.`;
+        statusLine.textContent = `${name} not installed.`;
         statusLine.style.color = '';
         installBtn.textContent = downloadLabel;
         installBtn.style.display = '';
@@ -4032,13 +4033,13 @@ function wireOfflineModelInstaller(ids) {
 wireOfflineModelInstaller({
   group: 'offline-installer-group', statusLine: 'offline-status-line', installBtn: 'offline-install-btn',
   progressWrap: 'offline-progress-wrap', progressBar: 'offline-progress-bar', progressText: 'offline-progress-text',
-  engineToggle: 'speech-engine-toggle',
+  engineToggle: 'speech-engine-toggle', hideWhenInstalled: true,
 });
 wireOfflineModelInstaller({
   model: 'multi', name: 'Offline model for other languages',
   group: 'offline-multi-installer-group', statusLine: 'offline-multi-status-line', installBtn: 'offline-multi-install-btn',
   progressWrap: 'offline-multi-progress-wrap', progressBar: 'offline-multi-progress-bar', progressText: 'offline-multi-progress-text',
-  engineToggle: 'speech-engine-toggle',
+  engineToggle: 'speech-engine-toggle', hideWhenInstalled: true,
 });
 // First-run setup offers the model this computer's language needs — never English by default
 // for a French Mac (the other-languages model covers French).
