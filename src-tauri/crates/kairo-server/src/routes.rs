@@ -857,7 +857,7 @@ const SPOKEN_FOR_SCREEN_MS: u64 = 15_000;
 /// with it, and what is on screen shown in it (an operator's send may have gone up in the spoken one).
 pub(crate) async fn restore_translation(app: &Shared, code: String) {
     write_debug_global("server:translation-restored", json!({ "code": code }));
-    set_translation(app, &code, "next passage").await;
+    set_translation(app, &code, &format!("back to {code} for the new passage")).await;
 }
 
 /// The preacher asked for another translation ("switch to the NIV", "can I have it in NLT"):
