@@ -232,7 +232,12 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         let bible = Arc::new(Bible::new(k, nlt, db.clone(), starting.cfg.app_data_dir.join("packs")));
         let p = starting.presentation.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
         let cfg = kairo_detect::engine::Config { auto_send: p.auto_send, ..Default::default() };
-        let detector = Detector::start(bible.clone(), starting.hub.clone(), cfg, starting.presentation.clone(), rt, starting.log.clone());
+        let detector = Detector::start(bible.clone(), starting.hub.clone(), cfg, starting.presentation.clone(), rt.clone(), starting.log.clone());
+        let (a, h) = (starting.clone(), rt);
+        detector.on_translation(move |code| {
+            let a = a.clone();
+            h.spawn(async move { routes::spoken_translation(&a, code).await });
+        });
         let _ = starting.bible.set(bible);
         let _ = starting.detector.set(detector);
         eprintln!("[Server] Detection engine ready in {:.1}s (reference + verbatim + stream + fingerprint).", t.elapsed().as_secs_f32());

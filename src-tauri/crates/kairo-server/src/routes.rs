@@ -845,3 +845,38 @@ fn song_live(app: &Shared, live: bool) {
         crate::detect::announce_interpretation(&app.hub, change);
     }
 }
+
+/// The preacher asked for another translation ("switch to the NIV", "can I have it in NLT"):
+/// it becomes the translation, as if chosen in Settings, and the verse on screen is shown again
+/// in it. One this install doesn't have (the Message) is only logged.
+pub(crate) async fn spoken_translation(app: &Shared, code: &'static str) {
+    let Some((bible, _)) = app.ready() else { return };
+    let available = code == "KJV" || code == "NLT" || bible.db_dir.join("translations").join(format!("{code}.json")).is_file();
+    let current = app.settings.str("translation").await.unwrap_or_else(|| "KJV".into());
+    write_debug_global("server:translation-spoken", json!({ "code": code, "available": available, "from": current }));
+    if !available || current.eq_ignore_ascii_case(code) {
+        return;
+    }
+    let mut patch = Map::new();
+    patch.insert("translation".into(), json!(code));
+    let _ = app.settings.merge(patch).await;
+    app.refresh_presentation().await;
+    // The verse on screen, again, in the new translation (the windows repaint it, no new send).
+    let now = crate::util::lock(&app.hub.live).screen_now.clone();
+    let Some(now) = now else { return };
+    let ids: Vec<_> = now["verses"].as_array().into_iter().flatten()
+        .filter_map(|v| bible.find(v["book"].as_str()?, v["chapter"].as_u64()?, v["verse"].as_u64()?))
+        .collect();
+    if ids.is_empty() {
+        return;
+    }
+    let p = app.presentation.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
+    let mut list: Vec<Value> = ids.iter().map(|v| bible.verse_json(*v, 1.0, now["method"].as_str().unwrap_or("direct"))).collect();
+    bible.apply_translation(&mut list, &p.translation);
+    bible.apply_language(&mut list, &p.language);
+    let mut msg = now.clone();
+    msg["verses"] = json!(list);
+    msg["retranslated"] = json!(true);
+    msg["timestamp"] = json!(crate::util::epoch_ms());
+    app.hub.broadcast(msg);
+}

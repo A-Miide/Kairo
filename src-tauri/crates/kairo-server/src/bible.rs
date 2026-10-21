@@ -15,7 +15,7 @@ type Pack = Option<Arc<HashMap<String, String>>>;
 pub struct Bible {
     pub k: Arc<Knowledge>,
     pub nlt: Translation,
-    db_dir: PathBuf,
+    pub(crate) db_dir: PathBuf,
     /// Packs downloaded by the user (app data folder); looked at before the ones inside the app.
     user_packs: PathBuf,
     translations: Mutex<HashMap<String, Pack>>,

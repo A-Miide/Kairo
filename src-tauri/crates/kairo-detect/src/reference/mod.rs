@@ -10,6 +10,7 @@ pub mod normalize;
 pub mod numbers;
 pub mod parse;
 pub mod partial;
+pub mod translation_command;
 
 pub use books::{AmbiguityRule, Books};
 pub use citation::{Citation, Shape, Verses};
