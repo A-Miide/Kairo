@@ -92,7 +92,7 @@ impl Engine {
                 if !is_switch(&best) || best.is_some_and(|(_, hits)| twin_only > hits) {
                     best = Some((TwinOutcome::Switch(t.verse), twin_only));
                 }
-            } else if aff >= ANNOUNCED_AFFINITY && cand_aff == 0.0 && cand_only < TWIN_SPEECH_MARGIN && self.passage_pointed_at(t.verse, now) {
+            } else if cand_aff == 0.0 && cand_only < TWIN_SPEECH_MARGIN && { let r = self.r(t.verse); self.in_announced_passage(r.book, r.chapter) } {
                 // A word apart ("mysteries", "mystery") doesn't outweigh the passage the sermon is
                 // on: Mark 4:11, not Matthew 13:11 (MacArthur on Mark 4, dev build 2026-10-20).
                 if !is_switch(&best) {

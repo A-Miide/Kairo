@@ -76,6 +76,8 @@ fn run(mut session: Session, rx: Receiver<Vec<f32>>, app: Shared) {
         }
         if let Some(on) = gate.push(scores[SPEECH], scores[MUSIC]) {
             crate::routes::write_debug_global("server:singing", json!({ "active": on }));
+            // The transcript says so ("(music)"), so the operator knows why nothing is detected.
+            app.hub.broadcast(json!({ "type": "singing", "active": on }));
             if let Some((_, d)) = app.ready() {
                 d.send(Event::Singing(on));
             }

@@ -1,0 +1,60 @@
+{
+ "source": "scn-counted-after-citation",
+ "kind": "scenario",
+ "lang": "en",
+ "songLive": false,
+ "cues": [
+  {
+   "text": "Peter asked how often shall I forgive",
+   "audioMs": 0
+  },
+  {
+   "text": "Matthew eighteen twenty two seventy times seven",
+   "audioMs": 3700
+  },
+  {
+   "text": "that is not a number you keep count of",
+   "audioMs": 7400
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "Peter asked how often",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "Peter asked how often shall I forgive",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "Matthew eighteen twenty two",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "Matthew eighteen twenty two seventy times seven",
+   "isFinal": true
+  },
+  {
+   "cue": 2,
+   "text": "that is not a",
+   "isFinal": false
+  },
+  {
+   "cue": 2,
+   "text": "that is not a number you keep count",
+   "isFinal": false
+  },
+  {
+   "cue": 2,
+   "text": "that is not a number you keep count of",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

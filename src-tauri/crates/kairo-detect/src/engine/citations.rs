@@ -191,8 +191,9 @@ pub(crate) struct BareCitation {
     from: u16,
     to: u16,
     at: u64,
-    /// A quote named its book already; the numbers still hold off other verses while fresh.
-    resolved: bool,
+    /// A quote named its book already: the verse that quote first matched (its look-alike at
+    /// other numbers) is still held off while the numbers are fresh.
+    resolved: Option<VerseId>,
 }
 
 const BARE_CITATION_MS: u64 = 30_000;
@@ -324,9 +325,13 @@ impl Engine {
         let text = ASKED_THEN_NUMBER.replace_all(&text, "$1 $2");
         // A number counting something isn't a verse: "Luke three. Eighteen years" (Oyedepo on the
         // silent years, dev build 2026-10-21) is Luke 3, not Luke 3:18.
+        // Only the number just before the unit: "Matthew eighteen twenty two, seventy times seven"
+        // keeps Matthew 18:22, and "Luke three twenty two years" keeps Luke 3.
         static COUNTED: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
-            let n = r"(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)";
-            re(&format!(r"(?i)\b{n}(?:[\s-]+{n})*\s+(years?|months?|weeks?|days?|hours?|minutes?|times)\b"))
+            let unit = r"(?:one|two|three|four|five|six|seven|eight|nine)";
+            let tens = r"(?:twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety)";
+            let single = r"(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)";
+            re(&format!(r"(?i)\b(?:{tens}[\s-]+{unit}|{single})\s+(years?|months?|weeks?|days?|hours?|minutes?|times)\b"))
         });
         let text = COUNTED.replace_all(&text, "many $1");
         // The offline recogniser spells a book's number ("one John chapter five", "Two Chronicles
@@ -627,11 +632,15 @@ impl Engine {
     /// A chapter and verse were just said without a book, and the text match is at other numbers.
     pub(crate) fn bare_numbers_disagree(&self, c: &Candidate, now: u64) -> bool {
         let Some(b) = self.cites.bare.filter(|b| now.saturating_sub(b.at) < BARE_CITATION_MS) else { return false };
+        // Resolved: only the look-alike the quote first matched waits, not every other quote.
+        if let Some(rival) = b.resolved {
+            return c.verses.contains(&rival);
+        }
         !c.verses.iter().map(|v| self.r(*v)).any(|r| r.chapter == b.chapter && (b.from..=b.to).contains(&r.verse))
     }
 
     pub(crate) fn bare_citation_quoted(&mut self, c: &Candidate, now: u64) -> Option<Candidate> {
-        let b = self.cites.bare.filter(|b| now.saturating_sub(b.at) < BARE_CITATION_MS && !b.resolved)?;
+        let b = self.cites.bare.filter(|b| now.saturating_sub(b.at) < BARE_CITATION_MS && b.resolved.is_none())?;
         // …or its twin: "chapter seven verse twenty two … unless the beast of the field multiply" is
         // Deuteronomy 7:22, though the words matched Exodus 23:29 first (Oyedepo, dev build).
         let with_twins: Vec<VerseId> = c.verses.iter().flat_map(|v| std::iter::once(*v).chain(self.k.lexicon.twins(*v).iter().map(|t| t.verse))).collect();
@@ -643,10 +652,10 @@ impl Engine {
                 // Only the words the match was found in: half a minute of preaching fits some
                 // verse 1:13 somewhere ("…sound teaching" → Habakkuk 1:13, Piper, dev build).
                 let spoken = c.source.clone().unwrap_or_default();
+                let said: HashSet<String> = super::evidence::evidence_words(&spoken);
                 let mut rows: Vec<(VerseId, f32)> = Book::all()
                     .filter_map(|book| self.k.id(VerseRef::new(book, b.chapter, b.from)))
                     .map(|id| {
-                        let said: HashSet<String> = super::evidence::evidence_words(&spoken);
                         let w: f32 = super::evidence::meaningful_words(self.verse_text(id)).iter().filter(|w| said.contains(&super::evidence::stem_lite(w))).map(|w| self.k.lexicon.idf_of(w)).sum();
                         (id, w)
                     })
@@ -665,7 +674,7 @@ impl Engine {
         }
         // Kept while fresh: Exodus 23:29 came straight back over Deuteronomy 7:22 once it was gone.
         if let Some(b) = self.cites.bare.as_mut() {
-            b.resolved = true;
+            b.resolved = c.verses.first().copied();
         }
         self.note(|_| format!("{} quotes {} {}:{}–{}, cited without its book", c.method.wire(), r.book.name(), b.chapter, b.from, b.to));
         if verses.len() > 1 {
@@ -684,7 +693,7 @@ impl Engine {
             let prev = self.t.finals.len().checked_sub(2).and_then(|i| self.t.finals.get(i)).filter(|f| now.saturating_sub(f.at) < PREV_FINAL_JOIN_WINDOW_MS && bare_citation(&f.text).is_none());
             let found = bare_citation(text).or_else(|| prev.and_then(|p| bare_citation(&format!("{} {text}", p.text))));
             if let Some((chapter, from, to)) = found {
-                self.cites.bare = Some(BareCitation { chapter, from, to, at: now, resolved: false });
+                self.cites.bare = Some(BareCitation { chapter, from, to, at: now, resolved: None });
                 self.note(|_| format!("chapter {chapter} verses {from}–{to} cited without a book"));
             }
         }
@@ -802,6 +811,9 @@ impl Engine {
         // words alone (dev build 2026-10-20) — that is offered, not sent.
         // The word as said must be rare too: "they call him" shares a stem with "calleth", rare only
         // because it is archaic (John 11:28 sent, dev build 2026-10-20).
+        if self.pick_chapter_verse_by_idf(book, chapter, &after) != Some(v) {
+            return Some((v, false));
+        }
         let said: HashMap<String, f32> = super::evidence::meaningful_words(&after).iter().map(|w| (super::evidence::stem_lite(w), self.k.lexicon.idf_of(w))).collect();
         // …and one the chapter's other verses don't share: "Pharisees" is in four verses of Luke 5,
         // "parables" in six of Matthew 13 (MacArthur, dev build).
@@ -817,7 +829,7 @@ impl Engine {
             elsewhere <= CHAPTER_PICK_WORD_MAX_OTHERS
                 && said.get(&stem).is_some_and(|&spoken| (if spoken > 0.0 { idf.min(spoken) } else { idf }) >= CHAPTER_PICK_SEND_MIN_IDF)
         });
-        Some((v, identifying && self.pick_chapter_verse_by_idf(book, chapter, &after) == Some(v)))
+        Some((v, identifying))
     }
 
     /// The chapter's verse sharing clearly the most identifying words with `text`.

@@ -1,0 +1,35 @@
+{
+ "videoId": "scn-turn-to-chapter-after-citation",
+ "title": "Scenario: turn-to-chapter-after-citation",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "For God so loved the world John three sixteen"
+  },
+  {
+   "startMs": 4500,
+   "text": "now turn to chapter four verse five"
+  },
+  {
+   "startMs": 8200,
+   "text": "then cometh he to a city of Samaria which is called Sychar"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "John",
+   "chapter": 3,
+   "kind": "citation",
+   "startMs": 0,
+   "verse": 16
+  },
+  {
+   "book": "John",
+   "chapter": 4,
+   "kind": "citation",
+   "startMs": 4500,
+   "verse": 5
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

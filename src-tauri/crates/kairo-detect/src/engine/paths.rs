@@ -421,7 +421,8 @@ impl Engine {
         // …or no aligned word identifies anything: "and all those things … has been" (a
         // YouTube ad) lined up with Isaiah 66:2 on everyday words (dev build 2026-10-21).
         let light = lead.peak_idf < STREAM_MIN_PEAK_IDF;
-        let thin = intent == Target::Screen && !pointed_at && (lead.weighty < STREAM_MIN_WEIGHTY_WORDS || light) && !corroborated;
+        // The passage in play excuses few weighty words, never none: an announced passage lasts 40 minutes.
+        let thin = intent == Target::Screen && ((!pointed_at && lead.weighty < STREAM_MIN_WEIGHTY_WORDS) || light) && !corroborated;
         let mut twin_took = false;
         if thin {
             let better = match self.resolve_twin(lead.verse, now) {

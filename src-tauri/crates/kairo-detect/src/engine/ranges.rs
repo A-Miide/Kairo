@@ -50,11 +50,7 @@ impl Engine {
         if let (Some(first), Some(last)) = (verses.first(), verses.last()) {
             let (a, b) = (self.r(*first), self.r(*last));
             if verses.len() >= ANNOUNCED_MIN_VERSES && a.book == b.book && a.chapter == b.chapter {
-                self.announced.retain(|(b, c, _)| (*b, *c) != (a.book, a.chapter));
-                self.announced.push((a.book, a.chapter, now));
-                if self.announced.len() > super::core::ANNOUNCED_MAX {
-                    self.announced.remove(0);
-                }
+                self.announce(a.book, a.chapter, now);
             }
         }
         if let Some(current) = self.range.current {
@@ -76,7 +72,8 @@ impl Engine {
         };
         let words = super::citations::tokens(&joined);
         let w: Vec<&str> = words.iter().map(String::as_str).filter(|x| !matches!(*x, "uh" | "um")).collect();
-        let Some(i) = w.windows(2).position(|p| matches!(p[0], "through" | "thru" | "until" | "till" | "to") && p[1] == "chapter") else { return false };
+        // "through", not "to": "now turn to chapter four verse five" is a new citation, not reading on.
+        let Some(i) = w.windows(2).position(|p| matches!(p[0], "through" | "thru" | "until" | "till") && p[1] == "chapter") else { return false };
         let Some(ch) = crate::reference::numbers::consume_number(&w, i + 2, Some(150)) else { return false };
         let j = i + 2 + ch.consumed;
         if w.get(j) != Some(&"verse") {
@@ -96,11 +93,7 @@ impl Engine {
         self.note(|e| format!("reading on from {} through {}", e.label(up), e.label(end)));
         self.set_range(verses, now);
         for c in u.chapter..=ch {
-            self.announced.retain(|(b, x, _)| (*b, *x) != (u.book, c));
-            self.announced.push((u.book, c, now));
-        }
-        while self.announced.len() > super::core::ANNOUNCED_MAX {
-            self.announced.remove(0);
+            self.announce(u.book, c, now);
         }
         true
     }
