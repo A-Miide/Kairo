@@ -248,6 +248,19 @@ S["asked-john12-live"] = [
 ]
 S_LANG = {"num-spanish": "es", "num-french": "fr", "num-portuguese": "pt", "num-german": "de", "num-spanish-mixed": "es"}
 
+# ── 14. A count after a citation isn't its verse; "turn to chapter N verse M" is a new citation (code review, 2026-10-21) ──
+S["counted-after-citation"] = [
+    ("Peter asked how often shall I forgive", []),
+    ("Matthew eighteen twenty two seventy times seven", [("citation", "Matthew 18:22")]),
+    ("that is not a number you keep count of", []),
+]
+S["turn-to-chapter-after-citation"] = [
+    ("For God so loved the world John three sixteen", [("citation", "John 3:16")]),
+    ("now turn to chapter four verse five", [("citation", "John 4:5")]),
+    ("then cometh he to a city of Samaria which is called Sychar", [("quote", "John 4:5")]),
+]
+
+
 def answer(kind, ref, at):
     book, cv = ref.rsplit(" ", 1)
     c, v = cv.split(":")

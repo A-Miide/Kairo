@@ -338,6 +338,15 @@ impl Engine {
         }
     }
 
+    /// `book` `chapter` is (again) one of the sermon's passages.
+    pub(crate) fn announce(&mut self, book: Book, chapter: u16, now: u64) {
+        self.announced.retain(|(b, c, _)| (*b, *c) != (book, chapter));
+        self.announced.push((book, chapter, now));
+        if self.announced.len() > ANNOUNCED_MAX {
+            self.announced.remove(0);
+        }
+    }
+
     /// The announced passage's chapter is `book` `chapter`.
     pub(crate) fn in_announced_passage(&self, book: Book, chapter: u16) -> bool {
         self.announced.iter().any(|(b, c, at)| *b == book && *c == chapter && self.last_now.saturating_sub(*at) <= ANNOUNCED_PASSAGE_MS)

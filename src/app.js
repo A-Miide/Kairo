@@ -325,6 +325,10 @@ function handleServerMessage(msg) {
       window.KairoInterpreter?.onMessage(msg);
       break;
 
+    case 'singing':
+      handleSinging(msg);
+      break;
+
     case 'detection':
       handleDetection(msg);
       break;
@@ -597,6 +601,19 @@ function scheduleTranscriptScroll() {
     _transcriptScrollScheduled = false;
     if (transcriptContent) transcriptContent.scrollTop = transcriptContent.scrollHeight;
   });
+}
+
+// Singing heard in the room (the server's singing check): the transcript says "(music)" once
+// for each stretch, so the operator knows why no verses are being detected.
+function handleSinging(msg) {
+  if (!msg.active) return;
+  if (!transcriptDiv) showEmptyTranscript(false);
+  const wasAtBottom = isTranscriptAtBottom();
+  const mark = document.createElement('span');
+  mark.className = 'transcript-final transcript-interp';
+  mark.textContent = '(music) ';
+  if (interimSpan) transcriptDiv.insertBefore(mark, interimSpan); else transcriptDiv.appendChild(mark);
+  if (wasAtBottom) scheduleTranscriptScroll();
 }
 
 function handleTranscript(msg) {

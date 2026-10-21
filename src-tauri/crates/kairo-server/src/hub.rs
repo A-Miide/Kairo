@@ -159,4 +159,12 @@ fn note_screen_change(l: &mut Live, next: Option<&Value>) {
         l.history.pop_front();
     }
     l.screen_now = next.cloned();
+    // A verse from another passage, sent by anyone (the operator too, with Auto-send off), ends a
+    // translation the preacher asked for (spoken.rs).
+    // Not a repaint of what is up in another translation ("retranslated").
+    if let Some(v) = next.filter(|n| n["retranslated"] != true).and_then(|n| n["verses"].get(0)) {
+        if let (Some(book), Some(chapter)) = (v["book"].as_str(), v["chapter"].as_u64()) {
+            let _ = crate::spoken::on_send(book, chapter);
+        }
+    }
 }

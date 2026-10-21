@@ -72,8 +72,10 @@ fn route(screen: bool, explicit: bool, p: &Presentation) -> Route {
 #[derive(Clone)]
 pub struct Detector {
     tx: mpsc::Sender<Command>,
-    /// Told when the preacher asks for another translation ("switch to the NIV").
-    on_translation: Arc<std::sync::OnceLock<Box<dyn Fn(&'static str) + Send + Sync>>>,
+    /// Told when the preacher asks for another translation ("switch to the NIV"), with what was heard.
+    on_translation: Arc<std::sync::OnceLock<Box<dyn Fn(&'static str, String) + Send + Sync>>>,
+    /// The last finished stretch: a request split over two ("Isaiah seven seven" | "NLT or Message").
+    last_final: Arc<std::sync::Mutex<String>>,
 }
 
 /// What this service put on screen and how — the sermon notes read it.
@@ -90,7 +92,7 @@ pub use crate::util::epoch_ms;
 impl Detector {
     pub fn start(bible: Arc<Bible>, hub: Arc<Hub>, cfg: Config, presentation: Arc<std::sync::RwLock<Presentation>>, rt: tokio::runtime::Handle, log: Log) -> Detector {
         let (tx, rx) = mpsc::channel::<Command>();
-        let me = Detector { tx: tx.clone(), on_translation: Default::default() };
+        let me = Detector { tx: tx.clone(), on_translation: Default::default(), last_final: Default::default() };
         std::thread::Builder::new()
             .name("detection".into())
             .spawn(move || run(bible, hub, cfg, presentation, rt, tx, rx, log))
@@ -99,7 +101,7 @@ impl Detector {
     }
 
     /// What to do when a spoken command asks for another translation (set once, at start).
-    pub fn on_translation(&self, f: impl Fn(&'static str) + Send + Sync + 'static) {
+    pub fn on_translation(&self, f: impl Fn(&'static str, String) + Send + Sync + 'static) {
         let _ = self.on_translation.set(Box::new(f));
     }
 
@@ -149,10 +151,15 @@ impl Detector {
         // Finished stretches go in debug.log, so a run can be diagnosed from the log alone.
         if is_final {
             crate::routes::write_debug_global("server:transcript", json!({ "text": text, "speechFinal": speech_final, "continues": continues_live }));
-            if let Some(code) = kairo_detect::reference::translation_command::translation_command(text) {
-                if let Some(f) = self.on_translation.get() {
-                    f(code);
-                }
+            use kairo_detect::reference::translation_command::translation_command;
+            let prev = std::mem::replace(&mut *crate::util::lock(&self.last_final), text.to_string());
+            let joined = format!("{prev} {text}");
+            // This stretch, or this one with the last when the last alone wasn't a request already.
+            let heard = translation_command(text).map(|c| (c, text.to_string())).or_else(|| {
+                translation_command(&prev).is_none().then(|| translation_command(&joined)).flatten().map(|c| (c, joined.clone()))
+            });
+            if let (Some((code, heard)), Some(f)) = (heard, self.on_translation.get()) {
+                f(code, heard);
             }
         } else if std::env::var_os("KAIRO_LOG_INTERIMS").is_some() {
             // Live text too, so a test run can be replayed as it was heard (off unless asked for).
