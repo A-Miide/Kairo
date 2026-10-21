@@ -250,6 +250,14 @@ impl Books {
         if len < 4 {
             return None;
         }
+        // An outline's "number two", "number three" (Piper, dev build): Numbers only with a verse after.
+        if w == "number" {
+            let after = words.get(i + 2).copied().unwrap_or("");
+            let homophone = matches!(after, "for" | "won" | "too" | "ate" | "to");
+            if !(after == "verse" || after == "verses" || is_digits(after) || (!homophone && super::numbers::word_value(after).is_some())) {
+                return None;
+            }
+        }
         let next = words.get(i + 1).copied().unwrap_or("");
         let chapter_next = next == "chapter";
         // A near-miss book name needs a real number after it. The speech-engine
