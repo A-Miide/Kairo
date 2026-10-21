@@ -9,6 +9,11 @@ use super::scoring::{self, ScoreContext, SAME_BOOK_WINDOW_MS};
 use super::twins::TwinOutcome;
 use super::types::{Method, OnScreen, Target};
 
+use std::collections::HashSet;
+
+/// A verse shown and replaced comes back only on words of its own at least this rare.
+const RETURN_MIN_IDF: f32 = 3.0;
+
 /// How long a finished range (its last verse reached) still holds off other books.
 const FINISHED_RANGE_HOLD_MS: u64 = 30_000;
 const SUGGESTION_DEDUP_MS: u64 = 180_000;
@@ -441,6 +446,12 @@ impl Engine {
         let last_since = self.t.finals.iter().rfind(|f| f.at > at).map_or("", |f| f.text.as_str());
         let heard = super::evidence::evidence_words(&format!("{last_since} {}", self.t.interim));
         let (cand, cur) = (super::evidence::evidence_words(self.verse_text(v)), super::evidence::evidence_words(self.verse_text(up)));
+        // Everyday words don't bring it back: "…recruiting people to fight you" put Ezra 4:4 ("the
+        // people of the land") back over 4:5 (dev build 2026-10-20).
+        let rare = |verse: VerseId| -> HashSet<String> {
+            super::evidence::meaningful_words(self.verse_text(verse)).iter().filter(|w| self.k.lexicon.idf_of(w) >= RETURN_MIN_IDF).map(|w| super::evidence::stem_lite(w)).collect()
+        };
+        let cand: HashSet<String> = cand.intersection(&rare(v)).cloned().collect();
         let (cand_only, cur_only) = super::evidence::own_words_heard(&cand, &cur, &heard);
         cand_only == 0 || cand_only <= cur_only
     }
