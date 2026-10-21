@@ -252,6 +252,9 @@ impl Books {
         }
         // An outline's "number two", "number three" (Piper, dev build): Numbers only with a verse after.
         if w == "number" {
+            if counted_point(words, i) {
+                return None;
+            }
             let after = words.get(i + 2).copied().unwrap_or("");
             let homophone = matches!(after, "for" | "won" | "too" | "ate" | "to");
             if !(after == "verse" || after == "verses" || is_digits(after) || (!homophone && super::numbers::word_value(after).is_some())) {
@@ -296,6 +299,9 @@ impl Books {
         // "number" is an everyday word one letter from "numbers": only a verse
         // after the chapter makes it the book.
         if alias == "numbers" && w == "number" {
+            if counted_point(words, i) {
+                return None;
+            }
             let after = words.get(i + 2).copied().unwrap_or("");
             let verse_follows = after == "verse" || after == "verses" || is_digits(after) || super::numbers::word_value(after).is_some();
             if !verse_follows {
@@ -477,4 +483,13 @@ mod tests {
         assert!(books.sound_alikes(b("Philippians")).contains(&b("Ephesians")));
         assert!(books.sound_alikes(b("Job")).contains(&b("Joel")));
     }
+}
+
+/// "observation number four verse five", "point number two": a sermon's outline, not the book of
+/// Numbers (Piper on 2 Timothy 4:5, dev build 2026-10-21).
+fn counted_point(words: &[&str], i: usize) -> bool {
+    const POINTS: &[&str] = &[
+        "observation", "point", "argument", "reason", "thing", "step", "principle", "lesson", "key", "truth", "exhortation", "question", "answer", "the", "and",
+    ];
+    i.checked_sub(1).and_then(|p| words.get(p)).is_some_and(|w| POINTS.contains(w))
 }
