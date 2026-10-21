@@ -27,7 +27,7 @@ const VERSE_JUMP_COOLDOWN_MS: u64 = 2_000;
 /// A word this identifying, heard, lets a bare "verse N" in a chapter never named go up.
 const PARTIAL_OWN_WORD_MIN_IDF: f32 = 4.0;
 /// A verse of the same chapter on screen this recently also lets a bare "verse N" go up.
-const PARTIAL_CHAPTER_UP_MS: u64 = 30_000;
+const PARTIAL_CHAPTER_UP_MS: u64 = 60_000;
 /// A "verse N" resolution renews the context only if it reached the screen,
 /// or that verse is already up from this recently.
 const PARTIAL_CONFIRM_MAX_AGE_MS: u64 = 15_000;
