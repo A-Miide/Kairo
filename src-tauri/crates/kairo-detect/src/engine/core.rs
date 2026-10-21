@@ -139,9 +139,10 @@ pub struct Engine {
     pub(crate) twins: TwinState,
     pub(crate) paths: PathState,
     pub(crate) reading_mode: ReadingMode,
-    /// The passage the sermon announced ("Mark chapter four verses twenty one to thirty four"):
-    /// book, chapter and when. It stays in play far longer than a passing citation.
-    pub(crate) announced: Option<(Book, u16, u64)>,
+    /// The passages the sermon announced ("Mark chapter four verses twenty one to thirty four"):
+    /// book, chapter and when, newest last. They stay in play far longer than a passing citation;
+    /// a later one (MacArthur's aside to "chapter six, verses seven to thirteen") doesn't end the first.
+    pub(crate) announced: Vec<(Book, u16, u64)>,
     pub(crate) check: Option<CitationCheck>,
     pub(crate) meaning: MeaningState,
     next_id: u32,
@@ -156,6 +157,8 @@ const MAX_CITED: usize = 8;
 pub const CONTEXT_WINDOW_MS: u64 = 5 * 60 * 1000;
 /// An announced passage stays in play this long (a sermon spends most of its time on its text).
 pub const ANNOUNCED_PASSAGE_MS: u64 = 40 * 60 * 1000;
+/// Announced passages kept.
+pub const ANNOUNCED_MAX: usize = 3;
 
 impl Engine {
     pub fn new(k: Arc<Knowledge>, cfg: Config) -> Engine {
@@ -179,7 +182,7 @@ impl Engine {
             twins: TwinState::default(),
             paths: PathState::default(),
             reading_mode: ReadingMode::default(),
-            announced: None,
+            announced: Vec::new(),
             check: None,
             meaning: MeaningState::default(),
             next_id: 0,
@@ -337,7 +340,7 @@ impl Engine {
 
     /// The announced passage's chapter is `book` `chapter`.
     pub(crate) fn in_announced_passage(&self, book: Book, chapter: u16) -> bool {
-        self.announced.is_some_and(|(b, c, at)| b == book && c == chapter && self.last_now.saturating_sub(at) <= ANNOUNCED_PASSAGE_MS)
+        self.announced.iter().any(|(b, c, at)| *b == book && *c == chapter && self.last_now.saturating_sub(*at) <= ANNOUNCED_PASSAGE_MS)
     }
 
     pub(crate) fn recently_cited(&self, now: u64) -> impl Iterator<Item = &Cited> {

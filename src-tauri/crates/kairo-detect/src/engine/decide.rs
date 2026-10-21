@@ -70,6 +70,12 @@ impl Engine {
             if let Some(cited) = self.bare_citation_quoted(&c, now) {
                 return self.decide(cited, now);
             }
+            // …and a quote of a verse with other numbers waits: "chapter seven verse twenty two …
+            // unless the beast of the field multiply" put Exodus 23:29 up before "little by little"
+            // showed it was Deuteronomy 7:22 (Oyedepo, dev build 2026-10-21).
+            if self.bare_numbers_disagree(&c, now) {
+                c.cap = true;
+            }
         }
 
         // 1. A cited range's next verse moves the range, from any method.

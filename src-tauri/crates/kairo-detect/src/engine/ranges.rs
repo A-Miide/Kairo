@@ -47,7 +47,11 @@ impl Engine {
         if let (Some(first), Some(last)) = (verses.first(), verses.last()) {
             let (a, b) = (self.r(*first), self.r(*last));
             if verses.len() >= ANNOUNCED_MIN_VERSES && a.book == b.book && a.chapter == b.chapter {
-                self.announced = Some((a.book, a.chapter, now));
+                self.announced.retain(|(b, c, _)| (*b, *c) != (a.book, a.chapter));
+                self.announced.push((a.book, a.chapter, now));
+                if self.announced.len() > super::core::ANNOUNCED_MAX {
+                    self.announced.remove(0);
+                }
             }
         }
         if let Some(current) = self.range.current {

@@ -208,17 +208,23 @@ impl Engine {
     /// sermon's announced passage better: Luke 6:38 cited, then "whoever has, verse twenty five, to
     /// him more shall be given" is Mark 4:25, not Luke 6:25 (MacArthur, dev build 2026-10-20).
     fn announced_instead(&self, mut p: Partial, text: &str) -> Partial {
-        let Some((book, chapter, _)) = self.announced.filter(|(b, c, _)| self.in_announced_passage(*b, *c)) else { return p };
         let Verses::One(n) = p.citation.verses else { return p };
-        if p.chapter_given || (p.citation.book == book && p.citation.chapter == chapter as u32) {
+        if p.chapter_given || self.in_announced_passage(p.citation.book, p.citation.chapter as u16) {
             return p;
         }
-        let Some(there) = self.k.id(VerseRef::new(book, chapter, n as u16)) else { return p };
         let spoken = format!("{} {text}", self.recent_speech_seconds(20).join(" "));
         let here = self.k.id(VerseRef::new(p.citation.book, p.citation.chapter as u16, n as u16)).map_or(0.0, |h| self.shared_weight(h, &spoken).0);
-        if self.shared_weight(there, &spoken).0 >= here + super::ranges::CHAPTER_KEYWORD_MIN_MARGIN * 2.0 {
-            p.citation.book = book;
-            p.citation.chapter = chapter as u32;
+        let best = self
+            .announced
+            .iter()
+            .filter(|(b, c, _)| self.in_announced_passage(*b, *c))
+            .filter_map(|(b, c, _)| self.k.id(VerseRef::new(*b, *c, n as u16)).map(|id| (*b, *c, self.shared_weight(id, &spoken).0)))
+            .max_by(|x, y| x.2.total_cmp(&y.2));
+        if let Some((book, chapter, w)) = best {
+            if w >= here + super::ranges::CHAPTER_KEYWORD_MIN_MARGIN * 2.0 {
+                p.citation.book = book;
+                p.citation.chapter = chapter as u32;
+            }
         }
         p
     }
