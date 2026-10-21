@@ -3934,6 +3934,8 @@ function wireOfflineModelInstaller(ids) {
         window.renderLangCapability?.();
       } else {
         statusLine.textContent = `${name} not installed.`;
+        // Under "Preacher speaks" the "Needs the offline model…" line already says so.
+        if (ids.hideWhenInstalled) statusLine.textContent = '';
         statusLine.style.color = '';
         installBtn.textContent = downloadLabel;
         installBtn.style.display = '';
