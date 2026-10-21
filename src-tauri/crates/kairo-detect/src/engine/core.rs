@@ -421,7 +421,8 @@ impl Engine {
         self.advance_range_by_content(now);
 
         let prev_before = self.t.prev_final.clone();
-        let mut found = self.process_references_final(&text, &sent_from_interim, seg.continues_live, now);
+        let through = self.read_through_chapter(&text, prev_before.as_ref(), now);
+        let mut found = through || self.process_references_final(&text, &sent_from_interim, seg.continues_live, now);
         self.check_citation_siblings(&text, true, false, now);
         if self.spoken_correction(&text, true, now) {
             found = true;
