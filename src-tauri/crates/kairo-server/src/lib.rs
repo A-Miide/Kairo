@@ -304,7 +304,7 @@ fn load_meaning(app: &Shared) {
     let t = std::time::Instant::now();
     let db = &app.cfg.db_dir;
     // bge-small-en-v1.5 (int8, 34 MB): as good as the 207 MB EmbeddingGemma on the
-    // sermons, at half the search time (docs/HANDOVER_2026-10-16.md).
+    // sermons, at half the search time.
     let bge = db.join("model/Xenova/bge-small-en-v1.5");
     let cfg = EmbedderConfig {
         name: "bge-small".into(),

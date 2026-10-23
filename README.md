@@ -49,7 +49,7 @@ node --test src/*.test.js
 cargo test --release --manifest-path src-tauri/Cargo.toml -p kairo -p kairo-server -p kairo-detect --lib
 ```
 
-Detection evaluations (sermon replay, scenarios, the meaning benchmark) are described in the latest `docs/HANDOVER_*.md`.
+Detection evaluations (sermon replay, scenarios, the meaning benchmark) live in `eval/`.
 
 ---
 
@@ -66,7 +66,6 @@ Model and data releases (`offline-model-*`, `bundle-data-*`, `bible-packs`) shou
 ## Docs
 
 - `docs/RUST_ENGINE.md`: the engine
-- `docs/HANDOVER_*.md`: current state, decisions and how to run the evaluations
 - `docs/THIRD_PARTY.md`: bundled software and licences
 
 ## License
