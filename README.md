@@ -6,7 +6,7 @@ KAIRO listens to the preacher, works out which scripture is being cited or quote
 
 Around detection sits a full presentation system: slides, songs, timers, media, themes, a stage Monitor, multiple outputs (screens, NDI, Syphon, DeckLink), a Director mode for cameras, and streaming and recording.
 
-Downloads: [the landing page](https://miide-adeyemi.github.io/Kairo/) or [Releases](https://github.com/miide-Adeyemi/Kairo/releases).
+Downloads: [the landing page](https://a-miide.github.io/Kairo/) or [Releases](https://github.com/A-Miide/Kairo/releases).
 
 ---
 

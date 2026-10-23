@@ -21,7 +21,7 @@ import sys
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
 PACKS = os.path.join(ROOT, "databases", "bibles", "packs")
-DEFAULT_BASE = "https://github.com/miide-Adeyemi/Kairo/releases/download/bible-packs"
+DEFAULT_BASE = "https://github.com/A-Miide/Kairo/releases/download/bible-packs"
 
 
 def main():

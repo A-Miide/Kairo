@@ -10,7 +10,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-base="https://github.com/miide-Adeyemi/Kairo/releases/download/"
+base="https://github.com/A-Miide/Kairo/releases/download/"
 # Allowed to be missing: the Bible list. Every language Kairo offers has its Bible inside the app,
 # and the app falls back to that one when the list is not there (bible_packs.rs run_install).
 optional="bible-packs/catalog.json"
