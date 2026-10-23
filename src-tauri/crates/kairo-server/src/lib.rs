@@ -9,7 +9,7 @@
 #[macro_export]
 macro_rules! kairo_download {
     ($path:literal) => {
-        concat!("https://github.com/miide-Adeyemi/Kairo/releases/download/", $path)
+        concat!("https://github.com/A-Miide/Kairo/releases/download/", $path)
     };
 }
 
