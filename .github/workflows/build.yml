@@ -10,7 +10,7 @@ jobs:
   # ── The app's own tests, before anything is built ────────────────────────
   # The JS tests take seconds; a failure stops the release before ~30 minutes
   # of platform builds. (The Rust tests need the full engine build: run them
-  # locally, see docs/HANDOVER_*.md.)
+  # locally; see the README.)
   test:
     runs-on: ubuntu-24.04
     steps:
