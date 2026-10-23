@@ -3,23 +3,25 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="logo.png">
+  <meta property="og:image" content="https://a-miide.github.io/Kairo/tour-monitor.jpg">
   <title>KAIRO — AI Scripture Detection for Church Services</title>
-  <meta name="description" content="KAIRO listens to your service in real time and automatically detects Bible verses as they're preached — pushing them instantly to ProPresenter, OBS, or an external display.">
+  <meta name="description" content="KAIRO listens to the preacher, works out which scripture is cited or quoted, and puts it on your church screens within a second or two. Free to download.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
     :root {
-      --bg:        #1c1c1e;
-      --bg-panel:  #161618;
-      --bg-card:   #232325;
+      --bg:        #161618;
+      --bg-panel:  #121214;
+      --bg-card:   #1e1e20;
       --border:    rgba(255,255,255,0.07);
       --text:      #f0f0f0;
       --muted:     #888;
-      --red:       #e63946;
+      --red:       #F5301A;
       --green:     #22c55e;
-      --indigo:    #818cf8;
+      --indigo:    #FF9130;
       --r: 12px;
     }
 
@@ -70,7 +72,7 @@
     }
     .hero-badge {
       display: inline-flex; align-items: center; gap: 6px;
-      background: rgba(230,57,70,0.1); border: 1px solid rgba(230,57,70,0.25);
+      background: rgba(245,48,26,0.1); border: 1px solid rgba(245,48,26,0.25);
       color: var(--red); border-radius: 999px;
       padding: 4px 14px; font-size: 12px; font-weight: 700;
       letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 24px;
@@ -103,8 +105,8 @@
     .dl-btn svg { width: 22px; height: 22px; flex-shrink: 0; }
     .dl-btn .dl-label { display: flex; flex-direction: column; text-align: left; }
     .dl-btn .dl-sub { font-size: 11px; font-weight: 400; color: var(--muted); }
-    .dl-btn.primary { border-color: rgba(230,57,70,0.4); background: rgba(230,57,70,0.08); }
-    .dl-btn.primary:hover { background: rgba(230,57,70,0.14); }
+    .dl-btn.primary { border-color: rgba(245,48,26,0.4); background: rgba(245,48,26,0.08); }
+    .dl-btn.primary:hover { background: rgba(245,48,26,0.14); }
     .dl-note {
       font-size: 12px; color: var(--muted); text-align: center;
     }
@@ -178,6 +180,20 @@
     }
     .demo-placeholder svg { opacity: 0.2; }
 
+    .demo-shots { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    .demo-shots figure { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 14px; padding: 12px 12px 16px; }
+    .demo-shots img { width: 100%; display: block; border-radius: 8px; }
+    .demo-shots figcaption { margin-top: 12px; font-size: 13px; font-weight: 600; color: var(--muted); text-align: center; }
+    @media (max-width: 720px) { .demo-shots { grid-template-columns: 1fr; } }
+
+    .section-lead { max-width: 720px; color: #b4b4ba; font-size: 17px; margin: -24px 0 36px; }
+    .section-lead strong { color: var(--text); }
+    .pill { display: inline-block; background: rgba(245,48,26,0.14); color: var(--red); border: 1px solid rgba(245,48,26,0.3); border-radius: 999px; padding: 2px 10px; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 12px; }
+    .whatsnew { margin-bottom: 96px; }
+    .whatsnew .feat-card { border-color: rgba(245,48,26,0.2); }
+    h3.group { font-size: 13px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin: 40px 0 16px; }
+    h3.group:first-of-type { margin-top: 0; }
+
     /* ── Features ── */
     .features {
       max-width: 1000px; margin: 0 auto 80px; padding: 0 24px;
@@ -202,10 +218,10 @@
       display: flex; align-items: center; justify-content: center;
       margin-bottom: 14px;
     }
-    .feat-icon.red    { background: rgba(230,57,70,0.12);   color: var(--red); }
+    .feat-icon.red    { background: rgba(245,48,26,0.12);   color: var(--red); }
     .feat-icon.teal   { background: rgba(77,182,172,0.12);  color: #4db6ac; }
     .feat-icon.green  { background: rgba(34,197,94,0.1);    color: var(--green); }
-    .feat-icon.indigo { background: rgba(129,140,248,0.1);  color: var(--indigo); }
+    .feat-icon.indigo { background: rgba(255,145,48,0.1);  color: var(--indigo); }
     .feat-icon.amber  { background: rgba(251,191,36,0.1);   color: #fbbf24; }
     .feat-icon.sky    { background: rgba(56,189,248,0.1);   color: #38bdf8; }
     .feat-icon.purple { background: rgba(167,139,250,0.1);  color: #a78bfa; }
@@ -281,13 +297,11 @@
   <!-- ── Nav ── -->
   <nav>
     <a class="nav-logo" href="#">
-      <svg viewBox="0 0 24 24" fill="none">
-        <path d="M12 2C8 6 6 9 6 13a6 6 0 0 0 12 0c0-4-2-7-6-11z" fill="#e63946" opacity="0.9"/>
-        <path d="M12 8c-2 2.5-3 4.5-3 6a3 3 0 0 0 6 0c0-1.5-1-3.5-3-6z" fill="#e63946"/>
-      </svg>
+      <img src="logo.png" alt="" width="26" height="26" style="border-radius:6px">
       KAIRO
     </a>
     <ul class="nav-links">
+      <li><a href="#new">What&rsquo;s new</a></li>
       <li><a href="#features">Features</a></li>
       <li><a href="#how">How it works</a></li>
       <li><a href="#requirements">Requirements</a></li>
@@ -302,7 +316,7 @@
       Free &amp; Open Source
     </div>
     <h1>Bible verses on screen,<br><em>automatically.</em></h1>
-    <p>KAIRO listens to your sermon in real time and detects scripture as it's preached — pushing it instantly to ProPresenter, OBS, or an external display.</p>
+    <p>KAIRO listens to the preacher, works out which scripture is cited or quoted, and puts it on your church screens within a second or two. Slides, songs, outputs and cameras included.</p>
 
     <div id="version-badge">Loading latest version…</div>
 
@@ -369,84 +383,57 @@
 
   <!-- ── Demo placeholder ── -->
   <div class="demo">
-    <div class="demo-frame">
-      <div class="demo-placeholder">
-        <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1">
-          <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
-        </svg>
-        <span>Screenshot coming soon</span>
-      </div>
+    <div class="demo-shots">
+      <figure><img src="tour-monitor.jpg" alt="KAIRO Monitor showing the verse on every output"><figcaption>Watch every output from one screen</figcaption></figure>
+      <figure><img src="tour-outputs.jpg" alt="KAIRO output settings with theme choices"><figcaption>A theme for each screen</figcaption></figure>
     </div>
   </div>
 
   <!-- ── Features ── -->
-  <section class="features" id="features">
-    <div class="section-label">Features</div>
-    <h2>Everything your tech team needs</h2>
+  <section class="features whatsnew" id="new">
+    <div class="section-label">New in 4.2</div>
+    <h2>Rebuilt around one idea: the right verse, or none</h2>
+    <p class="section-lead">KAIRO listens to the preacher, works out which scripture is being cited or quoted, and puts it on your screens within a second or two. When it isn&rsquo;t sure it offers the verse in <strong>Possible Matches</strong> instead of sending it, because a wrong verse on screen is worse than a missed one.</p>
     <div class="feat-grid">
-      <div class="feat-card">
-        <div class="feat-icon red">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
-          </svg>
-        </div>
-        <h3>Live verse detection</h3>
-        <p>Three detection engines — direct reference parsing, verbatim phrase matching, and fingerprint coverage — vote and confirm in real time as the sermon plays out.</p>
-      </div>
-      <div class="feat-card">
-        <div class="feat-icon teal">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M2 12h6m8 0h6"/><circle cx="12" cy="12" r="4"/><path d="M12 2v2m0 16v2"/>
-          </svg>
-        </div>
-        <h3>Works offline</h3>
-        <p>Switch to the Offline engine in Settings and KAIRO transcribes entirely on your machine — no internet, no API key, no monthly cost. Same detection pipeline as the cloud path.</p>
-      </div>
-      <div class="feat-card">
-        <div class="feat-icon green">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
-          </svg>
-        </div>
-        <h3>Reading mode</h3>
-        <p>Detects when a preacher is reading through a passage and tightens the verse-advance sensitivity automatically, so consecutive verses advance smoothly without gaps.</p>
-      </div>
-      <div class="feat-card">
-        <div class="feat-icon indigo">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/>
-          </svg>
-        </div>
-        <h3>ProPresenter integration</h3>
-        <p>Pushes detected verses directly to ProPresenter's live output via the REST API. Works alongside your existing slide deck with zero disruption.</p>
-      </div>
-      <div class="feat-card">
-        <div class="feat-icon amber">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/>
-          </svg>
-        </div>
-        <h3>OBS WebSocket</h3>
-        <p>Writes verse text to any OBS text source over WebSocket. Works with streaming, recordings, or a confidence monitor — no plugins required.</p>
-      </div>
-      <div class="feat-card">
-        <div class="feat-icon sky">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M1 6l11 6 11-6M1 6v12l11 6 11-6V6"/>
-          </svg>
-        </div>
-        <h3>Theme Studio</h3>
-        <p>Design layered on-screen looks — background, verse text, reference — with custom fonts, colors, gradients, and blur. Live preview before pushing to the display.</p>
-      </div>
-      <div class="feat-card">
-        <div class="feat-icon purple">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
-          </svg>
-        </div>
-        <h3>Sermon context memory</h3>
-        <p>Remembers the book and chapter being preached so bare references like "verse 17" or "the next verse" resolve correctly without a full citation.</p>
-      </div>
+      <div class="feat-card"><span class="pill">New</span><h3>A new engine, inside the app</h3><p>The detection server is now part of KAIRO itself. No Node runtime, a smaller download (about 400 MB on disk, down from about 650 MB) and a faster start.</p></div>
+      <div class="feat-card"><span class="pill">New</span><h3>Possible Matches you can trust</h3><p>Fewer suggestions with less noise, and the same verses found. Quotes with distinctive wording are offered even when the preacher doesn&rsquo;t cite them.</p></div>
+      <div class="feat-card"><span class="pill">New</span><h3>Better at what preachers actually say</h3><p>&ldquo;John four verse four&rdquo; read with 1 John&rsquo;s words becomes 1 John 4:4. A citation whose book wasn&rsquo;t heard is placed by the quote that follows.</p></div>
+      <div class="feat-card"><span class="pill">New</span><h3>The KJV, correctly numbered</h3><p>The bundled KJV was missing six verses and had split four, so later verses in Matthew 2, 22 and 26 and Mark 4, 7 and 8 showed the wrong text. Fixed.</p></div>
+      <div class="feat-card"><span class="pill">New</span><h3>Offline, level with Deepgram</h3><p>On the test sermons the offline engine now matches Deepgram. Translating slides to French, Spanish and Portuguese works again, on your own machine.</p></div>
+      <div class="feat-card"><span class="pill">New</span><h3>Sermon notes, rebuilt</h3><p>The main text, every scripture marked read, cited or alluded to, the themes, and the people of the Bible named.</p></div>
+      <div class="feat-card"><span class="pill">New</span><h3>Word documents and pasted text</h3><p>Import the way it&rsquo;s written: headings start slides, line breaks stay, and each paragraph becomes one slide.</p></div>
+      <div class="feat-card"><span class="pill">New</span><h3>A new default look</h3><p>The default Bible theme is now Full &mdash; Background on Crimson, matching KAIRO&rsquo;s own colours.</p></div>
+    </div>
+  </section>
+
+  <!-- ── Everything it does ── -->
+  <section class="features" id="features">
+    <div class="section-label">Everything in KAIRO</div>
+    <h2>Detection, plus the whole presentation system around it</h2>
+
+    <h3 class="group">Hear and detect</h3>
+    <div class="feat-grid">
+      <div class="feat-card"><h3>Live verse detection</h3><p>Hears citations and quotes as they&rsquo;re preached and puts the verse on screen. It remembers the sermon&rsquo;s book and chapter, so &ldquo;verse 17&rdquo; or &ldquo;the next verse&rdquo; still resolves.</p></div>
+      <div class="feat-card"><h3>Possible Matches</h3><p>When it&rsquo;s unsure it offers the verse for you to send instead of sending it. Paraphrases are only ever offers.</p></div>
+      <div class="feat-card"><h3>Cloud or offline speech</h3><p>Use Deepgram, or transcribe entirely on your machine with no internet, no API key and no monthly cost. The offline model downloads on first use.</p></div>
+      <div class="feat-card"><h3>Verse numbers in other languages</h3><p>Understands spoken verse numbers in English, Spanish, French and more, and reads &ldquo;from 28 down to 31&rdquo; as a range.</p></div>
+      <div class="feat-card"><h3>Interpreter in the room</h3><p>Notices when an interpreter is speaking, so their words aren&rsquo;t mistaken for the sermon, and offers a Multi-Language theme for Spanish, French and Portuguese.</p></div>
+      <div class="feat-card"><h3>Songs stay safe</h3><p>While a lyrics slide is up, scripture it hears is offered in Possible Matches rather than sent over the song.</p></div>
+    </div>
+
+    <h3 class="group">Present</h3>
+    <div class="feat-grid">
+      <div class="feat-card"><h3>Slides, songs, timers and media</h3><p>Run the whole service from one place, not only the verses.</p></div>
+      <div class="feat-card"><h3>Theme Studio</h3><p>Design layered on-screen looks with your own fonts, colours, gradients and blur, with a live preview before it goes to the display.</p></div>
+      <div class="feat-card"><h3>Stage Monitor</h3><p>See every output in one view, with what&rsquo;s live and what&rsquo;s next.</p></div>
+      <div class="feat-card"><h3>Multiple outputs</h3><p>Send to screens, NDI, Syphon and DeckLink, each with its own theme and layout. A saved screen waits for you and reopens when it&rsquo;s plugged back in.</p></div>
+    </div>
+
+    <h3 class="group">Produce</h3>
+    <div class="feat-grid">
+      <div class="feat-card"><h3>Director mode</h3><p>Cameras with Preview and Program, layouts, and a key for each input. Press Space to send.</p></div>
+      <div class="feat-card"><h3>Streaming and recording</h3><p>Stream and record from KAIRO, with recording that copies the stream&rsquo;s own picture so nothing is encoded twice.</p></div>
+      <div class="feat-card"><h3>ProPresenter and OBS</h3><p>Push detected verses to ProPresenter&rsquo;s live output through its REST API, or write them to an OBS text source over WebSocket.</p></div>
     </div>
   </section>
 
