@@ -70,4 +70,6 @@ Model and data releases (`offline-model-*`, `bundle-data-*`, `bible-packs`) shou
 
 ## License
 
-MIT
+KAIRO's source code is licensed under the GNU General Public License, version 3 (see [LICENSE](LICENSE)). Copyright (C) 2026 Miide.
+
+Third-party software and data keep their own licences: see [docs/THIRD_PARTY.md](docs/THIRD_PARTY.md) and, for Bible text, the `ATTRIBUTION.md` files in `databases/bibles/packs/` and `databases/bibles/translations/`. The GPL covers KAIRO's code, not those texts.
