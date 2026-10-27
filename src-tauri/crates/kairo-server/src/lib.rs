@@ -28,6 +28,7 @@ mod installer;
 mod bible_packs;
 pub mod notes;
 pub mod offline;
+mod onnx_weights;
 mod mt;
 mod native_audio;
 mod obs;

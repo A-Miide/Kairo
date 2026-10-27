@@ -226,6 +226,9 @@ async fn install(app: &Shared, s: &Spec, progress: &Progress) -> Result<std::pat
     if !crate::offline::present(&final_dir) {
         return Err("Model files missing after extraction — the archive layout may have changed.".into());
     }
+    // Done now so the first service doesn't wait for it (loading would do it otherwise).
+    let d = final_dir.clone();
+    let _ = tokio::task::spawn_blocking(move || crate::offline::map_weights(&d)).await;
     let _ = std::fs::write(final_dir.join(".kairo-model-version"), s.version);
     let _ = progress.send(json!({ "phase": "done", "already": false, "modelPath": final_dir }));
     Ok(final_dir)

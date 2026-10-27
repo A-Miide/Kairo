@@ -2636,6 +2636,7 @@ dependencies = [
  "kairo-detect",
  "kairo-semantic",
  "libc",
+ "memmap2",
  "ort",
  "regex",
  "reqwest 0.12.28",
