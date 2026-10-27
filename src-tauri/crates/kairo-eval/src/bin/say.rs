@@ -30,10 +30,15 @@ fn main() {
 
     // `--segments`: one line per segment as the speech engine sent it; a line starting "~ " is an
     // interim, any other line a final (reproduces what a live log shows, which re-splitting can't).
+    // "@12.5 " before a line says when it was heard (seconds), else it comes 1.5 s after the last.
     if args.iter().any(|a| a == "--segments") {
         let mut t = 0u64;
         for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
-            t += 1500;
+            let (at, line) = match line.strip_prefix('@').and_then(|r| r.split_once(' ')) {
+                Some((secs, rest)) if secs.parse::<f64>().is_ok() => (Some((secs.parse::<f64>().unwrap() * 1000.0) as u64), rest.trim()),
+                _ => (None, line),
+            };
+            t = at.unwrap_or(t + 1500);
             let (said, fin) = line.strip_prefix("~ ").map_or((line, true), |s| (s, false));
             println!("[{:>5.1}s] {}{said}", t as f64 / 1000.0, if fin { "" } else { "~ " });
             let o = engine.handle(Event::Speech(Segment { text: said.to_string(), is_final: fin, speech_final: fin, continues_live: !fin }), t);

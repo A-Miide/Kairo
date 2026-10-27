@@ -146,6 +146,8 @@ pub struct Engine {
     /// The person most recently named, and when.
     pub(crate) person: Option<(String, u64)>,
     pub(crate) chapter_pending: Option<ChapterPending>,
+    /// A verse called out, and the digression away from it (detour.rs).
+    pub(crate) called: Option<super::detour::Called>,
     pub(crate) chapter_resolved_for: Option<(Book, u16)>,
     pub(crate) awaiting: HashMap<VerseId, Held>,
     pub(crate) throttle: Throttles,
@@ -193,6 +195,7 @@ impl Engine {
             stream: StreamMatcher::new(),
             person: None,
             chapter_pending: None,
+            called: None,
             chapter_resolved_for: None,
             awaiting: HashMap::new(),
             throttle: Throttles::default(),
@@ -492,6 +495,9 @@ impl Engine {
         }
         if let Some(last) = self.t.finals.back_mut() {
             last.has_ref = found;
+        }
+        if !found {
+            self.maybe_return_to_called(now);
         }
 
         // The slower text searches: on every final while a range is being

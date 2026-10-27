@@ -63,6 +63,7 @@ impl Engine {
     /// Decides a candidate and applies the decision. Returns where it landed.
     pub(crate) fn decide(&mut self, mut c: Candidate, now: u64) -> Target {
         let Some(&top) = c.verses.first() else { return Target::Drop };
+        self.detour_seen(&c, now);
 
         // 0a. A refrain put up on its words alone: the verse any path finds next tells which it was.
         if c.verses.len() == 1 && c.corrected_from.is_none() {
@@ -292,6 +293,7 @@ impl Engine {
             }
             self.screen.last_detected = Some((top, now, c.method));
             self.screen.recent_detections.insert(top, now);
+            self.detour_shown(top, c.method, c.returning, now);
             if self.screen.recent_detections.len() > 100 {
                 self.screen.recent_detections.retain(|_, t| now.saturating_sub(*t) <= DETECT_DEDUP_MS);
             }
