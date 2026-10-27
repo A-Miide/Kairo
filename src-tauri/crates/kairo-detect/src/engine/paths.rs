@@ -14,7 +14,7 @@ use super::evidence::explained_better_by;
 use super::scoring::{SAME_BOOK_WINDOW_MS, STREAM_IDF_FULL_CONFIDENCE, VERBATIM_CERTAIN_IDF};
 use super::twins::TwinOutcome;
 use super::types::{Evidence, Hold, Method, Target};
-use crate::lexical::{fingerprint, topic_library, verbatim, Confidence, RecentCitation, VerbatimHit};
+use crate::lexical::{fingerprint, read_share, topic_library, verbatim, Confidence, RecentCitation, VerbatimHit};
 use crate::reference::book_mentions;
 
 const VERBATIM_AUTOSEND_MIN: f32 = 0.95;
@@ -27,6 +27,10 @@ const VERBATIM_LIMIT: usize = 3;
 /// Two verses matched this evenly, in different places, are the same words.
 /// A verse number said this recently picks between word-for-word matches.
 const VERSE_NUMBER_SAID_MS: u64 = 20_000;
+/// A verse read just before a partial quote of the next one vouches for it (in seconds of speech).
+const READ_BEFORE_MS: u64 = 30_000;
+/// Share of that verse's identifying weight read in one run.
+const READ_BEFORE_SHARE: f32 = 0.85;
 /// Word-for-word matches in other places this close to the best are the same saying.
 const VERBATIM_TWIN_SPREAD: f32 = 0.10;
 /// Shared opening wording: two confirmed alignments this close are tied.
@@ -144,7 +148,8 @@ fn clause_list(text: &str, min_words: usize) -> Vec<String> {
 impl Engine {
     /// The best verbatim results over several texts (stopping at a near-complete quote).
     /// The best results over several texts, and the text they came from.
-    fn verbatim_batch(&self, texts: &[String], min_words: usize) -> (Vec<VerbatimHit>, String) {
+    /// `passed`: verses not to be found (the reading has gone beyond them).
+    fn verbatim_batch(&self, texts: &[String], min_words: usize, passed: impl Fn(VerseId) -> bool) -> (Vec<VerbatimHit>, String) {
         // Another verse carries the same weight of what was said: this much of the speech can't
         // tell them apart yet (John 3:15 and 3:16 share "should not perish, but have").
         let ambiguous = |r: &[VerbatimHit]| {
@@ -152,7 +157,8 @@ impl Engine {
         };
         let mut best: (Vec<VerbatimHit>, String) = (Vec::new(), String::new());
         for t in texts {
-            let r = verbatim(&self.k.lexicon, t, min_words, VERBATIM_LIMIT);
+            let mut r = verbatim(&self.k.lexicon, t, min_words, VERBATIM_LIMIT);
+            r.retain(|h| !passed(h.verse));
             if r.is_empty() {
                 continue;
             }
@@ -173,7 +179,16 @@ impl Engine {
         if texts.is_empty() {
             return;
         }
-        let (results, found_in) = self.verbatim_batch(&texts, VERBATIM_MIN_WORDS);
+        // An earlier verse of the passage up, still in the end-of-utterance window, is not looked
+        // for again: read near-complete, it ended the search before the verse being read was tried
+        // (Psalm 149:4 found again while 149:6 was read, live 2026-10-26).
+        let behind = |v: VerseId| {
+            self.screen.up_verse().is_some_and(|u| {
+                let (u, v) = (self.r(u), self.r(v));
+                u.book == v.book && u.chapter == v.chapter && v.verse < u.verse
+            })
+        };
+        let (results, found_in) = self.verbatim_batch(&texts, VERBATIM_MIN_WORDS, |v| rescan && behind(v));
         let Some(first) = results.first().copied() else { return };
         let certain = |h: &VerbatimHit| h.score >= VERBATIM_AUTOSEND_MIN || h.matched_idf.is_some_and(|m| m >= VERBATIM_CERTAIN_IDF);
         let screen: Vec<VerbatimHit> = results.iter().copied().filter(certain).collect();
@@ -184,10 +199,7 @@ impl Engine {
             self.decide(Candidate::new(vec![first.verse], Method::Verbatim, first.score, Target::Suggestions).evidence(evidence(&first)).from_text(&found_in).held(Hold::QuoteBelowBar), now);
             return;
         };
-        let steps_back = self.screen.up_verse().is_some_and(|u| {
-            let (u, v) = (self.r(u), self.r(top.verse));
-            u.book == v.book && u.chapter == v.chapter && v.verse < u.verse
-        });
+        let steps_back = behind(top.verse);
         // The end-of-utterance sweep mustn't resurrect a quote the reading has moved past.
         if rescan && (!self.shares_words_with(top.verse, latest) || steps_back) {
             self.decide(Candidate::new(vec![top.verse], Method::Verbatim, top.score, Target::Suggestions).evidence(evidence(&top)).from_text(&found_in).held(Hold::QuoteBehindReading), now);
@@ -211,7 +223,7 @@ impl Engine {
             }
         }
         let score = if via_idf { top.score.max(0.90) } else { top.score };
-        let corroborated = self.ledger.has_corroboration(self.r(top.verse));
+        let corroborated = self.ledger.has_corroboration(self.r(top.verse)) || self.read_verse_before(top.verse, now);
         // Certain by weight alone (a partial quote) and no other method agrees:
         // offered, never put on screen alone (03-verbatim-and-correction.md).
         // Capped, not just "intent": `intent` is never read, so a four-word
@@ -466,8 +478,7 @@ impl Engine {
     /// the verse on screen) wins.
     /// Verse numbers said in the last few seconds ("go to verse twenty three").
     fn verse_numbers_said(&self, now: u64) -> Vec<u16> {
-        let recent: Vec<&str> = self.t.finals.iter().filter(|f| now.saturating_sub(f.at) < VERSE_NUMBER_SAID_MS).map(|f| f.text.as_str()).chain(std::iter::once(self.t.interim.as_str())).collect();
-        let text = recent.join(" ").to_lowercase().replace(|c: char| !c.is_alphanumeric() && c != ' ', " ");
+        let text = self.t.words.recent(now, VERSE_NUMBER_SAID_MS).to_lowercase().replace(|c: char| !c.is_alphanumeric() && c != ' ', " ");
         let words: Vec<&str> = text.split_whitespace().collect();
         let mut out = Vec::new();
         for (i, w) in words.iter().enumerate() {
@@ -478,6 +489,15 @@ impl Engine {
             }
         }
         out
+    }
+
+    /// One of the two verses before `v` was just read word for word: "Again a message came to me
+    /// from the Lord: Son of man, you've heard that proverb they quote in Israel" is Ezekiel 12:21
+    /// running on into 12:22, though 12:21's words open a dozen chapters (live, 2026-10-26).
+    fn read_verse_before(&self, v: VerseId, now: u64) -> bool {
+        let r = self.r(v);
+        let heard = self.t.words.recent(now, READ_BEFORE_MS);
+        (1..=2u16).filter_map(|back| self.k.id(VerseRef::new(r.book, r.chapter, r.verse.checked_sub(back)?))).any(|p| read_share(&self.k.lexicon, p, &heard) >= READ_BEFORE_SHARE)
     }
 
     fn settle_stream_tie(&self, tied: &[VerseId], now: u64) -> Option<VerseId> {
@@ -718,12 +738,9 @@ impl Engine {
         Some(verses)
     }
 
-    /// The last four finals (at least 40 words of them) and the live text, at
-    /// most 60 words.
+    /// The last 60 words heard.
     pub(crate) fn paraphrase_recent_text(&self) -> String {
-        let all = format!("{} {}", self.t.recent_finals(4, 40), self.t.interim);
-        let words: Vec<&str> = all.split_whitespace().collect();
-        words[words.len().saturating_sub(60)..].join(" ")
+        self.t.words.last(60)
     }
 
     /// Words for comparing speech with a verse: the KJV and the church's own wording.

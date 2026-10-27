@@ -81,6 +81,8 @@ impl Embedder {
             .and_then(|b| Ok(b.with_optimization_level(GraphOptimizationLevel::Level3)?))
             .and_then(|b| Ok(b.with_intra_threads(threads(cfg.threads))?))
             .and_then(|b| Ok(b.with_inter_threads(1)?))
+            // A pool that spins between runs takes cores from live speech while waiting for nothing.
+            .and_then(|b| Ok(b.with_intra_op_spinning(false)?))
             .and_then(|mut b| b.commit_from_file(&cfg.model))
             .map_err(SemanticError::ort)?;
         let inputs = session.inputs().iter().map(|i| i.name().to_string()).collect();

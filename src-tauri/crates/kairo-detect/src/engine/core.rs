@@ -103,12 +103,14 @@ impl Candidate {
     }
 }
 
-/// A chapter named with no verse yet, and what's been said since.
+/// A chapter named with no verse yet: the live citation context. What's been said since is
+/// read from the word buffer, whichever segments carried it (`detection-spec/08-word-buffer.md`).
 #[derive(Clone, Debug)]
 pub struct ChapterPending {
     pub book: Book,
     pub chapter: u16,
-    pub text: String,
+    /// The buffer position where the citation was said.
+    pub from: u64,
     pub at: u64,
 }
 
@@ -291,6 +293,7 @@ impl Engine {
     /// What belongs to the utterance being heard, not the sermon.
     fn forget_utterance(&mut self) {
         self.t.interim.clear();
+        self.t.words.drop_live();
         self.t.interim_sent.clear();
         self.t.interim_seen.clear();
         self.t.stream_watermark = 0;
@@ -395,14 +398,15 @@ impl Engine {
             let started = *self.t.utterance_start.get_or_insert(now);
             self.t.segment_started = started;
             self.t.interim = text.clone();
+            self.t.words.interim(&text, now);
             self.stream_new_words(&text, false, false, now);
             self.next_verse_trigger(&text, now);
             let fresh = self.note_range_speech(&text, false, false);
             self.advance_range_on_last_words(now);
             self.advance_range_on_next_opening(&fresh, now);
-            let found = self.process_references(&text, false, false, now);
+            let found = self.process_references(&text, false, now);
             self.check_citation_siblings(&text, false, false, now);
-            if !found && self.reading.is_valid(now) && !self.announces_different_book(&text, self.t.prev_final.clone(), now) {
+            if !found && self.reading.is_valid(now) && !self.announces_different_book(&text, self.prev_words(), now) {
                 self.interim_partial(&text, now);
             } else if !found {
                 self.on_screen_partial(&text, false, now);
@@ -425,6 +429,7 @@ impl Engine {
 
         self.t.segment_started = self.t.utterance_start.take().unwrap_or(now);
         self.t.interim.clear();
+        self.t.words.settle(&text, now, seg.continues_live);
         self.t.push_final(&text, now);
         let pace = self.t.pace_factor();
         self.reading.set_pace(pace);
@@ -439,9 +444,9 @@ impl Engine {
         self.advance_range_on_next_opening(&fresh, now);
         self.advance_range_by_content(now);
 
-        let prev_before = self.t.prev_final.clone();
+        let prev_before = self.prev_words();
         let through = self.read_through_chapter(&text, prev_before.as_ref(), now);
-        let mut found = through || self.process_references_final(&text, &sent_from_interim, seg.continues_live, now);
+        let mut found = through || self.process_references_final(&text, &sent_from_interim, now);
         self.check_citation_siblings(&text, true, false, now);
         if self.spoken_correction(&text, true, now) {
             found = true;
@@ -489,10 +494,12 @@ impl Engine {
         }
 
         if seg.speech_final {
-            // A quote spread over several segments: the last ~60 words.
-            let window = self.t.last_words(60);
+            // A quote spread over several segments: the last ~60 words, interim words a final
+            // dropped included.
+            let window = self.t.words.last(60);
             if !window.is_empty() && Some(&window) != expensive.as_ref() {
-                self.process_verbatim(&window, true, &text, now);
+                let latest = self.t.words.text(self.t.words.brought());
+                self.process_verbatim(&window, true, &latest, now);
                 self.process_fingerprint(&window, now);
             }
         }

@@ -77,7 +77,7 @@ impl Engine {
         // So is a book just named, with no chapter after it yet — the cited
         // book too ("…far above principalities and powers in Ephesians…" is
         // the start of the next citation, not a label for the words before).
-        let newest = if self.t.interim.trim().is_empty() { self.t.finals.back().map(|f| f.text.clone()).unwrap_or_default() } else { self.t.interim.clone() };
+        let newest = self.t.words.newest();
         if ends_naming_a_book(source, self.k.books, self.cfg.lang) || ends_naming_a_book(&newest, self.k.books, self.cfg.lang) {
             return false;
         }
@@ -115,8 +115,7 @@ impl Engine {
                 return false;
             }
         }
-        let since: Vec<&str> = self.t.finals.iter().filter(|f| f.at + 1_000 >= cited_at).map(|f| f.text.as_str()).collect();
-        let since = format!("{} {}", since.join(" "), self.t.interim);
+        let since = self.t.words.since(cited_at.saturating_sub(1_000));
         if fits_first_at_least_as_well(&cited_text, self.verse_text(top.verse), &since) {
             return false;
         }

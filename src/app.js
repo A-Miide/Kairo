@@ -3932,6 +3932,8 @@ function wireOfflineModelInstaller(ids) {
         // Under "Preacher speaks" the status lines already say "Heard offline": nothing to show.
         if (ids.hideWhenInstalled) group.style.display = 'none';
         window.renderLangCapability?.();
+        // The Settings → Audio summary was drawn at load, before an install finished.
+        if (typeof renderOfflineSummary === 'function') renderOfflineSummary();
       } else {
         statusLine.textContent = `${name} not installed.`;
         // Under "Preacher speaks" the "Needs the offline model…" line already says so.
@@ -4084,8 +4086,13 @@ async function renderOfflineSummary() {
     }
     box.appendChild(r);
   };
-  if (en?.installed) row(true, 'English model installed');
-  if (multi?.installed) row(true, 'Other-languages model installed');
+  // What each installed model lets the service be in, from the Language list itself — not the
+  // model's name (2026-10-27: "English model installed" read as a claim about what's downloaded).
+  const langs = [...(document.getElementById('stt-language')?.options || [])];
+  const english = langs.filter(o => o.value.startsWith('en')).map(o => o.textContent.replace(/^English \((.*)\)$/, '$1'));
+  const others = langs.filter(o => !o.value.startsWith('en') && o.value !== 'multi').map(o => o.textContent);
+  if (en?.installed) row(true, `Offline: English${english.length ? ` (${english.join(', ')})` : ''}`);
+  if (multi?.installed) row(true, `Offline: ${others.join(', ')}${langs.some(o => o.value === 'multi') ? ', and Auto-detect' : ''}`);
   const needed = need === 'en' ? en : multi;
   if (!needed?.installed) row(false, need === 'en' ? 'English needs the offline model' : `${document.getElementById('stt-language')?.selectedOptions?.[0]?.textContent || 'This language'} needs the offline model for other languages`, true);
 }

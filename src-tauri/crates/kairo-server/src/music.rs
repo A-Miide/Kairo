@@ -8,6 +8,7 @@
 use std::collections::VecDeque;
 use std::path::Path;
 use std::sync::mpsc::{sync_channel, Receiver, SyncSender};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::OnceLock;
 
 use kairo_detect::engine::Event;
@@ -17,6 +18,9 @@ use ort::value::Tensor;
 use serde_json::json;
 
 use crate::Shared;
+
+/// Singing heard now (the gate's last word): the offline speech engine keeps no backlog of it.
+pub static SINGING: AtomicBool = AtomicBool::new(false);
 
 /// One model frame: 0.975 s of 16 kHz audio, scored every 0.48 s.
 const FRAME: usize = 15_600;
@@ -75,6 +79,7 @@ fn run(mut session: Session, rx: Receiver<Vec<f32>>, app: Shared) {
             continue;
         }
         if let Some(on) = gate.push(scores[SPEECH], scores[MUSIC]) {
+            SINGING.store(on, Ordering::Relaxed);
             crate::routes::write_debug_global("server:singing", json!({ "active": on }));
             // The transcript says so ("(music)"), so the operator knows why nothing is detected.
             app.hub.broadcast(json!({ "type": "singing", "active": on }));

@@ -28,6 +28,8 @@ mod installer;
 mod bible_packs;
 pub mod notes;
 pub mod offline;
+// Mapped weights are only used where they can be locked in memory (macOS so far; offline::map_weights).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod onnx_weights;
 mod mt;
 mod native_audio;
@@ -303,6 +305,8 @@ async fn follow_screen_in_obs(app: Shared) {
 fn load_meaning(app: &Shared) {
     use kairo_semantic::{Embedder, EmbedderConfig, MeaningService, Pooling, Reranker, RerankerConfig, VerseIndex};
     let t = std::time::Instant::now();
+    // The models' thread pools are started here and keep this priority.
+    let _below = crate::util::below_speech();
     let db = &app.cfg.db_dir;
     // bge-small-en-v1.5 (int8, 34 MB): as good as the 207 MB EmbeddingGemma on the
     // sermons, at half the search time.

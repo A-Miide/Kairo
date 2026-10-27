@@ -34,10 +34,20 @@ const UTTERANCE_END_SECS: f32 = 1.2;
 /// worker and `offline-transcribe --realtime` both use this rule (see [`too_far_behind`]).
 pub const MAX_BEHIND: Duration = Duration::from_secs(4);
 
+/// While singing is heard, no backlog at all is kept. Singing costs the recogniser half as much
+/// again as speech (lyrics, word after word) and on an 8 GB M1 playing the service in Safari it
+/// fell behind only then: 15 skips in 15 minutes, every one in a song (2026-10-27). Dropped at
+/// once, the song costs what the computer can spare, and the preacher who speaks after it is
+/// heard live, not 4 s late.
+pub const MAX_BEHIND_SINGING: Duration = Duration::from_secs(1);
+
 /// The catch-up rule: audio that arrived `waited` ago and isn't decoded yet is too old to use.
 pub fn too_far_behind(waited: Duration) -> bool {
     waited > MAX_BEHIND
 }
+
+/// A frame length that isn't audio: one byte follows, 1 while singing is heard, else 0.
+const SINGING_FRAME: u32 = u32::MAX;
 const REQUIRED: [&str; 4] = ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"];
 
 static NUMBER_WORD: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
@@ -75,13 +85,32 @@ pub fn present(dir: &std::path::Path) -> bool {
 }
 
 /// The encoder's weights mapped from their own file rather than copied onto the heap (see
-/// `onnx_weights`), done once per model folder. Measured on an 8 GB M1 (2026-10-26), a 5-minute
-/// sermon live with 4 GB of other memory in use: the worker's footprint 1,014 → 77 MB once loaded
-/// and 727 → 118 MB while decoding, load 3.4 → 0.9 s, the transcript word for word the same.
-/// Returns the provider string for sherpa-onnx: ONNX Runtime's weight prepacking is turned off,
-/// as it copies every weight back onto the heap; decoding then costs about 15% more CPU.
+/// `onnx_weights`), then locked in memory once loaded ([`pin_weights`]), done once per model
+/// folder (and again after an app update or on another computer). Measured on an 8 GB M1
+/// (2026-10-27): footprint 726-1,111 MB → ~117 MB (plus the 629 MB locked) while decoding, the
+/// same CPU and the transcript word for word the same; under a live test's memory pressure, the
+/// same audio dropped as on the heap (mapped but not locked: four times as much). The model takes
+/// ~1.19 GB of disk instead of 650 MB. If the weights can't be prepacked they're still mapped,
+/// with ONNX Runtime's prepacking (which copies them onto the heap) off: ~12-15% more CPU.
+/// Only where they can be locked (macOS so far): elsewhere the weights stay on the heap.
+/// Returns the provider string for sherpa-onnx.
 pub(crate) fn map_weights(dir: &std::path::Path) -> String {
+    if !cfg!(target_os = "macos") {
+        return "cpu".into();
+    }
     let encoder = dir.join("encoder.int8.onnx");
+    let stamp = crate::onnx_weights::stamp();
+    if crate::onnx_weights::prepacked(&encoder, &stamp) {
+        return "cpu".into();
+    }
+    match prepack(&encoder, &stamp) {
+        Ok(()) => {
+            let _ = std::fs::remove_file(dir.join("kairo-ort.cfg"));
+            return "cpu".into();
+        }
+        Err(e) => eprintln!("[Offline] the model's weights couldn't be prepacked: {e}"),
+    }
+    // Next best: the weights mapped as they are, ONNX Runtime's prepacking off.
     if !crate::onnx_weights::external(&encoder) {
         if let Err(e) = crate::onnx_weights::externalize(&encoder) {
             eprintln!("[Offline] the model's weights stay in memory: {e}");
@@ -93,6 +122,25 @@ pub(crate) fn map_weights(dir: &std::path::Path) -> String {
     match std::fs::write(&cfg, "SessionConfig.session.disable_prepacking=1\n") {
         Ok(()) => format!("cpu:{}", cfg.display()),
         Err(_) => "cpu".into(),
+    }
+}
+
+/// Locks the loaded encoder's weights in memory, when they're mapped (see `onnx_weights::pin`).
+#[cfg(target_os = "macos")]
+fn pin_weights(dir: &std::path::Path) -> Option<crate::onnx_weights::Pinned> {
+    let encoder = dir.join("encoder.int8.onnx");
+    if !crate::onnx_weights::external(&encoder) {
+        return None;
+    }
+    match crate::onnx_weights::pin(&encoder) {
+        Ok(p) => {
+            eprintln!("[Offline] {} MB of the model's weights locked in memory", p.bytes >> 20);
+            Some(p)
+        }
+        Err(e) => {
+            eprintln!("[Offline] the model's weights aren't locked in memory: {e}");
+            None
+        }
     }
 }
 
@@ -170,6 +218,9 @@ struct Loaded {
     dir: std::path::PathBuf,
     decoding: Decoding,
     recognizer: Arc<OnlineRecognizer>,
+    /// The encoder's weights locked in memory while it's loaded (onnx_weights::pin).
+    #[cfg(target_os = "macos")]
+    _pinned: Option<crate::onnx_weights::Pinned>,
 }
 static LOADED: Mutex<Option<Loaded>> = Mutex::new(None);
 static GENERATION: AtomicU64 = AtomicU64::new(0);
@@ -187,12 +238,16 @@ pub fn recognizer(dir: &std::path::Path, decoding: &Decoding) -> Result<Arc<Onli
     // spin), which is what a small laptop can't spare. KAIRO_ASR_THREADS overrides it.
     let threads = std::env::var("KAIRO_ASR_THREADS").ok().and_then(|v| v.parse::<i32>().ok()).filter(|n| (1..=8).contains(n))
         .unwrap_or_else(|| std::thread::available_parallelism().map_or(2, |n| n.get()).saturating_sub(2).clamp(1, 2) as i32);
+    let provider = map_weights(dir);
+    // Locked before the runtime maps the weights: once it has, macOS refuses to lock them.
+    #[cfg(target_os = "macos")]
+    let _pinned = pin_weights(dir);
     let mut cfg = OnlineRecognizerConfig {
         model_config: OnlineModelConfig {
             transducer: OnlineTransducerModelConfig { encoder: p("encoder.int8.onnx"), decoder: p("decoder.int8.onnx"), joiner: p("joiner.int8.onnx") },
             tokens: p("tokens.txt"),
             num_threads: threads,
-            provider: Some(map_weights(dir)),
+            provider: Some(provider),
             ..Default::default()
         },
         decoding_method: Some(if decoding.beam { "modified_beam_search" } else { "greedy_search" }.into()),
@@ -211,7 +266,13 @@ pub fn recognizer(dir: &std::path::Path, decoding: &Decoding) -> Result<Arc<Onli
     cfg.feat_config.sample_rate = SAMPLE_RATE;
     cfg.feat_config.feature_dim = FEATURE_DIM;
     let r = Arc::new(OnlineRecognizer::create(&cfg).ok_or("the offline model could not be loaded")?);
-    *l = Some(Loaded { dir: dir.to_path_buf(), decoding: decoding.clone(), recognizer: r.clone() });
+    *l = Some(Loaded {
+        dir: dir.to_path_buf(),
+        decoding: decoding.clone(),
+        recognizer: r.clone(),
+        #[cfg(target_os = "macos")]
+        _pinned,
+    });
     Ok(r)
 }
 
@@ -416,7 +477,18 @@ pub async fn start(app: Shared) -> Result<Session, Value> {
 /// Run as the first thing in `main`: if this process was started as the
 /// speech engine, runs it and returns the exit code.
 pub fn worker_main() -> Option<i32> {
+    DISPATCHES.store(true, Ordering::SeqCst);
     let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some(PREPACK_FLAG) {
+        let model = std::path::PathBuf::from(args.get(2)?);
+        return Some(match crate::onnx_weights::prepack(&model, &crate::onnx_weights::stamp()) {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("{e}");
+                1
+            }
+        });
+    }
     if args.get(1).map(String::as_str) != Some(WORKER_FLAG) {
         return None;
     }
@@ -426,6 +498,27 @@ pub fn worker_main() -> Option<i32> {
 }
 
 pub const WORKER_FLAG: &str = "--kairo-speech-worker";
+/// Prepacks a model's weights (onnx_weights::prepack) in a process of its own: it briefly
+/// needs 1.3 GB, which the caller's heap would otherwise keep until it exits.
+const PREPACK_FLAG: &str = "--kairo-prepack-speech-model";
+/// Whether this program runs [`worker_main`] first, so its own executable takes [`PREPACK_FLAG`].
+static DISPATCHES: AtomicBool = AtomicBool::new(false);
+
+fn prepack(encoder: &std::path::Path, stamp: &str) -> Result<(), String> {
+    if !DISPATCHES.load(Ordering::SeqCst) {
+        return crate::onnx_weights::prepack(encoder, stamp);
+    }
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let mut cmd = std::process::Command::new(exe);
+    cmd.arg(PREPACK_FLAG).arg(encoder).stdin(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let out = cmd.output().map_err(|e| e.to_string())?;
+    if out.status.success() { Ok(()) } else { Err(String::from_utf8_lossy(&out.stderr).trim().to_string()) }
+}
 const RESTARTS_PER_MINUTE: usize = 3;
 /// Audio already sent that a restarted engine hears again first: the words
 /// the old one hadn't settled, with lead-in for it to find its feet (8 s of
@@ -449,6 +542,13 @@ fn without_repeat(said: &std::collections::VecDeque<String>, text: &str) -> Stri
 
 fn run_worker(dir: &std::path::Path, language: Option<String>) -> i32 {
     use std::io::{Read, Write};
+    // Live speech goes before a browser tab or video player on a busy media machine (a YouTube
+    // tab at 78% CPU had it skipping speech, 2026-10-26). Set before the model loads: the
+    // runtime's threads, and the reader below, inherit it. Not user-interactive: that is the UI's.
+    #[cfg(target_os = "macos")]
+    unsafe {
+        libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_USER_INITIATED, 0);
+    }
     let rec = match recognizer(dir, &Decoding::default()) {
         Ok(r) => r,
         Err(e) => {
@@ -469,6 +569,8 @@ fn run_worker(dir: &std::path::Path, language: Option<String>) -> i32 {
     let (tx, rx) = std::sync::mpsc::channel::<Option<(Instant, Vec<u8>)>>();
     let gone = Arc::new(AtomicBool::new(false));
     let gone_reader = gone.clone();
+    let singing = Arc::new(AtomicBool::new(false));
+    let singing_reader = singing.clone();
     std::thread::spawn(move || {
         let mut input = std::io::stdin().lock();
         loop {
@@ -477,6 +579,16 @@ fn run_worker(dir: &std::path::Path, language: Option<String>) -> i32 {
                 gone_reader.store(true, Ordering::SeqCst);
                 let _ = tx.send(None);
                 return;
+            }
+            if u32::from_le_bytes(len) == SINGING_FRAME {
+                let mut on = [0u8; 1];
+                if input.read_exact(&mut on).is_err() {
+                    gone_reader.store(true, Ordering::SeqCst);
+                    let _ = tx.send(None);
+                    return;
+                }
+                singing_reader.store(on[0] == 1, Ordering::Relaxed);
+                continue;
             }
             let n = u32::from_le_bytes(len) as usize;
             let mut buf = vec![0u8; n];
@@ -507,7 +619,8 @@ fn run_worker(dir: &std::path::Path, language: Option<String>) -> i32 {
         }
         match rx.recv_timeout(Duration::from_millis(15)) {
             Ok(Some((arrived, chunk))) => {
-                if too_far_behind(arrived.elapsed()) {
+                let sung = singing.load(Ordering::Relaxed);
+                if too_far_behind(arrived.elapsed()) || (sung && arrived.elapsed() > MAX_BEHIND_SINGING) {
                     // Behind live speech: drop what is waiting, say so, start fresh at the newest.
                     let mut dropped = chunk.len() / 2;
                     let mut ended = false;
@@ -520,7 +633,7 @@ fn run_worker(dir: &std::path::Path, language: Option<String>) -> i32 {
                     if let Some(h) = heard.cut() {
                         emit(h);
                     }
-                    say(json!({ "k": "s", "ms": dropped * 1000 / SAMPLE_RATE_HZ }).to_string());
+                    say(json!({ "k": "s", "ms": dropped * 1000 / SAMPLE_RATE_HZ, "sung": sung }).to_string());
                     if ended {
                         return 0;
                     }
@@ -549,8 +662,9 @@ fn run_worker(dir: &std::path::Path, language: Option<String>) -> i32 {
 enum FromWorker {
     Ready,
     Heard(Heard),
-    /// Recognition had fallen behind: this much waiting audio was dropped to stay live.
-    Skipped(u64),
+    /// Recognition had fallen behind: this much waiting audio was dropped to stay live (and
+    /// whether it was singing).
+    Skipped(u64, bool),
     Gone,
 }
 
@@ -579,7 +693,7 @@ fn spawn_worker(dir: &std::path::Path, language: &Option<String>) -> Result<(std
                 let Ok(v) = serde_json::from_str::<Value>(body) else { continue };
                 let t = v["t"].as_str().unwrap_or("").to_string();
                 if v["k"] == "s" {
-                    if tx.send(FromWorker::Skipped(v["ms"].as_u64().unwrap_or(0))).is_err() { return; }
+                    if tx.send(FromWorker::Skipped(v["ms"].as_u64().unwrap_or(0), v["sung"].as_bool().unwrap_or(false))).is_err() { return; }
                     continue;
                 }
                 FromWorker::Heard(match v["k"].as_str() {
@@ -692,6 +806,8 @@ fn supervise(
         }
         let mut input = child.stdin.take();
         let mut dead = false;
+        // What this engine was last told about singing (a restarted one starts out not told).
+        let mut told_singing = false;
         // After a restart: the last seconds again first (see REPLAY_FRAMES).
         if !recent.is_empty() {
             catching_up.set(true);
@@ -707,7 +823,9 @@ fn supervise(
             while let Ok(m) = from.try_recv() {
                 match m {
                     FromWorker::Heard(h) => tell(h),
-                    FromWorker::Skipped(ms) => {
+                    // A song dropped to stay live is no loss: logged, not put to the operator.
+                    FromWorker::Skipped(ms, true) => crate::routes::write_debug_global("server:singing-skipped", json!({ "skippedMs": ms })),
+                    FromWorker::Skipped(ms, false) => {
                         // Said, in the log and to the operator: this computer can't keep up.
                         crate::routes::write_debug_global("server:speech-behind", json!({ "skippedMs": ms }));
                         hub.broadcast(json!({ "type": "speech-behind", "skippedMs": ms }));
@@ -735,6 +853,14 @@ fn supervise(
                 let _ = child.kill();
                 let _ = child.wait();
                 return;
+            }
+            let singing = crate::music::SINGING.load(Ordering::Relaxed);
+            if singing != told_singing {
+                told_singing = singing;
+                let w = input.as_mut().expect("engine input");
+                if w.write_all(&SINGING_FRAME.to_le_bytes()).and_then(|_| w.write_all(&[singing as u8])).is_err() {
+                    dead = true;
+                }
             }
             let mut got = false;
             while let Ok(chunk) = audio.try_recv() {

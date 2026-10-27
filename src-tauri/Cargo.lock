@@ -2635,6 +2635,7 @@ dependencies = [
  "kairo-bible",
  "kairo-detect",
  "kairo-semantic",
+ "libc",
  "memmap2",
  "ort",
  "regex",

@@ -6,6 +6,7 @@ use std::collections::{HashMap, HashSet, VecDeque};
 use kairo_bible::{Book, VerseId};
 
 use super::types::Method;
+use super::words::WordBuffer;
 
 /// How long finished speech is kept.
 const TRANSCRIPT_KEEP_MS: u64 = 90_000;
@@ -67,12 +68,11 @@ impl SentenceBuffer {
 
 #[derive(Clone, Debug, Default)]
 pub struct Transcript {
+    /// Every word heard, however the recogniser cut it into segments.
+    pub words: WordBuffer,
     pub finals: VecDeque<Final>,
     /// Final words heard this service — corrections are bounded by words said, not time.
     pub words_heard: u64,
-    /// The previous final, for citations split by a pause.
-    pub prev_final: Option<(String, u64)>,
-    pub prev_continues: bool,
     /// The interim in progress.
     pub interim: String,
     pub sentence: SentenceBuffer,

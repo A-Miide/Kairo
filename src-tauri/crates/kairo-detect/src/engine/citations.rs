@@ -19,9 +19,8 @@ use crate::reference::{book_mentions, Citation, Verses};
 pub const PREV_FINAL_JOIN_WINDOW_MS: u64 = 8_000;
 /// How long a cited numbered book ("First John") claims its bare name.
 const SIBLING_CONTEXT_MS: u64 = 120_000;
-/// While the offline engine's speech runs on across locks, the previous text
-/// carries this many locked words.
-const JOIN_CARRY_WORDS: usize = 12;
+/// A citation split by a pause is joined with at most this many words heard before it.
+const JOIN_WORDS: usize = 24;
 /// An unfinished interim citation acts only when parsed identically this recently.
 pub const INTERIM_STABLE_WINDOW_MS: u64 = 3_000;
 const CHAPTER_PENDING_TEXT_MAX_WORDS: usize = 50;
@@ -306,12 +305,12 @@ impl Engine {
         spans.iter().flat_map(|&(a, b)| (a..=b.min(a + 200)).filter_map(move |v| self.k.id(VerseRef::new(c.book, ch, v.min(u16::MAX as u32) as u16)))).collect()
     }
 
-    pub(crate) fn process_references(&mut self, text: &str, is_final: bool, continues_live: bool, now: u64) -> bool {
-        self.references(text, is_final, &HashSet::new(), continues_live, now)
+    pub(crate) fn process_references(&mut self, text: &str, is_final: bool, now: u64) -> bool {
+        self.references(text, is_final, &HashSet::new(), now)
     }
 
-    pub(crate) fn process_references_final(&mut self, text: &str, sent_from_interim: &HashSet<VerseId>, continues_live: bool, now: u64) -> bool {
-        self.references(text, true, sent_from_interim, continues_live, now)
+    pub(crate) fn process_references_final(&mut self, text: &str, sent_from_interim: &HashSet<VerseId>, now: u64) -> bool {
+        self.references(text, true, sent_from_interim, now)
     }
 
     fn parse(&self, text: &str, now: u64) -> Vec<Citation> {
@@ -367,7 +366,7 @@ impl Engine {
         self.k.parser(self.cfg.lang).parse_all(&text, self.active(now))
     }
 
-    fn references(&mut self, text: &str, is_final: bool, sent_from_interim: &HashSet<VerseId>, continues_live: bool, now: u64) -> bool {
+    fn references(&mut self, text: &str, is_final: bool, sent_from_interim: &HashSet<VerseId>, now: u64) -> bool {
         let parsed = self.parse(text, now);
         let mut refs = self.resolve_ambiguous(parsed, now);
         self.prefer_cited_sibling(&mut refs, now);
@@ -376,16 +375,17 @@ impl Engine {
             refs.clear(); // the next segment's join finishes it
         }
 
-        // A citation split by a pause: the previous final joined with this one.
+        // A citation split by a pause: the words before joined with this segment's.
         let mut joined_text: Option<String> = None;
+        let prev_words = self.prev_words();
         if is_final {
-            if let Some((prev, at)) = self.t.prev_final.clone() {
+            if let Some((prev, at)) = prev_words.clone() {
                 let split = !refs.is_empty() && opens_with_number(text) && ends_mid_citation(&prev);
                 if (refs.is_empty() || split) && self.t.segment_started.saturating_sub(at) < PREV_FINAL_JOIN_WINDOW_MS {
                     // Only citations the join creates or extends.
-                    let prev_keys: HashSet<String> = self.parse(&prev, now).iter().map(cite_key).collect();
+                    let prev_keys: HashSet<String> = self.parse(&self.prev_settled_words(), now).iter().map(cite_key).collect();
                     let joined = format!("{prev} {text}");
-                    let fresh: Vec<Citation> = self.parse(&joined, now).into_iter().filter(|c| !prev_keys.contains(&cite_key(c))).collect();
+                    let fresh: Vec<Citation> = self.parse(&joined, now).into_iter().filter(|c| !prev_keys.contains(&cite_key(c)) && !self.chapter_waiting(c)).collect();
                     let joined_refs = if fresh.is_empty() { Vec::new() } else { self.resolve_ambiguous(fresh, now) };
                     if !joined_refs.is_empty() && split {
                         let own: HashSet<String> = refs.iter().map(|r| cite_key(&r.c)).collect();
@@ -403,20 +403,13 @@ impl Engine {
                     }
                 }
             }
-            // Split twice: "…Daniel" | "chapter what? Chapter" | "six from verse three".
-            if refs.is_empty() {
-                if let Some((joined, found)) = self.join_two_finals_back(text, now) {
-                    refs = found;
-                    joined_text = Some(joined);
-                }
-            }
         } else if opens_with_number(text) && text.split_whitespace().count() > 1 {
             // Live text finishing the previous final's citation ("…John 6" |
             // "48-57 …") goes up now, before whatever is said after it.
-            if let Some((prev, at)) = self.t.prev_final.clone() {
+            if let Some((prev, at)) = prev_words {
                 if ends_mid_citation(&prev) && now.saturating_sub(at) < PREV_FINAL_JOIN_WINDOW_MS {
-                    let prev_keys: HashSet<String> = self.parse(&prev, now).iter().map(cite_key).collect();
-                    let fresh: Vec<Citation> = self.parse(&format!("{prev} {text}"), now).into_iter().filter(|c| !prev_keys.contains(&cite_key(c))).collect();
+                    let prev_keys: HashSet<String> = self.parse(&self.prev_settled_words(), now).iter().map(cite_key).collect();
+                    let fresh: Vec<Citation> = self.parse(&format!("{prev} {text}"), now).into_iter().filter(|c| !prev_keys.contains(&cite_key(c)) && !self.chapter_waiting(c)).collect();
                     let own: HashSet<String> = refs.iter().map(|r| cite_key(&r.c)).collect();
                     let added: Vec<Cite> = if fresh.is_empty() { Vec::new() } else { self.resolve_ambiguous(fresh, now) }.into_iter().filter(|r| !own.contains(&cite_key(&r.c))).collect();
                     if !added.is_empty() {
@@ -425,15 +418,6 @@ impl Engine {
                 }
             }
         }
-        if is_final {
-            let carried = match (&self.t.prev_final, self.t.prev_continues) {
-                (Some((p, _)), true) => last_n_words(&format!("{p} {text}"), JOIN_CARRY_WORDS),
-                _ => text.to_string(),
-            };
-            self.t.prev_final = Some((carried, now));
-            self.t.prev_continues = continues_live;
-        }
-
         let (settled, held) = self.settle_restated(refs, text, now);
         let refs = settled;
         if refs.is_empty() {
@@ -578,24 +562,36 @@ impl Engine {
         true
     }
 
-    /// A citation spread over this final and the two before it (the book, then
-    /// "chapter", then the numbers), all within the join window: only citations
-    /// the join creates.
-    fn join_two_finals_back(&self, text: &str, now: u64) -> Option<(String, Vec<Cite>)> {
-        let n = self.t.finals.len();
-        let (first, second) = (self.t.finals.get(n.checked_sub(3)?)?, self.t.finals.get(n - 2)?);
-        if self.t.segment_started.saturating_sub(first.at) >= PREV_FINAL_JOIN_WINDOW_MS || first.has_ref || second.has_ref {
-            return None;
-        }
-        let before = format!("{} {}", first.text, second.text);
-        let before_keys: HashSet<String> = self.parse(&before, now).iter().map(cite_key).collect();
-        let joined = format!("{before} {text}");
-        let fresh: Vec<Citation> = self.parse(&joined, now).into_iter().filter(|c| !before_keys.contains(&cite_key(c))).collect();
-        if fresh.is_empty() {
-            return None;
-        }
-        let refs = self.resolve_ambiguous(fresh, now);
-        (!refs.is_empty()).then_some((joined, refs))
+    /// The words heard just before this segment's, while speech ran on into it: where a
+    /// citation split by a pause began ("…Daniel" | "chapter what? Chapter" | "six from verse
+    /// three"), however the recogniser cut it — interim words a final dropped included
+    /// (`detection-spec/08-word-buffer.md`). With when the last of them was heard.
+    pub(crate) fn prev_words(&self) -> Option<(String, u64)> {
+        let w = &self.t.words;
+        let r = w.before(w.changed().start, JOIN_WORDS, self.t.segment_started, PREV_FINAL_JOIN_WINDOW_MS);
+        let at = w.word(r.end.checked_sub(1)?)?.at;
+        (!r.is_empty()).then(|| (w.text(r), at))
+    }
+
+    /// A chapter named with no verse that is already waiting for its verse (or just resolved): an
+    /// interim named it, and the words before every later segment still hold it. Found again by a
+    /// join it isn't a new citation — the chapter goes on waiting, retrying on the newest words
+    /// ("Psalm sixty seven it" | "says let the people praise thee" | … | "thee then the earth shall
+    /// yield" is 67:6).
+    fn chapter_waiting(&self, c: &Citation) -> bool {
+        let ch = c.chapter as u16;
+        matches!(c.verses, Verses::Chapter)
+            && (self.chapter_pending.as_ref().is_some_and(|p| p.book == c.book && p.chapter == ch) || self.chapter_resolved_for == Some((c.book, ch)))
+    }
+
+    /// Of those, the ones a final settled (up to the first it didn't): their citations were
+    /// handled with that final. Words only an interim heard may hold one never acted on
+    /// ("…John chapter three verse sixteen" | "for God so loved the world").
+    fn prev_settled_words(&self) -> String {
+        let w = &self.t.words;
+        let r = w.before(w.changed().start, JOIN_WORDS, self.t.segment_started, PREV_FINAL_JOIN_WINDOW_MS);
+        let end = (r.start..r.end).find(|&i| w.word(i).is_none_or(|x| x.status != super::words::Status::Settled)).unwrap_or(r.end);
+        w.text(r.start..end)
     }
 
     /// "First John 4:4 … John 5:19": a preacher staying in a numbered book
@@ -708,19 +704,26 @@ impl Engine {
         let Some(pending) = self.chapter_pending.clone() else { return false };
         let a = self.active(now);
         if a.book != Some(pending.book) || a.chapter != Some(pending.chapter as u32) {
+            self.note(|_| format!("chapter {} of {} is waiting, but the reading context moved on", pending.chapter, pending.book.name()));
             return false;
         }
+        let since = self.t.words.text(pending.from..self.t.words.end());
         if !is_final {
-            let found = self.chapter_callout(pending.book, pending.chapter as u32, &format!("{} {text}", pending.text));
+            let found = self.chapter_callout(pending.book, pending.chapter as u32, &since);
             return found.is_some_and(|v| self.send_chapter_keyword(pending.book, pending.chapter as u32, v, true, now));
         }
-        let accumulated = last_n_words(&format!("{} {text}", pending.text), CHAPTER_PENDING_TEXT_MAX_WORDS);
-        if let Some(p) = self.chapter_pending.as_mut() {
-            p.text = accumulated.clone();
-        }
+        let accumulated = last_n_words(&since, CHAPTER_PENDING_TEXT_MAX_WORDS);
         match self.chapter_by_keywords(pending.book, pending.chapter as u32, &accumulated) {
             Some((v, explicit)) => self.send_chapter_keyword(pending.book, pending.chapter as u32, v, explicit, now),
-            None => false,
+            None => {
+                // Earlier words keep favouring the verse they were said about; the newest alone may name another.
+                let latest = format!("{} {} {text}", pending.book.name(), pending.chapter);
+                if let Some((v, explicit)) = self.chapter_by_keywords(pending.book, pending.chapter as u32, &latest) {
+                    return self.send_chapter_keyword(pending.book, pending.chapter as u32, v, explicit, now);
+                }
+                self.note(|_| format!("chapter {} of {} still waiting; no verse stands out from «{accumulated}»", pending.chapter, pending.book.name()));
+                false
+            }
         }
     }
 
@@ -746,6 +749,14 @@ impl Engine {
             // Speech in progress: only a verse number called out on its own.
             if let Some(v) = self.chapter_callout(book, chapter, text) {
                 self.send_chapter_keyword(book, chapter, v, true, now);
+                return;
+            }
+            // The reference can end an interim and be missing from the final that follows
+            // ("Psalm sixty seven it" | "says let the people praise thee…", live log 2026-10-26),
+            // so the chapter waits from here, not only from a final that repeats it.
+            let waiting = self.chapter_pending.as_ref().is_some_and(|p| p.book == book && p.chapter == ch);
+            if !waiting && self.chapter_resolved_for != Some((book, ch)) {
+                self.chapter_pending = Some(ChapterPending { book, chapter: ch, from: self.said_at(book, text), at: now });
             }
             return;
         }
@@ -755,8 +766,21 @@ impl Engine {
             }
         }
         if self.chapter_resolved_for != Some((book, ch)) {
-            self.chapter_pending = Some(ChapterPending { book, chapter: ch, text: text.to_string(), at: now });
+            self.note(|_| format!("chapter {ch} of {} named without a verse: waiting for the words that follow", book.name()));
+            self.chapter_pending = Some(ChapterPending { book, chapter: ch, from: self.said_at(book, text), at: now });
         }
+    }
+
+    /// Where in the word buffer `text` (the newest words) names `book`: its last mention, else
+    /// where `text` begins.
+    fn said_at(&self, book: Book, text: &str) -> u64 {
+        let w = &self.t.words;
+        let n = text.split_whitespace().count() as u64;
+        let begins = w.end().saturating_sub(n).max(w.start());
+        let last = book.name().to_lowercase().split(' ').next_back().unwrap_or("").to_string();
+        let stem = last.strip_suffix('s').unwrap_or(&last).to_string();
+        let lookback = w.end().saturating_sub(n + 8).max(w.start());
+        (lookback..w.end()).rev().find(|&i| w.word(i).is_some_and(|x| tokens(&x.text).first().is_some_and(|t| *t == last || *t == stem || *t == format!("{stem}s")))).unwrap_or(begins)
     }
 
     /// `explicit`: the verse number was called out ("…Matthew 11, say, come to me. 28, …"),
@@ -835,8 +859,10 @@ impl Engine {
     /// The chapter's verse sharing clearly the most identifying words with `text`.
     pub(crate) fn pick_chapter_verse_by_idf(&self, book: Book, chapter: u32, text: &str) -> Option<VerseId> {
         use super::ranges::{CHAPTER_KEYWORD_MIN_IDF, CHAPTER_KEYWORD_MIN_MARGIN};
-        let rows = self.score_chapter(book, chapter as u16, text);
-        let (best, second) = (rows.first()?, rows.get(1).map_or(0.0, |r| r.1));
+        let rows = self.score_chapter_all(book, chapter as u16, text);
+        // A verse worded exactly like the best one (Psalm 67:3 and 67:5) is the same answer, not a rival.
+        let best = rows.first()?;
+        let second = rows.iter().skip(1).find(|r| self.verse_text(r.0) != self.verse_text(best.0)).map_or(0.0, |r| r.1);
         (best.1 >= CHAPTER_KEYWORD_MIN_IDF && best.1 - second >= CHAPTER_KEYWORD_MIN_MARGIN).then_some(best.0)
     }
 
@@ -901,10 +927,7 @@ impl Engine {
     /// "first"/"second"/"third" said right before the last mention of `word`
     /// in the last few seconds, across segment breaks.
     fn ordinal_said_before(&self, word: &str) -> Option<u8> {
-        let now = self.last_now;
-        let recent: Vec<&str> = self.t.finals.iter().filter(|f| now.saturating_sub(f.at) < ORDINAL_LOOKBACK_MS).map(|f| f.text.as_str()).collect();
-        let recent = &recent[recent.len().saturating_sub(3)..];
-        let all = tokens(&format!("{} {}", recent.join(" "), self.t.interim));
+        let all = tokens(&self.t.words.recent(self.last_now, ORDINAL_LOOKBACK_MS));
         let at = all.iter().rposition(|w| w == word)?;
         match all.get(at.checked_sub(1)?)?.as_str() {
             "first" | "1st" => Some(1),

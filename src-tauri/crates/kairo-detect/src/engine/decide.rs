@@ -64,6 +64,11 @@ impl Engine {
     pub(crate) fn decide(&mut self, mut c: Candidate, now: u64) -> Target {
         let Some(&top) = c.verses.first() else { return Target::Drop };
 
+        // 0a. A refrain put up on its words alone: the verse any path finds next tells which it was.
+        if c.verses.len() == 1 && c.corrected_from.is_none() {
+            self.refrain_followed_by(top, now);
+        }
+
         // 0. A range the preacher cited moving on: its next verse goes up as named, no scoring.
         if c.reading_on {
             self.put_up(top, c.method, now);
@@ -175,8 +180,9 @@ impl Engine {
             return Target::Drop;
         }
 
-        // 7. A twin of the passage in play is explained by it.
-        if target == Target::Suggestions && c.method.is_text_match() && self.twin_in_play(top, now) {
+        // 7. A twin of the passage in play is explained by it — unless it's the other reading
+        // offered on purpose (a refrain's other verses).
+        if target == Target::Suggestions && c.method.is_text_match() && c.hold != Some(Hold::OtherReading) && self.twin_in_play(top, now) {
             return Target::Drop;
         }
 
@@ -204,6 +210,21 @@ impl Engine {
                     return self.decide(t, now);
                 }
                 Some(TwinOutcome::Hold(twin)) => {
+                    if let Some((reached, others)) = self.refrain_reached(top, now) {
+                        self.note(|e| format!("{} is a refrain of its chapter: {} reached, the rest offered", e.label(top), e.label(reached)));
+                        let mut t = c.clone();
+                        t.verses = vec![reached];
+                        t.twin_resolved = true;
+                        t.intent = Target::Screen;
+                        let sent = self.decide(t, now);
+                        if sent == Target::Screen {
+                            self.refrain_up(reached, others.clone(), now);
+                            let mut o = Candidate::new(others, c.method, c.score, Target::Suggestions).held(Hold::OtherReading);
+                            o.twin_resolved = true;
+                            self.decide(o, now);
+                        }
+                        return sent;
+                    }
                     target = Target::Suggestions;
                     c.verses = vec![top, twin];
                 }
@@ -364,17 +385,14 @@ impl Engine {
     /// citation instead of going up first (Matthew 11:12 is Luke 16:16's twin).
     fn citation_pending_elsewhere(&self, v: VerseId, now: u64) -> bool {
         // What is being said now (the interim, else the newest final), and the final before it.
-        let n = self.t.finals.len();
-        let (current, before) = if self.t.interim.trim().is_empty() {
-            (self.t.finals.back().map(|f| f.text.as_str()), n.checked_sub(2).and_then(|i| self.t.finals.get(i)))
-        } else {
-            (Some(self.t.interim.as_str()), self.t.finals.back())
-        };
-        let (Some(current), Some(last)) = (current, before) else { return false };
+        let w = &self.t.words;
+        let current = w.newest();
+        // The last word heard before it was a book's name…
+        let before = w.newest_from();
+        let Some(last) = before.checked_sub(1).and_then(|i| w.word(i)) else { return false };
         if now.saturating_sub(last.at) > CITATION_PENDING_MS {
             return false;
         }
-        // The last word heard was a book's name…
         let Some(word) = last.text.split_whitespace().last() else { return false };
         let word: String = word.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
         let Some(book) = self.k.books.alias(&word) else { return false };
@@ -414,8 +432,8 @@ impl Engine {
         }
         // Only the newest words: reaching further back reaches the verse on
         // screen being read (Isaiah 53:8 held back by 53:7's "open his mouth").
-        let newest = if self.t.interim.is_empty() { self.t.finals.back().map_or("", |f| f.text.as_str()) } else { &self.t.interim };
-        let said = source.unwrap_or(newest);
+        let newest = self.t.words.newest();
+        let said = source.unwrap_or(&newest);
         // The verse on screen read and then cited ("…established the heavens. Proverbs three
         // nineteen. How manifold are thy works…"): what follows its citation is something else.
         let u = self.r(up);
@@ -428,8 +446,7 @@ impl Engine {
         // Its own words are looked for in everything said since it went up ("…power to get wealth
         // … his covenant … unto thy fathers" keeps Deuteronomy 8:18 up against 29:13).
         let twin = self.k.lexicon.twins(up).iter().any(|t| t.verse == v);
-        let since: Vec<&str> = self.t.finals.iter().filter(|f| f.at >= at).map(|f| f.text.as_str()).chain(std::iter::once(self.t.interim.as_str())).collect();
-        let since = since.join(" ");
+        let since = self.t.words.since(at);
         let since = if crate::reference::book_mentions(&since, self.k.books, self.cfg.lang).contains(&u.book) { super::citations::text_after_book_mention(&since, u.book, u.chapter as u32) } else { since };
         let heard = super::evidence::evidence_words(&format!("{since} {after}"));
         let (uw, vw) = (super::evidence::evidence_words(self.verse_text(up)), super::evidence::evidence_words(self.verse_text(v)));
@@ -455,8 +472,8 @@ impl Engine {
         if v == up || (!self.screen.shown_this_book.contains(&v) && !self.screen.recent_detections.contains_key(&v)) {
             return false;
         }
-        let last_since = self.t.finals.iter().rfind(|f| f.at > at).map_or("", |f| f.text.as_str());
-        let heard = super::evidence::evidence_words(&format!("{last_since} {}", self.t.interim));
+        let w = &self.t.words;
+        let heard = super::evidence::evidence_words(&w.text(w.heard_since(at + 1).max(w.newest_from().saturating_sub(RECENT_SPEECH_WORDS as u64 * 2))..w.end()));
         let (cand, cur) = (super::evidence::evidence_words(self.verse_text(v)), super::evidence::evidence_words(self.verse_text(up)));
         // Everyday words don't bring it back: "…recruiting people to fight you" put Ezra 4:4 ("the
         // people of the land") back over 4:5 (dev build 2026-10-20).
