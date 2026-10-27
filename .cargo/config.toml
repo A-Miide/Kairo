@@ -34,3 +34,11 @@ rustflags = ["-C", "link-arg=-Wl,--allow-multiple-definition"]
 # every program that uses ort finds ONNX Runtime.
 [target.x86_64-apple-darwin.onnxruntime]
 rustc-link-lib = []
+
+# Apple Silicon Macs: ort's own prebuilt copy of the same release linked fine
+# beside the speech engine's, but which copy a call reaches then depends on how
+# each program links: in one, a model ort prepared was packed differently from
+# what the speech engine expects, so the engine's saved prepacked weights were
+# ignored (offline::map_weights). One copy, the speech engine's, as on Intel.
+[target.aarch64-apple-darwin.onnxruntime]
+rustc-link-lib = []

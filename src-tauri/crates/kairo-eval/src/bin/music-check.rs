@@ -11,6 +11,8 @@ use std::process::{Command, Stdio};
 
 use ort::session::Session;
 use ort::value::Tensor;
+// ONNX Runtime itself where ort doesn't link its own (kairo-semantic links it).
+use kairo_semantic as _;
 
 const RATE: usize = 16_000;
 /// Audio given to the model at once (the frames it yields are 0.48 s apart).
