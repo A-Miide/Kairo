@@ -15,6 +15,7 @@
 //!     │  judged its own evidence too thin to send alone — a named Hold (types.rs)
 //!     ▼
 //!  decide.rs  Engine::decide, in order:
+//!      0a a refrain up: the verse found next tells which repeat it was
 //!      0  a range reading on goes up as cited          7  a twin of the passage in play is explained
 //!      0b a book-less "chapter:verse" names the book  7b part of a verse needs the sermon behind it
 //!      1  a range's next verse moves the range         8  look-alike verses: the better-supported one

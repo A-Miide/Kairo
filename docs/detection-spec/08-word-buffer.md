@@ -117,11 +117,36 @@ kairo-detect`.
 | 2 | chapter-only citation reads `text(from..)` | done |
 | 3 | citation joins, "announces a different book", "verse" \| "N" across a split, reading through a chapter → `before(…)` | done |
 | 4 | an ordinal before a book, twin separation, verse numbers said, the paraphrase window, recent range words → `recent`/`last`; corrections, "a citation pending elsewhere", "the verse on screen explains it better", "a shown verse returns" → `newest`/`since` | done |
-| 5 | settled-only readers: the verbatim 60-word rescan, the sentence buffer, the citation check's reading finals and words before a citation, a range's heard words, the stream watermark | later: they need a rule for unconfirmed words |
+| 5a | the end-of-utterance verbatim rescan → `last(60)`, checked against `brought()` (this segment's words and the unconfirmed words just before them) | done |
+| 5 | settled-only readers: the sentence buffer, the citation check's reading finals and words before a citation, a range's heard words, the stream watermark | later: they need a rule for unconfirmed words |
 
 Replay at each step (2026-10-26): Deepgram recordings 222/263 found, 3 wrong
 (baseline 222/263, 3 wrong of 300 sent); offline recordings 62/82, 0 wrong
 (baseline the same).
+
+## Refrains (owner, 2026-10-26)
+
+Verses of one chapter worded exactly alike — Psalm 67:3 and 67:5, Psalm
+107:8, 15, 21 and 31 — can't be told apart by their words, and the twin check
+used to offer both and send neither: a verse read word for word never reached
+the screen. Now, when the chapter is in play (the chapter-only citation
+waiting for its verse, the chapter being read, the sermon's passage, or a
+verse of it on screen):
+
+- the repeat the reading has reached goes up — the first after the verse of
+  the chapter on screen, else the chapter's first; the same reading matched
+  twice (its last words in a final of their own) stays on the one up until
+  the refrain is heard again;
+- the other repeats are offered;
+- its next verses are held as for any verse up (the soft range);
+- **the verse found next tells which repeat it was**: any path proposing the
+  verse after another repeat (67:6 while 67:3 is up) puts that repeat up in
+  place of the guess (67:5, marked as correcting 67:3), with its own next
+  verses held. The verse after the one up (67:4) confirms it. This is
+  `decide` step 0a, so every path's finding counts, not a separate search.
+
+The same words in different chapters (Psalms 107:1, 118:1, 136:1) are
+different passages: still offered, not guessed.
 
 ## Robustness cases
 
@@ -131,5 +156,7 @@ several ways — one final, the live log's split, the reference only in an
 interim, every final boundary moved word by word, and the offline engine's
 own cut (all but the newest two words locked every 2–6 words, the rest a
 final) — and requires the same verses on screen, and the same offers, from
-each. A boundary that cuts a number in two ("sixty | seven") is a different
+each. Refrain cases: Psalm 67 (67:3 up, 67:5 offered, every split), Psalm 107
+read through (107:8, then 15, then 21), the verse after it correcting the
+guess, and the same line in other chapters staying a choice. A boundary that cuts a number in two ("sixty | seven") is a different
 number heard and is left out.
