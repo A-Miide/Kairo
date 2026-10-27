@@ -49,6 +49,7 @@ pub mod state;
 mod triggers;
 mod twins;
 pub mod types;
+pub mod words;
 
 pub use self::core::{Config, Engine};
 pub use self::meaning::MeaningThresholds;
