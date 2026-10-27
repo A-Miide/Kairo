@@ -14,7 +14,7 @@ use super::evidence::explained_better_by;
 use super::scoring::{SAME_BOOK_WINDOW_MS, STREAM_IDF_FULL_CONFIDENCE, VERBATIM_CERTAIN_IDF};
 use super::twins::TwinOutcome;
 use super::types::{Evidence, Hold, Method, Target};
-use crate::lexical::{fingerprint, topic_library, verbatim, Confidence, RecentCitation, VerbatimHit};
+use crate::lexical::{fingerprint, read_share, topic_library, verbatim, Confidence, RecentCitation, VerbatimHit};
 use crate::reference::book_mentions;
 
 const VERBATIM_AUTOSEND_MIN: f32 = 0.95;
@@ -27,6 +27,10 @@ const VERBATIM_LIMIT: usize = 3;
 /// Two verses matched this evenly, in different places, are the same words.
 /// A verse number said this recently picks between word-for-word matches.
 const VERSE_NUMBER_SAID_MS: u64 = 20_000;
+/// A verse read just before a partial quote of the next one vouches for it (in seconds of speech).
+const READ_BEFORE_MS: u64 = 30_000;
+/// Share of that verse's identifying weight read in one run.
+const READ_BEFORE_SHARE: f32 = 0.85;
 /// Word-for-word matches in other places this close to the best are the same saying.
 const VERBATIM_TWIN_SPREAD: f32 = 0.10;
 /// Shared opening wording: two confirmed alignments this close are tied.
@@ -211,7 +215,7 @@ impl Engine {
             }
         }
         let score = if via_idf { top.score.max(0.90) } else { top.score };
-        let corroborated = self.ledger.has_corroboration(self.r(top.verse));
+        let corroborated = self.ledger.has_corroboration(self.r(top.verse)) || self.read_verse_before(top.verse, now);
         // Certain by weight alone (a partial quote) and no other method agrees:
         // offered, never put on screen alone (03-verbatim-and-correction.md).
         // Capped, not just "intent": `intent` is never read, so a four-word
@@ -477,6 +481,15 @@ impl Engine {
             }
         }
         out
+    }
+
+    /// One of the two verses before `v` was just read word for word: "Again a message came to me
+    /// from the Lord: Son of man, you've heard that proverb they quote in Israel" is Ezekiel 12:21
+    /// running on into 12:22, though 12:21's words open a dozen chapters (live, 2026-10-26).
+    fn read_verse_before(&self, v: VerseId, now: u64) -> bool {
+        let r = self.r(v);
+        let heard = self.t.words.recent(now, READ_BEFORE_MS);
+        (1..=2u16).filter_map(|back| self.k.id(VerseRef::new(r.book, r.chapter, r.verse.checked_sub(back)?))).any(|p| read_share(&self.k.lexicon, p, &heard) >= READ_BEFORE_SHARE)
     }
 
     fn settle_stream_tie(&self, tied: &[VerseId], now: u64) -> Option<VerseId> {
