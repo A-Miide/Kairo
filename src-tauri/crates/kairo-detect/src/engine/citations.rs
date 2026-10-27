@@ -916,10 +916,7 @@ impl Engine {
     /// "first"/"second"/"third" said right before the last mention of `word`
     /// in the last few seconds, across segment breaks.
     fn ordinal_said_before(&self, word: &str) -> Option<u8> {
-        let now = self.last_now;
-        let recent: Vec<&str> = self.t.finals.iter().filter(|f| now.saturating_sub(f.at) < ORDINAL_LOOKBACK_MS).map(|f| f.text.as_str()).collect();
-        let recent = &recent[recent.len().saturating_sub(3)..];
-        let all = tokens(&format!("{} {}", recent.join(" "), self.t.interim));
+        let all = tokens(&self.t.words.recent(self.last_now, ORDINAL_LOOKBACK_MS));
         let at = all.iter().rposition(|w| w == word)?;
         match all.get(at.checked_sub(1)?)?.as_str() {
             "first" | "1st" => Some(1),

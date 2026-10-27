@@ -452,8 +452,8 @@ impl Engine {
 
     /// The words just spoken: the latest final (a sentence's worth) and the open interim.
     pub(crate) fn recent_speech_words(&self, max: usize) -> Vec<String> {
-        let last = self.t.recent_finals(1, super::decide::RECENT_SPEECH_WORDS);
-        let words = meaningful_words(&format!("{last} {}", self.t.interim));
+        let w = &self.t.words;
+        let words = meaningful_words(&w.text(w.newest_from().saturating_sub(super::decide::RECENT_SPEECH_WORDS as u64)..w.end()));
         words[words.len().saturating_sub(max)..].to_vec()
     }
 }

@@ -466,8 +466,7 @@ impl Engine {
     /// the verse on screen) wins.
     /// Verse numbers said in the last few seconds ("go to verse twenty three").
     fn verse_numbers_said(&self, now: u64) -> Vec<u16> {
-        let recent: Vec<&str> = self.t.finals.iter().filter(|f| now.saturating_sub(f.at) < VERSE_NUMBER_SAID_MS).map(|f| f.text.as_str()).chain(std::iter::once(self.t.interim.as_str())).collect();
-        let text = recent.join(" ").to_lowercase().replace(|c: char| !c.is_alphanumeric() && c != ' ', " ");
+        let text = self.t.words.recent(now, VERSE_NUMBER_SAID_MS).to_lowercase().replace(|c: char| !c.is_alphanumeric() && c != ' ', " ");
         let words: Vec<&str> = text.split_whitespace().collect();
         let mut out = Vec::new();
         for (i, w) in words.iter().enumerate() {
@@ -718,12 +717,9 @@ impl Engine {
         Some(verses)
     }
 
-    /// The last four finals (at least 40 words of them) and the live text, at
-    /// most 60 words.
+    /// The last 60 words heard.
     pub(crate) fn paraphrase_recent_text(&self) -> String {
-        let all = format!("{} {}", self.t.recent_finals(4, 40), self.t.interim);
-        let words: Vec<&str> = all.split_whitespace().collect();
-        words[words.len().saturating_sub(60)..].join(" ")
+        self.t.words.last(60)
     }
 
     /// Words for comparing speech with a verse: the KJV and the church's own wording.

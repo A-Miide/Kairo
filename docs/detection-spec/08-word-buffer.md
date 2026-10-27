@@ -61,7 +61,14 @@ what the final settled.
 ### Reading it
 
 - `since(t)` — everything heard since `t`, any status. Replaces "finals since
-  `t`, then the interim".
+  `t`, then the interim" where `t` is an event (a verse went up, a citation).
+- `recent(now, ms)` — the last `ms` of speech **and all of the utterance being
+  said**, however long it has run: a window in seconds must not cut the start
+  off a long sentence (cut, the twin check lost the words that kept Psalm 67:3
+  and 67:5 from both going up).
+- `newest()` — what's being said now: the live words, else the latest
+  segment's. Replaces "the interim, else the last final".
+- `last(n)` — the last `n` words heard.
 - `before(pos, n, now, ms)` — at most `n` words before `pos`, each heard within
   `ms`. Replaces "the previous final" and "two finals back".
 - `text(range)` — the words in a range of positions.
@@ -108,14 +115,21 @@ kairo-detect`.
 |------|--------|--------|
 | 1 | the buffer, fed from every segment | done |
 | 2 | chapter-only citation reads `text(from..)` | done |
-| 3 | citation joins read `before(…)` | see the commit log |
-| 4 | "finals since t + interim" readers → `since(t)` | see the commit log |
-| 5 | settled-only readers (verbatim window, sentence buffer) | later: they need a rule for unconfirmed words |
+| 3 | citation joins, "announces a different book", "verse" \| "N" across a split, reading through a chapter → `before(…)` | done |
+| 4 | an ordinal before a book, twin separation, verse numbers said, the paraphrase window, recent range words → `recent`/`last`; corrections, "a citation pending elsewhere", "the verse on screen explains it better", "a shown verse returns" → `newest`/`since` | done |
+| 5 | settled-only readers: the verbatim 60-word rescan, the sentence buffer, the citation check's reading finals and words before a citation, a range's heard words, the stream watermark | later: they need a rule for unconfirmed words |
+
+Replay at each step (2026-10-26): Deepgram recordings 222/263 found, 3 wrong
+(baseline 222/263, 3 wrong of 300 sent); offline recordings 62/82, 0 wrong
+(baseline the same).
 
 ## Robustness cases
 
 `eval/segmentation/*.txt` are `say --segments` scripts (a line starting "~ "
 is an interim). The test `tests/segmentation.rs` feeds the same words split
 several ways — one final, the live log's split, the reference only in an
-interim, every final boundary moved word by word — and requires the same
-verses on screen from each.
+interim, every final boundary moved word by word, and the offline engine's
+own cut (all but the newest two words locked every 2–6 words, the rest a
+final) — and requires the same verses on screen, and the same offers, from
+each. A boundary that cuts a number in two ("sixty | seven") is a different
+number heard and is left out.

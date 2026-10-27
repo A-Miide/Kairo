@@ -221,14 +221,7 @@ impl Engine {
 
     /// Meaningful words of speech in the last few seconds (or the last final).
     pub(crate) fn recent_speech_seconds(&self, max: usize) -> Vec<String> {
-        let now = self.t.finals.back().map_or(0, |f| f.at).max(self.last_now);
-        let mut recent: Vec<&str> = self.t.finals.iter().filter(|f| now.saturating_sub(f.at) < RECENT_SPEECH_MS).map(|f| f.text.as_str()).collect();
-        if recent.is_empty() {
-            if let Some(f) = self.t.finals.back() {
-                recent.push(&f.text);
-            }
-        }
-        let words = meaningful_words(&format!("{} {}", recent.join(" "), self.t.interim));
+        let words = meaningful_words(&self.t.words.recent(self.last_now, RECENT_SPEECH_MS));
         words[words.len().saturating_sub(max)..].to_vec()
     }
 }
