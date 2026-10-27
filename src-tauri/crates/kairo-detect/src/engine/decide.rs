@@ -64,6 +64,11 @@ impl Engine {
     pub(crate) fn decide(&mut self, mut c: Candidate, now: u64) -> Target {
         let Some(&top) = c.verses.first() else { return Target::Drop };
 
+        // 0a. A refrain put up on its words alone: the verse any path finds next tells which it was.
+        if c.verses.len() == 1 && c.corrected_from.is_none() {
+            self.refrain_followed_by(top, now);
+        }
+
         // 0. A range the preacher cited moving on: its next verse goes up as named, no scoring.
         if c.reading_on {
             self.put_up(top, c.method, now);
@@ -175,8 +180,9 @@ impl Engine {
             return Target::Drop;
         }
 
-        // 7. A twin of the passage in play is explained by it.
-        if target == Target::Suggestions && c.method.is_text_match() && self.twin_in_play(top, now) {
+        // 7. A twin of the passage in play is explained by it — unless it's the other reading
+        // offered on purpose (a refrain's other verses).
+        if target == Target::Suggestions && c.method.is_text_match() && c.hold != Some(Hold::OtherReading) && self.twin_in_play(top, now) {
             return Target::Drop;
         }
 
@@ -204,6 +210,21 @@ impl Engine {
                     return self.decide(t, now);
                 }
                 Some(TwinOutcome::Hold(twin)) => {
+                    if let Some((reached, others)) = self.refrain_reached(top, now) {
+                        self.note(|e| format!("{} is a refrain of its chapter: {} reached, the rest offered", e.label(top), e.label(reached)));
+                        let mut t = c.clone();
+                        t.verses = vec![reached];
+                        t.twin_resolved = true;
+                        t.intent = Target::Screen;
+                        let sent = self.decide(t, now);
+                        if sent == Target::Screen {
+                            self.refrain_up(reached, others.clone(), now);
+                            let mut o = Candidate::new(others, c.method, c.score, Target::Suggestions).held(Hold::OtherReading);
+                            o.twin_resolved = true;
+                            self.decide(o, now);
+                        }
+                        return sent;
+                    }
                     target = Target::Suggestions;
                     c.verses = vec![top, twin];
                 }

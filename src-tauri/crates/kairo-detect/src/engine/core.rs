@@ -494,10 +494,12 @@ impl Engine {
         }
 
         if seg.speech_final {
-            // A quote spread over several segments: the last ~60 words.
-            let window = self.t.last_words(60);
+            // A quote spread over several segments: the last ~60 words, interim words a final
+            // dropped included.
+            let window = self.t.words.last(60);
             if !window.is_empty() && Some(&window) != expensive.as_ref() {
-                self.process_verbatim(&window, true, &text, now);
+                let latest = self.t.words.text(self.t.words.brought());
+                self.process_verbatim(&window, true, &latest, now);
                 self.process_fingerprint(&window, now);
             }
         }

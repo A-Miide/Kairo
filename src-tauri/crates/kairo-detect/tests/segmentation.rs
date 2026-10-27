@@ -48,6 +48,22 @@ fn outcome(segments: &[Seg]) -> (Vec<String>, Vec<String>) {
     (shown, offered)
 }
 
+/// Every screen send in order, a correction marked with what it corrects.
+fn sends(segments: &[Seg]) -> Vec<String> {
+    let mut e = Engine::new(K.clone(), Config::default());
+    let (mut t, mut out) = (10_000, Vec::new());
+    let label = |v| { let r = K.verse_ref(v); format!("{} {}:{}", r.book.name(), r.chapter, r.verse) };
+    for (text, fin, _) in segments {
+        t += MS_PER_WORD * text.split_whitespace().count().max(1) as u64;
+        for eff in e.handle(Event::Speech(Segment { text: text.clone(), is_final: *fin, speech_final: *fin, continues_live: false }), t).effects {
+            if let Effect::Show { verses, target: Target::Screen, corrected_from, .. } = eff {
+                out.push(format!("{}{}", label(verses[0]), corrected_from.map_or(String::new(), |c| format!(" (corrects {})", label(c)))));
+            }
+        }
+    }
+    out
+}
+
 /// A `say --segments` script: a line starting "~ " is an interim, any other a final.
 fn script(s: &str) -> Vec<Seg> {
     s.lines().map(str::trim).filter(|l| !l.is_empty()).map(|l| l.strip_prefix("~ ").map_or((l.to_string(), true, false), |i| (i.to_string(), false, false))).collect()
@@ -116,8 +132,8 @@ fn same_however_split(text: &str, up: &[String], offered: &[String], skip: impl 
     assert!(bad.is_empty(), "want {up:?} up and {offered:?} offered however «{text}» is split; wrong for:\n{}", bad.join("\n"));
 }
 
-// Psalm 67:3 and 67:5 are worded alike: the chapter's verse is offered, not sent (twins), but
-// it must be found whichever segment carried the reference.
+// Psalm 67:3 and 67:5 are worded alike, a refrain: read word for word in the chapter just named,
+// the first goes up and the other is offered — whichever segment carried the reference.
 const PSALM_67: &str = "Psalm sixty seven it says let the people praise thee O God let all the people praise thee";
 
 #[test]
@@ -129,15 +145,34 @@ fn psalm_67_as_the_live_log_split_it() {
          says let the people praise thee O God let all the people praise thee",
     );
     let (up, offered) = outcome(&segs);
-    assert!(up.is_empty() && offered.contains(&v("Psalms", 67, 3)), "up {up:?}, offered {offered:?}");
-    let whole = outcome(&[(PSALM_67.to_string(), true, false)]);
-    assert_eq!((up, offered.contains(&v("Psalms", 67, 3))), (whole.0, whole.1.contains(&v("Psalms", 67, 3))));
+    assert!(up == [v("Psalms", 67, 3)] && offered.contains(&v("Psalms", 67, 5)), "up {up:?}, offered {offered:?}");
 }
 
 #[test]
 fn psalm_67_however_it_is_split() {
     // A boundary inside "sixty | seven" is a different number heard: not asked of the engine.
-    same_however_split(PSALM_67, &[], &[v("Psalms", 67, 3)], |k| k == 2);
+    same_however_split(PSALM_67, &[v("Psalms", 67, 3)], &[v("Psalms", 67, 5)], |k| k == 2);
+}
+
+const PSALM_107_REFRAIN: &str = "Oh that men would praise the LORD for his goodness, and for his wonderful works to the children of men!";
+
+#[test]
+fn a_refrain_read_through_its_chapter_goes_up_where_the_reading_is() {
+    // Psalm 107:8, 15, 21 and 31 are the same words: each time it's read, the next one.
+    let mut segs = script("Psalm one hundred and seven");
+    for _ in 0..3 {
+        segs.extend(utterance(&PSALM_107_REFRAIN.split_whitespace().collect::<Vec<_>>()));
+        segs.push(("and then he goes on to tell what the Lord did for them".to_string(), true, false));
+    }
+    let (up, offered) = outcome(&segs);
+    assert_eq!(up, [v("Psalms", 107, 8), v("Psalms", 107, 15), v("Psalms", 107, 21)], "offered {offered:?}");
+}
+
+#[test]
+fn the_same_words_in_other_chapters_stay_a_choice() {
+    // Psalm 107:1, 118:1 and 136:1: no chapter in play, so which passage it is isn't guessed.
+    let (up, _) = outcome(&utterance(&"O give thanks unto the LORD; for he is good: for his mercy endureth for ever.".split_whitespace().collect::<Vec<_>>()));
+    assert!(up.is_empty(), "up {up:?}");
 }
 
 #[test]
@@ -148,4 +183,27 @@ fn a_full_citation_however_it_is_split() {
 #[test]
 fn a_chapter_then_its_verse_quoted_however_split() {
     same_however_split("open your Bibles to Romans chapter eight we know that all things work together for good to them that love God", &[v("Romans", 8, 28)], &[], |_| false);
+}
+
+fn read(segs: &mut Vec<Seg>, text: &str) {
+    segs.extend(utterance(&text.split_whitespace().collect::<Vec<_>>()));
+}
+
+#[test]
+fn the_verse_read_after_a_refrain_tells_which_it_was() {
+    // 67:3 goes up on the refrain's words; "Then shall the earth yield her increase" is 67:6, so the
+    // refrain was 67:5.
+    let mut segs = script("Psalm sixty seven");
+    read(&mut segs, "let the people praise thee O God let all the people praise thee.");
+    read(&mut segs, "Then shall the earth yield her increase");
+    let s = sends(&segs);
+    assert_eq!(s.first().map(String::as_str), Some("Psalms 67:3"), "{s:?}");
+    assert!(s.contains(&"Psalms 67:5 (corrects Psalms 67:3)".to_string()), "{s:?}");
+
+    // …and "O let the nations be glad" is 67:4: it was 67:3.
+    let mut segs = script("Psalm sixty seven");
+    read(&mut segs, "let the people praise thee O God let all the people praise thee.");
+    read(&mut segs, "O let the nations be glad and sing for joy");
+    let s = sends(&segs);
+    assert!(s.first().is_some_and(|f| f == "Psalms 67:3") && !s.iter().any(|x| x.contains("67:5")), "{s:?}");
 }

@@ -3,7 +3,7 @@
 
 use std::collections::{HashMap, HashSet};
 
-use kairo_bible::VerseId;
+use kairo_bible::{VerseId, VerseRef};
 
 use super::core::{Engine, CONTEXT_WINDOW_MS, NAMED_PERSON_WINDOW_MS};
 use super::evidence::{meaningful_words, telling_words};
@@ -40,7 +40,13 @@ enum Decided {
 #[derive(Default)]
 pub(crate) struct TwinState {
     decided: HashMap<VerseId, (Decided, u64)>,
+    /// A refrain put up on its words alone: the verses worded like it, and when it went up. The
+    /// words read next tell which one it was.
+    refrain: Option<(Vec<VerseId>, u64)>,
 }
+
+/// The words after a refrain can still correct which one it was this long after.
+const REFRAIN_FOLLOW_MS: u64 = 30_000;
 
 impl Engine {
     /// The verse a text match landed on, or its twin, or both offered.
@@ -127,6 +133,82 @@ impl Engine {
     fn cited_recently(&self, v: VerseId, now: u64) -> bool {
         let r = self.r(v);
         self.sermon.iter().any(|c| c.named && c.book == r.book && c.chapter == Some(r.chapter) && c.verse == Some(r.verse) && now.saturating_sub(c.at) < CONTEXT_WINDOW_MS)
+    }
+
+    /// A refrain: the verses of `v`'s chapter worded exactly as it is (Psalm 67:3 and 67:5, Psalm
+    /// 107:8, 15, 21 and 31), while that chapter is in play. Reading it word for word, the one the
+    /// reading has reached goes up — the first after the verse of the chapter on screen, else the
+    /// chapter's first — and the others are offered (owner, 2026-10-26). The same words in another
+    /// chapter are another passage, and stay a choice for the operator.
+    pub(crate) fn refrain_reached(&self, v: VerseId, now: u64) -> Option<(VerseId, Vec<VerseId>)> {
+        let r = self.r(v);
+        let up = self.screen.up.map(|(u, at)| (self.r(u), at)).filter(|(u, _)| u.book == r.book && u.chapter == r.chapter);
+        // In play: named a moment ago and waiting for its verse (the live citation context), being
+        // read, pointed at by the sermon, or on screen.
+        let waiting = self.chapter_pending.as_ref().is_some_and(|p| p.book == r.book && p.chapter == r.chapter);
+        let reading = { let a = self.active(now); a.book == Some(r.book) && a.chapter == Some(r.chapter as u32) };
+        if !waiting && !reading && !self.passage_pointed_at(v, now) && !up.is_some_and(|(_, at)| now.saturating_sub(at) < SAME_BOOK_WINDOW_MS) {
+            return None;
+        }
+        let words = |e: &Engine, x: VerseId| super::citations::tokens(e.verse_text(x));
+        let said = words(self, v);
+        let group: Vec<VerseId> = (1..=self.k.corpus.verse_count(r.book, r.chapter).unwrap_or(0))
+            .filter_map(|n| self.k.id(VerseRef::new(r.book, r.chapter, n)))
+            .filter(|x| words(self, *x) == said)
+            .collect();
+        if group.len() < 2 {
+            return None;
+        }
+        // The next one only once the refrain has been said again since the one up went up: the same
+        // reading matched twice (its last words in a final of their own) is still the one up.
+        let refrain = meaningful_words(self.verse_text(v));
+        let said_again = |at: u64| {
+            let since: HashSet<String> = meaningful_words(&self.t.words.since(at)).into_iter().collect();
+            refrain.iter().filter(|w| since.contains(*w)).count() * 5 >= refrain.len() * 4
+        };
+        let reached = match up {
+            Some((u, at)) if group.iter().any(|x| self.r(*x).verse == u.verse) && !said_again(at + 1) => group.iter().copied().find(|x| self.r(*x).verse == u.verse),
+            Some((u, _)) => group.iter().copied().find(|x| self.r(*x).verse > u.verse),
+            None => None,
+        }
+        .unwrap_or(group[0]);
+        Some((reached, group.into_iter().filter(|x| *x != reached).collect()))
+    }
+
+    /// A refrain went up as `up`; the words read next may show it was another of `group`.
+    pub(crate) fn refrain_up(&mut self, up: VerseId, group: Vec<VerseId>, now: u64) {
+        self.set_soft_range(up, now);   // the next verses held in case they're read on
+        self.twins.refrain = Some((std::iter::once(up).chain(group).collect(), now));
+    }
+
+    /// A path proposes `v` while a refrain is up: if `v` follows another of the refrain's repeats
+    /// (67:6 found while 67:3 is up — "…let all the people praise thee. Then shall the earth yield
+    /// her increase"), the refrain read was that one, and it goes up in place of the one guessed;
+    /// its next verses are then held as for any verse up (owner, 2026-10-26). Whichever path heard
+    /// the next verse — the stream, a quote, the range's own words — makes the correction.
+    pub(crate) fn refrain_followed_by(&mut self, v: VerseId, now: u64) {
+        let Some((group, at)) = self.twins.refrain.clone() else { return };
+        let up = self.screen.up_verse().filter(|u| group.contains(u));
+        let Some(up) = up.filter(|_| now.saturating_sub(at) <= REFRAIN_FOLLOW_MS) else {
+            self.twins.refrain = None;
+            return;
+        };
+        let r = self.r(v);
+        let Some(before) = r.verse.checked_sub(1).and_then(|n| self.k.id(VerseRef::new(r.book, r.chapter, n))) else { return };
+        if !group.contains(&before) || v == up {
+            return;
+        }
+        self.twins.refrain = None;
+        if before == up {
+            return; // read on from the one up: it was right
+        }
+        self.note(|e| format!("{} follows {}: the refrain read was {}, not {}", e.label(v), e.label(before), e.label(before), e.label(up)));
+        let mut c = super::core::Candidate::new(vec![before], super::types::Method::Verbatim, 1.0, super::types::Target::Screen);
+        c.corrected_from = Some(up);
+        c.twin_resolved = true;
+        if self.decide(c, now) == super::types::Target::Screen {
+            self.set_soft_range(before, now);   // its next verses held in case they're read on
+        }
     }
 
     /// How strongly the sermon points at this verse's passage (0–3).

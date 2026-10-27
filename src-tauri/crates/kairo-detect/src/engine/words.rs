@@ -102,6 +102,16 @@ impl WordBuffer {
         self.changed_from.max(self.base)..self.end()
     }
 
+    /// What the latest segment newly brought: its words, and the words just before them that only
+    /// an interim heard (a final that dropped them still ends the speech they began).
+    pub fn brought(&self) -> Range<u64> {
+        let mut from = self.changed().start;
+        while from > self.base && self.word(from - 1).is_some_and(|w| w.status == Status::Unconfirmed) {
+            from -= 1;
+        }
+        from..self.end()
+    }
+
     pub fn word(&self, at: u64) -> Option<&Word> {
         at.checked_sub(self.base).and_then(|i| self.words.get(i as usize))
     }
@@ -284,6 +294,7 @@ mod tests {
         assert_eq!(b.word(4).unwrap().status, Status::Unconfirmed);
         assert_eq!(b.word(8).unwrap().status, Status::Settled);
         assert_eq!(b.changed(), 8..14);
+        assert_eq!(b.brought(), 4..14, "with the words only the interim heard");
         // The final beginning part-way into the live words.
         b.interim("O God let", 4000);
         b.settle("let all the people", 5000, false);

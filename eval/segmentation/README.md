@@ -10,5 +10,6 @@ found must not depend on the cut (`docs/detection-spec/08-word-buffer.md`).
 word, as one utterance, as two, and with the first part heard only in an
 interim.
 
-Psalm 67:3 and 67:5 are worded alike, so the verse is offered in Possible
-Matches rather than sent; the case is that it is found at all, however split.
+Psalm 67:3 and 67:5 are worded alike (a refrain): read word for word with
+the chapter named, 67:3 goes up and 67:5 is offered; the verse read next
+tells which it was.
