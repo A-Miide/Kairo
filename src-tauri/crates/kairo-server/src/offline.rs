@@ -34,10 +34,20 @@ const UTTERANCE_END_SECS: f32 = 1.2;
 /// worker and `offline-transcribe --realtime` both use this rule (see [`too_far_behind`]).
 pub const MAX_BEHIND: Duration = Duration::from_secs(4);
 
+/// While singing is heard, no backlog at all is kept. Singing costs the recogniser half as much
+/// again as speech (lyrics, word after word) and on an 8 GB M1 playing the service in Safari it
+/// fell behind only then: 15 skips in 15 minutes, every one in a song (2026-10-27). Dropped at
+/// once, the song costs what the computer can spare, and the preacher who speaks after it is
+/// heard live, not 4 s late.
+pub const MAX_BEHIND_SINGING: Duration = Duration::from_secs(1);
+
 /// The catch-up rule: audio that arrived `waited` ago and isn't decoded yet is too old to use.
 pub fn too_far_behind(waited: Duration) -> bool {
     waited > MAX_BEHIND
 }
+
+/// A frame length that isn't audio: one byte follows, 1 while singing is heard, else 0.
+const SINGING_FRAME: u32 = u32::MAX;
 const REQUIRED: [&str; 4] = ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"];
 
 static NUMBER_WORD: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
@@ -476,6 +486,8 @@ fn run_worker(dir: &std::path::Path, language: Option<String>) -> i32 {
     let (tx, rx) = std::sync::mpsc::channel::<Option<(Instant, Vec<u8>)>>();
     let gone = Arc::new(AtomicBool::new(false));
     let gone_reader = gone.clone();
+    let singing = Arc::new(AtomicBool::new(false));
+    let singing_reader = singing.clone();
     std::thread::spawn(move || {
         let mut input = std::io::stdin().lock();
         loop {
@@ -484,6 +496,16 @@ fn run_worker(dir: &std::path::Path, language: Option<String>) -> i32 {
                 gone_reader.store(true, Ordering::SeqCst);
                 let _ = tx.send(None);
                 return;
+            }
+            if u32::from_le_bytes(len) == SINGING_FRAME {
+                let mut on = [0u8; 1];
+                if input.read_exact(&mut on).is_err() {
+                    gone_reader.store(true, Ordering::SeqCst);
+                    let _ = tx.send(None);
+                    return;
+                }
+                singing_reader.store(on[0] == 1, Ordering::Relaxed);
+                continue;
             }
             let n = u32::from_le_bytes(len) as usize;
             let mut buf = vec![0u8; n];
@@ -514,7 +536,8 @@ fn run_worker(dir: &std::path::Path, language: Option<String>) -> i32 {
         }
         match rx.recv_timeout(Duration::from_millis(15)) {
             Ok(Some((arrived, chunk))) => {
-                if too_far_behind(arrived.elapsed()) {
+                let sung = singing.load(Ordering::Relaxed);
+                if too_far_behind(arrived.elapsed()) || (sung && arrived.elapsed() > MAX_BEHIND_SINGING) {
                     // Behind live speech: drop what is waiting, say so, start fresh at the newest.
                     let mut dropped = chunk.len() / 2;
                     let mut ended = false;
@@ -527,7 +550,7 @@ fn run_worker(dir: &std::path::Path, language: Option<String>) -> i32 {
                     if let Some(h) = heard.cut() {
                         emit(h);
                     }
-                    say(json!({ "k": "s", "ms": dropped * 1000 / SAMPLE_RATE_HZ }).to_string());
+                    say(json!({ "k": "s", "ms": dropped * 1000 / SAMPLE_RATE_HZ, "sung": sung }).to_string());
                     if ended {
                         return 0;
                     }
@@ -556,8 +579,9 @@ fn run_worker(dir: &std::path::Path, language: Option<String>) -> i32 {
 enum FromWorker {
     Ready,
     Heard(Heard),
-    /// Recognition had fallen behind: this much waiting audio was dropped to stay live.
-    Skipped(u64),
+    /// Recognition had fallen behind: this much waiting audio was dropped to stay live (and
+    /// whether it was singing).
+    Skipped(u64, bool),
     Gone,
 }
 
@@ -586,7 +610,7 @@ fn spawn_worker(dir: &std::path::Path, language: &Option<String>) -> Result<(std
                 let Ok(v) = serde_json::from_str::<Value>(body) else { continue };
                 let t = v["t"].as_str().unwrap_or("").to_string();
                 if v["k"] == "s" {
-                    if tx.send(FromWorker::Skipped(v["ms"].as_u64().unwrap_or(0))).is_err() { return; }
+                    if tx.send(FromWorker::Skipped(v["ms"].as_u64().unwrap_or(0), v["sung"].as_bool().unwrap_or(false))).is_err() { return; }
                     continue;
                 }
                 FromWorker::Heard(match v["k"].as_str() {
@@ -699,6 +723,8 @@ fn supervise(
         }
         let mut input = child.stdin.take();
         let mut dead = false;
+        // What this engine was last told about singing (a restarted one starts out not told).
+        let mut told_singing = false;
         // After a restart: the last seconds again first (see REPLAY_FRAMES).
         if !recent.is_empty() {
             catching_up.set(true);
@@ -714,7 +740,9 @@ fn supervise(
             while let Ok(m) = from.try_recv() {
                 match m {
                     FromWorker::Heard(h) => tell(h),
-                    FromWorker::Skipped(ms) => {
+                    // A song dropped to stay live is no loss: logged, not put to the operator.
+                    FromWorker::Skipped(ms, true) => crate::routes::write_debug_global("server:singing-skipped", json!({ "skippedMs": ms })),
+                    FromWorker::Skipped(ms, false) => {
                         // Said, in the log and to the operator: this computer can't keep up.
                         crate::routes::write_debug_global("server:speech-behind", json!({ "skippedMs": ms }));
                         hub.broadcast(json!({ "type": "speech-behind", "skippedMs": ms }));
@@ -742,6 +770,14 @@ fn supervise(
                 let _ = child.kill();
                 let _ = child.wait();
                 return;
+            }
+            let singing = crate::music::SINGING.load(Ordering::Relaxed);
+            if singing != told_singing {
+                told_singing = singing;
+                let w = input.as_mut().expect("engine input");
+                if w.write_all(&SINGING_FRAME.to_le_bytes()).and_then(|_| w.write_all(&[singing as u8])).is_err() {
+                    dead = true;
+                }
             }
             let mut got = false;
             while let Ok(chunk) = audio.try_recv() {
