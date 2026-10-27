@@ -359,13 +359,19 @@ impl Engine {
 
     /// The best two verses of a chapter for what was said, by identifying weight.
     pub(crate) fn score_chapter(&self, book: kairo_bible::Book, chapter: u16, text: &str) -> Vec<(VerseId, f32)> {
+        let mut rows = self.score_chapter_all(book, chapter, text);
+        rows.truncate(2);
+        rows
+    }
+
+    /// Every verse of the chapter, best first (equal scores keep verse order).
+    pub(crate) fn score_chapter_all(&self, book: kairo_bible::Book, chapter: u16, text: &str) -> Vec<(VerseId, f32)> {
         let Some(n) = self.k.corpus.verse_count(book, chapter) else { return Vec::new() };
         let mut rows: Vec<(VerseId, f32)> = (1..=n)
             .filter_map(|v| self.k.id(kairo_bible::VerseRef::new(book, chapter, v)))
             .map(|id| (id, self.shared_weight(id, text).0))
             .collect();
         rows.sort_by(|a, b| b.1.total_cmp(&a.1));
-        rows.truncate(2);
         rows
     }
 

@@ -28,6 +28,20 @@ fn main() {
     let m = opt("--meaning").map(|e| meaning(&e, Some("minilm.json"), &["KJV"]));
     let mut engine = Engine::new(k.clone(), Config { explain, meaning: m.is_some(), ..Config::default() });
 
+    // `--segments`: one line per segment as the speech engine sent it; a line starting "~ " is an
+    // interim, any other line a final (reproduces what a live log shows, which re-splitting can't).
+    if args.iter().any(|a| a == "--segments") {
+        let mut t = 0u64;
+        for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+            t += 1500;
+            let (said, fin) = line.strip_prefix("~ ").map_or((line, true), |s| (s, false));
+            println!("[{:>5.1}s] {}{said}", t as f64 / 1000.0, if fin { "" } else { "~ " });
+            let o = engine.handle(Event::Speech(Segment { text: said.to_string(), is_final: fin, speech_final: fin, continues_live: !fin }), t);
+            report(&k, o, false, &mut Vec::new(), &mut Vec::new());
+        }
+        return;
+    }
+
     let words: Vec<&str> = text.split_whitespace().collect();
     let mut utterances: Vec<Vec<&str>> = vec![Vec::new()];
     for w in &words {

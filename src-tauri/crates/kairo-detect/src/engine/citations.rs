@@ -708,6 +708,7 @@ impl Engine {
         let Some(pending) = self.chapter_pending.clone() else { return false };
         let a = self.active(now);
         if a.book != Some(pending.book) || a.chapter != Some(pending.chapter as u32) {
+            self.note(|_| format!("chapter {} of {} is waiting, but the reading context moved on", pending.chapter, pending.book.name()));
             return false;
         }
         if !is_final {
@@ -720,7 +721,15 @@ impl Engine {
         }
         match self.chapter_by_keywords(pending.book, pending.chapter as u32, &accumulated) {
             Some((v, explicit)) => self.send_chapter_keyword(pending.book, pending.chapter as u32, v, explicit, now),
-            None => false,
+            None => {
+                // Earlier words keep favouring the verse they were said about; the newest alone may name another.
+                let latest = format!("{} {} {text}", pending.book.name(), pending.chapter);
+                if let Some((v, explicit)) = self.chapter_by_keywords(pending.book, pending.chapter as u32, &latest) {
+                    return self.send_chapter_keyword(pending.book, pending.chapter as u32, v, explicit, now);
+                }
+                self.note(|_| format!("chapter {} of {} still waiting; no verse stands out from «{accumulated}»", pending.chapter, pending.book.name()));
+                false
+            }
         }
     }
 
@@ -746,6 +755,14 @@ impl Engine {
             // Speech in progress: only a verse number called out on its own.
             if let Some(v) = self.chapter_callout(book, chapter, text) {
                 self.send_chapter_keyword(book, chapter, v, true, now);
+                return;
+            }
+            // The reference can end an interim and be missing from the final that follows
+            // ("Psalm sixty seven it" | "says let the people praise thee…", live log 2026-10-26),
+            // so the chapter waits from here, not only from a final that repeats it.
+            let waiting = self.chapter_pending.as_ref().is_some_and(|p| p.book == book && p.chapter == ch);
+            if !waiting && self.chapter_resolved_for != Some((book, ch)) {
+                self.chapter_pending = Some(ChapterPending { book, chapter: ch, text: text.to_string(), at: now });
             }
             return;
         }
@@ -755,6 +772,7 @@ impl Engine {
             }
         }
         if self.chapter_resolved_for != Some((book, ch)) {
+            self.note(|_| format!("chapter {ch} of {} named without a verse: waiting for the words that follow", book.name()));
             self.chapter_pending = Some(ChapterPending { book, chapter: ch, text: text.to_string(), at: now });
         }
     }
@@ -835,8 +853,10 @@ impl Engine {
     /// The chapter's verse sharing clearly the most identifying words with `text`.
     pub(crate) fn pick_chapter_verse_by_idf(&self, book: Book, chapter: u32, text: &str) -> Option<VerseId> {
         use super::ranges::{CHAPTER_KEYWORD_MIN_IDF, CHAPTER_KEYWORD_MIN_MARGIN};
-        let rows = self.score_chapter(book, chapter as u16, text);
-        let (best, second) = (rows.first()?, rows.get(1).map_or(0.0, |r| r.1));
+        let rows = self.score_chapter_all(book, chapter as u16, text);
+        // A verse worded exactly like the best one (Psalm 67:3 and 67:5) is the same answer, not a rival.
+        let best = rows.first()?;
+        let second = rows.iter().skip(1).find(|r| self.verse_text(r.0) != self.verse_text(best.0)).map_or(0.0, |r| r.1);
         (best.1 >= CHAPTER_KEYWORD_MIN_IDF && best.1 - second >= CHAPTER_KEYWORD_MIN_MARGIN).then_some(best.0)
     }
 
