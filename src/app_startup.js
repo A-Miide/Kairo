@@ -2,57 +2,114 @@
 // bootstrap. Split out of app.js; MUST load last (it boots the app once every other
 // piece has defined its functions).
 
-// ── Auto-update listener (Tauri only) ─────────────────────────────────────
-// The Rust side emits `update-available` after a background check on startup.
-// We show a dismissible banner; clicking it calls install_update() in Rust,
-// which downloads the package and restarts the app.
+// ── Updates (Tauri only) ──────────────────────────────────────────────────
+// The Rust side emits `update-available` after the background check on startup, or after "Check
+// for updates" (Help menu, Settings → Help). An update shows once as a modal over the app; "Later"
+// keeps it waiting in Settings → Help → Updates, with Update & Restart there. A banner above the
+// toolbar used to show it, under macOS's window buttons and with the notes' markdown as text
+// ("## KAIRO v4.2.1"; owner, 4.2.0 → 4.2.1).
 (function initUpdater() {
   if (!window.__TAURI__) return; // not running inside Tauri shell
+  const tauri = window.__TAURI__;
+  let pending = null;     // { version, notes } of an update waiting to be installed
+  let shownFor = null;    // the version the modal was already shown for
+  let checking = false;   // a check asked for in Settings, so its answer is shown there
 
-  window.__TAURI__.event.listen('update-available', (event) => {
-    const { version, notes } = event.payload || {};
-    showUpdateBanner(version, notes);
-  });
+  const status = (text) => { const el = document.getElementById('upd-status'); if (el) el.textContent = text; };
+  const installBtn = () => document.getElementById('upd-settings-install');
+  const current = () => (typeof settings !== 'undefined' && settings?.appVersion) ? `v${settings.appVersion}` : 'this version';
 
-  // Only fired for an explicit "Check for Updates…" (Help menu) — the
-  // silent startup check never emits this event, so there's no risk of an
-  // unprompted "you're up to date" toast on every launch.
-  window.__TAURI__.event.listen('update-check-result', (event) => {
-    const { upToDate, error } = event.payload || {};
-    if (upToDate) toast('KAIRO is up to date.', 'success');
-    else if (error) toast('Could not check for updates: ' + error, 'error');
-  });
-
-  function showUpdateBanner(version, notes) {
-    const existing = document.getElementById('update-banner');
-    if (existing) existing.remove();
-
-    const banner = document.createElement('div');
-    banner.id = 'update-banner';
-    banner.innerHTML = `
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-        <polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/>
-        <polyline points="21 16 21 21 16 21"/><line x1="15" y1="4" x2="21" y2="10"/>
-      </svg>
-      <span>KAIRO <strong>${version || 'update'}</strong> is available${notes ? ' — ' + notes.split('\n')[0] : ''}.</span>
-      <button class="upd-btn" id="upd-install-btn">Update &amp; Restart</button>
-      <button class="upd-snooze" id="upd-snooze-btn" aria-label="Dismiss">Later</button>
-    `;
-    document.body.insertBefore(banner, document.body.firstChild);
-
-    document.getElementById('upd-install-btn').addEventListener('click', async () => {
-      document.getElementById('upd-install-btn').textContent = 'Downloading…';
-      document.getElementById('upd-install-btn').disabled = true;
-      try {
-        await window.__TAURI__.core.invoke('install_update');
-      } catch (e) {
-        toast('Update failed: ' + e, 'error');
-        banner.remove();
-      }
-    });
-
-    document.getElementById('upd-snooze-btn').addEventListener('click', () => banner.remove());
+  // The release notes' "What's new" items, markdown made plain (bold kept).
+  function whatsNew(notes) {
+    const lines = String(notes || '').split('\n').map(l => l.trim());
+    const from = lines.findIndex(l => /^#+\s*what'?s new/i.test(l));
+    const items = [];
+    for (const l of lines.slice(from >= 0 ? from + 1 : 0)) {
+      if (from >= 0 && /^#+\s/.test(l)) break;
+      if (/^[-*]\s+/.test(l)) items.push(escapeHtml(l.replace(/^[-*]\s+/, '')).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/[`_]/g, ''));
+    }
+    if (!items.length) {
+      const line = lines.find(l => l && !l.startsWith('#') && !/^\*\*.*\*\*$/.test(l));
+      if (line) items.push(escapeHtml(line.replace(/[*_`#]/g, '')));
+    }
+    return items.slice(0, 8);
   }
+
+  async function install(btn) {
+    for (const b of [btn, installBtn(), document.getElementById('upd-modal-install')]) {
+      if (b) { b.textContent = 'Downloading…'; b.disabled = true; }
+    }
+    status(`Downloading Kairo ${pending?.version || ''}… Kairo restarts when it's in.`);
+    try {
+      await tauri.core.invoke('install_update');
+    } catch (e) {
+      toast('Update failed: ' + e, 'error');
+      status(`The update couldn't be installed: ${e}`);
+      for (const b of [installBtn(), document.getElementById('upd-modal-install')]) {
+        if (b) { b.textContent = 'Update & Restart'; b.disabled = false; }
+      }
+    }
+  }
+
+  function showUpdateModal() {
+    document.getElementById('update-modal')?.remove();
+    const items = whatsNew(pending.notes);
+    const modal = document.createElement('div');
+    modal.id = 'update-modal';
+    modal.className = 'modal';
+    modal.innerHTML = `
+      <div class="modal-overlay"></div>
+      <div class="modal-content" style="width:480px;">
+        <div class="modal-header">
+          <h2>Kairo ${escapeHtml(pending.version || '')} is available</h2>
+          <button class="modal-close-btn" id="upd-modal-close">
+            <svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+            <span>Close</span>
+          </button>
+        </div>
+        <div class="modal-body" style="display:block;padding:16px 20px;">
+          <p class="setting-hint" style="margin:0 0 10px;">You have ${escapeHtml(current())}. Kairo restarts to finish the update.</p>
+          ${items.length ? `<div class="setting-label" style="margin-bottom:6px;">What's new</div><ul class="upd-notes">${items.map(i => `<li>${i}</li>`).join('')}</ul>` : ''}
+        </div>
+        <div class="modal-footer">
+          <button class="modal-btn secondary" id="upd-modal-later">Later</button>
+          <button class="modal-btn primary" id="upd-modal-install">Update &amp; Restart</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    const close = () => modal.remove();
+    modal.querySelector('.modal-overlay').addEventListener('click', close);
+    modal.querySelector('#upd-modal-close').addEventListener('click', close);
+    modal.querySelector('#upd-modal-later').addEventListener('click', close);
+    modal.querySelector('#upd-modal-install').addEventListener('click', (e) => install(e.currentTarget));
+  }
+
+  tauri.event.listen('update-available', (event) => {
+    const { version, notes } = event.payload || {};
+    pending = { version, notes };
+    status(`Kairo ${version} is available. You have ${current()}.`);
+    installBtn()?.classList.remove('hidden');
+    const nav = document.getElementById('settings-nav-version');
+    if (nav && !nav.dataset.update) { nav.dataset.update = '1'; nav.title = `Kairo ${version} is available`; nav.classList.add('has-update'); }
+    if (shownFor !== version || checking) { shownFor = version; showUpdateModal(); }
+    checking = false;
+  });
+
+  // Answers a check asked for (Help menu or Settings): up to date, or why it couldn't check.
+  tauri.event.listen('update-check-result', (event) => {
+    const { upToDate, error } = event.payload || {};
+    if (upToDate) { toast('KAIRO is up to date.', 'success'); status(`Kairo is up to date (${current()}).`); }
+    else if (error) { toast('Could not check for updates: ' + error, 'error'); status(`Couldn't check for updates: ${error}`); }
+    checking = false;
+  });
+
+  document.getElementById('upd-check-btn')?.addEventListener('click', () => {
+    checking = true;
+    status('Checking for updates…');
+    tauri.core.invoke('check_updates').catch(e => { checking = false; status(`Couldn't check for updates: ${e}`); });
+  });
+  installBtn()?.addEventListener('click', (e) => install(e.currentTarget));
+  status(`You have ${current()}. Kairo checks for updates when it starts.`);
 })();
 
 // ── Native app menu bridge (Tauri only) ───────────────────────────────────

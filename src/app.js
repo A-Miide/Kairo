@@ -4084,7 +4084,7 @@ async function renderOfflineSummary() {
     const t = document.createElement('span'); t.textContent = text;
     r.append(m, t);
     if (link) {
-      const a = document.createElement('button'); a.type = 'button'; a.className = 'lang-link'; a.textContent = 'Set up in Language';
+      const a = document.createElement('button'); a.type = 'button'; a.className = 'lang-link'; a.textContent = 'Download in Language';
       a.addEventListener('click', () => { showSettingsPane('language'); window.renderLangCapability?.(); });
       r.append(document.createTextNode(' '), a);
     }
@@ -4098,7 +4098,11 @@ async function renderOfflineSummary() {
   if (en?.installed) row(true, `Offline: English${english.length ? ` (${english.join(', ')})` : ''}`);
   if (multi?.installed) row(true, `Offline: ${others.join(', ')}${langs.some(o => o.value === 'multi') ? ', and Auto-detect' : ''}`);
   const needed = need === 'en' ? en : multi;
-  if (!needed?.installed) row(false, need === 'en' ? 'English needs the offline model' : `${document.getElementById('stt-language')?.selectedOptions?.[0]?.textContent || 'This language'} needs the offline model for other languages`, true);
+  // What's missing and how big it is, not "English needs the offline model" (read as something wrong
+  // with English; owner, 4.2.1).
+  const size = needed?.approxMB ? ` (${needed.approxMB} MB)` : '';
+  const which = need === 'en' ? '' : ` for ${document.getElementById('stt-language')?.selectedOptions?.[0]?.textContent || 'this language'}`;
+  if (!needed?.installed) row(false, `The offline model${which} isn't downloaded yet${size}`, true);
 }
 document.getElementById('speech-engine-toggle')?.addEventListener('click', () => setTimeout(renderOfflineSummary, 0));
 document.getElementById('speech-engine-toggle')?.addEventListener('toggle-change', () => renderOfflineSummary());

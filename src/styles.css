@@ -7283,44 +7283,13 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .frb-close:hover { color: #fbbf24; }
 
 /* ── Auto-update banner ── */
-#update-banner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 16px;
-  background: rgba(255,255,255,0.10);
-  border-bottom: 1px solid rgba(255,255,255,0.25);
-  color: var(--blue);
-  font-size: 13px;
-  font-weight: 500;
-  position: relative;
-  z-index: 9999;
-}
-#update-banner svg { flex-shrink: 0; opacity: 0.9; }
-#update-banner span { flex: 1; }
-#update-banner strong { color: var(--text); }
-.upd-btn {
-  background: rgba(255,255,255,0.18);
-  border: 1px solid rgba(255,255,255,0.4);
-  color: var(--blue);
-  padding: 4px 12px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  white-space: nowrap;
-}
-.upd-btn:hover:not(:disabled) { background: rgba(255,255,255,0.28); }
-.upd-btn:disabled { opacity: 0.5; cursor: default; }
-.upd-snooze {
-  background: none;
-  border: none;
-  color: rgba(255,255,255,0.5);
-  font-size: 12px;
-  cursor: pointer;
-  padding: 2px 6px;
-}
-.upd-snooze:hover { color: var(--blue); }
+/* The update modal sits over everything, the welcome tour included (a fresh install showed it behind). */
+#update-modal { z-index: 4000; }
+/* The update modal's "What's new" (app_startup.js initUpdater). */
+.upd-notes { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 1.45; color: var(--text-2); }
+.upd-notes strong { color: var(--text); font-weight: 600; }
+/* Settings' version line, when an update is waiting. */
+#settings-nav-version.has-update::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--brand, #F5301A); vertical-align: middle; }
 
 /* Shared section-header label — used by Slides/Songs/Media/Timer's own
    headers (see .cs-section-header usages in index.html), not just wherever
