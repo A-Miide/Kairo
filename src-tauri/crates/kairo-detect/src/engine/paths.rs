@@ -148,7 +148,8 @@ fn clause_list(text: &str, min_words: usize) -> Vec<String> {
 impl Engine {
     /// The best verbatim results over several texts (stopping at a near-complete quote).
     /// The best results over several texts, and the text they came from.
-    fn verbatim_batch(&self, texts: &[String], min_words: usize) -> (Vec<VerbatimHit>, String) {
+    /// `passed`: verses not to be found (the reading has gone beyond them).
+    fn verbatim_batch(&self, texts: &[String], min_words: usize, passed: impl Fn(VerseId) -> bool) -> (Vec<VerbatimHit>, String) {
         // Another verse carries the same weight of what was said: this much of the speech can't
         // tell them apart yet (John 3:15 and 3:16 share "should not perish, but have").
         let ambiguous = |r: &[VerbatimHit]| {
@@ -156,7 +157,8 @@ impl Engine {
         };
         let mut best: (Vec<VerbatimHit>, String) = (Vec::new(), String::new());
         for t in texts {
-            let r = verbatim(&self.k.lexicon, t, min_words, VERBATIM_LIMIT);
+            let mut r = verbatim(&self.k.lexicon, t, min_words, VERBATIM_LIMIT);
+            r.retain(|h| !passed(h.verse));
             if r.is_empty() {
                 continue;
             }
@@ -177,7 +179,16 @@ impl Engine {
         if texts.is_empty() {
             return;
         }
-        let (results, found_in) = self.verbatim_batch(&texts, VERBATIM_MIN_WORDS);
+        // An earlier verse of the passage up, still in the end-of-utterance window, is not looked
+        // for again: read near-complete, it ended the search before the verse being read was tried
+        // (Psalm 149:4 found again while 149:6 was read, live 2026-10-26).
+        let behind = |v: VerseId| {
+            self.screen.up_verse().is_some_and(|u| {
+                let (u, v) = (self.r(u), self.r(v));
+                u.book == v.book && u.chapter == v.chapter && v.verse < u.verse
+            })
+        };
+        let (results, found_in) = self.verbatim_batch(&texts, VERBATIM_MIN_WORDS, |v| rescan && behind(v));
         let Some(first) = results.first().copied() else { return };
         let certain = |h: &VerbatimHit| h.score >= VERBATIM_AUTOSEND_MIN || h.matched_idf.is_some_and(|m| m >= VERBATIM_CERTAIN_IDF);
         let screen: Vec<VerbatimHit> = results.iter().copied().filter(certain).collect();
@@ -188,10 +199,7 @@ impl Engine {
             self.decide(Candidate::new(vec![first.verse], Method::Verbatim, first.score, Target::Suggestions).evidence(evidence(&first)).from_text(&found_in).held(Hold::QuoteBelowBar), now);
             return;
         };
-        let steps_back = self.screen.up_verse().is_some_and(|u| {
-            let (u, v) = (self.r(u), self.r(top.verse));
-            u.book == v.book && u.chapter == v.chapter && v.verse < u.verse
-        });
+        let steps_back = behind(top.verse);
         // The end-of-utterance sweep mustn't resurrect a quote the reading has moved past.
         if rescan && (!self.shares_words_with(top.verse, latest) || steps_back) {
             self.decide(Candidate::new(vec![top.verse], Method::Verbatim, top.score, Target::Suggestions).evidence(evidence(&top)).from_text(&found_in).held(Hold::QuoteBehindReading), now);
