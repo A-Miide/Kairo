@@ -14,6 +14,12 @@
 //! The rewrite works on the protobuf wire format and touches nothing but the
 //! tensors' `raw_data`: every other field is copied byte for byte, so the
 //! graph is exactly the one sherpa-onnx shipped.
+//!
+//! Better still, [`prepack`]: ONNX Runtime rearranges ("prepacks") each weight
+//! into the layout its maths routines read fastest, and keeps that copy on the
+//! heap. Saved once to the weights file, the prepacked copies are mapped too,
+//! so decoding costs what it always did (turning prepacking off instead costs
+//! about 15% more CPU).
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -25,12 +31,26 @@ const MIN_EXTERNAL: usize = 4096;
 /// Each tensor starts on its own page in the weights file.
 const ALIGN: u64 = 16384;
 
-/// Whether `model` already keeps its weights in [`WEIGHTS`].
+/// A graph with its weights beside it is a few MB; the encoder with its weights is 650.
+const MAX_GRAPH: u64 = 64 << 20;
+
+/// Whether `model` is a small graph whose weights live in a file beside it
+/// ([`WEIGHTS`], or prepacked ones from [`prepack`]).
 pub fn external(model: &Path) -> bool {
-    // The weights file is written before the graph replaces the original, so a run cut
-    // short in between leaves a model still larger than its (stale) weights file.
     let len = |p: &Path| std::fs::metadata(p).map_or(0, |m| m.len());
-    weights_path(model).is_some_and(|w| len(&w) > len(model))
+    let graph = len(model);
+    graph > 0 && graph < MAX_GRAPH && weights_files(model).iter().any(|w| len(w) > graph)
+}
+
+/// Every `<model stem>.*weights` file beside `model`.
+fn weights_files(model: &Path) -> Vec<PathBuf> {
+    let (Some(dir), Some(stem)) = (model.parent(), model.file_stem().and_then(|s| s.to_str())) else { return Vec::new() };
+    let Ok(entries) = std::fs::read_dir(dir) else { return Vec::new() };
+    entries
+        .filter_map(|e| e.ok())
+        .filter(|e| e.file_name().to_str().is_some_and(|n| n.starts_with(stem) && n.ends_with(".weights")))
+        .map(|e| e.path())
+        .collect()
 }
 
 fn weights_path(model: &Path) -> Option<PathBuf> {
@@ -52,12 +72,12 @@ pub fn externalize(model: &Path) -> Result<(), String> {
         let src = std::fs::File::open(model).map_err(|e| e.to_string())?;
         // SAFETY: the model is only read, and nothing else writes it while KAIRO runs.
         let map = unsafe { memmap2::Mmap::map(&src) }.map_err(|e| e.to_string())?;
-        let mut out = Weights { file: std::io::BufWriter::new(std::fs::File::create(&weights_tmp).map_err(|e| e.to_string())?), at: 0, moved: 0 };
+        let mut out = Weights { file: Some(std::io::BufWriter::new(std::fs::File::create(&weights_tmp).map_err(|e| e.to_string())?)), at: 0, moved: 0 };
         let graph = model_proto(&map, &mut out).ok_or("the model file isn't a readable ONNX model")?;
         if out.moved == 0 {
             return Err("the model has no weights to move".into());
         }
-        out.file.into_inner().map_err(|e| e.to_string())?.sync_all().map_err(|e| e.to_string())?;
+        out.file.take().ok_or("no weights file")?.into_inner().map_err(|e| e.to_string())?.sync_all().map_err(|e| e.to_string())?;
         let mut g = std::fs::File::create(&graph_tmp).map_err(|e| e.to_string())?;
         g.write_all(&graph).and_then(|_| g.sync_all()).map_err(|e| e.to_string())?;
         drop(map); // Windows can't replace a file that is still mapped
@@ -71,8 +91,113 @@ pub fn externalize(model: &Path) -> Result<(), String> {
     result
 }
 
+/// What a prepacked weights file is only good for: prepacked bytes depend on the
+/// ONNX Runtime build (this app version) and the processor (a model folder copied
+/// to a new computer). When either changes, ONNX Runtime would quietly prepack
+/// onto the heap again, so the weights are prepacked afresh.
+pub fn stamp() -> String {
+    format!("KAIRO {} {} {}", env!("CARGO_PKG_VERSION"), std::env::consts::ARCH, cpu_name())
+}
+
+fn cpu_name() -> String {
+    #[cfg(target_os = "macos")]
+    let name = std::process::Command::new("sysctl").args(["-n", "machdep.cpu.brand_string"]).output().ok().map(|o| String::from_utf8_lossy(&o.stdout).into_owned());
+    #[cfg(windows)]
+    let name = std::env::var("PROCESSOR_IDENTIFIER").ok();
+    #[cfg(not(any(target_os = "macos", windows)))]
+    let name = std::fs::read_to_string("/proc/cpuinfo").ok().and_then(|c| c.lines().find(|l| l.starts_with("model name")).map(str::to_string));
+    name.map(|n| n.trim().to_string()).unwrap_or_default()
+}
+
+/// `encoder.int8.<unique>.weights`: a new name each time, so replacing the graph
+/// is the one step that switches from one weights file to the next.
+fn prepacked_name(model: &Path, stamp: &str) -> Option<String> {
+    use sha2::{Digest, Sha256};
+    let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos();
+    let unique = format!("{stamp} {} {now}", std::process::id());
+    let hash: String = Sha256::digest(unique.as_bytes()).iter().take(4).map(|b| format!("{b:02x}")).collect();
+    Some(format!("{}.{hash}.weights", model.file_stem()?.to_str()?))
+}
+
+/// `encoder.int8.prepacked`: the stamp, then the name of the weights file the graph uses.
+fn stamp_path(model: &Path) -> Option<PathBuf> {
+    Some(model.parent()?.join(format!("{}.prepacked", model.file_stem()?.to_str()?)))
+}
+
+/// Whether `model` is prepacked for this `stamp` (see [`prepack`]).
+pub fn prepacked(model: &Path, stamp: &str) -> bool {
+    let (Some(stamp_file), Some(dir)) = (stamp_path(model), model.parent()) else { return false };
+    let Ok(saved) = std::fs::read_to_string(stamp_file) else { return false };
+    let mut lines = saved.lines();
+    lines.next() == Some(stamp) && lines.next().is_some_and(|name| dir.join(name).exists()) && external(model)
+}
+
+/// Replaces `model` with ONNX Runtime's optimized graph, its weights (as they
+/// are and prepacked) in `encoder.int8.<stamp hash>.weights` beside it. ONNX
+/// Runtime still reads the weights as they are when it loads (it prepacks each
+/// one to recognise its saved copy), but those pages are mapped, and dropped
+/// again by the system when memory is short. Costs about 530 MB more disk.
+///
+/// The graph is replaced last, in one step: a run cut short leaves the model
+/// working as it was. Must run in the program that will load the model (the
+/// prepacked bytes are this program's ONNX Runtime's).
+pub fn prepack(model: &Path, stamp: &str) -> Result<(), String> {
+    use ort::session::{builder::GraphOptimizationLevel, Session};
+    let dir = model.parent().ok_or("model has no folder")?;
+    let name = prepacked_name(model, stamp).ok_or("model has no name")?;
+    let stamp_file = stamp_path(model).ok_or("model has no name")?;
+    let work = dir.join(format!(".prepack-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&work);
+    std::fs::create_dir(&work).map_err(|e| e.to_string())?;
+    // Prepacking a model already prepacked once (another app version or computer): ONNX
+    // Runtime would use the saved copies it recognises and save none, so it is given the
+    // graph without them (beside the weights it refers to).
+    let source = dir.join(format!(".prepack-source-{}.onnx", std::process::id()));
+    let result = (|| {
+        let graph = work.join(model.file_name().ok_or("model has no name")?);
+        let from = if external(model) {
+            let bytes = std::fs::read(model).map_err(|e| e.to_string())?;
+            let mut w = Weights { file: None, at: 0, moved: 0 };
+            let stripped = model_proto(&bytes, &mut w).ok_or("the model file isn't a readable ONNX model")?;
+            std::fs::write(&source, stripped).map_err(|e| e.to_string())?;
+            source.as_path()
+        } else {
+            model
+        };
+        // The session is dropped at the end of the statement, unmapping the old
+        // weights before they're replaced (Windows can't replace a mapped file).
+        let save = || -> ort::Result<()> {
+            Session::builder()?
+                .with_optimization_level(GraphOptimizationLevel::Level3)?
+                .with_intra_threads(1)?
+                .with_optimized_model_path(&graph)?
+                .with_config_entry("session.optimized_model_external_initializers_file_name", &name)?
+                .with_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", MIN_EXTERNAL.to_string())?
+                .with_config_entry("session.save_external_prepacked_constant_initializers", "1")?
+                .commit_from_file(from)?;
+            Ok(())
+        };
+        save().map_err(|e| e.to_string())?;
+        if !work.join(&name).exists() || !graph.exists() {
+            return Err("ONNX Runtime saved no prepacked model".into());
+        }
+        std::fs::rename(work.join(&name), dir.join(&name)).map_err(|e| e.to_string())?;
+        std::fs::rename(&graph, model).map_err(|e| e.to_string())?;
+        std::fs::write(&stamp_file, format!("{stamp}\n{name}\n")).map_err(|e| e.to_string())?;
+        // The weights the old graph used (still mapped by a running engine on Windows: left for next time).
+        for w in weights_files(model).into_iter().filter(|w| !w.ends_with(&name)) {
+            let _ = std::fs::remove_file(w);
+        }
+        Ok(())
+    })();
+    let _ = std::fs::remove_dir_all(&work);
+    let _ = std::fs::remove_file(&source);
+    result
+}
+
+/// Where moved weights go; without a file, a rewrite only drops saved prepacked copies.
 struct Weights {
-    file: std::io::BufWriter<std::fs::File>,
+    file: Option<std::io::BufWriter<std::fs::File>>,
     at: u64,
     moved: usize,
 }
@@ -80,10 +205,11 @@ struct Weights {
 impl Weights {
     /// Appends one tensor's bytes, page-aligned; returns its offset.
     fn put(&mut self, bytes: &[u8]) -> Option<u64> {
+        let file = self.file.as_mut()?;
         let pad = (ALIGN - self.at % ALIGN) % ALIGN;
-        self.file.write_all(&vec![0; pad as usize]).ok()?;
+        file.write_all(&vec![0; pad as usize]).ok()?;
         let offset = self.at + pad;
-        self.file.write_all(bytes).ok()?;
+        file.write_all(bytes).ok()?;
         self.at = offset + bytes.len() as u64;
         self.moved += 1;
         Some(offset)
@@ -212,6 +338,14 @@ fn attribute_fields(n: u64) -> Option<Kind> {
 /// says where, `data_location` (14) = EXTERNAL.
 fn tensor_proto(buf: &[u8], w: &mut Weights) -> Option<Vec<u8>> {
     let fs = fields(buf)?;
+    if w.file.is_none() {
+        // external_data entries named "prepacked…" are ONNX Runtime's saved prepacked copies.
+        let prepacked = |f: &Field| f.number == 13 && fields(f.payload).is_some_and(|e| e.iter().any(|k| k.number == 1 && k.payload.starts_with(b"prepacked")));
+        if !fs.iter().any(prepacked) {
+            return Some(buf.to_vec());
+        }
+        return Some(fs.iter().filter(|f| !prepacked(f)).flat_map(|f| f.whole.iter().copied()).collect());
+    }
     let raw = fs.iter().find(|f| f.number == 9 && f.wire == 2).map(|f| f.payload);
     // data_location is often written out even when it is DEFAULT (0).
     let already = fs.iter().any(|f| f.number == 14 && f.wire == 0 && f.value == 1);
@@ -283,4 +417,30 @@ mod tests {
         assert_eq!(g[2].payload, &tensor("s", &[1, 2, 3])[..], "small tensor kept");
         std::fs::remove_dir_all(&dir).unwrap();
     }
+
+    #[test]
+    fn drops_saved_prepacked_copies_only() {
+        let entry = |k: &str, v: &str| {
+            let mut e = Vec::new();
+            put_bytes(&mut e, 1, k.as_bytes());
+            put_bytes(&mut e, 2, v.as_bytes());
+            e
+        };
+        let mut t = Vec::new();
+        put_bytes(&mut t, 8, b"w");
+        put_bytes(&mut t, 13, &entry("location", "encoder.int8.1234.weights"));
+        put_bytes(&mut t, 13, &entry("prepacked_0", "MatMul+1|0;64;0"));
+        put_varint(&mut t, 14 << 3);
+        put_varint(&mut t, 1);
+        let mut graph = Vec::new();
+        put_bytes(&mut graph, 5, &t);
+        let mut model = Vec::new();
+        put_bytes(&mut model, 7, &graph);
+
+        let out = model_proto(&model, &mut Weights { file: None, at: 0, moved: 0 }).unwrap();
+        let g = fields(fields(&out).unwrap()[0].payload).unwrap();
+        let kept: Vec<&[u8]> = fields(g[0].payload).unwrap().iter().filter(|f| f.number == 13).map(|f| f.payload).collect();
+        assert_eq!(kept, [&entry("location", "encoder.int8.1234.weights")[..]]);
+    }
 }
+

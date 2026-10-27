@@ -75,13 +75,26 @@ pub fn present(dir: &std::path::Path) -> bool {
 }
 
 /// The encoder's weights mapped from their own file rather than copied onto the heap (see
-/// `onnx_weights`), done once per model folder. Measured on an 8 GB M1 (2026-10-26), a 5-minute
-/// sermon live with 4 GB of other memory in use: the worker's footprint 1,014 → 77 MB once loaded
-/// and 727 → 118 MB while decoding, load 3.4 → 0.9 s, the transcript word for word the same.
-/// Returns the provider string for sherpa-onnx: ONNX Runtime's weight prepacking is turned off,
-/// as it copies every weight back onto the heap; decoding then costs about 15% more CPU.
+/// `onnx_weights`), done once per model folder (and again after an app update or on another
+/// computer). Measured on an 8 GB M1 (2026-10-27), a sermon live: the worker's footprint
+/// 726-1,111 → ~117 MB while decoding, the same CPU and the transcript word for word the same;
+/// the model takes ~1.19 GB of disk instead of 650 MB. If the weights can't be prepacked, they
+/// are still mapped, with ONNX Runtime's prepacking (which copies them onto the heap) off:
+/// the same memory, ~12-15% more CPU. Returns the provider string for sherpa-onnx.
 pub(crate) fn map_weights(dir: &std::path::Path) -> String {
     let encoder = dir.join("encoder.int8.onnx");
+    let stamp = crate::onnx_weights::stamp();
+    if crate::onnx_weights::prepacked(&encoder, &stamp) {
+        return "cpu".into();
+    }
+    match prepack(&encoder, &stamp) {
+        Ok(()) => {
+            let _ = std::fs::remove_file(dir.join("kairo-ort.cfg"));
+            return "cpu".into();
+        }
+        Err(e) => eprintln!("[Offline] the model's weights couldn't be prepacked: {e}"),
+    }
+    // Next best: the weights mapped as they are, ONNX Runtime's prepacking off.
     if !crate::onnx_weights::external(&encoder) {
         if let Err(e) = crate::onnx_weights::externalize(&encoder) {
             eprintln!("[Offline] the model's weights stay in memory: {e}");
@@ -416,7 +429,18 @@ pub async fn start(app: Shared) -> Result<Session, Value> {
 /// Run as the first thing in `main`: if this process was started as the
 /// speech engine, runs it and returns the exit code.
 pub fn worker_main() -> Option<i32> {
+    DISPATCHES.store(true, Ordering::SeqCst);
     let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some(PREPACK_FLAG) {
+        let model = std::path::PathBuf::from(args.get(2)?);
+        return Some(match crate::onnx_weights::prepack(&model, &crate::onnx_weights::stamp()) {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("{e}");
+                1
+            }
+        });
+    }
     if args.get(1).map(String::as_str) != Some(WORKER_FLAG) {
         return None;
     }
@@ -426,6 +450,27 @@ pub fn worker_main() -> Option<i32> {
 }
 
 pub const WORKER_FLAG: &str = "--kairo-speech-worker";
+/// Prepacks a model's weights (onnx_weights::prepack) in a process of its own: it briefly
+/// needs 1.3 GB, which the caller's heap would otherwise keep until it exits.
+const PREPACK_FLAG: &str = "--kairo-prepack-speech-model";
+/// Whether this program runs [`worker_main`] first, so its own executable takes [`PREPACK_FLAG`].
+static DISPATCHES: AtomicBool = AtomicBool::new(false);
+
+fn prepack(encoder: &std::path::Path, stamp: &str) -> Result<(), String> {
+    if !DISPATCHES.load(Ordering::SeqCst) {
+        return crate::onnx_weights::prepack(encoder, stamp);
+    }
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let mut cmd = std::process::Command::new(exe);
+    cmd.arg(PREPACK_FLAG).arg(encoder).stdin(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let out = cmd.output().map_err(|e| e.to_string())?;
+    if out.status.success() { Ok(()) } else { Err(String::from_utf8_lossy(&out.stderr).trim().to_string()) }
+}
 const RESTARTS_PER_MINUTE: usize = 3;
 /// Audio already sent that a restarted engine hears again first: the words
 /// the old one hadn't settled, with lead-in for it to find its feet (8 s of
