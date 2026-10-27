@@ -2051,6 +2051,12 @@ const TS_TRANSLATE_SAMPLES = {
   pt: 'Porque Deus amou ao mundo de tal maneira, que deu o seu Filho unigênito; para que todo aquele que nele crê não pereça, mas tenha a vida eterna.',
 };
 
+// The sample reference, with the translation chosen in the toolbar after it unless the layer turns it off.
+function referenceSample(layer) {
+  if (layer.showVersion === false) return PREVIEW_REF_SAMPLE.replace(/\s*\(.*\)$/, '');
+  return PREVIEW_REF_SAMPLE.replace(/\(.*\)$/, `(${document.getElementById('translation-select')?.value || 'KJV'})`);
+}
+
 function layerTextContent(layer) {
   // Item mode edits a REAL slide's layout — the canvas has to show that
   // slide's actual text, not Theme Studio's generic sample, or positioning/
@@ -2076,7 +2082,7 @@ function layerTextContent(layer) {
   }
   if (MONITOR_SAMPLES[layer.binding]) return MONITOR_SAMPLES[layer.binding];
   if (layer.binding === 'verse')     return PREVIEW_TEXT_SAMPLE;
-  if (layer.binding === 'reference') return PREVIEW_REF_SAMPLE;
+  if (layer.binding === 'reference') return referenceSample(layer);
   if (layer.binding === 'timer')     return PREVIEW_TIMER_SAMPLE;
   if (layer.binding === 'timer-h')   return '00';
   if (layer.binding === 'timer-m')   return '12';
@@ -5977,6 +5983,11 @@ function renderTextProps(panel, layer) {
     // A reference that sits just under the verse wherever the verse's text
     // ends — instead of its own fixed box.
     layer.binding === 'reference' && followVerseToggle(layer),
+    // "John 3:16 (NIV)": the version follows the translation chosen, by hand or by voice.
+    layer.binding === 'reference' && toggleField('Bible version', layer.showVersion !== false, on => {
+      if (on) delete layer.showVersion; else layer.showVersion = false;
+      up();
+    }, 'Shows the version after the reference, “John 3:16 (NIV)”; it follows the translation chosen'),
   ].filter(Boolean)));
 
   renderLayoutProps(panel, layer);
