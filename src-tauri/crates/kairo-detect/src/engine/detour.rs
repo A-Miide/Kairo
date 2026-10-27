@@ -87,7 +87,7 @@ impl Engine {
     }
 
     /// The share of `v`'s meaningful words said in `text`.
-    fn share_said(&self, v: VerseId, text: &str) -> f32 {
+    pub(crate) fn share_said(&self, v: VerseId, text: &str) -> f32 {
         let said: std::collections::HashSet<String> = meaningful_words(text).iter().map(|w| stem_lite(w)).collect();
         let own: std::collections::HashSet<String> = meaningful_words(self.verse_text(v)).iter().map(|w| stem_lite(w)).collect();
         if own.is_empty() {
