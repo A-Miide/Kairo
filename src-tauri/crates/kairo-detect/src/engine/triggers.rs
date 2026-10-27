@@ -160,7 +160,7 @@ impl Engine {
     /// "verse N" in speech still in progress (never a bare number there: an
     /// outline's "number two?" isn't a verse).
     pub(crate) fn interim_partial(&mut self, text: &str, now: u64) {
-        let Some(p) = self.k.partials(self.cfg.lang).resolve(text, self.active(now), false) else { return };
+        let Some(p) = self.k.partials(self.cfg.lang).resolve(text, self.verse_call_context(now), false) else { return };
         let p = self.announced_instead(p, text);
         let Verses::One(verse) = p.citation.verses else { return };
         if interim_looks_incomplete(text, self.cfg.lang) {
@@ -186,6 +186,11 @@ impl Engine {
     /// as for a lapsed context, only the verse's own words in what was just said put it up.
     fn partial_may_send(&self, p: &Partial, verses: &[VerseId], text: &str) -> bool {
         if p.chapter_given || self.sermon.iter().any(|c| c.named && c.book == p.citation.book && c.chapter == Some(p.citation.chapter as u16)) {
+            return true;
+        }
+        // The chapter named without a verse, waiting for it: "go to Ezekiel twelve…", then "go from
+        // verse twenty one" is that chapter's verse 21, called out (live, 2026-10-27).
+        if self.chapter_pending.as_ref().is_some_and(|c| c.book == p.citation.book && c.chapter as u32 == p.citation.chapter) {
             return true;
         }
         // The sermon's announced passage, however long ago: "Mark chapter four verses twenty one
@@ -300,7 +305,7 @@ impl Engine {
             && prev.is_some_and(|(_, at)| self.t.segment_started.saturating_sub(*at) < PREV_FINAL_JOIN_WINDOW_MS)
             && opens_with_number(text);
         let query = if carried { format!("verse {text}") } else { text.to_string() };
-        let Some(p) = self.k.partials(self.cfg.lang).resolve(&query, self.active(now), true) else { return false };
+        let Some(p) = self.k.partials(self.cfg.lang).resolve(&query, self.verse_call_context(now), true) else { return false };
         let p = self.announced_instead(p, &query);
         let verses = self.citation_verses(&p.citation);
         if verses.is_empty() {

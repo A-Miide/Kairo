@@ -2911,7 +2911,6 @@ async function loadSettings() {
       if (guess !== 'en-US') { settings.sttLanguage = guess; saveSettingsPatch({ sttLanguage: guess }); }
     }
     if (sttLang) sttLang.value = settings.sttLanguage || 'en-US';
-    window.syncLangChip?.();
     const vocab = document.getElementById('custom-keyterms');
     if (vocab) vocab.value = settings.customKeyterms || '';
     renderLearnedTerms();

@@ -8601,8 +8601,6 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .lang-theme-tip[hidden] { display: none; }
 .lang-theme-tip span { flex: 1; }
 .lang-theme-tip .lang-link { white-space: nowrap; font-weight: 600; }
-.tb-lang-chip { height: 28px; padding: 0 8px; margin-right: 6px; border: 1px solid var(--border); border-radius: 14px; background: transparent; color: var(--text-2); font: inherit; font-size: 11px; font-weight: 600; letter-spacing: .04em; cursor: pointer; }
-.tb-lang-chip:hover { border-color: var(--border-md); color: var(--text); }
 
 .dl-row .dl-what { color: var(--text-3); }
 .dl-row .dl-what { flex: 1; white-space: nowrap; }

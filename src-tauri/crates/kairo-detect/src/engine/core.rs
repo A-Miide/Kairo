@@ -167,6 +167,9 @@ pub struct Engine {
 pub const NAMED_PERSON_WINDOW_MS: u64 = 45_000;
 const MAX_CITED: usize = 8;
 pub const CONTEXT_WINDOW_MS: u64 = 5 * 60 * 1000;
+/// How long a chapter named without a verse waits for its verse ("go to Ezekiel twelve", then the
+/// introduction, then "verse twenty one").
+pub const CHAPTER_NAMED_WAITS_MS: u64 = 3 * 60 * 1000;
 /// An announced passage stays in play this long (a sermon spends most of its time on its text).
 pub const ANNOUNCED_PASSAGE_MS: u64 = 40 * 60 * 1000;
 /// Announced passages kept.
@@ -333,6 +336,25 @@ impl Engine {
         self.reading.active(now)
     }
 
+    /// What a "verse N" is said against: the passage being read, else a chapter named without a verse
+    /// and still waiting for one. "Go to Ezekiel twelve…" then three-quarters of a minute of
+    /// introduction, then "go from verse twenty one": the reading context (45 s) had lapsed, and the
+    /// verse called never went up (live, 2026-10-27). A named chapter waits up to CHAPTER_NAMED_WAITS_MS.
+    pub(crate) fn verse_call_context(&self, now: u64) -> Active {
+        let a = self.active(now);
+        if a.chapter.is_some() {
+            return a;
+        }
+        // Lapsed, or only the book still in play (named again, no chapter): the chapter waiting for its
+        // verse, if it's that book's or nothing else is in play.
+        match &self.chapter_pending {
+            Some(p) if now.saturating_sub(p.at) < CHAPTER_NAMED_WAITS_MS && a.book.is_none_or(|b| b == p.book) => {
+                Active { book: Some(p.book), chapter: Some(p.chapter as u32) }
+            }
+            _ => a,
+        }
+    }
+
     /// Records a passage as in play: named (a citation) or read (a strong text match).
     pub(crate) fn note_cited(&mut self, book: Book, chapter: Option<u16>, verse: Option<u16>, named: bool, now: u64) {
         let entry = Cited { book, chapter, verse, at: now, named };
@@ -406,7 +428,7 @@ impl Engine {
             self.advance_range_on_next_opening(&fresh, now);
             let found = self.process_references(&text, false, now);
             self.check_citation_siblings(&text, false, false, now);
-            if !found && self.reading.is_valid(now) && !self.announces_different_book(&text, self.prev_words(), now) {
+            if !found && self.verse_call_context(now).book.is_some() && !self.announces_different_book(&text, self.prev_words(), now) {
                 self.interim_partial(&text, now);
             } else if !found {
                 self.on_screen_partial(&text, false, now);
@@ -450,7 +472,7 @@ impl Engine {
         self.check_citation_siblings(&text, true, false, now);
         if self.spoken_correction(&text, true, now) {
             found = true;
-        } else if !found && self.reading.is_valid(now) {
+        } else if !found && self.verse_call_context(now).book.is_some() {
             found = self.final_partial(&text, prev_before.as_ref(), now);
         } else if !found {
             found = self.on_screen_partial(&text, true, now);

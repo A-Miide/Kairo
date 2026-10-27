@@ -40,8 +40,10 @@ pub struct Partial {
 pub(crate) const BARE_NUMBER_FILLER: &[&str] =
     &["and", "so", "now", "okay", "ok", "um", "uh", "then", "also", "yes", "yeah", "right", "alright", "verse", "verses", "next"];
 
-/// Words skipped when looking back from "verse N" for another passage.
-const LOOKBACK_SKIP: &[&str] = &["and", "i", "mean", "sorry", "uh", "um", "so", "now", "the", "in"];
+/// Words skipped when looking back from "verse N" for another passage. "from" is one letter from
+/// "rom" (Romans): "go from verse twenty one" was read as another book and the verse dropped (live,
+/// 2026-10-27).
+const LOOKBACK_SKIP: &[&str] = &["and", "i", "mean", "sorry", "uh", "um", "so", "now", "the", "in", "from", "at", "start", "starting", "read", "reading", "go", "let", "lets", "us"];
 
 /// Everyday words one letter away from a book name, which often come right
 /// before "verse" ("like verse 3 says").

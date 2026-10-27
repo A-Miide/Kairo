@@ -509,29 +509,6 @@ async function renderLangCapability() {
 }
 window.renderLangCapability = renderLangCapability;
 
-// The toolbar chip by Start Listening: the same choice as "Preacher speaks", in short codes.
-function wireLangChip() {
-  const chip = document.getElementById('tb-lang-select');
-  const full = document.getElementById('stt-language');
-  if (!chip || !full) return;
-  chip.innerHTML = '';
-  Array.from(full.options).forEach((o) => {
-    const c = document.createElement('option');
-    c.value = o.value;
-    c.textContent = o.value === 'multi' ? 'AUTO' : o.value.split('-')[0].toUpperCase() + (o.value.includes('-') && o.value !== 'pt-BR' ? '-' + o.value.split('-')[1].toUpperCase() : '');
-    c.title = o.textContent;
-    chip.appendChild(c);
-  });
-  chip.value = full.value;
-  chip.addEventListener('change', () => {
-    full.value = chip.value;
-    full.dispatchEvent(new Event('change'));
-  });
-  full.addEventListener('change', () => { chip.value = full.value; });
-}
-wireLangChip();
-window.syncLangChip = () => { const c = document.getElementById('tb-lang-select'); const f = document.getElementById('stt-language'); if (c && f) c.value = f.value; };
-
 // A second language shows on screen only in the Multi-Language theme: say so, with the switch.
 function renderThemeTip() {
   const tip = document.getElementById('lang-theme-tip');

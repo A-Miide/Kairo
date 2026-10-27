@@ -2,10 +2,11 @@
 //! New Living Translation", "can we have it in the Message". Ported from 3.x
 //! (`server/translation_commands.js`, v3.2.13), which the 4.0 rewrite left out.
 //!
-//! The preacher mentions translations all the time without meaning a change ("in the NIV it
-//! says…", "the King James was translated in 1611"), and a change is seen by the whole room, so
-//! only a COMMAND counts: a verb phrase that opens its clause, then the translation. A miss costs
-//! the operator one click; a false switch changes every verse after it.
+//! A translation's letters said anywhere ("NIV", "N L T", "the ESV says…") switch to it: the
+//! preacher naming the version by its letters is reading from it (owner, 2026-10-27, after "go
+//! from verse twenty one, give me the NLT" changed nothing live). Its full name is said in passing
+//! far more often ("the King James was translated in 1611"), so a full name counts only in a
+//! COMMAND: a verb phrase that opens its clause, then the translation.
 
 use std::sync::LazyLock;
 
@@ -70,7 +71,8 @@ static COMMAND: LazyLock<Regex> = LazyLock::new(|| {
     let bare = [
         format!(r"(?:switch|change|swap|flip|set)\s+(?:{obj}\s+){{0,3}}(?:to|over\s+to|into|back\s+to)\s+{t}"),
         format!(r"(?:put|pull\s+up|bring\s+up|display)\s+(?:{obj_v}\s+){{0,2}}(?:in|on|with|using)\s+{t}"),
-        format!(r"give\s+us\s+{t}"),
+        // "Go from verse twenty one, give me the NLT" (live, 2026-10-27).
+        format!(r"give\s+(?:us|me)\s+{t}"),
     ]
     .join("|");
     let with_modal = [
@@ -100,6 +102,9 @@ static CITED_IN: LazyLock<Regex> = LazyLock::new(|| {
     let n = r"(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)";
     Regex::new(&format!(r"\b{n}[.,]?\s+(?:in\s+|from\s+)?(?:the\s+)?(?P<list>(?:{a})(?:\s*(?:,|or|and)\s*(?:the\s+)?(?:{a}))*)(?:[^a-z]|$)(?P<rest>.{{0,30}})")).unwrap()
 });
+/// A translation's letters as a word of their own ("niv", "nkjv"; spelled ones are joined by `normalize`).
+static ACRONYM: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b(?:nkjv|kjv|nlt|niv|esv|nasb)\b").unwrap());
+
 static QUOTING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*(?:version\s+|translation\s+|bible\s+)?(?:says|said|reads|read\s+it|puts\s+it|renders|rendered|translates|translated|has\s+it|calls|called|uses)\b").unwrap());
 
 /// The last translation command in `text`: its code ("NIV", or "MSG" when it isn't bundled).
@@ -116,7 +121,8 @@ pub fn translation_command(text: &str) -> Option<&'static str> {
     // The translation named in each command is the last one in its words.
     let commanded = COMMAND.find_iter(&t).filter_map(|m| ALIAS.find_iter(m.as_str()).last().and_then(|a| code_of(a.as_str()))).last();
     let cited = CITED_IN.captures_iter(&t).filter(|c| !QUOTING.is_match(c.name("rest").map_or("", |r| r.as_str()))).filter_map(|c| pick(c.name("list")?.as_str())).last();
-    cited.or(commanded)
+    let said = ACRONYM.find_iter(&t).last().and_then(|a| code_of(a.as_str()));
+    cited.or(commanded).or(said)
 }
 
 #[cfg(test)]
@@ -134,17 +140,25 @@ mod tests {
         assert_eq!(cmd("now change over to the new king james"), Some("NKJV"));
         assert_eq!(cmd("me. Isaiah seven seven Nlt or message one of my"), Some("NLT"));
         assert_eq!(cmd("John 3:16 in the NIV please"), Some("NIV"));
+        assert_eq!(cmd("Go from verse twenty one, give me the NLT"), Some("NLT"));
+        assert_eq!(cmd("give me the New Living Translation"), Some("NLT"));
+    }
+
+    #[test]
+    fn letters_said_anywhere_switch() {
+        assert_eq!(cmd("in the NIV it says the Lord is my shepherd"), Some("NIV"));
+        assert_eq!(cmd("in verse seven the N. L. T. renders it as"), Some("NLT"));
+        assert_eq!(cmd("I love the ESV for this one"), Some("ESV"));
+        assert_eq!(cmd("if you go to the ESV you will find"), Some("ESV"));
     }
 
     #[test]
     fn mentions_never_switch() {
-        assert_eq!(cmd("in the NIV it says the Lord is my shepherd"), None);
         assert_eq!(cmd("the King James was translated in 1611"), None);
-        assert_eq!(cmd("if you go to the ESV you will find"), None);
         assert_eq!(cmd("use the message of the cross"), None);
         assert_eq!(cmd("I have the message for you tonight"), None);
         assert_eq!(cmd("Psalm 23 in the King James says the Lord is my shepherd"), None);
-        assert_eq!(cmd("in verse seven the NIV renders it as"), None);
         assert_eq!(cmd("I preached it seven times, the message is the same"), None);
+        assert_eq!(cmd("he will give me the message tonight"), None);
     }
 }
