@@ -3932,6 +3932,8 @@ function wireOfflineModelInstaller(ids) {
         // Under "Preacher speaks" the status lines already say "Heard offline": nothing to show.
         if (ids.hideWhenInstalled) group.style.display = 'none';
         window.renderLangCapability?.();
+        // The Settings → Audio summary was drawn at load, before an install finished.
+        if (typeof renderOfflineSummary === 'function') renderOfflineSummary();
       } else {
         statusLine.textContent = `${name} not installed.`;
         // Under "Preacher speaks" the "Needs the offline model…" line already says so.
