@@ -525,10 +525,16 @@ fn is_scripture_slide(bible: &crate::bible::Bible, verse: &Value) -> bool {
 }
 
 /// Puts a Live Queue slide (or a verse) up. Returns where it landed.
-pub(crate) async fn send_service_slide(app: &Shared, verse: Value, look: Value, auto: bool, follow: bool, next: Value) -> &'static str {
+pub(crate) async fn send_service_slide(app: &Shared, mut verse: Value, look: Value, auto: bool, follow: bool, next: Value) -> &'static str {
     // A real verse has a book and a chapter; a playlist slide is sent as
     // book "Service", chapter 0 (display.html tells them apart the same way).
     let is_bible = verse["book"].as_str().is_some_and(|b| !b.is_empty() && b != "Service") && verse["chapter"].as_u64().unwrap_or(0) > 0;
+    // A verse sent by hand (search, the Bible tab) carries no version label: the translation chosen,
+    // shown after its reference on screen ("Ezekiel 12:21 (NLT)").
+    if is_bible && verse["translation"].as_str().is_none_or(str::is_empty) && verse.is_object() {
+        let p = app.presentation.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
+        verse["translation"] = json!(p.translation.to_uppercase());
+    }
     if follow && !is_bible {
         if let Some((bible, _)) = app.ready() {
             if is_scripture_slide(bible, &verse) {
@@ -857,9 +863,10 @@ const SPOKEN_FOR_SCREEN_MS: u64 = 15_000;
 
 /// The spoken translation's passage is over: the church's translation again, the windows' selects
 /// with it, and what is on screen shown in it (an operator's send may have gone up in the spoken one).
+/// The verse going up belongs elsewhere than the translation asked for, or back in its passage (spoken.rs).
 pub(crate) async fn restore_translation(app: &Shared, code: String) {
     write_debug_global("server:translation-restored", json!({ "code": code }));
-    set_translation(app, &code, &format!("back to {code} for the new passage")).await;
+    set_translation(app, &code, &format!("{code} for this passage")).await;
 }
 
 /// The preacher asked for another translation ("switch to the NIV", "can I have it in NLT"):
@@ -880,7 +887,7 @@ pub(crate) async fn spoken_translation(app: &Shared, code: &'static str, heard: 
         let v = n["verses"].get(0)?;
         Some((v["book"].as_str()?.to_string(), v["chapter"].as_u64()?))
     });
-    crate::spoken::begin(current, passage);
+    crate::spoken::begin(current, code, passage);
     set_translation(app, code, &heard).await;
 }
 

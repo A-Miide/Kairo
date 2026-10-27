@@ -239,7 +239,15 @@ impl Engine {
         // Never all of them on screen: Matthew 11:15, 13:9 and Mark 4:23 went up together, and
         // Matthew 11 then took "verse twenty four" (MacArthur, Mark 4, dev build 2026-10-20).
         let tied: Vec<VerseId> = screen.iter().filter(|h| top.score - h.score < VERBATIM_TWIN_SPREAD && place(h.verse) != place(top.verse)).map(|h| h.verse).collect();
-        if !tied.is_empty() {
+        // Worded exactly like a verse called out a moment ago: the reading has come back to it.
+        // "Go from verse twenty one" (Ezekiel 12:21 up), a word on Matthew 5:45, then "Again a
+        // message came to me from the Lord": Ezekiel says it fifty times, and 6:1 was offered (live,
+        // 2026-10-27).
+        let called = self.called_alike(top.verse, now);
+        if let Some(c) = called {
+            verses = vec![c];
+            hold = None;
+        } else if !tied.is_empty() {
             let all: Vec<VerseId> = std::iter::once(top.verse).chain(tied).collect();
             // The number said most ("go to verse twenty three. Verse twenty three … he said that back
             // in verse nine").
@@ -258,7 +266,10 @@ impl Engine {
         let intent = if hold.is_some() { Target::Suggestions } else { Target::Screen };
         let one_place = verses.iter().all(|v| place(*v) == place(verses[0]));
         let first = verses[0];
-        let candidate = Candidate::new(verses, Method::Verbatim, score, intent).evidence(evidence(&top)).from_text(&found_in);
+        let mut candidate = Candidate::new(verses, Method::Verbatim, score, intent).evidence(evidence(&top)).from_text(&found_in);
+        // The verse called out already chose among the verses worded like it.
+        candidate.twin_resolved = called.is_some();
+        candidate.returning = called.is_some_and(|c| self.screen.up_verse() != Some(c));
         self.decide(match hold { Some(why) => candidate.held(why), None => candidate }, now);
         // Read word for word, so cited — but not one of several places offered together: Matthew
         // 11:15 counted as cited then sent on "not everybody has ears to hear".
@@ -744,6 +755,16 @@ impl Engine {
     }
 
     /// Words for comparing speech with a verse: the KJV and the church's own wording.
+    /// A verse shown or cited in the last few minutes, worded word for word as `v` (and not `v`).
+    fn called_alike(&self, v: VerseId, now: u64) -> Option<VerseId> {
+        let plain = |x: VerseId| self.k.corpus.kjv().text(x).map(|t| t.to_lowercase().chars().filter(|c| c.is_alphanumeric() || *c == ' ').collect::<String>());
+        let words = plain(v)?;
+        let named = self.sermon.iter().filter(|c| c.named && now.saturating_sub(c.at) < CONTEXT_WINDOW_MS)
+            .filter_map(|c| Some((self.k.id(VerseRef::new(c.book, c.chapter?, c.verse?))?, c.at)));
+        let shown = self.screen.recent_detections.iter().filter(|(_, at)| now.saturating_sub(**at) < CONTEXT_WINDOW_MS).map(|(x, at)| (*x, *at));
+        named.chain(shown).filter(|(x, _)| *x != v && plain(*x).as_deref() == Some(words.as_str())).max_by_key(|(_, at)| *at).map(|(x, _)| x)
+    }
+
     pub(crate) fn match_text(&self, v: VerseId) -> String {
         let kjv = self.k.corpus.kjv().text(v).unwrap_or("");
         match self.k.lexicon.own().and_then(|o| o.text(v)) {

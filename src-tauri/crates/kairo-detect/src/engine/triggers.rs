@@ -175,7 +175,7 @@ impl Engine {
         }
         let Some(v) = self.k.id(VerseRef::new(p.citation.book, p.citation.chapter as u16, verse as u16)) else { return };
         self.jump_range_to(v, now);
-        let candidate = Candidate::new(vec![v], partial_method(&p), DIRECT_PARTIAL_SCORE, Target::Screen);
+        let candidate = Candidate::new(vec![v], self.partial_method(&p), DIRECT_PARTIAL_SCORE, Target::Screen);
         let sent = self.decide(if self.partial_may_send(&p, &[v], text) { candidate } else { candidate.held(Hold::StrayVerseNumber) }, now);
         self.partial_confirms_context(sent, v, &p, now);
     }
@@ -323,7 +323,7 @@ impl Engine {
         } else {
             outside_range = !self.jump_range_to(verses[0], now);
         }
-        let candidate = Candidate::new(verses.clone(), partial_method(&p), DIRECT_PARTIAL_SCORE, Target::Screen);
+        let candidate = Candidate::new(verses.clone(), self.partial_method(&p), DIRECT_PARTIAL_SCORE, Target::Screen);
         let sent = self.decide(if self.partial_may_send(&p, &verses, text) { candidate } else { candidate.held(Hold::StrayVerseNumber) }, now);
         // A demoted stray number mustn't destroy the range.
         if outside_range && sent == Target::Screen {
@@ -360,4 +360,16 @@ impl Engine {
 
 fn partial_method(p: &Partial) -> Method {
     if p.chapter_given { Method::ContextCitation } else { Method::DirectPartial }
+}
+
+impl Engine {
+    /// A verse called out for the chapter named and waiting for it ("go to Ezekiel twelve", then "go
+    /// from verse twenty one") is a citation said in two parts, not a guess from context.
+    fn partial_method(&self, p: &Partial) -> Method {
+        if self.chapter_pending.as_ref().is_some_and(|c| c.book == p.citation.book && c.chapter as u32 == p.citation.chapter) {
+            Method::ContextCitation
+        } else {
+            partial_method(p)
+        }
+    }
 }

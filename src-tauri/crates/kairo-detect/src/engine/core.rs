@@ -58,6 +58,9 @@ pub struct Candidate {
     pub verbatim_disagreed: bool,
     /// Already chosen over its near-duplicate twin.
     pub twin_resolved: bool,
+    /// The verse called out a moment ago, read now after a detour: it goes back up even if it was
+    /// on screen less than a minute ago (paths.rs called_alike).
+    pub returning: bool,
     pub corrected_from: Option<VerseId>,
     /// The speech the path found it in, when that's a stretch of its own.
     pub source: Option<String>,
@@ -75,6 +78,7 @@ impl Candidate {
             reading_on: false,
             verbatim_disagreed: false,
             twin_resolved: false,
+            returning: false,
             corrected_from: None,
             source: None,
         }

@@ -233,7 +233,7 @@ impl Engine {
         }
 
         // 9. A text match doesn't replace what's on screen unless what's being said favours it.
-        if target == Target::Screen && c.method.is_text_match() && self.text_match_held(&c, top, now) {
+        if target == Target::Screen && c.method.is_text_match() && !c.returning && self.text_match_held(&c, top, now) {
             target = Target::Suggestions;
         }
 
@@ -282,7 +282,7 @@ impl Engine {
                 && self.screen.last_detected.map(|(v, _, _)| v) != Some(top);
             let overrides_weaker = spoken && self.screen.last_detected.is_some_and(|(_, _, m)| !matches!(m, Method::Direct | Method::Continuation));
             let wider_range = c.method == Method::Direct && c.verses.len() > 1 && self.screen.last_detected.map(|(v, _, _)| v) == Some(top) && c.verses.len() > self.range.all.len();
-            if !same_book_continuation && !overrides_weaker && !wider_range {
+            if !same_book_continuation && !overrides_weaker && !wider_range && !c.returning {
                 if self.screen.last_detected.is_some_and(|(v, t, _)| v == top && now.saturating_sub(t) < window) {
                     return Target::Drop;
                 }

@@ -1023,6 +1023,9 @@ function markLiveInQueue(reference) {
   currentDisplayCard?.querySelector(`[data-ref="${CSS.escape(reference)}"]`)?.classList.add('is-live');
 }
 
+// The Bible version of the verse in the preview (display.html currentVersion), set as it's shown.
+let previewVersion = '';
+
 function renderPreviewScreen(text, reference, look, translatedText = '', image = null, fit = 'contain', styleByLayerId = {}, timerText = '', sectionLabel = '') {
   queueMicrotask(() => markLiveInQueue(reference));   // after showInViewer has placed the card
   const effectiveLook = look || primaryOutputLook();
@@ -1104,7 +1107,7 @@ function renderPreviewScreen(text, reference, look, translatedText = '', image =
       themed.classList.remove('hidden');
       // Motion layers move here as on the output; build-ins play when the
       // content is new, not on a repaint of what's already showing.
-      window.KairoService.paintLookLayers(themed, effectiveLook, styleByLayerId, { verseText: text, referenceText: reference || '', translatedText, timerText }, { motion: 'live', builds: contentChanged });
+      window.KairoService.paintLookLayers(themed, effectiveLook, styleByLayerId, { verseText: text, referenceText: reference || '', versionText: previewVersion, translatedText, timerText }, { motion: 'live', builds: contentChanged });
     } else {
       themed?.classList.add('hidden');
       plain?.classList.remove('hidden');
@@ -1278,6 +1281,8 @@ function showInViewer(verses, method, topScore, correctedFrom = null, look = nul
 }
 function showInViewerNow(verses, method, topScore, correctedFrom = null, look = null) {
   const v = verses[0];
+  // Scripture's version after its reference, as on the output ("Ezekiel 12:21 (NLT)").
+  previewVersion = (v && v.book && v.chapter && v.verse) ? String(v.translation || '') : '';
 
   // Update live preview screen — v.timerText is set for a timer-segment send
   // (service.js sendTimerSegmentToSlideLayer); the per-second countdown then

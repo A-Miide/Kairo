@@ -324,8 +324,8 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
                 let held = to == Route::Staged;
                 let viewer = to == Route::Screen || held;
                 if viewer {
-                    // A verse from another passage ends a translation the preacher asked for: it goes up
-                    // in the church's own (spoken.rs).
+                    // A translation the preacher asked for is its passage's: a verse from another goes up
+                    // in the church's own, and back in the passage it's the asked-for one again (spoken.rs).
                     let ended = (to == Route::Screen)
                         .then(|| list.first().and_then(|v| Some((v["book"].as_str()?.to_string(), v["chapter"].as_u64()?))))
                         .flatten()
