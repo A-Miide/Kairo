@@ -191,6 +191,28 @@ impl WordBuffer {
         self.changed_from = self.end();
     }
 
+    /// Where what's being said now begins: the live words, else the latest segment's.
+    pub fn newest_from(&self) -> u64 {
+        let live = self.live_from();
+        if live < self.end() { live } else { self.changed().start }
+    }
+
+    /// What's being said now: the live words, else the latest segment's.
+    pub fn newest(&self) -> String {
+        self.text(self.newest_from()..self.end())
+    }
+
+    /// What was said in the last `ms` before `now`, and all of what's being said now however
+    /// long it has been going on.
+    pub fn recent(&self, now: u64, ms: u64) -> String {
+        self.text(self.heard_since(now.saturating_sub(ms)).min(self.newest_from())..self.end())
+    }
+
+    /// The last `n` words heard.
+    pub fn last(&self, n: usize) -> String {
+        self.text(self.end().saturating_sub(n as u64)..self.end())
+    }
+
     /// The words in `range` (clamped to what's kept), as said.
     pub fn text(&self, range: Range<u64>) -> String {
         let (a, b) = (range.start.max(self.base), range.end.min(self.end()));
@@ -303,6 +325,7 @@ mod tests {
         b.settle("shepherd I shall not want.", 1600, false);
         assert_eq!(b.live_from(), b.end());
         assert_eq!(b.since(1200), "shall not want.");
+        assert_eq!(b.recent(1600, 100), "shepherd I shall not want.", "the utterance being said, however long");
     }
 
     #[test]

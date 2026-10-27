@@ -17,17 +17,21 @@ static K: LazyLock<Arc<Knowledge>> = LazyLock::new(|| {
 
 const MS_PER_WORD: u64 = 380;
 
-/// One segment: its words, and whether it's a final.
-type Seg = (String, bool);
+/// One segment: its words, whether it's a final, and whether the live text runs on past it (the
+/// offline engine locking words while the sentence continues).
+type Seg = (String, bool, bool);
 
 /// The verses sent to the screen, and those offered in Possible Matches, as "Book c:v".
 fn outcome(segments: &[Seg]) -> (Vec<String>, Vec<String>) {
-    let mut e = Engine::new(K.clone(), Config::default());
+    // Words locked while the sentence runs on: the offline engine, whose newest live word may
+    // still be growing.
+    let offline = segments.iter().any(|s| s.2);
+    let mut e = Engine::new(K.clone(), Config { offline, ..Config::default() });
     let mut t = 10_000;
     let (mut shown, mut offered) = (Vec::new(), Vec::new());
-    for (text, fin) in segments {
+    for (text, fin, runs_on) in segments {
         t += MS_PER_WORD * text.split_whitespace().count().max(1) as u64;
-        let o = e.handle(Event::Speech(Segment { text: text.clone(), is_final: *fin, speech_final: *fin, continues_live: false }), t);
+        let o = e.handle(Event::Speech(Segment { text: text.clone(), is_final: *fin, speech_final: *fin && !runs_on, continues_live: *runs_on }), t);
         for eff in o.effects {
             if let Effect::Show { verses, target, .. } = eff {
                 let list = if target == Target::Screen { &mut shown } else { &mut offered };
@@ -44,19 +48,32 @@ fn outcome(segments: &[Seg]) -> (Vec<String>, Vec<String>) {
     (shown, offered)
 }
 
-fn screen(segments: &[Seg]) -> Vec<String> {
-    outcome(segments).0
-}
-
 /// A `say --segments` script: a line starting "~ " is an interim, any other a final.
 fn script(s: &str) -> Vec<Seg> {
-    s.lines().map(str::trim).filter(|l| !l.is_empty()).map(|l| l.strip_prefix("~ ").map_or((l.to_string(), true), |i| (i.to_string(), false))).collect()
+    s.lines().map(str::trim).filter(|l| !l.is_empty()).map(|l| l.strip_prefix("~ ").map_or((l.to_string(), true, false), |i| (i.to_string(), false, false))).collect()
 }
 
 /// Interims growing every two words, then the final.
 fn utterance(words: &[&str]) -> Vec<Seg> {
-    let mut out: Vec<Seg> = (2..words.len()).step_by(2).map(|n| (words[..n].join(" "), false)).collect();
-    out.push((words.join(" "), true));
+    let mut out: Vec<Seg> = (2..words.len()).step_by(2).map(|n| (words[..n].join(" "), false, false)).collect();
+    out.push((words.join(" "), true, false));
+    out
+}
+
+/// As the offline engine hears it (`kairo-server` offline.rs `Transcriber::pump`): the live
+/// words after the locked ones as interims, all but the newest two locked once `lock` words are
+/// waiting, the rest a final at the pause.
+fn offline(words: &[&str], lock: usize) -> Vec<Seg> {
+    let (mut out, mut locked) = (Vec::new(), 0);
+    for heard in 1..=words.len() {
+        let up_to = heard.saturating_sub(2);
+        if up_to >= locked + lock {
+            out.push((words[locked..up_to].join(" "), true, true));
+            locked = up_to;
+        }
+        out.push((words[locked..heard].join(" "), false, false));
+    }
+    out.push((words[locked..].join(" "), true, false));
     out
 }
 
@@ -66,11 +83,12 @@ fn utterance(words: &[&str]) -> Vec<Seg> {
 fn splits(text: &str) -> Vec<(String, Vec<Seg>)> {
     let w: Vec<&str> = text.split_whitespace().collect();
     let mut out = vec![("whole".to_string(), utterance(&w))];
+    out.extend((2..=6).map(|lock| (format!("offline, locking {lock} at a time"), offline(&w, lock))));
     for k in 1..w.len() {
         let mut two = utterance(&w[..k]);
         two.extend(utterance(&w[k..]));
         out.push((format!("final | final at {k}"), two));
-        let mut lagged = vec![(w[..k].join(" "), false)];
+        let mut lagged = vec![(w[..k].join(" "), false, false)];
         lagged.extend(utterance(&w[k..]));
         out.push((format!("interim | final at {k}"), lagged));
     }
@@ -86,8 +104,8 @@ fn v(book: &str, c: u16, n: u16) -> String {
 /// `skip(k)`: a final boundary after word `k` changes what was said (a number cut in two).
 fn same_however_split(text: &str, up: &[String], offered: &[String], skip: impl Fn(usize) -> bool) {
     let mut bad = Vec::new();
-    for (i, (name, segs)) in splits(text).into_iter().enumerate() {
-        if i > 0 && skip((i + 1) / 2) {
+    for (name, segs) in splits(text) {
+        if name.split(" at ").nth(1).and_then(|k| k.parse().ok()).is_some_and(&skip) {
             continue;
         }
         let (shown, offers) = outcome(&segs);
@@ -112,7 +130,7 @@ fn psalm_67_as_the_live_log_split_it() {
     );
     let (up, offered) = outcome(&segs);
     assert!(up.is_empty() && offered.contains(&v("Psalms", 67, 3)), "up {up:?}, offered {offered:?}");
-    let whole = outcome(&[(PSALM_67.to_string(), true)]);
+    let whole = outcome(&[(PSALM_67.to_string(), true, false)]);
     assert_eq!((up, offered.contains(&v("Psalms", 67, 3))), (whole.0, whole.1.contains(&v("Psalms", 67, 3))));
 }
 
