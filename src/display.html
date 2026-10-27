@@ -473,6 +473,12 @@
     let currentVerseText = '';
     let currentVerseRef  = '';
     let currentTranslatedText = ''; // right-panel text for the Multi-Language theme
+    // The Bible version of the verse up ("KJV", "NIV", a language Bible's name), shown after the
+    // reference ("John 3:16 (NIV)") unless the theme's reference layer turns it off: set from each
+    // verse sent (the server labels it as it puts the verse in the chosen translation), so a change
+    // of translation, by hand or by voice, changes it too.
+    let currentVersion = '';
+    let shownVersion = '';
     let currentStyleByLayerId = {}; // per-slide, per-layer-id overrides (Full Edit) for whatever's currently shown
     let currentTimerText = ''; // last value sent for a 'timer'-bound layer — the per-second tick (handleActionBadge) updates the DOM directly and doesn't touch this
     let activeLook       = null;
@@ -820,7 +826,7 @@
             // An element imported from ProPresenter, drawn exactly (pp_render.js).
             if (layer.type === 'pp') {
                 if (layer.binding === 'reference' && hasVerseLayer && !verseText) return;
-                frag.appendChild(window.KairoPP.render(layer, { verseText, referenceText: verseRef, translatedText, timerText }, { motion: 'live', textOnly: outputMode === 'text' }));
+                frag.appendChild(window.KairoPP.render(layer, { verseText, referenceText: withVersion(verseRef, layer), translatedText, timerText }, { motion: 'live', textOnly: outputMode === 'text' }));
                 return;
             }
 
@@ -1091,7 +1097,7 @@
                 const hasTimerTemplate = layer.binding === 'custom' && typeof layer.customText === 'string' && layer.customText.includes('{timer}');
                 if (layer.binding === 'verse')     content = verseText;
                 else if (layer.binding === 'verse_translated') content = translatedText || '';
-                else if (layer.binding === 'reference') content = verseRef;
+                else if (layer.binding === 'reference') content = withVersion(verseRef, layer);
                 else if (layer.binding === 'timer') content = timerText || '';
                 // Individual hour/minute/second parts (see timeParts,
                 // handleActionBadge) — no live remainingMs at initial-paint
@@ -1105,6 +1111,7 @@
                 const div = document.createElement('div');
                 div.className = 'display-layer';
                 div.dataset.binding = layer.binding || 'custom';
+                if (layer.binding === 'reference' && layer.showVersion === false) div.dataset.version = 'off';
                 div.dataset.layerId = layer.id || '';
                 if (layer.follows) div.dataset.follows = layer.follows; // see stackFollowers (layer_geometry.js)
                 if (hasTimerTemplate) div.dataset.timerTemplate = layer.customText;
@@ -2198,6 +2205,12 @@
         }
     }
 
+    // The reference with the version after it, unless the layer turns it off (or there's none: a song).
+    function withVersion(ref, layer) {
+        if (!ref || !currentVersion || (layer && layer.showVersion === false)) return ref;
+        return `${ref} (${currentVersion})`;
+    }
+
     // ── Update only the text content in existing layers (no re-render) ──────
     function updateTextContent(verseText, verseRef, translatedText = '', timerText = '') {
         // Same "no caption without a verse line" rule buildLayerDOM applies
@@ -2218,7 +2231,7 @@
             el.style.display = showCaptions ? 'flex' : 'none';
         });
         stage.querySelectorAll('[data-binding="reference"]').forEach(el => {
-            el.textContent = verseRef;
+            el.textContent = el.dataset.version === 'off' ? verseRef : withVersion(verseRef);
             el.style.display = showCaptions ? 'flex' : 'none';
         });
         // Only writes when a real value is passed — the per-second countdown
@@ -2251,7 +2264,8 @@
         // pick up the new override, not take the text-only in-place path
         // below (which never touches position/font).
         const styleChanged = JSON.stringify(styleByLayerId || {}) !== JSON.stringify(currentStyleByLayerId || {});
-        const changed  = text !== currentVerseText || ref !== currentVerseRef || translatedText !== currentTranslatedText || styleChanged || timerText !== currentTimerText;
+        const changed  = text !== currentVerseText || ref !== currentVerseRef || translatedText !== currentTranslatedText || styleChanged || timerText !== currentTimerText || currentVersion !== shownVersion;
+        shownVersion = currentVersion;
         currentVerseText = text;
         currentVerseRef  = ref;
         currentTranslatedText = translatedText;
@@ -2510,6 +2524,8 @@
             if (isBible ? !outputLayers.bible : !outputLayers.slide) return;
             if (verse) noteConfidenceSlide(verse, isBible, msg.next);
             if (verse) {
+                // Only scripture has a version; a song or slide leaves the layer empty.
+                currentVersion = isBible ? String(verse.translation || '') : '';
                 currentSlideIsBible = isBible;
                 slideLayer.classList.toggle('is-bible', isBible); try { layoutContentBox(); } catch {}
                 if (!verse.image) currentImageSlide = null;
@@ -2535,6 +2551,7 @@
             if (!outputLayers.bible) return;
             const verse = msg.verses && msg.verses[0];
             if (verse) {
+                if (verse.translation) currentVersion = String(verse.translation);
                 noteConfidenceSlide(verse, true, null);
                 currentSlideIsBible = true;
                 slideLayer.classList.add('is-bible'); try { layoutContentBox(); } catch {}
