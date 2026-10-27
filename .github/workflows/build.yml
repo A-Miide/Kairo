@@ -147,8 +147,33 @@ jobs:
           path: src-tauri/bin/ffmpeg*
           retention-days: 3
 
+  # ── The offline speech engine on Apple Silicon ──────────────────────────
+  # Nemotron as Core ML on the Neural Engine (src-tauri/coreml-speech, FluidAudio), a program of
+  # its own beside ffmpeg in the app; Intel Macs use the ONNX engine inside kairo-server.
+  coreml-speech:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cached engine
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/bin/kairo-coreml-speech
+          key: coreml-speech-${{ hashFiles('src-tauri/coreml-speech/Package.swift', 'src-tauri/coreml-speech/Package.resolved', 'src-tauri/coreml-speech/Sources/**', 'scripts/build-coreml-speech.sh') }}
+
+      - name: Build the engine
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: FORCE=1 scripts/build-coreml-speech.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coreml-speech
+          path: src-tauri/bin/kairo-coreml-speech
+          retention-days: 3
+
   build:
-    needs: [test, bundle-data, ffmpeg]
+    needs: [test, bundle-data, ffmpeg, coreml-speech]
     permissions:
       contents: write   # tauri-action creates the draft release on a tag
     strategy:
@@ -186,6 +211,16 @@ jobs:
       - name: Make ffmpeg executable
         if: matrix.platform != 'windows-latest'
         run: chmod +x src-tauri/bin/ffmpeg
+
+      - uses: actions/download-artifact@v4
+        if: matrix.platform == 'macos-latest'
+        with:
+          name: coreml-speech
+          path: src-tauri/bin
+
+      - name: Make the speech engine executable
+        if: matrix.platform == 'macos-latest'
+        run: chmod +x src-tauri/bin/kairo-coreml-speech
 
       # The Tauri CLI comes from npm; the app itself has no Node at runtime.
       - name: Setup Node.js

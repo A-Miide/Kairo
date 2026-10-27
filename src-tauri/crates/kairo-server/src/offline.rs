@@ -70,12 +70,97 @@ pub fn model_for(stt_language: &str) -> (&'static str, Option<String>) {
     ("multi", Some(lang.to_string()))
 }
 
+/// English on Apple Silicon runs on the Neural Engine: the same model as Core ML, in a program of
+/// its own (src-tauri/coreml-speech) that speaks this worker's protocol. Measured on an 8 GB M1
+/// playing the service in Safari (2026-10-27): ~4% of one core live on singing against ~155%,
+/// 94 MB against ~707, and detection on the eval sermons the same or better (44/53 = 44/53,
+/// 22/29 against 18/29). Intel Macs, Windows and Linux keep the ONNX engine below.
+pub fn coreml() -> bool {
+    cfg!(all(target_os = "macos", target_arch = "aarch64"))
+}
+
+/// Core ML's streaming models need macOS 14; every Apple Silicon Mac can run it.
+fn coreml_supported() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        let mut buf = [0u8; 32];
+        let mut len = buf.len();
+        let ok = unsafe { libc::sysctlbyname(c"kern.osproductversion".as_ptr(), buf.as_mut_ptr().cast(), &mut len, std::ptr::null_mut(), 0) } == 0;
+        let version = std::str::from_utf8(&buf[..len.saturating_sub(1)]).unwrap_or("");
+        return ok && version.split('.').next().and_then(|m| m.parse::<u32>().ok()).is_some_and(|m| m >= 14);
+    }
+    #[allow(unreachable_code)]
+    false
+}
+
+/// Whether the model for `model` ("en" or "multi") runs through the Core ML engine here.
+pub fn uses_coreml(model: &str) -> bool {
+    model == "en" && coreml()
+}
+
 pub fn model_dir(app: &Shared, model: &str) -> std::path::PathBuf {
     let override_var = if model == "multi" { "KAIRO_OFFLINE_MODEL_MULTI" } else { "KAIRO_OFFLINE_MODEL" };
     if let Some(p) = std::env::var_os(override_var) {
         return p.into();
     }
-    app.cfg.models_dir.join(if model == "multi" { "sherpa-streaming-multi" } else { "sherpa-streaming-en" })
+    app.cfg.models_dir.join(if model == "multi" {
+        "sherpa-streaming-multi"
+    } else if uses_coreml(model) {
+        "coreml-nemotron-en"
+    } else {
+        "sherpa-streaming-en"
+    })
+}
+
+/// The model for `model` is installed in `dir`.
+pub fn present_for(model: &str, dir: &std::path::Path) -> bool {
+    if uses_coreml(model) { coreml_present(dir) } else { present(dir) }
+}
+
+pub fn coreml_present(dir: &std::path::Path) -> bool {
+    crate::installer::coreml_files().all(|f| dir.join(f).exists())
+}
+
+/// The Core ML engine's program: inside the app beside the UI (`bin`, as ffmpeg), or in the
+/// source tree when running from it (scripts/build-coreml-speech.sh).
+pub fn coreml_worker(app: &Shared) -> Option<std::path::PathBuf> {
+    const EXE: &str = "kairo-coreml-speech";
+    if let Some(p) = std::env::var_os("KAIRO_COREML_SPEECH").map(std::path::PathBuf::from).filter(|p| p.is_file()) {
+        return Some(p);
+    }
+    let mut candidates = Vec::new();
+    if let Some(res) = app.cfg.ui_dir.parent() {
+        candidates.push(res.join("bin").join(EXE));
+        candidates.push(res.join("src-tauri").join("bin").join(EXE));
+    }
+    if let Some(dir) = std::env::current_exe().ok().and_then(|me| me.parent().map(std::path::Path::to_path_buf)) {
+        candidates.push(dir.join(EXE));
+    }
+    candidates.into_iter().find(|p| p.is_file())
+}
+
+/// Loads the Core ML model once, so macOS prepares it for the Neural Engine at install (~45 s on an
+/// M1) and not when someone first presses Start; it keeps what it prepared.
+pub fn prepare_coreml(app: &Shared, dir: &std::path::Path) -> Result<(), String> {
+    use std::io::BufRead;
+    let exe = coreml_worker(app).ok_or("the offline speech engine is missing from this copy of Kairo")?;
+    let mut child = std::process::Command::new(exe)
+        .arg(dir)
+        .arg("-")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("couldn't start the speech engine: {e}"))?;
+    let ready = child.stdout.take().map(|o| std::io::BufReader::new(o).lines().map_while(Result::ok).any(|l| l == "K1 ready")).unwrap_or(false);
+    drop(child.stdin.take());
+    let mut err = String::new();
+    if let Some(mut e) = child.stderr.take() {
+        use std::io::Read;
+        let _ = e.read_to_string(&mut err);
+    }
+    let _ = child.wait();
+    if ready { Ok(()) } else { Err(format!("the offline model couldn't be loaded: {}", err.trim())) }
 }
 
 pub fn present(dir: &std::path::Path) -> bool {
@@ -426,7 +511,25 @@ pub async fn start(app: Shared) -> Result<Session, Value> {
     let (model, language) = model_for(&spoken);
     let dir = model_dir(&app, model);
     state(&app, "connecting", None);
-    if !present(&dir) {
+    // The Core ML engine's program, where this machine uses it.
+    let coreml_exe = if uses_coreml(model) {
+        if !coreml_supported() {
+            let msg = "Offline listening on this Mac needs macOS 14 (Sonoma) or later: update macOS in System Settings → General → Software Update.";
+            state(&app, "error", Some(("unsupported", msg.into())));
+            return Err(json!({ "error": msg }));
+        }
+        match coreml_worker(&app) {
+            Some(exe) => Some(exe),
+            None => {
+                let msg = "The offline speech engine is missing from this copy of Kairo: reinstall Kairo.";
+                state(&app, "error", Some(("unknown", msg.into())));
+                return Err(json!({ "error": msg }));
+            }
+        }
+    } else {
+        None
+    };
+    if !present_for(model, &dir) {
         let msg = if model == "multi" {
             "Offline model missing for this language: offline listening in it needs the offline model for other languages. Download it from Settings → Language, or listen with Deepgram."
         } else {
@@ -448,7 +551,7 @@ pub async fn start(app: Shared) -> Result<Session, Value> {
     let app2 = app.clone();
     let worker = std::thread::Builder::new()
         .name("offline-speech".into())
-        .spawn(move || supervise(app2, detector, dir, language, rx, flag, started_tx))
+        .spawn(move || supervise(app2, detector, dir, language, coreml_exe, rx, flag, started_tx))
         .map_err(|e| json!({ "error": e.to_string() }))?;
     let started = tokio::task::spawn_blocking(move || started_rx.recv_timeout(Duration::from_secs(60)).unwrap_or_else(|_| Err("the engine didn't start in time".into())))
         .await
@@ -669,11 +772,18 @@ enum FromWorker {
 }
 
 /// One engine process, and a thread reading what it says.
-fn spawn_worker(dir: &std::path::Path, language: &Option<String>) -> Result<(std::process::Child, std::sync::mpsc::Receiver<FromWorker>), String> {
+/// `coreml`: the Core ML engine's program (coreml_worker), else this program's own ONNX engine.
+fn spawn_worker(dir: &std::path::Path, language: &Option<String>, coreml: Option<&std::path::Path>) -> Result<(std::process::Child, std::sync::mpsc::Receiver<FromWorker>), String> {
     use std::io::BufRead;
-    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let mut cmd = std::process::Command::new(exe);
-    cmd.arg(WORKER_FLAG).arg(dir).arg(language.as_deref().unwrap_or("-"));
+    let mut cmd = match coreml {
+        Some(exe) => std::process::Command::new(exe),
+        None => {
+            let mut c = std::process::Command::new(std::env::current_exe().map_err(|e| e.to_string())?);
+            c.arg(WORKER_FLAG);
+            c
+        }
+    };
+    cmd.arg(dir).arg(language.as_deref().unwrap_or("-"));
     cmd.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::inherit());
     #[cfg(windows)]
     {
@@ -716,6 +826,7 @@ fn supervise(
     detector: crate::detect::Detector,
     dir: std::path::PathBuf,
     language: Option<String>,
+    coreml: Option<std::path::PathBuf>,
     mut audio: tokio::sync::mpsc::Receiver<Bytes>,
     stopping: Arc<AtomicBool>,
     started: std::sync::mpsc::SyncSender<Result<(), String>>,
@@ -765,7 +876,7 @@ fn supervise(
     loop {
         // Start (or restart) the engine and wait for its model to load. The
         // audio queue isn't read meanwhile: it holds what's said.
-        let ready = spawn_worker(&dir, &language).and_then(|(mut child, from)| {
+        let ready = spawn_worker(&dir, &language, coreml.as_deref()).and_then(|(mut child, from)| {
             let deadline = Instant::now() + Duration::from_secs(60);
             loop {
                 match from.recv_timeout(Duration::from_millis(100)) {

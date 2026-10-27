@@ -130,18 +130,19 @@ async fn obs_sources(State(app): State<Shared>) -> Json<Value> {
 
 const OFFLINE_VERSION: &str = "v1";
 
-fn offline_spec(model: &str) -> (&'static str, &'static str, u32) {
-    if model == "multi" { ("multi", "sherpa-streaming-multi", 475) } else { ("en", "sherpa-streaming-en", 465) }
+/// The model's key and its download size here (English on Apple Silicon is the Core ML one).
+fn offline_spec(model: &str) -> (&'static str, u32) {
+    if model == "multi" { ("multi", 475) } else if crate::offline::uses_coreml("en") { ("en", 626) } else { ("en", 465) }
 }
 
 pub fn offline_present(app: &Shared, model: &str) -> bool {
-    let dir = app.cfg.models_dir.join(offline_spec(model).1);
-    crate::offline::present(&dir)
+    let model = offline_spec(model).0;
+    crate::offline::present_for(model, &crate::offline::model_dir(app, model))
 }
 
 async fn offline_status(State(app): State<Shared>, Query(q): Query<std::collections::HashMap<String, String>>) -> Json<Value> {
-    let (model, dir, mb) = offline_spec(q.get("model").map(String::as_str).unwrap_or("en"));
-    let path = app.cfg.models_dir.join(dir);
+    let (model, mb) = offline_spec(q.get("model").map(String::as_str).unwrap_or("en"));
+    let path = crate::offline::model_dir(&app, model);
     let installed = offline_present(&app, model);
     let version = std::fs::read_to_string(path.join(".kairo-model-version")).ok().map(|v| v.trim().to_string());
     let lang = app.settings.str("sttLanguage").await.unwrap_or_else(|| "en-US".into());
