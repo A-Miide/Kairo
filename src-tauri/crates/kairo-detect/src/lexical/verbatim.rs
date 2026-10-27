@@ -153,6 +153,25 @@ pub fn verbatim(lex: &Lexicon, text: &str, min_words: usize, limit: usize) -> Ve
     results
 }
 
+/// How much of one verse's identifying weight `text` reads in a single unbroken run, in its
+/// best-matching wording (0 to 1).
+pub fn read_share(lex: &Lexicon, v: VerseId, text: &str) -> f32 {
+    let stems: Vec<Option<WordId>> = lex.speech(text).iter().map(|w| w.stem).collect();
+    let sources = std::iter::once((lex.kjv().stems(v), lex.kjv().words(v))).chain(lex.others().iter().map(|o| (o.stems(v), o.words(v))));
+    let mut best = 0.0f32;
+    for (verse_stems, verse_words) in sources {
+        let (Some(verse_stems), Some(verse_words)) = (verse_stems, verse_words) else { continue };
+        let ends = run_ends(verse_stems, &stems);
+        let Some((end, &len)) = ends.iter().enumerate().max_by_key(|(_, l)| **l) else { continue };
+        if len == 0 {
+            continue;
+        }
+        let Some(at) = find(verse_stems, &stems[end + 1 - len..=end]) else { continue };
+        best = best.max(lex.idf_span(verse_words, at, len) / lex.idf_total(verse_words));
+    }
+    best
+}
+
 /// A score is the share of the *verse* covered, so a short verse that shares a long stretch with a
 /// longer one outranks it even when the longer verse explains more of what was actually said
 /// ("…should not perish, but have everlasting life": John 3:15 covers most of itself, John 3:16

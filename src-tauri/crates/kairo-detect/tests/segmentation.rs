@@ -15,6 +15,15 @@ static K: LazyLock<Arc<Knowledge>> = LazyLock::new(|| {
     Arc::new(Knowledge::build(Corpus::load(&dir).unwrap(), Wordings { own: None, also: vec![] }))
 });
 
+/// With the NLT and NIV wordings the app also matches.
+static K_WORDINGS: LazyLock<Arc<Knowledge>> = LazyLock::new(|| {
+    let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../databases/bibles");
+    let corpus = Corpus::load(&dir).unwrap();
+    let nlt = corpus.load_map_nlt(&dir.join("map.json")).unwrap();
+    let niv = corpus.load_flat("NIV", &dir.join("translations/NIV.json")).unwrap();
+    Arc::new(Knowledge::build(corpus, Wordings { own: None, also: vec![nlt, niv] }))
+});
+
 const MS_PER_WORD: u64 = 380;
 
 /// One segment: its words, whether it's a final, and whether the live text runs on past it (the
@@ -23,10 +32,14 @@ type Seg = (String, bool, bool);
 
 /// The verses sent to the screen, and those offered in Possible Matches, as "Book c:v".
 fn outcome(segments: &[Seg]) -> (Vec<String>, Vec<String>) {
+    outcome_in(&K, segments)
+}
+
+fn outcome_in(k: &Arc<Knowledge>, segments: &[Seg]) -> (Vec<String>, Vec<String>) {
     // Words locked while the sentence runs on: the offline engine, whose newest live word may
     // still be growing.
     let offline = segments.iter().any(|s| s.2);
-    let mut e = Engine::new(K.clone(), Config { offline, ..Config::default() });
+    let mut e = Engine::new(k.clone(), Config { offline, ..Config::default() });
     let mut t = 10_000;
     let (mut shown, mut offered) = (Vec::new(), Vec::new());
     for (text, fin, runs_on) in segments {
@@ -36,7 +49,7 @@ fn outcome(segments: &[Seg]) -> (Vec<String>, Vec<String>) {
             if let Effect::Show { verses, target, .. } = eff {
                 let list = if target == Target::Screen { &mut shown } else { &mut offered };
                 for v in verses {
-                    let r = K.verse_ref(v);
+                    let r = k.verse_ref(v);
                     let l = format!("{} {}:{}", r.book.name(), r.chapter, r.verse);
                     if !list.contains(&l) {
                         list.push(l);
@@ -216,4 +229,19 @@ fn a_chapter_read_in_pieces_keeps_waiting_for_its_verse() {
     let segs = script(&std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../eval/segmentation/psalm-67-read-in-pieces.txt")).unwrap());
     let s = sends(&segs);
     assert!(s.last().is_some_and(|l| l.starts_with("Psalms 67:6")) && s.iter().all(|x| x.starts_with("Psalms 67:5") || x.starts_with("Psalms 67:6")), "{s:?}");
+}
+
+#[test]
+fn the_verse_read_before_a_partial_quote_vouches_for_it() {
+    // Live, 2026-10-26, read in the NLT: "Again a message came to me from the Lord" opens a dozen
+    // chapters of Ezekiel, so it's offered; "Son of man, you've heard that proverb they quote in
+    // Israel" is only part of 12:22, and the KJV-only stream can't back it up. Read just before,
+    // 12:21 vouches for it.
+    let segs = script(&std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../eval/segmentation/ezekiel-12-verse-before.txt")).unwrap());
+    let (up, offered) = outcome_in(&K_WORDINGS, &segs);
+    assert_eq!(up, [v("Ezekiel", 12, 22)], "offered {offered:?}");
+
+    // The same part of 12:22 without 12:21 before it is only offered.
+    let (up, offered) = outcome_in(&K_WORDINGS, &script("~ believe it was for this\nservice one to go\n~ you've heard that proverb\nthey quote in Israel"));
+    assert!(up.is_empty() && offered.contains(&v("Ezekiel", 12, 22)), "up {up:?}, offered {offered:?}");
 }

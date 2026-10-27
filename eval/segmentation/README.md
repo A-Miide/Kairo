@@ -13,3 +13,7 @@ interim.
 Psalm 67:3 and 67:5 are worded alike (a refrain): read word for word with
 the chapter named, 67:3 goes up and 67:5 is offered; the verse read next
 tells which it was.
+
+A partial quote certain only by its rare words is offered, never sent alone;
+the verse before it read word for word just before vouches for it
+(`ezekiel-12-verse-before.txt`: Ezekiel 12:21 into 12:22, NLT).
