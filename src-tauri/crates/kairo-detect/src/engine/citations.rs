@@ -385,7 +385,7 @@ impl Engine {
                     // Only citations the join creates or extends.
                     let prev_keys: HashSet<String> = self.parse(&self.prev_settled_words(), now).iter().map(cite_key).collect();
                     let joined = format!("{prev} {text}");
-                    let fresh: Vec<Citation> = self.parse(&joined, now).into_iter().filter(|c| !prev_keys.contains(&cite_key(c))).collect();
+                    let fresh: Vec<Citation> = self.parse(&joined, now).into_iter().filter(|c| !prev_keys.contains(&cite_key(c)) && !self.chapter_waiting(c)).collect();
                     let joined_refs = if fresh.is_empty() { Vec::new() } else { self.resolve_ambiguous(fresh, now) };
                     if !joined_refs.is_empty() && split {
                         let own: HashSet<String> = refs.iter().map(|r| cite_key(&r.c)).collect();
@@ -409,7 +409,7 @@ impl Engine {
             if let Some((prev, at)) = prev_words {
                 if ends_mid_citation(&prev) && now.saturating_sub(at) < PREV_FINAL_JOIN_WINDOW_MS {
                     let prev_keys: HashSet<String> = self.parse(&self.prev_settled_words(), now).iter().map(cite_key).collect();
-                    let fresh: Vec<Citation> = self.parse(&format!("{prev} {text}"), now).into_iter().filter(|c| !prev_keys.contains(&cite_key(c))).collect();
+                    let fresh: Vec<Citation> = self.parse(&format!("{prev} {text}"), now).into_iter().filter(|c| !prev_keys.contains(&cite_key(c)) && !self.chapter_waiting(c)).collect();
                     let own: HashSet<String> = refs.iter().map(|r| cite_key(&r.c)).collect();
                     let added: Vec<Cite> = if fresh.is_empty() { Vec::new() } else { self.resolve_ambiguous(fresh, now) }.into_iter().filter(|r| !own.contains(&cite_key(&r.c))).collect();
                     if !added.is_empty() {
@@ -571,6 +571,17 @@ impl Engine {
         let r = w.before(w.changed().start, JOIN_WORDS, self.t.segment_started, PREV_FINAL_JOIN_WINDOW_MS);
         let at = w.word(r.end.checked_sub(1)?)?.at;
         (!r.is_empty()).then(|| (w.text(r), at))
+    }
+
+    /// A chapter named with no verse that is already waiting for its verse (or just resolved): an
+    /// interim named it, and the words before every later segment still hold it. Found again by a
+    /// join it isn't a new citation — the chapter goes on waiting, retrying on the newest words
+    /// ("Psalm sixty seven it" | "says let the people praise thee" | … | "thee then the earth shall
+    /// yield" is 67:6).
+    fn chapter_waiting(&self, c: &Citation) -> bool {
+        let ch = c.chapter as u16;
+        matches!(c.verses, Verses::Chapter)
+            && (self.chapter_pending.as_ref().is_some_and(|p| p.book == c.book && p.chapter == ch) || self.chapter_resolved_for == Some((c.book, ch)))
     }
 
     /// Of those, the ones a final settled (up to the first it didn't): their citations were

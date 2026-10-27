@@ -207,3 +207,13 @@ fn the_verse_read_after_a_refrain_tells_which_it_was() {
     let s = sends(&segs);
     assert!(s.first().is_some_and(|f| f == "Psalms 67:3") && !s.iter().any(|x| x.contains("67:5")), "{s:?}");
 }
+
+#[test]
+fn a_chapter_read_in_pieces_keeps_waiting_for_its_verse() {
+    // The live miss (2026-10-26): 67:5–6 read in pieces after "Psalm sixty seven" heard only in an
+    // interim. Each later final re-joined that interim must not count as naming the chapter afresh:
+    // the chapter keeps waiting, and "then the earth shall yield" is 67:6.
+    let segs = script(&std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../eval/segmentation/psalm-67-read-in-pieces.txt")).unwrap());
+    let s = sends(&segs);
+    assert!(s.last().is_some_and(|l| l.starts_with("Psalms 67:6")) && s.iter().all(|x| x.starts_with("Psalms 67:5") || x.starts_with("Psalms 67:6")), "{s:?}");
+}
