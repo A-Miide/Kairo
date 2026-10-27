@@ -252,6 +252,8 @@ fn session(path: &Path) -> Result<Session, String> {
     Session::builder()
         .and_then(|b| Ok(b.with_intra_threads(THREADS)?))
         .and_then(|b| Ok(b.with_inter_threads(1)?))
+        // A pool that spins between runs takes cores from live speech while waiting for nothing.
+        .and_then(|b| Ok(b.with_intra_op_spinning(false)?))
         .and_then(|mut b| b.commit_from_file(path))
         .map_err(|e| format!("translation model: {e}"))
 }
