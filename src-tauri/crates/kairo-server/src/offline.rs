@@ -75,13 +75,19 @@ pub fn present(dir: &std::path::Path) -> bool {
 }
 
 /// The encoder's weights mapped from their own file rather than copied onto the heap (see
-/// `onnx_weights`), done once per model folder (and again after an app update or on another
-/// computer). Measured on an 8 GB M1 (2026-10-27), a sermon live: the worker's footprint
-/// 726-1,111 → ~117 MB while decoding, the same CPU and the transcript word for word the same;
-/// the model takes ~1.19 GB of disk instead of 650 MB. If the weights can't be prepacked, they
-/// are still mapped, with ONNX Runtime's prepacking (which copies them onto the heap) off:
-/// the same memory, ~12-15% more CPU. Returns the provider string for sherpa-onnx.
+/// `onnx_weights`), then locked in memory once loaded ([`pin_weights`]), done once per model
+/// folder (and again after an app update or on another computer). Measured on an 8 GB M1
+/// (2026-10-27): footprint 726-1,111 MB → ~117 MB (plus the 629 MB locked) while decoding, the
+/// same CPU and the transcript word for word the same; under a live test's memory pressure, the
+/// same audio dropped as on the heap (mapped but not locked: four times as much). The model takes
+/// ~1.19 GB of disk instead of 650 MB. If the weights can't be prepacked they're still mapped,
+/// with ONNX Runtime's prepacking (which copies them onto the heap) off: ~12-15% more CPU.
+/// Only where they can be locked (macOS so far): elsewhere the weights stay on the heap.
+/// Returns the provider string for sherpa-onnx.
 pub(crate) fn map_weights(dir: &std::path::Path) -> String {
+    if !cfg!(target_os = "macos") {
+        return "cpu".into();
+    }
     let encoder = dir.join("encoder.int8.onnx");
     let stamp = crate::onnx_weights::stamp();
     if crate::onnx_weights::prepacked(&encoder, &stamp) {
@@ -106,6 +112,25 @@ pub(crate) fn map_weights(dir: &std::path::Path) -> String {
     match std::fs::write(&cfg, "SessionConfig.session.disable_prepacking=1\n") {
         Ok(()) => format!("cpu:{}", cfg.display()),
         Err(_) => "cpu".into(),
+    }
+}
+
+/// Locks the loaded encoder's weights in memory, when they're mapped (see `onnx_weights::pin`).
+#[cfg(target_os = "macos")]
+fn pin_weights(dir: &std::path::Path) -> Option<crate::onnx_weights::Pinned> {
+    let encoder = dir.join("encoder.int8.onnx");
+    if !crate::onnx_weights::external(&encoder) {
+        return None;
+    }
+    match crate::onnx_weights::pin(&encoder) {
+        Ok(p) => {
+            eprintln!("[Offline] {} MB of the model's weights locked in memory", p.bytes >> 20);
+            Some(p)
+        }
+        Err(e) => {
+            eprintln!("[Offline] the model's weights aren't locked in memory: {e}");
+            None
+        }
     }
 }
 
@@ -183,6 +208,9 @@ struct Loaded {
     dir: std::path::PathBuf,
     decoding: Decoding,
     recognizer: Arc<OnlineRecognizer>,
+    /// The encoder's weights locked in memory while it's loaded (onnx_weights::pin).
+    #[cfg(target_os = "macos")]
+    _pinned: Option<crate::onnx_weights::Pinned>,
 }
 static LOADED: Mutex<Option<Loaded>> = Mutex::new(None);
 static GENERATION: AtomicU64 = AtomicU64::new(0);
@@ -200,12 +228,16 @@ pub fn recognizer(dir: &std::path::Path, decoding: &Decoding) -> Result<Arc<Onli
     // spin), which is what a small laptop can't spare. KAIRO_ASR_THREADS overrides it.
     let threads = std::env::var("KAIRO_ASR_THREADS").ok().and_then(|v| v.parse::<i32>().ok()).filter(|n| (1..=8).contains(n))
         .unwrap_or_else(|| std::thread::available_parallelism().map_or(2, |n| n.get()).saturating_sub(2).clamp(1, 2) as i32);
+    let provider = map_weights(dir);
+    // Locked before the runtime maps the weights: once it has, macOS refuses to lock them.
+    #[cfg(target_os = "macos")]
+    let _pinned = pin_weights(dir);
     let mut cfg = OnlineRecognizerConfig {
         model_config: OnlineModelConfig {
             transducer: OnlineTransducerModelConfig { encoder: p("encoder.int8.onnx"), decoder: p("decoder.int8.onnx"), joiner: p("joiner.int8.onnx") },
             tokens: p("tokens.txt"),
             num_threads: threads,
-            provider: Some(map_weights(dir)),
+            provider: Some(provider),
             ..Default::default()
         },
         decoding_method: Some(if decoding.beam { "modified_beam_search" } else { "greedy_search" }.into()),
@@ -224,7 +256,13 @@ pub fn recognizer(dir: &std::path::Path, decoding: &Decoding) -> Result<Arc<Onli
     cfg.feat_config.sample_rate = SAMPLE_RATE;
     cfg.feat_config.feature_dim = FEATURE_DIM;
     let r = Arc::new(OnlineRecognizer::create(&cfg).ok_or("the offline model could not be loaded")?);
-    *l = Some(Loaded { dir: dir.to_path_buf(), decoding: decoding.clone(), recognizer: r.clone() });
+    *l = Some(Loaded {
+        dir: dir.to_path_buf(),
+        decoding: decoding.clone(),
+        recognizer: r.clone(),
+        #[cfg(target_os = "macos")]
+        _pinned,
+    });
     Ok(r)
 }
 

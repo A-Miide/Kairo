@@ -28,6 +28,8 @@ mod installer;
 mod bible_packs;
 pub mod notes;
 pub mod offline;
+// Mapped weights are only used where they can be locked in memory (macOS so far; offline::map_weights).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod onnx_weights;
 mod mt;
 mod native_audio;

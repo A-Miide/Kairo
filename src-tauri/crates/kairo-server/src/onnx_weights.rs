@@ -195,6 +195,77 @@ pub fn prepack(model: &Path, stamp: &str) -> Result<(), String> {
     result
 }
 
+/// The weights the encoder reads while decoding, locked in memory (see [`pin`]);
+/// unlocked when dropped.
+#[cfg(target_os = "macos")]
+pub struct Pinned {
+    _map: memmap2::Mmap,
+    pub bytes: u64,
+}
+
+/// Locks the weights `model` reads every chunk (its prepacked copies, and the
+/// weights that have none) into memory, for as long as the result is kept.
+///
+/// Mapped from a file, the weights are clean pages: the first thing macOS takes
+/// back when memory runs short, before it compresses anything, so the encoder
+/// read them from the disk again every chunk. Measured on an 8 GB M1 under a live
+/// test's memory pressure (2026-10-27, 5 minutes live): 3.3 million page faults
+/// and four times the audio dropped of the weights on the heap; locked, the same
+/// as on the heap, and locked pages can't be compressed or swapped either.
+#[cfg(target_os = "macos")]
+pub fn pin(model: &Path) -> Result<Pinned, String> {
+    let graph = std::fs::read(model).map_err(|e| e.to_string())?;
+    let (location, ranges) = hot_ranges(&graph).ok_or("the model keeps no weights beside it")?;
+    let file = std::fs::File::open(model.parent().ok_or("model has no folder")?.join(location)).map_err(|e| e.to_string())?;
+    // SAFETY: only read; a weights file is replaced, never written in place.
+    let map = unsafe { memmap2::Mmap::map(&file) }.map_err(|e| e.to_string())?;
+    // SAFETY: sysconf has no preconditions.
+    let page = (unsafe { libc::sysconf(libc::_SC_PAGESIZE) }).max(4096) as u64;
+    let mut bytes = 0;
+    for (offset, len) in ranges {
+        let start = offset / page * page;
+        let end = offset.saturating_add(len).div_ceil(page).saturating_mul(page).min(map.len() as u64);
+        if start >= end {
+            return Err("a weight lies outside its file".into());
+        }
+        // SAFETY: start..end lies inside the mapping, which outlives the lock.
+        if unsafe { libc::mlock(map.as_ptr().add(start as usize).cast(), (end - start) as usize) } != 0 {
+            return Err(std::io::Error::last_os_error().to_string());
+        }
+        bytes += end - start;
+    }
+    Ok(Pinned { _map: map, bytes })
+}
+
+/// The weights file a graph's initializers live in, and the byte ranges in it
+/// read while decoding: each prepacked copy (external_data "prepacked…":
+/// `<key>|<offset>;<length>;<alignment>|…`), else the weight as it is.
+fn hot_ranges(graph: &[u8]) -> Option<(String, Vec<(u64, u64)>)> {
+    let model = fields(graph)?;
+    let g = model.iter().find(|f| f.number == 7 && f.wire == 2)?.payload;
+    let (mut location, mut ranges) = (None, Vec::new());
+    for t in fields(g)?.iter().filter(|f| f.number == 5 && f.wire == 2) {
+        let mut entries: Vec<(String, String)> = Vec::new();
+        for e in fields(t.payload)?.iter().filter(|f| f.number == 13 && f.wire == 2) {
+            let kv = fields(e.payload)?;
+            let text = |n: u64| kv.iter().find(|f| f.number == n).map_or(String::new(), |f| String::from_utf8_lossy(f.payload).into_owned());
+            entries.push((text(1), text(2)));
+        }
+        let get = |k: &str| entries.iter().find(|(key, _)| key == k).map(|(_, v)| v.as_str());
+        let Some(loc) = get("location") else { continue };
+        location.get_or_insert_with(|| loc.to_string());
+        let prepacked: Vec<&str> = entries.iter().filter(|(k, _)| k.starts_with("prepacked")).map(|(_, v)| v.as_str()).collect();
+        if prepacked.is_empty() {
+            ranges.push((get("offset").and_then(|v| v.parse().ok()).unwrap_or(0), get("length")?.parse().ok()?));
+        }
+        for blob in prepacked.iter().flat_map(|p| p.split('|').skip(1)) {
+            let mut f = blob.split(';');
+            ranges.push((f.next()?.parse().ok()?, f.next()?.parse().ok()?));
+        }
+    }
+    Some((location?, ranges))
+}
+
 /// Where moved weights go; without a file, a rewrite only drops saved prepacked copies.
 struct Weights {
     file: Option<std::io::BufWriter<std::fs::File>>,
@@ -419,6 +490,30 @@ mod tests {
     }
 
     #[test]
+    fn finds_the_weights_read_while_decoding() {
+        let entry = |k: &str, v: &str| {
+            let mut e = Vec::new();
+            put_bytes(&mut e, 1, k.as_bytes());
+            put_bytes(&mut e, 2, v.as_bytes());
+            e
+        };
+        let tensor = |entries: &[(&str, &str)]| {
+            let mut t = Vec::new();
+            for (k, v) in entries {
+                put_bytes(&mut t, 13, &entry(k, v));
+            }
+            t
+        };
+        let mut graph = Vec::new();
+        put_bytes(&mut graph, 5, &tensor(&[("location", "w.weights"), ("offset", "0"), ("length", "100"), ("prepacked_0", "Op+1|4096;50;0|8192;60;0")]));
+        put_bytes(&mut graph, 5, &tensor(&[("location", "w.weights"), ("offset", "16384"), ("length", "70")]));
+        put_bytes(&mut graph, 5, &tensor(&[]));
+        let mut model = Vec::new();
+        put_bytes(&mut model, 7, &graph);
+        assert_eq!(hot_ranges(&model), Some(("w.weights".into(), vec![(4096, 50), (8192, 60), (16384, 70)])));
+    }
+
+    #[test]
     fn drops_saved_prepacked_copies_only() {
         let entry = |k: &str, v: &str| {
             let mut e = Vec::new();
@@ -443,4 +538,3 @@ mod tests {
         assert_eq!(kept, [&entry("location", "encoder.int8.1234.weights")[..]]);
     }
 }
-
