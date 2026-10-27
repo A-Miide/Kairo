@@ -128,7 +128,6 @@ async fn obs_sources(State(app): State<Shared>) -> Json<Value> {
 
 // ── Models ──────────────────────────────────────────────────────────────────
 
-const OFFLINE_REQUIRED: [&str; 4] = ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"];
 const OFFLINE_VERSION: &str = "v1";
 
 fn offline_spec(model: &str) -> (&'static str, &'static str, u32) {
@@ -137,7 +136,7 @@ fn offline_spec(model: &str) -> (&'static str, &'static str, u32) {
 
 pub fn offline_present(app: &Shared, model: &str) -> bool {
     let dir = app.cfg.models_dir.join(offline_spec(model).1);
-    OFFLINE_REQUIRED.iter().all(|f| dir.join(f).exists()) && std::fs::metadata(dir.join("encoder.int8.onnx")).is_ok_and(|m| m.len() > 5_000_000)
+    crate::offline::present(&dir)
 }
 
 async fn offline_status(State(app): State<Shared>, Query(q): Query<std::collections::HashMap<String, String>>) -> Json<Value> {
