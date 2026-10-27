@@ -2635,6 +2635,7 @@ dependencies = [
  "kairo-bible",
  "kairo-detect",
  "kairo-semantic",
+ "libc",
  "ort",
  "regex",
  "reqwest 0.12.28",
