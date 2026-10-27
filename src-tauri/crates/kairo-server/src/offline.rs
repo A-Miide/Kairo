@@ -425,6 +425,13 @@ fn without_repeat(said: &std::collections::VecDeque<String>, text: &str) -> Stri
 
 fn run_worker(dir: &std::path::Path, language: Option<String>) -> i32 {
     use std::io::{Read, Write};
+    // Live speech goes before a browser tab or video player on a busy media machine (a YouTube
+    // tab at 78% CPU had it skipping speech, 2026-10-26). Set before the model loads: the
+    // runtime's threads, and the reader below, inherit it. Not user-interactive: that is the UI's.
+    #[cfg(target_os = "macos")]
+    unsafe {
+        libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_USER_INITIATED, 0);
+    }
     let rec = match recognizer(dir, &Decoding::default()) {
         Ok(r) => r,
         Err(e) => {
