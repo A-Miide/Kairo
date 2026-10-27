@@ -14,6 +14,28 @@ pub fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
     m.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
+/// Puts this thread, and the threads it starts from now on, below live speech (macOS QoS): the
+/// meaning models ran 4 threads each in bursts of 250% CPU while the speech worker needed 150%
+/// (live, 2026-10-26). Until the guard drops, so a pooled thread goes back to what it was.
+pub fn below_speech() -> BelowSpeech {
+    #[cfg(target_os = "macos")]
+    unsafe {
+        libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_UTILITY, 0);
+    }
+    BelowSpeech
+}
+
+pub struct BelowSpeech;
+
+impl Drop for BelowSpeech {
+    fn drop(&mut self) {
+        #[cfg(target_os = "macos")]
+        unsafe {
+            libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_DEFAULT, 0);
+        }
+    }
+}
+
 /// Milliseconds since the Unix epoch.
 pub fn epoch_ms() -> u64 {
     std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as u64).unwrap_or(0)

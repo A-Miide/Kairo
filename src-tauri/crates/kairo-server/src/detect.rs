@@ -206,6 +206,7 @@ fn run(
     std::thread::Builder::new()
         .name("meaning".into())
         .spawn(move || {
+            let _below = crate::util::below_speech();
             for r in mrx {
                 let Some(m) = models_for_thread.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone() else { continue };
                 // A panic answering one request costs that answer, never the meaning thread.
