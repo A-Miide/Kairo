@@ -101,7 +101,12 @@ A citation split by a pause ("…John 6" | "48-57", "Daniel" | "chapter what?
 Chapter" | "six from verse three") is parsed over the words heard just before
 this segment's words (`before(changed().start, 24, now, 8 s)`) joined with
 them; only citations the join creates or extends count (one already in the
-earlier words was handled with them). This is one rule for every engine,
+earlier words was handled with them). Words only an interim heard may hold a citation never acted on, so
+they count as new — except a chapter-only citation that is already the live
+citation context: found again by every later join, it isn't named afresh, and
+the chapter goes on waiting and retrying on the newest words ("Psalm sixty
+seven it" | "says let the people praise thee" | … | "thee then the earth shall
+yield" → 67:6; `eval/segmentation/psalm-67-read-in-pieces.txt`). This is one rule for every engine,
 replacing `prev_final`, the 12-word offline carry and the two-finals-back
 join — and it sees interim words a final dropped.
 
