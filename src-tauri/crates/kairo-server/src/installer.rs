@@ -47,6 +47,47 @@ const MULTI: Spec = Spec {
     archive: "sherpa-multi.tar.bz2",
     approx_mb: 475,
 };
+/// English on Apple Silicon: the same model as Core ML, for the Neural Engine (offline::coreml),
+/// file by file from FluidAudio's conversion, pinned to one revision and checked file by file.
+/// The mel front-end is computed in the engine, so the conversion's preprocessor isn't needed.
+const COREML_EN: CoreMlSpec = CoreMlSpec {
+    base: "https://huggingface.co/FluidInference/nemotron-speech-streaming-en-0.6b-coreml/resolve/e673531caa6d25ab7baf5a8c14c9b99ba1551838/nemotron_coreml_560ms/",
+    dir: "coreml-nemotron-en",
+    version: "v1",
+    files: &[
+        ("decoder.mlmodelc/analytics/coremldata.bin", 243, "bca0e343fa0d698de8bdb22c66fd377b79104f606b1bfffc90931fe2161029b8"),
+        ("decoder.mlmodelc/coremldata.bin", 493, "4d0549ac72a38abdcbe7927f2b7d488386d6b96f1f5e837d93ba9e379de04f4e"),
+        ("decoder.mlmodelc/model.mil", 13093, "8298f16d3926565b77732b549fa9c64fedebb2e5a29a76e33d0b2e970e93ae69"),
+        ("decoder.mlmodelc/weights/weight.bin", 14429952, "d9758e49f9b2b9a0462c933256663d4174209739e62f0ddc14e4147bc50e7818"),
+        ("decoder_joint.mlmodelc/analytics/coremldata.bin", 243, "d46ecf790a728d91b8962ec62e597980e288e66c775e45429bf734b54c658ffc"),
+        ("decoder_joint.mlmodelc/coremldata.bin", 514, "d9a7f7cfece967a69dca59b3fc3cc7d1ecff93ad2815ac3ba6b47e057db22172"),
+        ("decoder_joint.mlmodelc/model.mil", 17146, "517bb31cf87eb8aa80adaa8c3fee2df0fd7d7dd0c8791e615c5023886c39d572"),
+        ("decoder_joint.mlmodelc/weights/weight.bin", 17876866, "96cac67a1352e45a2418284779dbd5efe5865159b7b92f328247e5ed31485f52"),
+        ("encoder/encoder_int8.mlmodelc/analytics/coremldata.bin", 243, "ef51dbab5c6ce310ce1a537538a4df6b88f13ad5c45c0acaddca055503896daa"),
+        ("encoder/encoder_int8.mlmodelc/coremldata.bin", 608, "864a357ae2eb7d6b38ced73d5f23c908096a256516afa498c6730778767ec404"),
+        ("encoder/encoder_int8.mlmodelc/model.mil", 968920, "4b903ee4f401d81add07d1252192a486bd07154174818902f03bca38b2f293f6"),
+        ("encoder/encoder_int8.mlmodelc/weights/weight.bin", 589057600, "8ced31411f7903eaec52de85e94c7847228f3e44028d8f0040800e5603943a40"),
+        ("joint.mlmodelc/analytics/coremldata.bin", 243, "478804308534c7f9cab1030aa9ce19ddf672fcd15deba633fe3ed5da8f53b103"),
+        ("joint.mlmodelc/coremldata.bin", 401, "46363626fd89730ade6e6461e8be808c7fade198fb0df63db83fb00ed033abb2"),
+        ("joint.mlmodelc/model.mil", 5064, "73bcc51b58ff73c7620e31a2c32dc5ef4939e8ec2a77ec22242303422bfafba4"),
+        ("joint.mlmodelc/weights/weight.bin", 3446978, "d1d45514a91da39f24e264712a9f8b5a2a90e9cbce04bad3f3f74242bea106d5"),
+        ("metadata.json", 438, "e8d93e5afa1e5c87257f6e31a5c336058eeba7d6cacd36ba80fbf9758c3916dc"),
+        ("tokenizer.json", 18374, "a87b5b8a0e0a989fa7db3121f279ce6af70e337feb55ab553b8d0658db70b9d3"),
+    ],
+};
+
+struct CoreMlSpec {
+    base: &'static str,
+    dir: &'static str,
+    version: &'static str,
+    /// Path in the model folder, size, SHA-256.
+    files: &'static [(&'static str, u64, &'static str)],
+}
+
+pub(crate) fn coreml_files() -> impl Iterator<Item = &'static str> {
+    COREML_EN.files.iter().map(|f| f.0)
+}
+
 const ATTEMPTS: u32 = 6;
 const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 const PRUNE: [&str; 2] = ["test_wavs", "README.md"];
@@ -234,10 +275,56 @@ async fn install(app: &Shared, s: &Spec, progress: &Progress) -> Result<std::pat
     Ok(final_dir)
 }
 
-/// POST /api/offline/install?model=en|multi — progress as NDJSON.
+/// The Core ML model, file by file into a scratch folder that becomes the model folder once every
+/// file checks out; then loaded once, so macOS prepares it for the Neural Engine now (~45 s on an
+/// M1) rather than when someone first presses Start.
+async fn install_coreml(app: &Shared, s: &CoreMlSpec, progress: &Progress) -> Result<std::path::PathBuf, String> {
+    let dir = app.cfg.models_dir.clone();
+    let final_dir = dir.join(s.dir);
+    let version = std::fs::read_to_string(final_dir.join(".kairo-model-version")).ok();
+    if crate::offline::coreml_present(&final_dir) && version.as_deref().map(str::trim) == Some(s.version) {
+        let _ = progress.send(json!({ "phase": "done", "already": true, "modelPath": final_dir }));
+        return Ok(final_dir);
+    }
+    let partial = dir.join(format!("{}.partial", s.dir));
+    tokio::fs::create_dir_all(&partial).await.map_err(|e| e.to_string())?;
+    let _ = progress.send(json!({ "phase": "download", "pct": 0 }));
+    let client = reqwest::Client::builder().connect_timeout(Duration::from_secs(20)).build().map_err(|e| e.to_string())?;
+    let total: u64 = s.files.iter().map(|f| f.1).sum();
+    let report = percent_reporter(progress.clone());
+    let mut done = 0u64;
+    for &(path, size, sha) in s.files {
+        let dest = partial.join(path);
+        if let Some(parent) = dest.parent() {
+            tokio::fs::create_dir_all(parent).await.map_err(|e| e.to_string())?;
+        }
+        // A file already here and whole (an earlier, interrupted install) isn't fetched again.
+        let whole = tokio::fs::metadata(&dest).await.is_ok_and(|m| m.len() == size) && sha256_file(&dest).await.ok().as_deref() == Some(sha);
+        if !whole {
+            let base = done;
+            let on = |received: u64, _: u64| report(base + received.min(size), total);
+            fetch_verified(&client, &format!("{}{path}", s.base), &dest, size, sha, &on, progress).await?;
+        }
+        done += size;
+        report(done, total);
+    }
+    let _ = tokio::fs::remove_dir_all(&final_dir).await;
+    tokio::fs::rename(&partial, &final_dir).await.map_err(|e| e.to_string())?;
+    // Shown as the unpacking step: the UI has no other for it.
+    let _ = progress.send(json!({ "phase": "extract" }));
+    let (a, d) = (app.clone(), final_dir.clone());
+    tokio::task::spawn_blocking(move || crate::offline::prepare_coreml(&a, &d)).await.map_err(|e| e.to_string())??;
+    let _ = std::fs::write(final_dir.join(".kairo-model-version"), s.version);
+    let _ = progress.send(json!({ "phase": "done", "already": false, "modelPath": final_dir }));
+    Ok(final_dir)
+}
+
+/// POST /api/offline/install?model=en|multi — progress as NDJSON. English on Apple Silicon is
+/// the Core ML model (offline::coreml); everywhere else, and other languages, the ONNX one.
 pub async fn route(State(app): State<Shared>, Query(q): Query<std::collections::HashMap<String, String>>) -> Response {
     let multi = q.get("model").is_some_and(|m| m == "multi");
     let (key, spec): (&'static str, &'static Spec) = if multi { ("multi", &MULTI) } else { ("en", &EN) };
+    let coreml = !multi && crate::offline::coreml();
     {
         let mut busy = INSTALLING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
         if busy.contains(&key) {
@@ -260,7 +347,7 @@ pub async fn route(State(app): State<Shared>, Query(q): Query<std::collections::
     });
     set_progress(key, Some(0));
     tokio::spawn(async move {
-        let result = install(&app, spec, &step_tx).await;
+        let result = if coreml { install_coreml(&app, &COREML_EN, &step_tx).await } else { install(&app, spec, &step_tx).await };
         let _ = step_tx.send(match result {
             Ok(_) => json!({ "phase": "complete", "ok": true }),
             Err(e) => json!({ "phase": "complete", "ok": false, "error": e }),

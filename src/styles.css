@@ -7579,7 +7579,8 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
   border: 1px solid var(--border-md) !important;
 }
 .cand-card .cand-send:hover { background: var(--brand) !important; color: #fff !important; border-color: var(--brand) !important; }
-.cand-card.is-stale { opacity: 0.45; }
+/* Older than a minute: set back, still readable and sendable (0.45 read as disabled, owner 2026-10-27). */
+.cand-card.is-stale { opacity: 0.75; }
 
 /* Six controls share the row since Back joined — labels stay on one line. */
 .rs-layer-clear-bar .rs-layer-clear-btn { white-space: nowrap; flex: 1 1 auto; min-width: 0; padding-left: 3px; padding-right: 3px; }
@@ -8600,8 +8601,6 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .lang-theme-tip[hidden] { display: none; }
 .lang-theme-tip span { flex: 1; }
 .lang-theme-tip .lang-link { white-space: nowrap; font-weight: 600; }
-.tb-lang-chip { height: 28px; padding: 0 8px; margin-right: 6px; border: 1px solid var(--border); border-radius: 14px; background: transparent; color: var(--text-2); font: inherit; font-size: 11px; font-weight: 600; letter-spacing: .04em; cursor: pointer; }
-.tb-lang-chip:hover { border-color: var(--border-md); color: var(--text); }
 
 .dl-row .dl-what { color: var(--text-3); }
 .dl-row .dl-what { flex: 1; white-space: nowrap; }

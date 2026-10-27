@@ -39,6 +39,7 @@ mod citations;
 mod core;
 mod correction;
 mod decide;
+mod detour;
 pub mod event;
 pub mod evidence;
 mod meaning;

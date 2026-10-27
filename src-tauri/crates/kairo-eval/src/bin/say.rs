@@ -30,15 +30,43 @@ fn main() {
 
     // `--segments`: one line per segment as the speech engine sent it; a line starting "~ " is an
     // interim, any other line a final (reproduces what a live log shows, which re-splitting can't).
+    // "@12.5 " before a line says when it was heard (seconds), else it comes 1.5 s after the last.
     if args.iter().any(|a| a == "--segments") {
         let mut t = 0u64;
+        let mut wakes: Vec<(u64, Event)> = Vec::new();
+        // Timers due by `until` fire first, the meaning models answering at once, as in a live session.
+        let fire = |engine: &mut Engine, wakes: &mut Vec<(u64, Event)>, until: u64| {
+            wakes.sort_by_key(|w| w.0);
+            while wakes.first().is_some_and(|w| w.0 <= until) {
+                let (at, ev) = wakes.remove(0);
+                let o = engine.handle(ev, at);
+                let mut pending = Vec::new();
+                report(&k, o, m.is_some(), wakes, &mut pending);
+                drain(engine, &k, m.as_ref(), at, wakes, pending);
+            }
+        };
         for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
-            t += 1500;
-            let (said, fin) = line.strip_prefix("~ ").map_or((line, true), |s| (s, false));
-            println!("[{:>5.1}s] {}{said}", t as f64 / 1000.0, if fin { "" } else { "~ " });
-            let o = engine.handle(Event::Speech(Segment { text: said.to_string(), is_final: fin, speech_final: fin, continues_live: !fin }), t);
-            report(&k, o, false, &mut Vec::new(), &mut Vec::new());
+            let (at, line) = match line.strip_prefix('@').and_then(|r| r.split_once(' ')) {
+                Some((secs, rest)) if secs.parse::<f64>().is_ok() => (Some((secs.parse::<f64>().unwrap() * 1000.0) as u64), rest.trim()),
+                _ => (None, line),
+            };
+            t = at.unwrap_or(t + 1500);
+            fire(&mut engine, &mut wakes, t);
+            // "! singing on" / "! singing off": the room's singing check, as the live log records it.
+            let (ev, shown) = if let Some(state) = line.strip_prefix("! singing ") {
+                let on = state.trim() == "on";
+                (Event::Singing(on), format!("(singing {})", if on { "on" } else { "off" }))
+            } else {
+                let (said, fin) = line.strip_prefix("~ ").map_or((line, true), |s| (s, false));
+                (Event::Speech(Segment { text: said.to_string(), is_final: fin, speech_final: fin, continues_live: !fin }), format!("{}{said}", if fin { "" } else { "~ " }))
+            };
+            println!("[{:>5.1}s] {shown}", t as f64 / 1000.0);
+            let o = engine.handle(ev, t);
+            let mut pending = Vec::new();
+            report(&k, o, m.is_some(), &mut wakes, &mut pending);
+            drain(&mut engine, &k, m.as_ref(), t, &mut wakes, pending);
         }
+        fire(&mut engine, &mut wakes, u64::MAX);
         return;
     }
 

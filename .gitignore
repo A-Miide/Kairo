@@ -68,3 +68,4 @@ src-tauri/bin/*
 # Dev data and local symlink
 databases/learned-keyterms.json
 node_modules
+src-tauri/coreml-speech/.build/

@@ -130,6 +130,29 @@ impl Engine {
         }
     }
 
+    /// The verses worded like `v` that nothing said lately tells apart from it: "O give thanks unto
+    /// the LORD; for he is good: for his mercy endureth for ever" is Psalm 107:1, 118:1, 118:29,
+    /// 136:1 and 1 Chronicles 16:34. A paraphrase offer of one offers them together, so the
+    /// operator picks; offered one at a time, 136:1 came 48 s after 107:1 (owner, live 2026-10-27).
+    pub(crate) fn worded_alike(&self, v: VerseId) -> Vec<VerseId> {
+        let speech = telling_words(&self.recent_speech_seconds(30).join(" "));
+        let words = |e: &Engine, x: VerseId| telling_words(&e.match_text(x));
+        let cand = words(self, v);
+        let mut twins: Vec<_> = self.k.lexicon.twins(v).iter().filter(|t| t.shared >= TWIN_HOLD_MIN_SHARED).collect();
+        twins.sort_by(|a, b| b.shared.cmp(&a.shared));
+        twins
+            .into_iter()
+            .filter(|t| {
+                let tw = words(self, t.verse);
+                let cand_only = cand.iter().filter(|w| !tw.contains(*w) && speech.contains(*w)).count();
+                let twin_only = tw.iter().filter(|w| !cand.contains(*w) && speech.contains(*w)).count();
+                cand_only == 0 && twin_only == 0
+            })
+            .map(|t| t.verse)
+            .take(TWINS_COMPARED)
+            .collect()
+    }
+
     fn cited_recently(&self, v: VerseId, now: u64) -> bool {
         let r = self.r(v);
         self.sermon.iter().any(|c| c.named && c.book == r.book && c.chapter == Some(r.chapter) && c.verse == Some(r.verse) && now.saturating_sub(c.at) < CONTEXT_WINDOW_MS)

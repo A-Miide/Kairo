@@ -5,6 +5,9 @@
 //! `cargo run --release -p kairo-eval --bin offline-transcribe -- <audio> <name> [--beam] [--hotwords <score>] [--blank-penalty <x>] [--reset-after <words>]`
 //! writes `parity/offline/<name>.json`; then `replay --offline <name>`.
 //! `--beam` decodes with beam search; `--hotwords` also favours the book names.
+//! `--coreml <program>` transcribes with the Core ML engine (src-tauri/coreml-speech, as on Apple
+//! Silicon) instead, through its own protocol, a frame at a time; the model folder is then
+//! `KAIRO_OFFLINE_MODEL` or `models/coreml-nemotron-en`.
 
 use std::cell::RefCell;
 use std::io::Read;
@@ -22,16 +25,25 @@ fn main() {
         eprintln!("usage: offline-transcribe <audio file> <name>");
         std::process::exit(2);
     };
-    let model = std::env::var_os("KAIRO_OFFLINE_MODEL").map(std::path::PathBuf::from).unwrap_or_else(|| root().join("models/sherpa-streaming-en"));
     let opt = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned();
+    let coreml = opt("--coreml");
+    let model = std::env::var_os("KAIRO_OFFLINE_MODEL")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| root().join(if coreml.is_some() { "models/coreml-nemotron-en" } else { "models/sherpa-streaming-en" }));
     let hotwords_score: f32 = opt("--hotwords").and_then(|s| s.parse().ok()).unwrap_or(0.0);
     let blank_penalty: f32 = opt("--blank-penalty").and_then(|s| s.parse().ok()).unwrap_or(kairo_server::offline::BLANK_PENALTY);
     let decoding = Decoding { beam: hotwords_score > 0.0 || args.iter().any(|a| a == "--beam"), hotwords_score, blank_penalty };
-    let rec = recognizer(&model, &decoding).expect("offline model");
-    let mut heard = Transcriber::new(rec, None);
-    if let Some(n) = opt("--reset-after").and_then(|s| s.parse().ok()) {
-        heard.reset_after = n;
-    }
+    let mut heard = match &coreml {
+        Some(exe) => Engine::CoreMl(CoreMl::start(exe, &model)),
+        None => {
+            let rec = recognizer(&model, &decoding).expect("offline model");
+            let mut t = Transcriber::new(rec, None);
+            if let Some(n) = opt("--reset-after").and_then(|s| s.parse().ok()) {
+                t.reset_after = n;
+            }
+            Engine::Onnx(t)
+        }
+    };
 
     let mut ffmpeg = Command::new("ffmpeg")
         .args(["-v", "error", "-i", audio, "-ac", "1", "-ar", "16000", "-f", "s16le", "-"])
@@ -156,7 +168,7 @@ fn main() {
         "kind": "offline",
         "offline": true,
         "model": model.file_name().map(|f| f.to_string_lossy().into_owned()),
-        "decoding": { "beam": decoding.beam, "hotwordsScore": decoding.hotwords_score },
+        "decoding": if coreml.is_some() { json!("coreml") } else { json!({ "beam": decoding.beam, "hotwordsScore": decoding.hotwords_score }) },
         "cues": cues,
         "inputs": inputs,
         "stable": [],
@@ -177,6 +189,102 @@ fn main() {
         out["cues"].as_array().map_or(0, |c| c.len()),
         path.display()
     );
+}
+
+/// The ONNX engine in this process, or the Core ML engine's program (as the app runs each).
+enum Engine {
+    Onnx(Transcriber),
+    CoreMl(CoreMl),
+}
+
+impl Engine {
+    fn accept(&mut self, samples: &[f32]) {
+        match self {
+            Engine::Onnx(t) => t.accept(samples),
+            Engine::CoreMl(c) => c.send(samples),
+        }
+    }
+    fn pump(&mut self) -> Vec<Heard> {
+        match self {
+            Engine::Onnx(t) => t.pump(),
+            Engine::CoreMl(c) => c.until_ack(),
+        }
+    }
+    fn cut(&mut self) -> Option<Heard> {
+        match self {
+            Engine::Onnx(t) => t.cut(),
+            // Fed as fast as it decodes, it never falls behind.
+            Engine::CoreMl(_) => None,
+        }
+    }
+    fn finish(&mut self) -> Option<Heard> {
+        match self {
+            Engine::Onnx(t) => t.finish(),
+            Engine::CoreMl(c) => c.finish().into_iter().last(),
+        }
+    }
+}
+
+/// The Core ML engine's program, told to answer after every frame (KAIRO_SPEECH_ACK), so what it
+/// heard lands at the audio time it was heard.
+struct CoreMl {
+    child: std::process::Child,
+    lines: std::io::Lines<std::io::BufReader<std::process::ChildStdout>>,
+}
+
+impl CoreMl {
+    fn start(exe: &str, model: &std::path::Path) -> CoreMl {
+        use std::io::BufRead;
+        let mut child = Command::new(exe)
+            .arg(model)
+            .arg("-")
+            .env("KAIRO_SPEECH_ACK", "1")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("Core ML speech engine");
+        let mut lines = std::io::BufReader::new(child.stdout.take().unwrap()).lines();
+        for l in lines.by_ref() {
+            if l.expect("engine output") == "K1 ready" {
+                break;
+            }
+        }
+        CoreMl { child, lines }
+    }
+
+    fn send(&mut self, samples: &[f32]) {
+        use std::io::Write;
+        let pcm: Vec<u8> = samples.iter().flat_map(|s| ((s * 32768.0).clamp(-32768.0, 32767.0) as i16).to_le_bytes()).collect();
+        let w = self.child.stdin.as_mut().unwrap();
+        w.write_all(&(pcm.len() as u32).to_le_bytes()).and_then(|_| w.write_all(&pcm)).expect("engine input");
+    }
+
+    /// What it heard, up to its answer for the frame just sent (or to the end).
+    fn until_ack(&mut self) -> Vec<Heard> {
+        let mut out = Vec::new();
+        for l in self.lines.by_ref() {
+            let Some(body) = l.expect("engine output").strip_prefix("K1 ").map(str::to_string) else { continue };
+            let Ok(v) = serde_json::from_str::<Value>(&body) else { continue };
+            let t = v["t"].as_str().unwrap_or("").to_string();
+            match v["k"].as_str() {
+                Some("a") => break,
+                Some("i") => out.push(Heard::Interim(t)),
+                Some("l") => out.push(Heard::Locked(t)),
+                Some("f") => out.push(Heard::Final(t)),
+                _ => {}
+            }
+        }
+        out
+    }
+
+    fn finish(&mut self) -> Vec<Heard> {
+        use std::io::Write;
+        let _ = self.child.stdin.as_mut().unwrap().write_all(&0u32.to_le_bytes());
+        drop(self.child.stdin.take());
+        let out = self.until_ack();
+        let _ = self.child.wait();
+        out
+    }
 }
 
 fn read_full(r: &mut impl Read, buf: &mut [u8]) -> usize {

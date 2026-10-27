@@ -160,7 +160,7 @@ impl Engine {
     /// "verse N" in speech still in progress (never a bare number there: an
     /// outline's "number two?" isn't a verse).
     pub(crate) fn interim_partial(&mut self, text: &str, now: u64) {
-        let Some(p) = self.k.partials(self.cfg.lang).resolve(text, self.active(now), false) else { return };
+        let Some(p) = self.k.partials(self.cfg.lang).resolve(text, self.verse_call_context(now), false) else { return };
         let p = self.announced_instead(p, text);
         let Verses::One(verse) = p.citation.verses else { return };
         if interim_looks_incomplete(text, self.cfg.lang) {
@@ -175,7 +175,7 @@ impl Engine {
         }
         let Some(v) = self.k.id(VerseRef::new(p.citation.book, p.citation.chapter as u16, verse as u16)) else { return };
         self.jump_range_to(v, now);
-        let candidate = Candidate::new(vec![v], partial_method(&p), DIRECT_PARTIAL_SCORE, Target::Screen);
+        let candidate = Candidate::new(vec![v], self.partial_method(&p), DIRECT_PARTIAL_SCORE, Target::Screen);
         let sent = self.decide(if self.partial_may_send(&p, &[v], text) { candidate } else { candidate.held(Hold::StrayVerseNumber) }, now);
         self.partial_confirms_context(sent, v, &p, now);
     }
@@ -186,6 +186,11 @@ impl Engine {
     /// as for a lapsed context, only the verse's own words in what was just said put it up.
     fn partial_may_send(&self, p: &Partial, verses: &[VerseId], text: &str) -> bool {
         if p.chapter_given || self.sermon.iter().any(|c| c.named && c.book == p.citation.book && c.chapter == Some(p.citation.chapter as u16)) {
+            return true;
+        }
+        // The chapter named without a verse, waiting for it: "go to Ezekiel twelve…", then "go from
+        // verse twenty one" is that chapter's verse 21, called out (live, 2026-10-27).
+        if self.chapter_pending.as_ref().is_some_and(|c| c.book == p.citation.book && c.chapter as u32 == p.citation.chapter) {
             return true;
         }
         // The sermon's announced passage, however long ago: "Mark chapter four verses twenty one
@@ -300,7 +305,7 @@ impl Engine {
             && prev.is_some_and(|(_, at)| self.t.segment_started.saturating_sub(*at) < PREV_FINAL_JOIN_WINDOW_MS)
             && opens_with_number(text);
         let query = if carried { format!("verse {text}") } else { text.to_string() };
-        let Some(p) = self.k.partials(self.cfg.lang).resolve(&query, self.active(now), true) else { return false };
+        let Some(p) = self.k.partials(self.cfg.lang).resolve(&query, self.verse_call_context(now), true) else { return false };
         let p = self.announced_instead(p, &query);
         let verses = self.citation_verses(&p.citation);
         if verses.is_empty() {
@@ -318,7 +323,7 @@ impl Engine {
         } else {
             outside_range = !self.jump_range_to(verses[0], now);
         }
-        let candidate = Candidate::new(verses.clone(), partial_method(&p), DIRECT_PARTIAL_SCORE, Target::Screen);
+        let candidate = Candidate::new(verses.clone(), self.partial_method(&p), DIRECT_PARTIAL_SCORE, Target::Screen);
         let sent = self.decide(if self.partial_may_send(&p, &verses, text) { candidate } else { candidate.held(Hold::StrayVerseNumber) }, now);
         // A demoted stray number mustn't destroy the range.
         if outside_range && sent == Target::Screen {
@@ -355,4 +360,16 @@ impl Engine {
 
 fn partial_method(p: &Partial) -> Method {
     if p.chapter_given { Method::ContextCitation } else { Method::DirectPartial }
+}
+
+impl Engine {
+    /// A verse called out for the chapter named and waiting for it ("go to Ezekiel twelve", then "go
+    /// from verse twenty one") is a citation said in two parts, not a guess from context.
+    fn partial_method(&self, p: &Partial) -> Method {
+        if self.chapter_pending.as_ref().is_some_and(|c| c.book == p.citation.book && c.chapter as u32 == p.citation.chapter) {
+            Method::ContextCitation
+        } else {
+            partial_method(p)
+        }
+    }
 }

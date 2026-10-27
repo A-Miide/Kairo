@@ -263,6 +263,12 @@ fn verse_n_against_the_passage_being_read() {
     assert_eq!(partial("he waited twenty years then said", kings, true), None);
     assert_eq!(partial("for twenty years he served faithfully", kings, true), None);
 
+    // "from" is one letter from "rom" (Romans): it isn't another book being named (live, 2026-10-27).
+    let ezekiel = active("Ezekiel", 12);
+    assert_eq!(partial("Go from verse twenty one, give me the NLT", ezekiel, true).as_deref(), Some("Ezekiel 12:21"));
+    assert_eq!(partial("let's start from verse five", ezekiel, true).as_deref(), Some("Ezekiel 12:5"));
+    assert_eq!(partial("Romans verse five", ezekiel, true), None, "another book named is still another passage");
+
     let genesis = active("Genesis", 24);
     assert_eq!(partial("One", genesis, false), None, "no bare numbers from interim transcripts");
     assert_eq!(partial("One", genesis, true).as_deref(), Some("Genesis 24:1"));

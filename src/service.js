@@ -3578,7 +3578,9 @@
       // An element imported from ProPresenter, drawn exactly (pp_render.js).
       if (layer.type === 'pp') {
         if (layer.binding === 'reference' && hasVerseLayer && !content?.verseText) return;
-        host.appendChild(window.KairoPP.render(layer, content || {}, { motion: motionMode, scale, small: true }));
+        const c = content || {};
+        const ref = c.versionText && c.referenceText && layer.showVersion !== false ? `${c.referenceText} (${c.versionText})` : c.referenceText;
+        host.appendChild(window.KairoPP.render(layer, { ...c, referenceText: ref }, { motion: motionMode, scale, small: true }));
         return;
       }
 
@@ -3851,7 +3853,7 @@
         const hasTimerTemplate = layer.binding === 'custom' && typeof layer.customText === 'string' && layer.customText.includes('{timer}');
         const text = isVerse ? content.verseText
           : isTranslated ? (content.translatedText || '')
-          : isReference ? (content.referenceText || '')
+          : isReference ? (content.versionText && content.referenceText && layer.showVersion !== false ? `${content.referenceText} (${content.versionText})` : (content.referenceText || ''))
           : isTimer ? (content.timerText || '')
           : isTimerPart ? '00'
           : hasTimerTemplate ? layer.customText.replace('{timer}', content.timerText || '0:00')

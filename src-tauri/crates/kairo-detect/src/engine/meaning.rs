@@ -392,7 +392,12 @@ impl Engine {
                         u.book == r.book && u.chapter == r.chapter
                     }));
             if !(target == Target::Suggestions && (on_screen || in_cited_chapter)) {
-                let mut c = Candidate::new(vec![v], Method::Paraphrase, score, target)
+                // An offer comes with the verses worded the same (twins::worded_alike).
+                let mut verses = vec![v];
+                if target == Target::Suggestions {
+                    verses.extend(self.worded_alike(v));
+                }
+                let mut c = Candidate::new(verses, Method::Paraphrase, score, target)
                     .evidence(Evidence { paraphrase_score: Some(score), rerank: rr, similarity: Some(score), matched_idf: Some(lex), ..Default::default() })
                     .from_text(&windows[0]);
                 c.hold = (target == Target::Suggestions).then_some(Hold::ParaphraseUnsure);

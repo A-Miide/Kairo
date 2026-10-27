@@ -11,10 +11,18 @@ use super::evidence::meaningful_words;
 use super::scoring::SAME_BOOK_WINDOW_MS;
 use super::types::{Method, Target};
 use crate::lexical::stem::heal;
-use crate::lexical::text::norm;
+use crate::lexical::text::{is_stop_word, norm};
 use crate::reference::book_mentions;
 
 const ADVANCE_COOLDOWN_MS: u64 = 1_200;
+/// A text match earlier in the chapter on screen is promoted only with this share of its words said
+/// in the last stretch of speech (reading on, later in the chapter, keeps the plain rule).
+const BACK_IN_CHAPTER_SHARE: f32 = 0.5;
+const BACK_IN_CHAPTER_SPEECH_MS: u64 = 15_000;
+/// A range not moved for this long has paused; skipping ahead then takes this much identifying
+/// weight in the verse's own (not everyday) words.
+const PAUSED_READING_MS: u64 = 25_000;
+const PAUSED_SKIP_MIN_IDF: f32 = 9.0;
 const HEARD_MAX_WORDS: usize = 160;
 const ENDING_SPAN: usize = 8;
 const READING_SLACK: usize = 15;
@@ -327,10 +335,20 @@ impl Engine {
         if text.is_empty() || book_mentions(&text, self.k.books, self.cfg.lang).iter().any(|b| *b != cr.book) {
             return;
         }
+        // Everyday words don't skip a reading ahead: a prayer after Mark 8:25, "…in the name of
+        // Jesus. The Bible says that you should ask…", shared "Jesus", "ask", "say" and "that" with
+        // Mark 8:27 and put it up (YouTube captions, Hallelujah Challenge 2026-10-27).
         let weight = |e: &Engine, v: VerseId| e.shared_weight(v, &text).0;
         let best = ahead.iter().copied().fold(ahead[0], |a, b| if weight(self, b) > weight(self, a) { b } else { a });
         let (wb, wc) = (weight(self, best), weight(self, current));
         if wb < CHAPTER_KEYWORD_MIN_IDF || wb - wc < CHAPTER_KEYWORD_MIN_MARGIN {
+            return;
+        }
+        // Long after the last move the reading has paused, and everyday words don't resume it: a
+        // prayer 36 s after Mark 8:25, "…in the name of Jesus. The Bible says that you should ask…",
+        // put 8:27 up on "Jesus", "ask", "say" (YouTube captions, Hallelujah Challenge 2026-10-27).
+        // Mid-reading, a few words are enough ("what God has promised it was": Romans 4:21).
+        if now.saturating_sub(self.range.moved_at) > PAUSED_READING_MS && self.shared_weight_meaningful(best, &text) < PAUSED_SKIP_MIN_IDF {
             return;
         }
         while self.range.queue.front().is_some_and(|v| *v != best) {
@@ -355,6 +373,17 @@ impl Engine {
             }
         }
         (idf, hits)
+    }
+
+    /// `shared_weight` without the everyday words ("the", "that", "say").
+    fn shared_weight_meaningful(&self, v: VerseId, text: &str) -> f32 {
+        let said: HashSet<String> = norm(text).split(' ').filter(|w| w.len() >= 3 && !is_stop_word(w)).map(heal).collect();
+        let mut seen: HashSet<String> = HashSet::new();
+        norm(self.verse_text(v))
+            .split(' ')
+            .filter(|w| w.len() >= 3 && !is_stop_word(w) && seen.insert(w.to_string()) && said.contains(&heal(w)))
+            .map(|w| self.k.lexicon.idf_of(w))
+            .sum()
     }
 
     /// The best two verses of a chapter for what was said, by identifying weight.
@@ -419,7 +448,16 @@ impl Engine {
             return false;
         }
         let (v, u) = (self.r(c.verses[0]), self.r(up));
-        v.book == u.book && v.chapter == u.chapter && v.verse != u.verse
+        if v.book != u.book || v.chapter != u.chapter || v.verse == u.verse {
+            return false;
+        }
+        // Back in the chapter, a few shared words aren't the preacher going back: "how much more
+        // will your Father in heaven give" (Matthew 7:11) put Luke 12:28 up after 12:32 (YouTube
+        // captions, Hallelujah Challenge 2026-10-27). Going back takes the verse's own words.
+        if v.verse < u.verse && c.method.is_text_match() && self.share_said(c.verses[0], &self.t.words.recent(now, BACK_IN_CHAPTER_SPEECH_MS)) < BACK_IN_CHAPTER_SHARE {
+            return false;
+        }
+        true
     }
 
     /// Does what was just said hold more of the candidate's words than of any one range verse?

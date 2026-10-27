@@ -11,6 +11,9 @@ use serde_json::{json, Value};
 
 /// reference → text, for one translation or language pack (None: failed to load).
 type Pack = Option<Arc<HashMap<String, String>>>;
+/// A pack's own name ("Yoruba", "New International Version"), kept in its map under a key no
+/// reference can be.
+const PACK_NAME: &str = "\u{1}name";
 
 pub struct Bible {
     pub k: Arc<Knowledge>,
@@ -88,6 +91,9 @@ impl Bible {
                     }
                 })
                 .collect();
+            if let Some(name) = raw["language"].as_str().or(raw["translation"].as_str()) {
+                map.insert(PACK_NAME.into(), name.to_string());
+            }
             if numbering == PsalmNumbering::Hebrew {
                 // Psalm 13: KJV 13:5 and 13:6 are one Hebrew verse; both show it.
                 let book = raw["verses"].as_array().into_iter().flatten()
@@ -107,8 +113,13 @@ impl Bible {
     }
 
     /// The church's translation in place of the KJV text (KJV: as is; NLT: the NLT).
+    /// Each verse in `code`'s wording where it has one, labelled with the version it's in
+    /// ("translation": what a theme's version layer shows; a verse the translation lacks stays KJV).
     pub fn apply_translation(&self, verses: &mut [Value], code: &str) {
         let code = code.to_uppercase();
+        for v in verses.iter_mut() {
+            v["translation"] = json!("KJV");
+        }
         if code == "KJV" || code.is_empty() {
             return;
         }
@@ -116,12 +127,13 @@ impl Bible {
             for v in verses.iter_mut() {
                 if let Some(t) = v["nlt_text"].as_str().filter(|t| !t.is_empty()).map(str::to_string) {
                     v["text"] = json!(t);
+                    v["translation"] = json!("NLT");
                 }
             }
             return;
         }
         let Some(pack) = self.pack(&self.translations, &code, self.db_dir.join("translations").join(format!("{code}.json"))) else { return };
-        replace_text(verses, &pack);
+        replace_text(verses, &pack, &code);
     }
 
     /// Where a language's Bible is: a downloaded copy if there is one, else the one inside the app.
@@ -156,7 +168,9 @@ impl Bible {
             return;
         }
         let Some(pack) = self.pack(&self.languages, lang, self.pack_path(lang)) else { return };
-        replace_text(verses, &pack);
+        // A language's Bible goes by the language's name ("Yoruba").
+        let name = pack.get(PACK_NAME).cloned().unwrap_or_else(|| lang.to_uppercase());
+        replace_text(verses, &pack, &name);
     }
 
     /// Verses whose wording (KJV or another matched wording) contains the phrase.
@@ -229,10 +243,11 @@ fn kjv_reference(reference: &str, book: &Value, chapter: u64, verse: u64) -> Opt
     Some(format!("{head}:{kjv}"))
 }
 
-fn replace_text(verses: &mut [Value], pack: &HashMap<String, String>) {
+fn replace_text(verses: &mut [Value], pack: &HashMap<String, String>, label: &str) {
     for v in verses.iter_mut() {
         if let Some(t) = v["reference"].as_str().and_then(|r| pack.get(r)).cloned() {
             v["text"] = json!(t);
+            v["translation"] = json!(label);
         }
     }
 }
