@@ -716,9 +716,8 @@ impl Engine {
         // Praise ye the LORD. Sing…"): its first words in order are enough, as they are for reading on
         // (ranges.rs advance_range_on_next_opening); its rarer words came five seconds in.
         if let Some(first) = self.k.id(VerseRef::new(pending.book, pending.chapter, 1)) {
-            let toks = |t: &str| t.split_whitespace().map(|w| w.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase()).filter(|w| !w.is_empty()).collect::<Vec<String>>();
-            let opening: Vec<String> = toks(self.verse_text(first)).into_iter().take(VERSE_ONE_OPENING_WORDS).collect();
-            let after = toks(&text_after_book_mention(&since, pending.book, pending.chapter as u32));
+            let opening: Vec<String> = super::evidence::plain_tokens(self.verse_text(first)).into_iter().take(VERSE_ONE_OPENING_WORDS).collect();
+            let after = super::evidence::plain_tokens(&text_after_book_mention(&since, pending.book, pending.chapter as u32));
             if opening.len() == VERSE_ONE_OPENING_WORDS && after.windows(VERSE_ONE_OPENING_WORDS).take(VERSE_ONE_LOOKAHEAD).any(|w| w == &opening[..]) {
                 return self.send_chapter_keyword(pending.book, pending.chapter as u32, first, true, now);
             }

@@ -441,6 +441,11 @@ impl Engine {
                 self.on_screen_partial(&text, false, now);
             }
             self.spoken_correction(&text, false, now);
+            // A digression's end can come in the middle of a long stretch (the offline engine sends a
+            // final only at a pause), so the return is looked for as the words come in too.
+            if !found {
+                self.maybe_return_to_called(now);
+            }
             if !found {
                 let words = text.split_whitespace().count();
                 if words >= 6 && now.saturating_sub(self.t.last_interim_verbatim) > 500 {

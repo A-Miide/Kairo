@@ -300,7 +300,7 @@ impl Engine {
             // verse's opening words as in a range called out. Only a verse cited by reference held
             // them: Psalm 149:1 up from "Psalm one forty nine" and its words, every later verse waited
             // ~6 words to be found again, read word for word (owner, live 2026-10-27).
-            if c.verses.len() == 1 && (self.range.current.is_none() || self.range.soft) && !self.range.all.contains(&top) {
+            if self.cfg.auto_send && c.verses.len() == 1 && (self.range.current.is_none() || self.range.soft) && !self.range.all.contains(&top) {
                 self.set_soft_range(top, now);
                 self.range.soft_quoted = c.method.is_text_match();
             }
@@ -451,7 +451,7 @@ impl Engine {
         // screen being read (Isaiah 53:8 held back by 53:7's "open his mouth"). The newest stretch
         // of speech is no limit with the offline engine (it sends no words locked in, and a reading
         // can run a minute without a pause), so the last few seconds of it.
-        let newest = self.t.words.recent(now, NEWEST_SPEECH_MS);
+        let newest = self.t.words.within(now, NEWEST_SPEECH_MS);
         let said = source.unwrap_or(&newest);
         // The verse on screen read and then cited ("…established the heavens. Proverbs three
         // nineteen. How manifold are thy works…"): what follows its citation is something else.

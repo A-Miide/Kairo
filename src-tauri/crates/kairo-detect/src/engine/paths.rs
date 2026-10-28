@@ -766,14 +766,16 @@ impl Engine {
     }
 
     /// Words for comparing speech with a verse: the KJV and the church's own wording.
-    /// A verse shown or cited in the last few minutes, worded word for word as `v` (and not `v`).
-    fn called_alike(&self, v: VerseId, now: u64) -> Option<VerseId> {
-        let plain = |x: VerseId| self.k.corpus.kjv().text(x).map(|t| t.to_lowercase().chars().filter(|c| c.is_alphanumeric() || *c == ' ').collect::<String>());
-        let words = plain(v)?;
-        let named = self.sermon.iter().filter(|c| c.named && now.saturating_sub(c.at) < CONTEXT_WINDOW_MS)
-            .filter_map(|c| Some((self.k.id(VerseRef::new(c.book, c.chapter?, c.verse?))?, c.at)));
-        let shown = self.screen.recent_detections.iter().filter(|(_, at)| now.saturating_sub(**at) < CONTEXT_WINDOW_MS).map(|(x, at)| (*x, *at));
-        named.chain(shown).filter(|(x, _)| *x != v && plain(*x).as_deref() == Some(words.as_str())).max_by_key(|(_, at)| *at).map(|(x, _)| x)
+    /// The verse of a reading announced (detour.rs `called`), worded word for word as `v`, while it
+    /// isn't up: the reading has come back to it. Only that verse: any verse shown lately sent a
+    /// refrain back to its earlier repeat (Psalm 67:5 to 67:3; review).
+    fn called_alike(&self, v: VerseId, _now: u64) -> Option<VerseId> {
+        let called = self.called?.verse;
+        if called == v || self.screen.up_verse() == Some(called) {
+            return None;
+        }
+        let plain = |x: VerseId| self.k.corpus.kjv().text(x).map(super::evidence::plain_tokens);
+        (plain(called).is_some() && plain(called) == plain(v)).then_some(called)
     }
 
     pub(crate) fn match_text(&self, v: VerseId) -> String {

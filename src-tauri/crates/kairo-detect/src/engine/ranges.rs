@@ -7,7 +7,7 @@ use kairo_bible::{VerseId, VerseRef};
 use super::core::{Candidate, Engine};
 use super::decide::RangeAdvance;
 use super::event::Effect;
-use super::evidence::meaningful_words;
+use super::evidence::{meaningful_words, plain_tokens};
 use super::scoring::SAME_BOOK_WINDOW_MS;
 use super::types::{Method, Target};
 use crate::lexical::stem::heal;
@@ -280,13 +280,14 @@ impl Engine {
         // said, O" for 2 Chronicles 20:6). Everyday words in sequence after the verse's end say more
         // than one rare word anywhere; waiting for two of its rare words held 20:6 to its 8th word,
         // most of the verse (owner, live 2026-10-27). Four after a quote, three in a cited passage.
+        // Only once the verse up has been read to its end: a called range's next verse opening "And
+        // the LORD" mustn't move it when the verse being read says "and the LORD" mid-way (review).
         let k = if self.range.soft_quoted { 4 } else { 3 };
-        let tokens = |t: &str| t.split_whitespace().map(|w| w.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase()).filter(|w| !w.is_empty()).collect::<Vec<String>>();
-        let start: Vec<String> = tokens(self.verse_text(next)).into_iter().take(k).collect();
-        let said_now = tokens(fresh);
+        let start: Vec<String> = plain_tokens(self.verse_text(next)).into_iter().take(k).collect();
+        let said_now = plain_tokens(fresh);
         // Among the newest words: they arrive a chunk at a time ("…court and said", then "said O LORD").
         let recent = &said_now[said_now.len().saturating_sub(k + OPENING_LOOKBACK)..];
-        if start.len() == k && recent.windows(k).any(|w| w == &start[..]) {
+        if start.len() == k && recent.windows(k).any(|w| w == &start[..]) && (self.range.soft || self.current_ending_heard()) {
             self.request_range_advance(now);
             return;
         }

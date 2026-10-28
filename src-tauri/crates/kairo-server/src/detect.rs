@@ -329,7 +329,7 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
                     let ended = (to == Route::Screen)
                         .then(|| list.first().and_then(|v| Some((v["book"].as_str()?.to_string(), v["chapter"].as_u64()?))))
                         .flatten()
-                        .and_then(|(b, c)| crate::spoken::on_send(&b, c));
+                        .and_then(|(b, c)| crate::spoken::translation_for(&b, c));
                     bible.apply_translation(&mut list, ended.as_deref().unwrap_or(&p.translation));
                     bible.apply_language(&mut list, &p.language);
                 }
