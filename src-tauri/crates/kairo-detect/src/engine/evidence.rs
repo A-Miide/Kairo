@@ -6,6 +6,11 @@ use std::collections::HashSet;
 
 /// Words a verse ending, opening or comparison is judged on: letters only,
 /// three or more, minus the words nearly every verse and sentence has.
+/// Every word, lowercased, letters and digits only ("LORD," → "lord"): for comparing word order.
+pub fn plain_tokens(text: &str) -> Vec<String> {
+    text.split_whitespace().map(|w| w.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase()).filter(|w| !w.is_empty()).collect()
+}
+
 pub fn meaningful_words(text: &str) -> Vec<String> {
     const SKIP: &[&str] = &[
         "a", "an", "the", "and", "but", "or", "in", "of", "to", "is", "it", "be", "he", "she", "ye", "thy", "thee", "thou", "unto",

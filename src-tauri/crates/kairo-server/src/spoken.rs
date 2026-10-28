@@ -43,7 +43,25 @@ pub(crate) fn clear() {
     *crate::util::lock(&SPOKEN) = None;
 }
 
-/// A verse is going on screen. Returns the translation it goes up in when that changes: the
+/// The translation a verse about to go up should be shown in, when it isn't the current one (what
+/// `on_send` will switch to), without changing anything: detection puts the verse in it before
+/// sending, and the switch itself happens once it's on screen (hub.rs), so the repaint lands on the
+/// new verse and nothing on screen flickers through the other translation (review).
+pub(crate) fn translation_for(book: &str, chapter: u64) -> Option<String> {
+    let s = crate::util::lock(&SPOKEN);
+    let spoken = s.as_ref()?;
+    match &spoken.passage {
+        None => None,
+        Some((b, c)) if b == book && *c == chapter => spoken.away.map(|_| spoken.asked.clone()),
+        Some(_) => match spoken.away {
+            Some(since) if since.elapsed() >= AWAY_ENDS => None,
+            Some(_) => None,
+            None => Some(spoken.previous.clone()),
+        },
+    }
+}
+
+/// A verse went on screen. Returns the translation it goes up in when that changes: the
 /// church's for another passage, the asked-for one back in its passage.
 pub(crate) fn on_send(book: &str, chapter: u64) -> Option<String> {
     let mut s = crate::util::lock(&SPOKEN);
@@ -84,6 +102,7 @@ mod tests {
         assert_eq!(on_send("Isaiah", 7), None, "reading on stays in it");
         assert_eq!(on_send("John", 3), Some("KJV".into()), "another passage goes up in the church's");
         assert_eq!(on_send("Romans", 8), None, "still away");
+        assert_eq!(translation_for("Isaiah", 7), Some("NLT".into()), "told before it's sent");
         assert_eq!(on_send("Isaiah", 7), Some("NLT".into()), "back in the passage, back in what was asked for");
         assert_eq!(on_send("Isaiah", 7), None);
 

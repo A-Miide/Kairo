@@ -105,7 +105,7 @@ impl Engine {
         }
         let Some((detour, up_at, mut seen)) = called.detour else { return };
         // Still on it: its words in what was just said (a verse on screen isn't found again).
-        let recent = self.t.words.recent(now, DIGRESSION_OVER_MS);
+        let recent = self.t.words.within(now, DIGRESSION_OVER_MS);
         if self.share_said(detour, &recent) >= STILL_ON_SHARE {
             seen = now;
             if let Some(c) = self.called.as_mut() {

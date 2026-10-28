@@ -568,6 +568,12 @@ fn signal_main_ready(app: AppHandle) {
     }
 }
 
+/// Settings → Help → "Check for updates": the same check as the Help menu's, answered either way.
+#[tauri::command]
+fn check_updates(app: AppHandle) {
+    check_for_updates(app, true);
+}
+
 /// Called from the frontend when the user clicks "Update & Restart".
 /// Re-fetches the update (already confirmed available) and installs it.
 #[tauri::command]
@@ -1151,6 +1157,7 @@ pub fn run() {
             signal_main_ready,
             fonts::list_system_fonts,
             install_update,
+            check_updates,
             ndi_available,
             ndi_start,
             ndi_stop,

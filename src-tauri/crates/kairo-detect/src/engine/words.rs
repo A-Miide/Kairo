@@ -212,6 +212,12 @@ impl WordBuffer {
         self.text(self.newest_from()..self.end())
     }
 
+    /// Only what was heard in the last `ms` before `now`, however long the stretch in progress (the
+    /// offline engine's can run a minute without a pause).
+    pub fn within(&self, now: u64, ms: u64) -> String {
+        self.text(self.heard_since(now.saturating_sub(ms))..self.end())
+    }
+
     /// What was said in the last `ms` before `now`, and all of what's being said now however
     /// long it has been going on.
     pub fn recent(&self, now: u64, ms: u64) -> String {

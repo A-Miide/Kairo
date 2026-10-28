@@ -1490,6 +1490,15 @@
             </section>
 
             <section class="settings-pane" data-pane="help">
+                <!-- Updates: what this copy is, and an update waiting (app_startup.js initUpdater). -->
+                <div class="settings-section" id="updates-section">
+                    <div class="settings-section-head">
+                        <div class="settings-section-label">Updates</div>
+                        <button id="upd-check-btn" class="modal-btn secondary">Check for updates</button>
+                        <button id="upd-settings-install" class="modal-btn primary hidden">Update &amp; Restart</button>
+                    </div>
+                    <p class="setting-hint" id="upd-status" style="margin:10px 0 0;"></p>
+                </div>
                 <!-- ── HELP ────────────────────────────────────────────
                      MAINTENANCE CONTRACT — read this before touching any
                      user-facing workflow: whenever a change ships that

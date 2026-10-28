@@ -7,7 +7,7 @@ use kairo_bible::{VerseId, VerseRef};
 use super::core::{Candidate, Engine};
 use super::decide::RangeAdvance;
 use super::event::Effect;
-use super::evidence::meaningful_words;
+use super::evidence::{meaningful_words, plain_tokens};
 use super::scoring::SAME_BOOK_WINDOW_MS;
 use super::types::{Method, Target};
 use crate::lexical::stem::heal;
@@ -23,6 +23,8 @@ const BACK_IN_CHAPTER_SPEECH_MS: u64 = 15_000;
 /// weight in the verse's own (not everyday) words.
 const PAUSED_READING_MS: u64 = 25_000;
 const PAUSED_SKIP_MIN_IDF: f32 = 9.0;
+/// The next verse's first words are looked for among this many of the newest words (plus their own).
+const OPENING_LOOKBACK: usize = 4;
 const HEARD_MAX_WORDS: usize = 160;
 const ENDING_SPAN: usize = 8;
 const READING_SLACK: usize = 15;
@@ -134,6 +136,7 @@ impl Engine {
         }
         let had = self.range.current.is_some() && !self.range.soft;
         self.range.soft = true;
+        self.range.soft_quoted = false;
         self.range.all = std::iter::once(v).chain(next.iter().copied()).collect();
         self.range.current = Some(v);
         self.range.queue = next.into_iter().collect();
@@ -197,7 +200,8 @@ impl Engine {
         self.range.current = Some(next);
         self.range_moved(from, now);
         if self.range.soft {
-            // Read on: hold the next ones again.
+            // Read on: hold the next ones again, and it's a reading now, not a quote.
+            self.range.soft_quoted = false;
             let last = self.range.queue.back().copied().unwrap_or(next);
             let more = self.verses_after(last, SOFT_AHEAD.saturating_sub(self.range.queue.len()));
             self.range.all.extend(more.iter().copied());
@@ -272,6 +276,21 @@ impl Engine {
         }
         let current = self.range.current.unwrap();
         let next = *self.range.queue.front().unwrap();
+        // Read word for word: the next verse's first words, in order, are what was just said ("And
+        // said, O" for 2 Chronicles 20:6). Everyday words in sequence after the verse's end say more
+        // than one rare word anywhere; waiting for two of its rare words held 20:6 to its 8th word,
+        // most of the verse (owner, live 2026-10-27). Four after a quote, three in a cited passage.
+        // Only once the verse up has been read to its end: a called range's next verse opening "And
+        // the LORD" mustn't move it when the verse being read says "and the LORD" mid-way (review).
+        let k = if self.range.soft_quoted { 4 } else { 3 };
+        let start: Vec<String> = plain_tokens(self.verse_text(next)).into_iter().take(k).collect();
+        let said_now = plain_tokens(fresh);
+        // Among the newest words: they arrive a chunk at a time ("…court and said", then "said O LORD").
+        let recent = &said_now[said_now.len().saturating_sub(k + OPENING_LOOKBACK)..];
+        if start.len() == k && recent.windows(k).any(|w| w == &start[..]) && (self.range.soft || self.current_ending_heard()) {
+            self.request_range_advance(now);
+            return;
+        }
         let opening: Vec<String> = meaningful_words(self.verse_text(next)).into_iter().take(4).collect();
         if opening.is_empty() {
             return;
@@ -298,7 +317,10 @@ impl Engine {
         }
         let said: HashSet<String> = meaningful_words(fresh).into_iter().collect();
         let hit = |list: &[&String]| list.iter().collect::<HashSet<_>>().into_iter().filter(|w| said.contains(**w)).count();
-        let matched = if !identifying.is_empty() { hit(&identifying) >= 1 } else { hit(&own) >= 2 };
+        // Held after a quote, one word of the next verse is chance: Galatians 3:13 quoted in passing,
+        // then "blessing" put 3:14 up; Deuteronomy 12:13, then "place", 12:14 (dev sermons). Two.
+        let need = if self.range.soft_quoted { 2 } else { 1 };
+        let matched = if identifying.len() >= need { hit(&identifying) >= need } else { hit(&own) >= need + 1 };
         if matched {
             self.request_range_advance(now);
         }
@@ -420,6 +442,12 @@ impl Engine {
         }
         let next = *self.range.queue.front().unwrap();
         if c.verses[0] != next {
+            return RangeAdvance::No;
+        }
+        // Held after a quote, a meaning search alone doesn't read on: Revelation 12:11 quoted, then a
+        // prayer ("…no cause for hindrance… entering into your celebration") put 12:12 up on a meaning
+        // match (YouTube captions, 2026-10-27). Words of the verse do.
+        if self.range.soft_quoted && matches!(c.method, Method::Semantic | Method::Paraphrase | Method::Fingerprint) {
             return RangeAdvance::No;
         }
         if c.method.is_text_match() {

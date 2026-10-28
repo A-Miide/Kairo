@@ -18,6 +18,8 @@ const FINISHED_RANGE_HOLD_MS: u64 = 30_000;
 const SUGGESTION_DEDUP_MS: u64 = 180_000;
 /// A verse shown this recently is still in the operator's hands.
 const SHOWN_RECENTLY_MS: u64 = 60_000;
+/// "What is being said now", for a text match against the verse on screen: this much speech.
+const NEWEST_SPEECH_MS: u64 = 6_000;
 const DETECT_DEDUP_MS: u64 = 45_000;
 const DIRECT_DEDUP_MS: u64 = 5_000;
 const SEND_DEDUP_MS: u64 = 8_000;
@@ -294,6 +296,14 @@ impl Engine {
             self.screen.last_detected = Some((top, now, c.method));
             self.screen.recent_detections.insert(top, now);
             self.detour_shown(top, c.method, c.returning, now);
+            // Whatever put a verse up, its next verses are held, so a reading on goes up at the next
+            // verse's opening words as in a range called out. Only a verse cited by reference held
+            // them: Psalm 149:1 up from "Psalm one forty nine" and its words, every later verse waited
+            // ~6 words to be found again, read word for word (owner, live 2026-10-27).
+            if self.cfg.auto_send && c.verses.len() == 1 && (self.range.current.is_none() || self.range.soft) && !self.range.all.contains(&top) {
+                self.set_soft_range(top, now);
+                self.range.soft_quoted = c.method.is_text_match();
+            }
             if self.screen.recent_detections.len() > 100 {
                 self.screen.recent_detections.retain(|_, t| now.saturating_sub(*t) <= DETECT_DEDUP_MS);
             }
@@ -429,12 +439,19 @@ impl Engine {
         // A verse of the range being read is reading on — but in a hold from a single cited verse only
         // the next one is: Ezra 3:11 cited, "…shout when they praised the" jumped to 3:13 (dev build).
         let reading_on = self.range.all.contains(&v) && !(self.range.soft && self.range.queue.front() != Some(&v));
-        if now.saturating_sub(at) > SAME_BOOK_WINDOW_MS || up == v || reading_on {
+        // The verse after the one up is reading on too, range or not: "Psalm 149", verse 1 up (with
+        // its twins, so no range), and 149:2 read word for word waited for the end of the sentence
+        // (owner, live 2026-10-27).
+        let (vr, ur) = (self.r(v), self.r(up));
+        let next_verse = vr.book == ur.book && vr.chapter == ur.chapter && vr.verse == ur.verse + 1;
+        if now.saturating_sub(at) > SAME_BOOK_WINDOW_MS || up == v || reading_on || next_verse {
             return false;
         }
         // Only the newest words: reaching further back reaches the verse on
-        // screen being read (Isaiah 53:8 held back by 53:7's "open his mouth").
-        let newest = self.t.words.newest();
+        // screen being read (Isaiah 53:8 held back by 53:7's "open his mouth"). The newest stretch
+        // of speech is no limit with the offline engine (it sends no words locked in, and a reading
+        // can run a minute without a pause), so the last few seconds of it.
+        let newest = self.t.words.within(now, NEWEST_SPEECH_MS);
         let said = source.unwrap_or(&newest);
         // The verse on screen read and then cited ("…established the heavens. Proverbs three
         // nineteen. How manifold are thy works…"): what follows its citation is something else.
