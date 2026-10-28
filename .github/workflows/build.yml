@@ -345,7 +345,7 @@ jobs:
             - New default Bible theme: Full — Background on Crimson.
 
             ### Install
-            - **macOS**: download the `.dmg`, drag KAIRO to Applications. First launch only: right-click KAIRO → **Open** → **Open**.
+            - **macOS**: download the `.dmg`, drag KAIRO to Applications, and open it.
             - **Windows**: run the `.msi`. If SmartScreen warns about an unrecognized publisher: **More info** → **Run anyway**.
             - **Linux**: `.deb` (Ubuntu 24.04+, Debian 13+) or `.rpm` (Fedora 39+).
           releaseDraft: true
