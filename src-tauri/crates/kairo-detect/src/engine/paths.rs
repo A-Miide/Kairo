@@ -247,7 +247,22 @@ impl Engine {
         let mut hold = (via_idf && !corroborated).then_some(Hold::QuoteUncorroborated);
         // A quote running over into the next verses of the same passage goes up with them.
         let place = |v: VerseId| (self.r(v).book, self.r(v).chapter);
-        let mut verses: Vec<VerseId> = screen.iter().map(|h| h.verse).filter(|v| place(*v) == place(top.verse)).collect();
+        // Only the verses after it in a row: a refrain matched in several places of one chapter isn't
+        // a quote running over (Psalm 136:8, 136:17 and 136:7 went up together, path audit).
+        // Verses worded exactly alike stay (a refrain: the refrain rules pick where the reading is).
+        let mut verses: Vec<VerseId> = vec![top.verse];
+        loop {
+            let last = self.r(*verses.last().unwrap());
+            match screen.iter().map(|h| h.verse).find(|v| place(*v) == place(top.verse) && self.r(*v).verse == last.verse + 1) {
+                Some(next) => verses.push(next),
+                None => break,
+            }
+        }
+        for h in screen.iter() {
+            if h.verse != top.verse && !verses.contains(&h.verse) && place(h.verse) == place(top.verse) && self.verse_text(h.verse) == self.verse_text(top.verse) {
+                verses.push(h.verse);
+            }
+        }
         // Word for word in more than one place ("heaven and earth shall pass away": Matthew,
         // Mark and Luke; "if any man have ears to hear" scored under "he that hath ears to hear"):
         // the verse number just said or the passage in play picks one, else every one is offered.

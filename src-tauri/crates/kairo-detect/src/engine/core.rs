@@ -178,6 +178,8 @@ pub const CONTEXT_WINDOW_MS: u64 = 5 * 60 * 1000;
 /// How long a chapter named without a verse waits for its verse ("go to Ezekiel twelve", then the
 /// introduction, then "verse twenty one").
 pub const CHAPTER_NAMED_WAITS_MS: u64 = 3 * 60 * 1000;
+/// …and waits this long for a verse number called out.
+pub const VERSE_CALL_WAITS_MS: u64 = 10 * 60 * 1000;
 /// An announced passage stays in play this long (a sermon spends most of its time on its text).
 pub const ANNOUNCED_PASSAGE_MS: u64 = 40 * 60 * 1000;
 /// Announced passages kept.
@@ -370,8 +372,11 @@ impl Engine {
         }
         // Lapsed, or only the book still in play (named again, no chapter): the chapter waiting for its
         // verse, if it's that book's or nothing else is in play.
+        // A verse number may come long after ("go to Ezekiel twelve", five minutes of introduction,
+        // "go to verse twenty three"): ten minutes for that, where picking its verse from the words
+        // said stops after three (citations.rs no_citation).
         match &self.chapter_pending {
-            Some(p) if now.saturating_sub(p.at) < CHAPTER_NAMED_WAITS_MS && a.book.is_none_or(|b| b == p.book) => {
+            Some(p) if now.saturating_sub(p.at) < VERSE_CALL_WAITS_MS && a.book.is_none_or(|b| b == p.book) => {
                 Active { book: Some(p.book), chapter: Some(p.chapter as u32) }
             }
             _ => a,

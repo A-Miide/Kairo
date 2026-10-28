@@ -768,6 +768,11 @@ impl Engine {
             }
         }
         let Some(pending) = self.chapter_pending.clone() else { return false };
+        // Past three minutes only a verse number called out resolves it (verse_call_context), not
+        // a verse picked from the words said.
+        if now.saturating_sub(pending.at) > super::core::CHAPTER_NAMED_WAITS_MS {
+            return false;
+        }
         let a = self.verse_call_context(now);
         if a.book != Some(pending.book) || a.chapter != Some(pending.chapter as u32) {
             self.note(|_| format!("chapter {} of {} is waiting, but the reading context moved on", pending.chapter, pending.book.name()));
