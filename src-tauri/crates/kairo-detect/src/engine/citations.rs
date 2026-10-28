@@ -36,6 +36,10 @@ const QUOTE_IN_ORDER: usize = 4;
 const QUOTE_MIN_IDF: f32 = 6.0;
 /// …from at least two words this uncommon (not "you", "are").
 const QUOTE_WORD_MIN_IDF: f32 = 3.0;
+/// A chapter named alone this soon after another chapter's verse went up is mentioned in passing.
+const PASSING_CHAPTER_MS: u64 = 60_000;
+/// …while the verse up is being read: this much of it heard in that time.
+const BEING_READ_SHARE: f32 = 0.5;
 /// A chapter's verse picked by the words that followed goes up only with one this identifying among them.
 const CHAPTER_PICK_SEND_MIN_IDF: f32 = 5.0;
 /// …found in at most this many other verses of the chapter.
@@ -410,7 +414,24 @@ impl Engine {
                     // Only citations the join creates or extends.
                     let prev_keys: HashSet<String> = self.parse(&self.prev_settled_words(), now).iter().map(cite_key).collect();
                     let joined = format!("{prev} {text}");
-                    let fresh: Vec<Citation> = self.parse(&joined, now).into_iter().filter(|c| !prev_keys.contains(&cite_key(c)) && !self.chapter_waiting(c)).collect();
+                    // Several verses called in this stretch ("verse twenty three … from verse twenty"):
+                    // the last one is the call (partial.rs), not the first joined to the chapter.
+                    let calls = tokens(text).iter().filter(|w| matches!(w.as_str(), "verse" | "verses")).count();
+                    // A chapter mentioned in passing in the last stretch doesn't take this one's verse
+                    // number while another chapter is being read ("…Romans eight, you can read it
+                    // later" | "now verse twenty six" during Genesis 29).
+                    let names_book = !book_mentions(text, self.k.books, self.cfg.lang).is_empty();
+                    let reading_other = |c: &Citation| {
+                        !names_book
+                            && !opens_with_number(text)
+                            && !super::detour::READING_CUE.is_match(&joined)
+                            && self.screen.up.is_some_and(|(u, at)| {
+                                now.saturating_sub(at) < PASSING_CHAPTER_MS
+                                    && (self.r(u).book, self.r(u).chapter as u32) != (c.book, c.chapter)
+                                    && self.share_said(u, &self.t.words.within(now, PASSING_CHAPTER_MS)) >= BEING_READ_SHARE
+                            })
+                    };
+                    let fresh: Vec<Citation> = self.parse(&joined, now).into_iter().filter(|c| !prev_keys.contains(&cite_key(c)) && !self.chapter_waiting(c) && calls < 2 && !reading_other(c)).collect();
                     let joined_refs = if fresh.is_empty() { Vec::new() } else { self.resolve_ambiguous(fresh, now) };
                     if !joined_refs.is_empty() && split {
                         let own: HashSet<String> = refs.iter().map(|r| cite_key(&r.c)).collect();
@@ -457,8 +478,19 @@ impl Engine {
         for (i, Cite { c, mut unresolved }) in refs.into_iter().enumerate() {
             let (book, chapter) = (c.book, c.chapter);
             let ch = chapter as u16;
-            // Even a chapter alone is context for what's said next.
-            if !unresolved {
+            // Even a chapter alone is context for what's said next — unless it's mentioned in passing
+            // while another chapter is being read ("…Romans eight, you can read it later", then "now
+            // verse twenty six" during Genesis 29 is Genesis 29:26).
+            // Being read: most of the verse up heard lately, not just cited ("In Matthew 11, say, come
+            // to me … 28" after John 3:31 was named is a new citation).
+            let in_passing = matches!(c.verses, Verses::Chapter)
+                && !super::detour::READING_CUE.is_match(text)
+                && self.screen.up.is_some_and(|(u, at)| {
+                    now.saturating_sub(at) < PASSING_CHAPTER_MS
+                        && (self.r(u).book, self.r(u).chapter) != (book, ch)
+                        && self.share_said(u, &self.t.words.within(now, PASSING_CHAPTER_MS)) >= BEING_READ_SHARE
+                });
+            if !unresolved && !in_passing {
                 self.reading.update(book, Some(chapter), now);
                 if self.chapter_resolved_for != Some((book, ch)) {
                     self.chapter_resolved_for = None;

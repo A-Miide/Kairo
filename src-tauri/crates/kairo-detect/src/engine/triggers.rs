@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 
 use kairo_bible::{VerseId, VerseRef};
 
-use super::citations::{ends_on_growable_number, ends_on_tens_and_unit, interim_looks_incomplete, opens_with_number, tokens, DIRECT_PARTIAL_SCORE, INTERIM_STABLE_WINDOW_MS, PREV_FINAL_JOIN_WINDOW_MS};
+use super::citations::{ends_on_growable_number, ends_on_tens_and_unit, interim_looks_incomplete, opens_with_number, tokens, DIRECT_PARTIAL_SCORE, PREV_FINAL_JOIN_WINDOW_MS};
 use super::core::{Candidate, Engine};
 use super::evidence::{meaningful_words, stem_lite};
 use super::types::{Hold, Method, Target};
@@ -33,7 +33,9 @@ const PARTIAL_CHAPTER_UP_MS: u64 = 60_000;
 const PARTIAL_CONFIRM_MAX_AGE_MS: u64 = 15_000;
 /// After the reading context lapses, "verse N" still means a verse of the
 /// passage on screen for this long after it went up.
-const ON_SCREEN_CONTEXT_MS: u64 = 120_000;
+/// The verse up stays context for a verse number this long; past the announced passage, without
+/// the verse's own words, it is only offered.
+const ON_SCREEN_CONTEXT_MS: u64 = 600_000;
 
 static NEXT: LazyLock<regex::Regex> = LazyLock::new(|| re(r"\b(next verse|following verse|verse after (that|this|it))\b"));
 static BACK: LazyLock<regex::Regex> = LazyLock::new(|| re(r"\b(previous verse|verse before|preceding verse)\b"));
@@ -47,6 +49,10 @@ fn filler(w: &str) -> bool {
 
 /// A verse number this close after a verse cited in passing reads on from that verse.
 const PASSING_READS_ON: u32 = 3;
+/// Words that make a number after them a verse called ("goes to twenty three").
+const LEAD_IN: &[&str] = &["to", "at", "from"];
+/// …as far as this from the verse being read.
+const LED_NUMBER_REACH: i64 = 5;
 
 impl Engine {
     fn verse_in_chapter(&self, of: VerseId, verse: i64) -> Option<VerseId> {
@@ -99,23 +105,37 @@ impl Engine {
         if num.consumed == 1 && is_ambiguous_number_word(tail[tail.len() - 1]) {
             return false; // "…waiting for" is not verse 4
         }
+        // The number closes what was said, after a pause word or a lead-in ("…okay twenty five now",
+        // "…goes to twenty three"): the recogniser writes no commas, so the clause is the whole
+        // stretch (live 2026-10-28).
+        let at = (0..words.len()).rev().find(|&i| !filler(&words[i])).map_or(0, |i| i + 1 - num.consumed);
+        let before = at.checked_sub(1).map(|i| words[i].as_str());
+        // …but "seven to eight" is a range, not "to eight".
+        let range_end = at >= 2 && consume_number(&words.iter().map(String::as_str).collect::<Vec<_>>(), at - 2, None).is_some_and(|n| n.consumed == 1);
+        let led = before.is_some_and(|b| LEAD_IN.contains(&b)) && !range_end;
         let clause = text.split(['.', '!', '?', ';', ',']).map(str::trim).rfind(|c| !c.is_empty()).unwrap_or("");
-        if tokens(clause).iter().filter(|w| !filler(w)).count() != num.consumed {
+        let alone = tokens(clause).iter().filter(|w| !filler(w)).count() == num.consumed || before.is_none_or(filler);
+        if !alone && !led {
             return false;
         }
         let Some(base) = (if self.range_is_up() { self.range.current } else { None }).or(self.screen.up_verse()) else { return false };
-        if num.value != self.r(base).verse as i64 + 1 {
+        // A lead-in ("go to") may name any verse near the reading; a number on its own only the next.
+        let step = num.value - self.r(base).verse as i64;
+        if !(step == 1 || led && step != 0 && step.abs() <= LED_NUMBER_REACH) {
             return false;
         }
         if self.range.queue.is_empty() && self.screen.up.is_none_or(|(_, at)| now.saturating_sub(at) > BARE_NUMBER_MAX_GAP_MS) {
             return false;
         }
         self.throttle.bare_number_at = now;
-        if !self.range.queue.is_empty() && self.range_is_up() {
+        if !self.range.queue.is_empty() && self.range_is_up() && step == 1 {
             self.request_range_advance(now);
             return true;
         }
         if let Some(v) = self.verse_in_chapter(base, num.value) {
+            if step != 1 && !self.jump_range_to(v, now) {
+                self.clear_range(now);
+            }
             self.decide(Candidate::new(vec![v], Method::Continuation, 1.0, Target::Screen), now);
         }
         true
@@ -146,6 +166,10 @@ impl Engine {
         }
         let Some(up) = self.screen.up_verse() else { return false };
         let all = tokens(text);
+        // "thirty verse one" is chapter 30 verse 1, not "thirty one" with "verse" left out.
+        if all.iter().position(|w| w == "verse").is_some_and(|i| i > 0 && consume_number(&all.iter().map(String::as_str).collect::<Vec<_>>(), i + 1, None).is_some()) {
+            return false;
+        }
         let words: Vec<&str> = all.iter().map(String::as_str).filter(|w| !filler(w)).collect();
         if words.is_empty() || words.len() > VERSE_JUMP_MAX_WORDS {
             return false;
@@ -175,20 +199,19 @@ impl Engine {
         let Verses::One(verse) = p.citation.verses else { return };
         // A complete number ("verse twenty four") needn't be heard twice: the offline engine's next
         // interim is half a second away, and its final over a second (live 2026-10-28).
-        if interim_looks_incomplete(text, self.cfg.lang) && !ends_on_tens_and_unit(text) {
-            if ends_on_growable_number(text, self.cfg.lang) {
-                return;
-            }
-            let key = format!("partial|{}|{}|{verse}", p.citation.book.index(), p.citation.chapter);
-            let seen = self.t.interim_seen.insert(key, now);
-            if seen.is_none_or(|t| now.saturating_sub(t) >= INTERIM_STABLE_WINDOW_MS) {
-                return;
-            }
+        // …and so needn't one that can't grow ("fifteen", "three"); "four" or "twenty" may still be
+        // "fourteen" or "twenty four", so those wait for the next word.
+        if interim_looks_incomplete(text, self.cfg.lang) && ends_on_growable_number(text, self.cfg.lang) && !ends_on_tens_and_unit(text) {
+            return;
         }
         let Some(v) = self.k.id(VerseRef::new(p.citation.book, p.citation.chapter as u16, verse as u16)) else { return };
-        self.jump_range_to(v, now);
         let candidate = Candidate::new(vec![v], self.partial_method(&p), DIRECT_PARTIAL_SCORE, Target::Screen);
         let sent = self.decide(if self.partial_may_send(&p, &[v], text) { candidate } else { candidate.held(Hold::StrayVerseNumber) }, now);
+        // The range follows only a call that went up: one only offered mustn't make the verse look
+        // up already, so its reading can't send it (Joel 2:11, "…before his army. Verse eleven").
+        if sent == Target::Screen {
+            self.jump_range_to(v, now);
+        }
         self.partial_confirms_context(sent, v, &p, now);
     }
 
@@ -226,6 +249,17 @@ impl Engine {
     /// him more shall be given" is Mark 4:25, not Luke 6:25 (MacArthur, dev build 2026-10-20).
     fn announced_instead(&self, mut p: Partial, text: &str) -> Partial {
         let Verses::One(n) = p.citation.verses else { return p };
+        // "the next chapter verse one" taken already, on an earlier part of the same speech: the chapter
+        // it moved to is now the one in play, so it mustn't move again (30:1, then 31:1).
+        let lower = text.to_lowercase();
+        let step: i64 = if lower.contains("next chapter") || lower.contains("following chapter") { 1 } else if lower.contains("previous chapter") || lower.contains("last chapter") { -1 } else { 0 };
+        if step != 0 && p.chapter_given {
+            let up = self.screen.up_verse().map(|u| self.r(u));
+            if up.is_some_and(|u| u.book == p.citation.book && u.verse as u32 == n && u.chapter as i64 == p.citation.chapter as i64 - step) {
+                p.citation.chapter = (p.citation.chapter as i64 - step) as u32;
+                return p;
+            }
+        }
         // Just after the verse cited in passing, the number reads on from it ("John 3:16 … verse 17").
         if let Some((book, chapter, v, _)) = self.passing.filter(|_| self.chapter_pending.is_some() && !p.chapter_given) {
             if (v as u32 + 1..=v as u32 + PASSING_READS_ON).contains(&n) {

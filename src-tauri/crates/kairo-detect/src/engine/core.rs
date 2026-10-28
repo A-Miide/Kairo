@@ -457,6 +457,10 @@ impl Engine {
                 self.on_screen_partial(&text, false, now);
             }
             self.spoken_correction(&text, false, now);
+            // "…goes to twenty three" acts as the number is heard, once it can't grow further.
+            if !found && !super::citations::ends_on_growable_number(&text, self.cfg.lang) {
+                self.bare_number_continuation(&text, now);
+            }
             // A digression's end can come in the middle of a long stretch (the offline engine sends a
             // final only at a pause), so the return is looked for as the words come in too.
             if !found {

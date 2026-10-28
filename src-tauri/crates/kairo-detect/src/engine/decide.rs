@@ -111,8 +111,12 @@ impl Engine {
         // with nothing left to read, a quote from elsewhere is the sermon
         // moving on (Joel 2 finished, then Acts 2:16 "spoken by the prophet Joel").
         let range_holds = self.range.current.is_some() && !self.range.soft && (!self.range.queue.is_empty() || now.saturating_sub(self.range.moved_at) < FINISHED_RANGE_HOLD_MS);
+        // A verse number called in the range's own chapter is the preacher moving within it ("skip to
+        // verse thirty five" during 29:20–25), not a stray match to hold off.
+        let called_in_chapter = matches!(c.method, Method::DirectPartial | Method::ContextCitation | Method::Continuation)
+            && self.range.current.is_some_and(|cur| (self.r(cur).book, self.r(cur).chapter) == (r.book, r.chapter));
         let range_collision = match self.range.current {
-            Some(_) if range_holds && !self.range.all.contains(&top) => Some(!self.speech_favours_over_range(top)),
+            Some(_) if range_holds && !self.range.all.contains(&top) && !called_in_chapter => Some(!self.speech_favours_over_range(top)),
             _ => None,
         };
         let ctx = ScoreContext {

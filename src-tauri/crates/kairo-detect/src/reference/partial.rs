@@ -111,16 +111,35 @@ impl PartialResolver<'_> {
             }
         }
 
-        for i in 0..w.len() {
+        // The last verse called counts: "go to verse twenty three … I believe from verse twenty three
+        // or twenty one … let's go from verse twenty" is verse 20 (live 2026-10-28); "verse twenty four,
+        // no, verse twenty two" is 22.
+        let mut last = None;
+        let mut i = 0;
+        while i < w.len() {
             if !is_verse_word(w[i]) {
+                i += 1;
                 continue;
             }
-            let Some(v) = consume_number(&w, i + 1, None) else { continue };
+            let Some(v) = consume_number(&w, i + 1, None) else {
+                i += 1;
+                continue;
+            };
             let start = n32(v.value);
             if start < 1 || start > self.shape.max_verse() {
+                i += 1;
                 continue;
             }
-            let chapter = active.chapter?;
+            let mut chapter = active.chapter?;
+            // "the next chapter verse one": the chapter after the one in play, said outright.
+            let mut moved = false;
+            if i >= 2 && w[i - 1] == "chapter" {
+                match w[i - 2] {
+                    "next" | "following" if self.shape.chapters(book) > chapter => (chapter, moved) = (chapter + 1, true),
+                    "previous" | "last" if chapter > 1 => (chapter, moved) = (chapter - 1, true),
+                    _ => {}
+                }
+            }
             if self.names_other_passage_before(&w, i, active) {
                 return None;
             }
@@ -138,7 +157,10 @@ impl PartialResolver<'_> {
                 }
                 let end = if get(&w, a) == "end" { self.shape.verses(book, chapter) } else { consume_number(&w, a, None).map(|e| n32(e.value)) };
                 if let Some(end) = end.filter(|e| *e >= start) {
-                    return found(chapter, Verses::Span(start, end), false);
+                    let used = if get(&w, a) == "end" { a + 1 } else { a + consume_number(&w, a, None).map_or(1, |e| e.consumed) };
+                    last = Some((chapter, Verses::Span(start, end), moved));
+                    i = used;
+                    continue;
                 }
             }
             let mut end = start;
@@ -154,8 +176,11 @@ impl PartialResolver<'_> {
                 end = n32(n.value);
                 j = a + n.consumed;
             }
-            let verses = if end > start { Verses::Span(start, end) } else { Verses::One(start) };
-            return found(chapter, verses, false);
+            last = Some((chapter, if end > start { Verses::Span(start, end) } else { Verses::One(start) }, moved));
+            i = j.max(i + 1);
+        }
+        if let Some((chapter, verses, moved)) = last {
+            return found(chapter, verses, moved);
         }
 
         if allow_bare_number {
