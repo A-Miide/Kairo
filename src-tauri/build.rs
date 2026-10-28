@@ -29,6 +29,7 @@ fn main() {
                 "list_system_fonts",
                 "signal_main_ready",
                 "install_update",
+                "check_updates",
                 "ndi_available",
                 "ndi_start",
                 "ndi_stop",

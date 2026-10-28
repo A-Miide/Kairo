@@ -387,6 +387,12 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the check_updates command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-check-updates",
+          "markdownDescription": "Enables the check_updates command without any pre-configured scope."
+        },
+        {
           "description": "Enables the decklink_list command without any pre-configured scope.",
           "type": "string",
           "const": "allow-decklink-list",
@@ -595,6 +601,12 @@
           "type": "string",
           "const": "allow-syphon-update-timer",
           "markdownDescription": "Enables the syphon_update_timer command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the check_updates command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-check-updates",
+          "markdownDescription": "Denies the check_updates command without any pre-configured scope."
         },
         {
           "description": "Denies the decklink_list command without any pre-configured scope.",

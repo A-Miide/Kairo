@@ -8216,12 +8216,13 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 
 /* Section title with an action on the same line (Help & Guide's tour button). */
 .settings-section-head {
-  display: flex; align-items: center; justify-content: space-between; gap: var(--space-3);
+  display: flex; align-items: center; gap: var(--space-2);
   border-bottom: 1px solid var(--border);
-  margin-bottom: 4px;
+  margin-bottom: 4px; padding-bottom: 8px;
 }
-.settings-section-head .settings-section-label { border-bottom: 0; margin-bottom: 0; padding-bottom: 0; }
-.settings-section-head .modal-btn.primary { padding: 6px 14px; font-size: var(--fs-xs); margin-bottom: 8px; }
+/* The label takes the free space, so one button or several sit together on the right. */
+.settings-section-head .settings-section-label { border-bottom: 0; margin: 0 auto 0 0; padding-bottom: 0; }
+.settings-section-head .modal-btn { padding: 6px 14px; font-size: var(--fs-xs); margin: 0; }
 
 /* Output theme picker: a dropdown with a tiny preview beside each theme. */
 .theme-pick { position: relative; min-width: 0; flex: 1; }

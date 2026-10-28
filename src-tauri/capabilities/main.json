@@ -37,6 +37,7 @@
     "allow-list-system-fonts",
     "allow-signal-main-ready",
     "allow-install-update",
+    "allow-check-updates",
     "allow-ndi-available",
     "allow-ndi-start",
     "allow-ndi-stop",

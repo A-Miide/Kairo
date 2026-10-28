@@ -27,6 +27,11 @@ const MAX_LIVE_WORDS: usize = LIVE_TAIL_WORDS + 4;
 /// The recogniser restarts its context after an utterance this long.
 const RESET_AFTER_WORDS: usize = 300;
 const UTTERANCE_END_SECS: f32 = 1.2;
+/// How long a model may take to load. The Core ML model's first load after an
+/// install or update (macOS preparing it for the Neural Engine) took 34 s on
+/// an idle M1 and passed a minute on a busy one.
+const START_WAIT: Duration = Duration::from_secs(240);
+
 /// Live speech stays live: audio still waiting to be decoded when it is older than this is
 /// dropped and recognition starts again at the newest audio. On a computer too busy to decode
 /// in real time the backlog otherwise grew for the whole service (measured 2026-10-16: 5.4
@@ -137,6 +142,30 @@ pub fn coreml_worker(app: &Shared) -> Option<std::path::PathBuf> {
         candidates.push(dir.join(EXE));
     }
     candidates.into_iter().find(|p| p.is_file())
+}
+
+/// Held while the Core ML model loads in the background, so Start listening
+/// waits for that load instead of starting a second one beside it.
+static PREPARING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// macOS drops what it prepared for the Neural Engine when Kairo is updated
+/// (the engine's program changes), so the first load after an update takes
+/// 30 s or more again. Loading the model in the background when Kairo opens
+/// keeps that wait out of Start listening.
+pub fn prepare_at_launch(app: Shared) {
+    if !coreml() || !coreml_supported() {
+        return;
+    }
+    let dir = model_dir(&app, "en");
+    if !coreml_present(&dir) {
+        return;
+    }
+    let _ = std::thread::Builder::new().name("coreml-prepare".into()).spawn(move || {
+        let _held = PREPARING.lock();
+        if let Err(e) = prepare_coreml(&app, &dir) {
+            eprintln!("[Offline] {e}");
+        }
+    });
 }
 
 /// Loads the Core ML model once, so macOS prepares it for the Neural Engine at install (~45 s on an
@@ -549,11 +578,14 @@ pub async fn start(app: Shared) -> Result<Session, Value> {
     // loaded and listening, or why it couldn't.
     let (started_tx, started_rx) = std::sync::mpsc::sync_channel::<Result<(), String>>(1);
     let app2 = app.clone();
+    if coreml_exe.is_some() {
+        let _ = tokio::task::spawn_blocking(|| drop(PREPARING.lock())).await;
+    }
     let worker = std::thread::Builder::new()
         .name("offline-speech".into())
         .spawn(move || supervise(app2, detector, dir, language, coreml_exe, rx, flag, started_tx))
         .map_err(|e| json!({ "error": e.to_string() }))?;
-    let started = tokio::task::spawn_blocking(move || started_rx.recv_timeout(Duration::from_secs(60)).unwrap_or_else(|_| Err("the engine didn't start in time".into())))
+    let started = tokio::task::spawn_blocking(move || started_rx.recv_timeout(START_WAIT).unwrap_or_else(|_| Err("the engine didn't start in time".into())))
         .await
         .unwrap_or_else(|e| Err(e.to_string()));
     if let Err(e) = started {
@@ -877,7 +909,7 @@ fn supervise(
         // Start (or restart) the engine and wait for its model to load. The
         // audio queue isn't read meanwhile: it holds what's said.
         let ready = spawn_worker(&dir, &language, coreml.as_deref()).and_then(|(mut child, from)| {
-            let deadline = Instant::now() + Duration::from_secs(60);
+            let deadline = Instant::now() + START_WAIT;
             loop {
                 match from.recv_timeout(Duration::from_millis(100)) {
                     Ok(FromWorker::Ready) => return Ok((child, from)),

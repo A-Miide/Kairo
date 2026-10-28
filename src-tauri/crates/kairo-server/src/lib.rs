@@ -205,6 +205,7 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
     app.refresh_presentation().await;
     tokio::spawn(osc::run(app.clone()));
     audio_stats::spawn_reporter(app.clone());
+    offline::prepare_at_launch(app.clone());
     // Singing heard in the room (a sound classifier beside the speech detector), when installed.
     music::start(&cfg.db_dir.parent().map(|d| d.join("vad/yamnet.onnx")).unwrap_or_default(), app.clone());
     let obs_app = app.clone();
