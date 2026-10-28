@@ -113,7 +113,7 @@ impl Parser<'_> {
                     }
                 }
             }
-            match self.scan(&w[i..next], active) {
+            match self.scan_after(&w[..i], &w[i..next], active) {
                 Some(mut c) => {
                     // A numbered book named without its number ("Timothy") could be either.
                     if c.alternatives.is_empty() && consumed == 1 {
@@ -134,10 +134,15 @@ impl Parser<'_> {
     }
 
     fn scan(&self, w: &[&str], active: Active) -> Option<Citation> {
-        (0..w.len()).find_map(|i| self.citation_at(w, i, active))
+        self.scan_after(&[], w, active)
     }
 
-    fn citation_at(&self, w: &[&str], i: usize, active: Active) -> Option<Citation> {
+    /// `lead`: the words said before `w` in the same stretch.
+    fn scan_after(&self, lead: &[&str], w: &[&str], active: Active) -> Option<Citation> {
+        (0..w.len()).find_map(|i| self.citation_at(lead, w, i, active))
+    }
+
+    fn citation_at(&self, lead: &[&str], w: &[&str], i: usize, active: Active) -> Option<Citation> {
         let (mut book, consumed) = self.books.match_at(w, i)?;
         let mut idx = i + consumed;
         let mut chapter_kw = get(w, idx) == "chapter";
@@ -275,7 +280,7 @@ impl Parser<'_> {
         }
 
         let Some(v) = v else {
-            if self.books.is_ambiguous(w[i]) && !chapter_kw {
+            if self.books.is_ambiguous(w[i]) && !chapter_kw && !called_out(&[lead, &w[..i]].concat(), w.len() == idx) {
                 return None;
             }
             return Some(Citation::new(book, chapter, Verses::Chapter));
@@ -530,4 +535,16 @@ impl Parser<'_> {
         }
         out.join(" ")
     }
+}
+
+/// A book whose name is also an everyday word, with only a chapter, is still a citation when it is
+/// the whole of what was said ("Genesis twenty nine", on its own, live 2026-10-28) or comes right
+/// after "go to", "turn to", "open to", "read"…: "the genesis of it" or "in numbers" isn't.
+fn called_out(before: &[&str], ends_there: bool) -> bool {
+    const LEAD: &[&str] = &["go", "to", "turn", "open", "let's", "lets", "let", "us", "read", "in", "from", "with", "me", "now", "and", "so"];
+    const POINTS: &[&str] = &["to", "read", "open", "turn"];
+    if before.is_empty() {
+        return ends_there;
+    }
+    before.iter().all(|x| LEAD.contains(x)) && before.last().is_some_and(|x| POINTS.contains(x))
 }

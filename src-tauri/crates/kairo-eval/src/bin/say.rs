@@ -26,7 +26,8 @@ fn main() {
     let text = std::fs::read_to_string(path).expect("transcript");
     let k = Arc::new(knowledge());
     let m = opt("--meaning").map(|e| meaning(&e, Some("minilm.json"), &["KJV"]));
-    let mut engine = Engine::new(k.clone(), Config { explain, meaning: m.is_some(), ..Config::default() });
+    // `--offline`: as the app runs it with the offline speech engine (its interims' last word still growing).
+    let mut engine = Engine::new(k.clone(), Config { explain, meaning: m.is_some(), offline: args.iter().any(|a| a == "--offline"), ..Config::default() });
 
     // `--segments`: one line per segment as the speech engine sent it; a line starting "~ " is an
     // interim, any other line a final (reproduces what a live log shows, which re-splitting can't).

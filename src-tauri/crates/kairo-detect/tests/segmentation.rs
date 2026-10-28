@@ -245,3 +245,18 @@ fn the_verse_read_before_a_partial_quote_vouches_for_it() {
     let (up, offered) = outcome_in(&K_WORDINGS, &script("~ believe it was for this\nservice one to go\n~ you've heard that proverb\nthey quote in Israel"));
     assert!(up.is_empty() && offered.contains(&v("Ezekiel", 12, 22)), "up {up:?}, offered {offered:?}");
 }
+
+#[test]
+fn a_book_that_is_an_everyday_word_named_with_its_chapter_alone_waits_for_its_verse() {
+    // Live 2026-10-28: "Genesis twenty nine" on its own, a sentence of story, then the verse.
+    let segs = script(
+        "Genesis twenty nine
+         this is the story of Jacob
+         go to verse twenty three",
+    );
+    let s = sends(&segs);
+    assert_eq!(s.first().map(String::as_str), Some("Genesis 29:23"), "{s:?}");
+    // …but the word in a sentence isn't a book named.
+    let (up, _) = outcome(&script("the genesis of it all is love and then go to verse twenty three"));
+    assert!(up.is_empty(), "up {up:?}");
+}

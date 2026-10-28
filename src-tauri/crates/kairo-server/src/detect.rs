@@ -148,7 +148,12 @@ impl Detector {
         if text.trim().is_empty() {
             return;
         }
-        // Finished stretches go in debug.log, so a run can be diagnosed from the log alone.
+        // Finished stretches go in debug.log, so a run can be diagnosed from the log alone; the
+        // in-progress text too, since detection acts on it and a run can't be replayed exactly
+        // without it (Ezekiel 12:25 sent early live, never in a replay of the finals, 2026-10-28).
+        if !is_final {
+            crate::routes::write_debug_global("server:interim", json!({ "text": text }));
+        }
         if is_final {
             crate::routes::write_debug_global("server:transcript", json!({ "text": text, "speechFinal": speech_final, "continues": continues_live }));
             use kairo_detect::reference::translation_command::translation_command;
