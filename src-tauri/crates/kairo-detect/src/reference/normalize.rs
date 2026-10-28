@@ -183,9 +183,20 @@ fn ordinal_forms(t: &str, books: &Books) -> String {
     // when a verse or chapter word follows ("someone 25 years ago" is untouched).
     static SOMEONE_PSALM: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?-u:\b)some ?one ([0-9]{2}),? (verse|verses|vers|chapter)(?-u:\b)"));
 
+    // …and as the offline engine writes it, the number spelled out ("someone twenty five verse one").
+    static SOMEONE_PSALM_WORDS: LazyLock<regex::Regex> = LazyLock::new(|| {
+        re(r"(?-u:\b)some ?one ((?:ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)|(?:twenty|thirty|forty|fifty)(?: (?:one|two|three|four|five|six|seven|eight|nine))?),? (verse|verses|vers|chapter)(?-u:\b)")
+    });
+
     let mut t = t.to_string();
     if t.contains("one ") {
         t = SOMEONE_PSALM.replace_all(&t, "psalm 1$1 $2").into_owned();
+        t = SOMEONE_PSALM_WORDS
+            .replace_all(&t, |c: &regex::Captures| match super::numbers::spoken_to_number(&c[1].replace(' ', "-")).or_else(|| words_value(&c[1])) {
+                Some(n) if (10..=50).contains(&n) => format!("psalm {} {}", 100 + n, &c[2]),
+                _ => c[0].to_string(),
+            })
+            .into_owned();
     }
     if t.contains(" the end") {
         t = TO_THE_END.replace_all(&t, "$1 to end").into_owned();
@@ -342,4 +353,15 @@ mod tests {
         assert_eq!(n("3:7 3:17 sorry"), "3 17");
         assert_eq!(n("I'm sorry for that"), "i'm sorry for that");
     }
+}
+
+/// "twenty five" as 25 (tens, then an optional unit).
+fn words_value(s: &str) -> Option<i64> {
+    let mut parts = s.split(' ');
+    let tens = super::numbers::spoken_to_number(parts.next()?)?;
+    let unit = match parts.next() {
+        Some(u) => super::numbers::spoken_to_number(u)?,
+        None => 0,
+    };
+    Some(tens + unit)
 }

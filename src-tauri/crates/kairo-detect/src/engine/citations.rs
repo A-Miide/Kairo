@@ -34,6 +34,8 @@ const VERSE_ONE_LOOKAHEAD: usize = 12;
 const QUOTE_WINDOW: usize = 5;
 const QUOTE_IN_ORDER: usize = 4;
 const QUOTE_MIN_IDF: f32 = 6.0;
+/// …from at least two words this uncommon (not "you", "are").
+const QUOTE_WORD_MIN_IDF: f32 = 3.0;
 /// A chapter's verse picked by the words that followed goes up only with one this identifying among them.
 const CHAPTER_PICK_SEND_MIN_IDF: f32 = 5.0;
 /// …found in at most this many other verses of the chapter.
@@ -117,6 +119,9 @@ pub(crate) fn interim_looks_incomplete(text: &str, lang: crate::reference::Lang)
 /// A number at the end whose own sound can still grow ("seven…teen"), in the service's
 /// language ("vinte" → "vinte e oito").
 pub(crate) fn ends_on_growable_number(text: &str, lang: crate::reference::Lang) -> bool {
+    if ends_on_tens_and_unit(text) {
+        return false;
+    }
     let last = last_raw_word(text);
     if last.ends_with([',', '.', ';', '!', '?']) {
         return false;
@@ -130,6 +135,14 @@ pub(crate) fn ends_on_growable_number(text: &str, lang: crate::reference::Lang) 
     }
     let n = if !w.is_empty() && w.chars().all(|c| c.is_ascii_digit()) { w.parse().ok() } else { spoken_to_number(&w) };
     n.is_some_and(|n| GROWABLE.contains(&n))
+}
+
+/// "…twenty four": a tens word then a unit, a number that is complete — it can't grow into
+/// another as "four" can into "fourteen".
+pub(crate) fn ends_on_tens_and_unit(text: &str) -> bool {
+    let w: Vec<String> = text.split_whitespace().rev().take(2).map(|x| x.to_lowercase().chars().filter(|c| c.is_ascii_alphabetic()).collect()).collect();
+    let [unit, tens] = &w[..] else { return false };
+    matches!(spoken_to_number(tens), Some(20 | 30 | 40 | 50 | 60 | 70 | 80 | 90)) && spoken_to_number(unit).is_some_and(|n| (1..=9).contains(&n))
 }
 
 pub(crate) fn opens_with_number(text: &str) -> bool {
@@ -456,7 +469,16 @@ impl Engine {
                 self.chapter_named(book, chapter, unresolved, joined_text.as_deref().unwrap_or(text), is_final, now);
                 continue;
             }
-            self.chapter_pending = None;
+            // One verse of another chapter cited in passing, no reading announced: the chapter
+            // waiting for its verse keeps waiting (verse_call_context).
+            let passing = match (&self.chapter_pending, &c.verses) {
+                (Some(p), Verses::One(v)) if (p.book, p.chapter) != (book, ch) && !super::detour::READING_CUE.is_match(text) => Some((book, ch, *v as u16, now)),
+                _ => None,
+            };
+            if passing.is_none() {
+                self.chapter_pending = None;
+            }
+            self.passing = passing;
 
             let mut verses = self.citation_verses(&c);
             if verses.is_empty() {
@@ -763,7 +785,11 @@ impl Engine {
         if let Some((up, at)) = self.screen.up {
             let u = self.r(up);
             if u.book == book && u.chapter == ch && now.saturating_sub(at) < SAME_BOOK_WINDOW_MS {
-                self.chapter_pending = None;
+                // Only that chapter's own wait ends: Romans 8 announced keeps waiting through
+                // "…that is Matthew eleven" said of the Matthew 11:28 on screen.
+                if self.chapter_pending.as_ref().is_some_and(|p| (p.book, p.chapter) == (book, ch)) {
+                    self.chapter_pending = None;
+                }
                 return;
             }
         }
@@ -780,7 +806,10 @@ impl Engine {
             // ("Psalm sixty seven it" | "says let the people praise thee…", live log 2026-10-26),
             // so the chapter waits from here, not only from a final that repeats it.
             let waiting = self.chapter_pending.as_ref().is_some_and(|p| p.book == book && p.chapter == ch);
-            if !waiting && self.chapter_resolved_for != Some((book, ch)) {
+            // …but an unfinished "Matthew eleven" (of "Matthew eleven twenty eight") doesn't replace
+            // another chapter already waiting: the final says whether it was a chapter or a verse.
+            let other_waiting = self.chapter_pending.as_ref().is_some_and(|p| (p.book, p.chapter) != (book, ch) && now.saturating_sub(p.at) < super::core::CHAPTER_NAMED_WAITS_MS);
+            if !waiting && !other_waiting && self.chapter_resolved_for != Some((book, ch)) {
                 self.chapter_pending = Some(ChapterPending { book, chapter: ch, from: self.said_at(book, text), at: now });
             }
             self.send_quoted(book, ch, text, now);
@@ -877,7 +906,12 @@ impl Engine {
             let Some(id) = self.k.id(VerseRef::new(book, chapter, n)) else { continue };
             let wordings: Vec<Vec<String>> = self.verse_wordings(id).into_iter().map(super::evidence::plain_tokens).collect();
             for (i, w) in windows.iter().enumerate() {
-                let rare = |verse: &Vec<String>| super::evidence::meaningful_words(&w.join(" ")).iter().filter(|m| verse.contains(&m.to_lowercase())).map(|m| self.k.lexicon.idf_of(m)).sum::<f32>() >= QUOTE_MIN_IDF;
+                // Two of the verse's own words at least, rare enough together: one word and
+                // everyday ones ("while you are turning remember that", NLT Romans 8:9) isn't a quote.
+                let rare = |verse: &Vec<String>| {
+                    let own: Vec<String> = super::evidence::meaningful_words(&w.join(" ")).into_iter().filter(|m| verse.contains(&m.to_lowercase())).collect();
+                    own.iter().filter(|m| self.k.lexicon.idf_of(m) >= QUOTE_WORD_MIN_IDF).count() >= 2 && own.iter().map(|m| self.k.lexicon.idf_of(m)).sum::<f32>() >= QUOTE_MIN_IDF
+                };
                 // "the earth shall" is in 67:7 too, but not "yield": a rival shares the rare words.
                 if wordings.iter().any(|verse| in_order(w, verse) + 1 >= QUOTE_IN_ORDER && rare(verse)) {
                     near[i].push(id);

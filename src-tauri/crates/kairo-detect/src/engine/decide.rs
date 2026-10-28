@@ -317,7 +317,7 @@ impl Engine {
                 self.screen.last_sent = Some((top, now));
                 self.screen.last_sent_book = Some((r.book, now));
                 if c.method == Method::Direct {
-                    self.screen.last_citation = Some((top, now, self.t.words_heard));
+                    self.screen.last_citation = Some((top, now, self.t.words.end()));
                 } else if c.method != Method::Continuation {
                     self.note_replaced_citation(top, now);
                 }
@@ -508,7 +508,7 @@ impl Engine {
     /// re-parse of the citation can't put it back.
     fn note_replaced_citation(&mut self, by: VerseId, now: u64) {
         let (Some((up, _)), Some((cited, _, words))) = (self.screen.up, self.screen.last_citation) else { return };
-        if up != cited || self.t.words_heard.saturating_sub(words) > super::correction::CORRECTION_WINDOW_WORDS {
+        if up != cited || self.t.words.end().saturating_sub(words) > super::correction::CORRECTION_WINDOW_WORDS {
             return;
         }
         let (u, b) = (self.r(up), self.r(by));

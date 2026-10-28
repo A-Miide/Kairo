@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 
 use kairo_bible::{VerseId, VerseRef};
 
-use super::citations::{ends_on_growable_number, interim_looks_incomplete, opens_with_number, tokens, DIRECT_PARTIAL_SCORE, INTERIM_STABLE_WINDOW_MS, PREV_FINAL_JOIN_WINDOW_MS};
+use super::citations::{ends_on_growable_number, ends_on_tens_and_unit, interim_looks_incomplete, opens_with_number, tokens, DIRECT_PARTIAL_SCORE, INTERIM_STABLE_WINDOW_MS, PREV_FINAL_JOIN_WINDOW_MS};
 use super::core::{Candidate, Engine};
 use super::evidence::{meaningful_words, stem_lite};
 use super::types::{Hold, Method, Target};
@@ -45,6 +45,9 @@ fn filler(w: &str) -> bool {
     BARE_NUMBER_FILLER.contains(&w)
 }
 
+/// A verse number this close after a verse cited in passing reads on from that verse.
+const PASSING_READS_ON: u32 = 3;
+
 impl Engine {
     fn verse_in_chapter(&self, of: VerseId, verse: i64) -> Option<VerseId> {
         let r = self.r(of);
@@ -63,7 +66,9 @@ impl Engine {
             return;
         }
         self.throttle.next_verse_at = now;
-        if !self.range.queue.is_empty() && !back {
+        // The range moves only while its verse is the one up: "compare that with John 3:16 and the
+        // next verse" during a Romans 8 range is John 3:17.
+        if !self.range.queue.is_empty() && !back && self.range_is_up() {
             self.request_range_advance(now);
             return;
         }
@@ -98,7 +103,7 @@ impl Engine {
         if tokens(clause).iter().filter(|w| !filler(w)).count() != num.consumed {
             return false;
         }
-        let Some(base) = self.range.current.or(self.screen.up_verse()) else { return false };
+        let Some(base) = (if self.range_is_up() { self.range.current } else { None }).or(self.screen.up_verse()) else { return false };
         if num.value != self.r(base).verse as i64 + 1 {
             return false;
         }
@@ -106,7 +111,7 @@ impl Engine {
             return false;
         }
         self.throttle.bare_number_at = now;
-        if !self.range.queue.is_empty() {
+        if !self.range.queue.is_empty() && self.range_is_up() {
             self.request_range_advance(now);
             return true;
         }
@@ -114,6 +119,11 @@ impl Engine {
             self.decide(Candidate::new(vec![v], Method::Continuation, 1.0, Target::Screen), now);
         }
         true
+    }
+
+    /// The range's verse is the one on screen (or nothing else is).
+    fn range_is_up(&self) -> bool {
+        self.screen.up_verse().is_none_or(|u| self.range.current == Some(u))
     }
 
     /// The verse on screen was just read to its end.
@@ -163,7 +173,9 @@ impl Engine {
         let Some(p) = self.k.partials(self.cfg.lang).resolve(text, self.verse_call_context(now), false) else { return };
         let p = self.announced_instead(p, text);
         let Verses::One(verse) = p.citation.verses else { return };
-        if interim_looks_incomplete(text, self.cfg.lang) {
+        // A complete number ("verse twenty four") needn't be heard twice: the offline engine's next
+        // interim is half a second away, and its final over a second (live 2026-10-28).
+        if interim_looks_incomplete(text, self.cfg.lang) && !ends_on_tens_and_unit(text) {
             if ends_on_growable_number(text, self.cfg.lang) {
                 return;
             }
@@ -214,6 +226,14 @@ impl Engine {
     /// him more shall be given" is Mark 4:25, not Luke 6:25 (MacArthur, dev build 2026-10-20).
     fn announced_instead(&self, mut p: Partial, text: &str) -> Partial {
         let Verses::One(n) = p.citation.verses else { return p };
+        // Just after the verse cited in passing, the number reads on from it ("John 3:16 … verse 17").
+        if let Some((book, chapter, v, _)) = self.passing.filter(|_| self.chapter_pending.is_some() && !p.chapter_given) {
+            if (v as u32 + 1..=v as u32 + PASSING_READS_ON).contains(&n) {
+                p.citation.book = book;
+                p.citation.chapter = chapter as u32;
+                return p;
+            }
+        }
         if p.chapter_given || self.in_announced_passage(p.citation.book, p.citation.chapter as u16) {
             return p;
         }
@@ -267,7 +287,7 @@ impl Engine {
         if self.reading.is_valid(now) || now.saturating_sub(at) > ON_SCREEN_CONTEXT_MS {
             return false;
         }
-        if !is_final && interim_looks_incomplete(text, self.cfg.lang) {
+        if !is_final && interim_looks_incomplete(text, self.cfg.lang) && !ends_on_tens_and_unit(text) {
             return false;
         }
         let r = self.r(up);

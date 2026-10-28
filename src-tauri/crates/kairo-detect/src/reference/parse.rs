@@ -426,6 +426,15 @@ impl Parser<'_> {
                 let r = num(w, scan, None)?;
                 (n32(r.value), scan + r.consumed)
             }
+            // Jude, Philemon and Obadiah are also names: their bare number is still the verse when the
+            // book has it ("Jude twenty four" became Judges 20:4 through a sound-alike).
+            None if !chapter_kw => {
+                let r = num(w, scan, None)?;
+                if n32(r.value) == 0 || self.shape.verses(book, 1).is_none_or(|n| n32(r.value) > n) {
+                    return None;
+                }
+                (n32(r.value), scan + r.consumed)
+            }
             None => return None,
         };
         let mut end = start;

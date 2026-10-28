@@ -460,18 +460,30 @@ impl Engine {
         let thin = intent == Target::Screen && ((!pointed_at && lead.weighty < STREAM_MIN_WEIGHTY_WORDS) || light) && !corroborated;
         let mut twin_took = false;
         if thin {
-            let better = match self.resolve_twin(lead.verse, now) {
-                Some(TwinOutcome::Switch(t)) => Some(t),
+            let outcome = self.resolve_twin(lead.verse, now);
+            let better_rival = match outcome {
+                Some(TwinOutcome::Switch(_)) => None,
                 _ => {
                     let near = self.stream_anchors_near(lead.verse, now);
                     let texts: Vec<String> = near.iter().map(|v| self.match_text(*v)).collect();
                     let refs: Vec<&str> = texts.iter().map(String::as_str).collect();
                     let said = self.recent_speech_seconds(40).join(" ");
-                    explained_better_by(&self.match_text(lead.verse), &refs, &said).map(|(i, _)| near[i])
+                    explained_better_by(&self.match_text(lead.verse), &refs, &said).map(|(i, _)| (near[i], false))
                 }
             };
-            if let Some(other) = better {
+            let better = match outcome {
+                Some(TwinOutcome::Switch(t)) => Some((t, true)),
+                _ => None,
+            }
+            .or(better_rival);
+            if let Some((other, twin)) = better {
+                // A rival that explains more of the last 40 s is offered, not shown: "and it came to
+                // pass that the people went out" before "he that dwelleth in the secret place" put
+                // Judges 9:42 up over Psalm 91:1.
                 let mut c = candidate(vec![other], Target::Screen);
+                if !twin {
+                    c = c.held(Hold::ThinStream);
+                }
                 c.twin_resolved = true;
                 twin_took = self.decide(c, now) == Target::Screen;
             }

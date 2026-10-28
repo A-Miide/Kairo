@@ -148,6 +148,8 @@ pub struct Engine {
     pub(crate) chapter_pending: Option<ChapterPending>,
     /// A verse called out, and the digression away from it (detour.rs).
     pub(crate) called: Option<super::detour::Called>,
+    /// A verse cited in passing while a chapter waits for its verse (book, chapter, verse, when).
+    pub(crate) passing: Option<(Book, u16, u16, u64)>,
     pub(crate) chapter_resolved_for: Option<(Book, u16)>,
     pub(crate) awaiting: HashMap<VerseId, Held>,
     pub(crate) throttle: Throttles,
@@ -196,6 +198,7 @@ impl Engine {
             person: None,
             chapter_pending: None,
             called: None,
+            passing: None,
             chapter_resolved_for: None,
             awaiting: HashMap::new(),
             throttle: Throttles::default(),
@@ -354,6 +357,13 @@ impl Engine {
     /// introduction, then "go from verse twenty one": the reading context (45 s) had lapsed, and the
     /// verse called never went up (live, 2026-10-27). A named chapter waits up to CHAPTER_NAMED_WAITS_MS.
     pub(crate) fn verse_call_context(&self, now: u64) -> Active {
+        // A chapter waiting for its verse outlasts a verse cited in passing meanwhile ("turn to Romans
+        // 8 … you know John 3:16 tells us … look at verse 28" is Romans 8:28).
+        if let (Some(p), Some((_, _, _, at))) = (&self.chapter_pending, self.passing) {
+            if at >= p.at && now.saturating_sub(p.at) < CHAPTER_NAMED_WAITS_MS {
+                return Active { book: Some(p.book), chapter: Some(p.chapter as u32) };
+            }
+        }
         let a = self.active(now);
         if a.chapter.is_some() {
             return a;

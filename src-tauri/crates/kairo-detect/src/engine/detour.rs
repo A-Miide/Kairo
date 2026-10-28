@@ -37,7 +37,7 @@ fn names_its_verse(m: Method) -> bool {
 /// The reference announced a reading ("go to Ezekiel twelve", "turn with me to", "let's read"), not
 /// cited in passing: only then is the verse waited for through a digression. On the dev sermons a
 /// verse cited while preaching was brought back three times, the preacher never returning to it.
-static READING_CUE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+pub(crate) static READING_CUE: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
     regex::Regex::new(r"(?i)\b(go to|go from|turn to|turn with me|open (your bibles?|to)|let'?s read|let us read|read with me|read it together|we('re| are) reading|start(ing)? (from|at) verse|from verse)\b").unwrap()
 });
 

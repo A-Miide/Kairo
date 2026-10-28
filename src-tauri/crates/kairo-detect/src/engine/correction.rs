@@ -16,6 +16,10 @@ pub const CORRECTION_WINDOW_WORDS: u64 = 35;
 const CORRECTION_MIN_SIMILARITY: f32 = 0.95;
 const CORRECTION_MIN_IDF: f32 = 15.0;
 const CORRECTION_IMMUNITY_MS: u64 = 3_000;
+/// …and within this long of it.
+const CORRECTION_WINDOW_MS: u64 = 20_000;
+/// A cited verse this much read since the citation stands.
+const CITED_READ_SHARE: f32 = 0.5;
 /// Reading on a few verses past the citation is reading, not a miscitation.
 const FORWARD_EXEMPT_VERSES: u16 = 5;
 /// An alternate in another book this close in weight makes the reading ambiguous.
@@ -55,7 +59,13 @@ impl Engine {
         if self.screen.up_verse().is_some_and(|u| u != cited) {
             return false;
         }
-        if self.t.words_heard.saturating_sub(cited_words) > CORRECTION_WINDOW_WORDS || now.saturating_sub(cited_at) < CORRECTION_IMMUNITY_MS {
+        // Counted in words heard, in-progress ones too: the offline engine's finals can be a minute
+        // apart, and 35 final words stretched to 40 s (Philippians 4:13 "corrected" Hebrews 11:6).
+        if self.t.words.end().saturating_sub(cited_words) > CORRECTION_WINDOW_WORDS || now.saturating_sub(cited_at) > CORRECTION_WINDOW_MS || now.saturating_sub(cited_at) < CORRECTION_IMMUNITY_MS {
+            return false;
+        }
+        // The cited verse read since: it was the right one (Romans 8:28 read, then John 3:16 quoted).
+        if self.share_said(cited, &self.t.words.since(cited_at)) >= CITED_READ_SHARE {
             return false;
         }
         let (c, t) = (self.r(cited), self.r(top.verse));
