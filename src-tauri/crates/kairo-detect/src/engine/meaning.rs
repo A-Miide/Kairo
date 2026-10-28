@@ -218,6 +218,9 @@ mod tests {
 
 /// Words of speech between meaning searches.
 const PARAPHRASE_EVERY_WORDS: u64 = 6;
+/// The verse up counts as being read when this share of its words was heard in this long.
+const READING_NOW_MS: u64 = 8_000;
+const READING_NOW_SHARE: f32 = 0.3;
 const PARAPHRASE_LIMIT: usize = 8;
 const SCOPED_LIMIT: usize = 5;
 /// A meaning match just after a spoken citation is offered, not sent.
@@ -330,6 +333,12 @@ impl Engine {
         }
         let count = self.t.words_heard + self.t.interim.split_whitespace().count() as u64;
         if count.saturating_sub(self.meaning.last_count) < PARAPHRASE_EVERY_WORDS {
+            return;
+        }
+        // The verse up being read word for word: a search would only find it again, at 20 times the
+        // CPU of everything else (path audit: 23 s of CPU against 1.2 s for 33 s of reading). The
+        // count isn't spent, so the search runs as soon as the reading stops.
+        if self.screen.up_verse().is_some_and(|u| self.share_said(u, &self.t.words.within(now, READING_NOW_MS)) >= READING_NOW_SHARE) {
             return;
         }
         self.meaning.last_count = count;
