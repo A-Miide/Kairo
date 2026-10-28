@@ -420,7 +420,10 @@ impl Engine {
         if self.maybe_correct_miscitation(&as_match, text, &alternates, now) {
             return;
         }
-        let verses: Vec<VerseId> = top.iter().map(|h| h.verse).collect();
+        // Only the lead's own passage goes up with it: Psalm 37:9, aligned behind Isaiah 40:31 on "they
+        // that wait upon the LORD", went up beside it.
+        let lead_place = (self.r(lead.verse).book, self.r(lead.verse).chapter);
+        let verses: Vec<VerseId> = top.iter().map(|h| h.verse).filter(|v| (self.r(*v).book, self.r(*v).chapter) == lead_place).collect();
         let candidate = |verses: Vec<VerseId>, intent: Target| Candidate::new(verses, Method::Stream, lead.similarity, intent).evidence(lead.evidence());
         let lead_ref = self.r(lead.verse);
         let corroborated = self.ledger.has_corroboration(lead_ref);

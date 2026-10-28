@@ -4541,6 +4541,14 @@
       "bootstrapped": true
     },
     {
+      "book": "Malachi",
+      "chapter": 4,
+      "verse": 2,
+      "kind": "quote",
+      "startMs": 2286000,
+      "addedBy": "2026-10-28 path audit: the reading of Malachi 4:1 runs on into 4:2 (\"root or BR but onto you that fear my name arise\"), sent by the held next verse; checked against the transcript and KJV by hand"
+    },
+    {
       "book": "Proverbs",
       "chapter": 28,
       "verse": 27,

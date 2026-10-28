@@ -20,6 +20,8 @@ use kairo_bible::VerseId;
 use super::lexicon::{Lexicon, WordId};
 use super::text::PREACHING_COMMON_WORDS;
 
+/// A confirmed alignment is reported again after this many more words.
+const REPORT_AGAIN_AFTER: u32 = 3;
 const ANCHOR_N: usize = 4;
 /// The same verse can't fire again from the same wording within this.
 const HIT_DEDUP_MS: u64 = 12_000;
@@ -85,6 +87,8 @@ struct Candidate {
     counted: HashSet<WordId>,
     misses: u32,
     confirmed: bool,
+    /// Words aligned when last reported confirmed.
+    reported: u32,
     fired_at: u64,
     /// The opening phrase it was found by.
     gram: u32,
@@ -151,8 +155,13 @@ impl StreamMatcher {
             } else {
                 continue;
             }
-            if aligned && !c.confirmed && c.matched >= ALIGN_CONFIRM_AT && c.matched_idf >= ANCHOR_CONFIRM_IDF && c.matched_idf - c.seed_idf >= ALIGN_EXTENSION_MIN_IDF {
+            // Reported again as it pulls ahead: a tie with a verse opening the same way held both at
+            // first confirmation, and Isaiah 40:31 ("they that wait upon the LORD…" — Psalm 37:9 too)
+            // never went up however much of it was read (path audit).
+            let grown = c.confirmed && c.matched >= c.reported + REPORT_AGAIN_AFTER;
+            if aligned && (grown || !c.confirmed && c.matched >= ALIGN_CONFIRM_AT && c.matched_idf >= ANCHOR_CONFIRM_IDF && c.matched_idf - c.seed_idf >= ALIGN_EXTENSION_MIN_IDF) {
                 c.confirmed = true;
+                c.reported = c.matched;
                 let without_back = c.matched - c.back_matched >= ALIGN_CONFIRM_AT && c.matched_idf - c.back_idf >= ANCHOR_CONFIRM_IDF;
                 let weighty_words = c
                     .counted
@@ -225,6 +234,7 @@ impl StreamMatcher {
                 counted,
                 misses: ALIGN_MISS_BUDGET,
                 confirmed: false,
+                reported: 0,
                 fired_at: now_ms,
                 gram,
             });
