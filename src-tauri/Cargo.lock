@@ -2533,7 +2533,7 @@ dependencies = [
 
 [[package]]
 name = "kairo"
-version = "4.2.6"
+version = "4.2.7"
 dependencies = [
  "base64 0.22.1",
  "block2 0.6.2",
@@ -2571,7 +2571,7 @@ dependencies = [
 
 [[package]]
 name = "kairo-bible"
-version = "4.2.6"
+version = "4.2.7"
 dependencies = [
  "serde",
  "serde_json",
@@ -2580,7 +2580,7 @@ dependencies = [
 
 [[package]]
 name = "kairo-detect"
-version = "4.2.6"
+version = "4.2.7"
 dependencies = [
  "fancy-regex",
  "kairo-bible",
@@ -2592,7 +2592,7 @@ dependencies = [
 
 [[package]]
 name = "kairo-eval"
-version = "4.2.6"
+version = "4.2.7"
 dependencies = [
  "kairo-bible",
  "kairo-detect",
@@ -2606,7 +2606,7 @@ dependencies = [
 
 [[package]]
 name = "kairo-semantic"
-version = "4.2.6"
+version = "4.2.7"
 dependencies = [
  "kairo-bible",
  "ndarray",
@@ -2620,7 +2620,7 @@ dependencies = [
 
 [[package]]
 name = "kairo-server"
-version = "4.2.6"
+version = "4.2.7"
 dependencies = [
  "anyhow",
  "axum",
