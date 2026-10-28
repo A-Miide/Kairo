@@ -26,8 +26,6 @@ const PAUSED_SKIP_MIN_IDF: f32 = 9.0;
 /// The next verse's first words are looked for among this many of the newest words (plus their own).
 const OPENING_LOOKBACK: usize = 4;
 const HEARD_MAX_WORDS: usize = 160;
-const ENDING_SPAN: usize = 8;
-const READING_SLACK: usize = 15;
 const PREFIX_MIN_IDF: f32 = 3.5;
 /// "…go through chapter four verse five" counts this soon after the citation, for at most this many verses.
 const THROUGH_CHAPTER_MS: u64 = 20_000;
@@ -245,27 +243,13 @@ impl Engine {
         }
     }
 
-    /// The current verse's last words heard just now (most of its last three, each as often as it says it).
+    /// The current verse read to its end: followed word by word, in order, in any of its wordings.
+    /// Its last words heard anywhere isn't enough — "him", "said" or "Abel" said early in the verse
+    /// put Genesis 4:9 up while 4:8 was still being read (path audit).
     fn current_ending_heard(&self) -> bool {
         let Some(current) = self.range.current else { return false };
-        self.verse_wordings(current).into_iter().any(|text| self.ending_heard(text))
-    }
-
-    fn ending_heard(&self, text: &str) -> bool {
-        let verse_words = meaningful_words(text);
-        let last3: Vec<&String> = verse_words.iter().rev().take(3).collect::<Vec<_>>().into_iter().rev().collect();
-        let ending: Vec<&String> = { let mut e: Vec<&String> = Vec::new(); for w in &last3 { if !e.contains(w) { e.push(w); } } e };
-        if ending.is_empty() {
-            return false;
-        }
-        let heard_all = self.range_heard_words();
-        let keep = text.split_whitespace().count() + READING_SLACK;
-        let reading = heard_all[heard_all.len().saturating_sub(keep)..].join(" ");
-        let heard = meaningful_words(&reading);
-        let recent: HashSet<&String> = heard.iter().rev().take(ENDING_SPAN).collect();
-        let times = |list: &[String], w: &String| list.iter().filter(|x| *x == w).count();
-        let reached = ending.iter().filter(|w| recent.contains(**w) && times(&heard, w) >= times(&verse_words, w)).count();
-        reached >= ending.len().min(2)
+        let heard: Vec<String> = plain_tokens(&self.range_heard_words().join(" "));
+        self.verse_wordings(current).into_iter().any(|text| read_to_end(&heard, &plain_tokens(text)))
     }
 
     /// The next verse's opening heard — words of its own, not the current verse's.
@@ -273,28 +257,36 @@ impl Engine {
         if !self.can_advance(now) {
             return;
         }
-        // A held continuation: the verse on screen read to its end first, then the next one's own opening.
-        if self.range.soft && !self.current_ending_heard() {
-            return;
-        }
         let current = self.range.current.unwrap();
         let next = *self.range.queue.front().unwrap();
+        // A verse as short as its own opening ("Jesus wept") is read once it's up: the words that
+        // put it there were all of it (11:36 came 4 s late after 11:35).
+        let short = self.verse_wordings(current).into_iter().all(|t| plain_tokens(t).len() <= SHORT_VERSE_WORDS);
+        let ended = short || self.current_ending_heard();
+        // A held continuation: the verse on screen read to its end first, then the next one's own opening.
+        if self.range.soft && !ended {
+            return;
+        }
         // Read word for word: the next verse's first words, in order, are what was just said ("And
         // said, O" for 2 Chronicles 20:6). Everyday words in sequence after the verse's end say more
         // than one rare word anywhere; waiting for two of its rare words held 20:6 to its 8th word,
         // most of the verse (owner, live 2026-10-27). Four after a quote, three in a cited passage.
         // Only once the verse up has been read to its end: a called range's next verse opening "And
         // the LORD" mustn't move it when the verse being read says "and the LORD" mid-way (review).
-        let k = if self.range.soft_quoted { 4 } else { 3 };
+        let k = if self.range.soft_quoted { 4 } else if ended { 2 } else { 3 };
         let said_now = plain_tokens(fresh);
         // Among the newest words: they arrive a chunk at a time ("…court and said", then "said O LORD").
         let recent = &said_now[said_now.len().saturating_sub(k + OPENING_LOOKBACK)..];
         // In any wording: Ezekiel 12:25 read in the NLT opens "For I am the LORD! If I say it".
+        // Two words once the verse was read to its end, if they aren't both everyday ones ("and the").
         let opens = self.verse_wordings(next).into_iter().any(|t| {
-            let start: Vec<String> = plain_tokens(t).into_iter().take(k).collect();
+            let tokens = plain_tokens(t);
+            // "And said, O LORD": two everyday words open it, so three are needed after all.
+            let k = if k == 2 && tokens.iter().take(2).all(|w| is_stop_word(w)) { 3 } else { k };
+            let start: Vec<String> = tokens.into_iter().take(k).collect();
             start.len() == k && recent.windows(k).any(|w| w == &start[..])
         });
-        if opens && (self.range.soft || self.current_ending_heard()) {
+        if opens && (self.range.soft || ended) {
             self.request_range_advance(now);
             return;
         }
@@ -326,7 +318,9 @@ impl Engine {
         let hit = |list: &[&String]| list.iter().collect::<HashSet<_>>().into_iter().filter(|w| said.contains(**w)).count();
         // Held after a quote, one word of the next verse is chance: Galatians 3:13 quoted in passing,
         // then "blessing" put 3:14 up; Deuteronomy 12:13, then "place", 12:14 (dev sermons). Two.
-        let need = if self.range.soft_quoted { 2 } else { 1 };
+        // Held verses too: "…God has put in your heart" put 2 Chronicles 26:16 ("his heart was lifted
+        // up") up 20 s after 26:15 was read (live recording, 2026-10-28).
+        let need = if self.range.soft { 2 } else { 1 };
         let matched = if identifying.len() >= need { hit(&identifying) >= need } else { hit(&own) >= need + 1 };
         if matched {
             self.request_range_advance(now);
@@ -530,3 +524,37 @@ impl Engine {
         words[words.len().saturating_sub(max)..].to_vec()
     }
 }
+
+/// `verse` read through to its end in `heard`: its words followed in order (a few may be skipped or
+/// misheard), at least READ_THROUGH of them, the last or the one before it among them. Everyday words
+/// only count where they're expected next, so "and the" said before the reading can't carry it ahead.
+fn read_to_end(heard: &[String], verse: &[String]) -> bool {
+    if verse.is_empty() {
+        return false;
+    }
+    // The reading may be joined partway: the words that moved the range onto this verse are spent
+    // already, so the first of its own words heard (in its first half) is where the reader is.
+    let Some((first, start)) = heard.iter().enumerate().find_map(|(i, w)| (!is_stop_word(w)).then(|| verse.iter().position(|v| v == w).filter(|p| *p <= verse.len() / 2).map(|p| (i, p))).flatten()) else {
+        return false;
+    };
+    let (mut at, mut matched, mut last) = (start, 0usize, None);
+    let need = verse.len() - start;
+    for w in &heard[first..] {
+        let reach = if is_stop_word(w) { 1 } else { READ_SKIP + 1 };
+        if let Some(gap) = (0..reach).find(|g| verse.get(at + g) == Some(w)) {
+            last = Some(at + gap);
+            at += gap + 1;
+            matched += 1;
+            if at >= verse.len() {
+                break;
+            }
+        }
+    }
+    last.is_some_and(|l| l + 2 >= verse.len()) && matched as f32 >= READ_THROUGH * need as f32
+}
+
+/// read_to_end: verse words that may be skipped between two heard ones, and the share that must be heard.
+const READ_SKIP: usize = 3;
+/// A verse this short is read by the time it's up.
+const SHORT_VERSE_WORDS: usize = 4;
+const READ_THROUGH: f32 = 0.6;
