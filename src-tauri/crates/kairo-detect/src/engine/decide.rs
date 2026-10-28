@@ -12,6 +12,8 @@ use std::collections::HashSet;
 
 /// A verse shown and replaced comes back only on words of its own at least this rare.
 const RETURN_MIN_IDF: f32 = 3.0;
+/// A verse quoted again this closely comes back past the repeat filter.
+const REQUOTE_MIN_SCORE: f32 = 0.95;
 
 /// How long a finished range (its last verse reached) still holds off other books.
 const FINISHED_RANGE_HOLD_MS: u64 = 30_000;
@@ -293,7 +295,11 @@ impl Engine {
                 if self.screen.last_detected.is_some_and(|(v, t, _)| v == top && now.saturating_sub(t) < window) {
                     return Target::Drop;
                 }
-                if self.screen.recent_detections.get(&top).is_some_and(|t| now.saturating_sub(*t) < window) {
+                // …but a verse replaced since may come back when it's clearly said again, or when it's
+                // the reading's own verse after a detour: John 3:16 quoted in full again 25 s after
+                // Romans 5:8 replaced it, and Romans 8:30 read after Ephesians 1:5 (path audit), were dropped.
+                let back = self.screen.up_verse() != Some(top) && (c.score >= REQUOTE_MIN_SCORE || self.range.current == Some(top));
+                if !back && self.screen.recent_detections.get(&top).is_some_and(|t| now.saturating_sub(*t) < window) {
                     return Target::Drop;
                 }
             }
@@ -493,6 +499,10 @@ impl Engine {
     fn shown_verse_returns_without_new_evidence(&self, v: VerseId, _now: u64) -> bool {
         let Some((up, at)) = self.screen.up else { return false };
         if v == up || (!self.screen.shown_this_book.contains(&v) && !self.screen.recent_detections.contains_key(&v)) {
+            return false;
+        }
+        // The reading's own verse, read again after a detour, is where the reading is.
+        if self.range.current == Some(v) {
             return false;
         }
         let w = &self.t.words;

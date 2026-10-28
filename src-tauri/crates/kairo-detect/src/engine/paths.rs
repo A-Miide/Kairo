@@ -220,7 +220,9 @@ impl Engine {
             }
         }
         let score = if via_idf { top.score.max(0.90) } else { top.score };
-        let corroborated = self.ledger.has_corroboration(self.r(top.verse)) || self.read_verse_before(top.verse, now);
+        // The reading's own verse is vouched for by the passage being read (Romans 8:30 read after a
+        // detour to Ephesians 1:5 was held as a lone quote).
+        let corroborated = self.ledger.has_corroboration(self.r(top.verse)) || self.read_verse_before(top.verse, now) || self.range.current == Some(top.verse);
         // Certain by weight alone (a partial quote) and no other method agrees:
         // offered, never put on screen alone (03-verbatim-and-correction.md).
         // Capped, not just "intent": `intent` is never read, so a four-word
