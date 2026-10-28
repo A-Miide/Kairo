@@ -19,7 +19,7 @@ const SUGGESTION_DEDUP_MS: u64 = 180_000;
 /// A verse shown this recently is still in the operator's hands.
 const SHOWN_RECENTLY_MS: u64 = 60_000;
 /// "What is being said now", for a text match against the verse on screen: this much speech.
-const NEWEST_SPEECH_MS: u64 = 6_000;
+pub(crate) const NEWEST_SPEECH_MS: u64 = 6_000;
 const DETECT_DEDUP_MS: u64 = 45_000;
 const DIRECT_DEDUP_MS: u64 = 5_000;
 const SEND_DEDUP_MS: u64 = 8_000;

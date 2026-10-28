@@ -182,12 +182,7 @@ impl Engine {
         // An earlier verse of the passage up, still in the end-of-utterance window, is not looked
         // for again: read near-complete, it ended the search before the verse being read was tried
         // (Psalm 149:4 found again while 149:6 was read, live 2026-10-26).
-        let behind = |v: VerseId| {
-            self.screen.up_verse().is_some_and(|u| {
-                let (u, v) = (self.r(u), self.r(v));
-                u.book == v.book && u.chapter == v.chapter && v.verse < u.verse
-            })
-        };
+        let behind = |v: VerseId| self.behind_up(v);
         let (results, found_in) = self.verbatim_batch(&texts, VERBATIM_MIN_WORDS, |v| rescan && behind(v));
         let Some(first) = results.first().copied() else { return };
         let certain = |h: &VerbatimHit| h.score >= VERBATIM_AUTOSEND_MIN || h.matched_idf.is_some_and(|m| m >= VERBATIM_CERTAIN_IDF);
@@ -681,7 +676,13 @@ impl Engine {
             let qualifying: Vec<(VerseId, f32)> = best.hits.iter().copied().filter(|(_, s)| *s >= SUGGESTION_MIN_SCORE).take(3).collect();
             if let Some(&(v, s)) = qualifying.first() {
                 let verses = qualifying.iter().map(|h| h.0).collect();
-                self.decide(Candidate::new(verses, Method::Fingerprint, s, Target::Suggestions).evidence(evidence(s)).from_text(&found_in), now);
+                let mut c = Candidate::new(verses, Method::Fingerprint, s, Target::Suggestions).evidence(evidence(s)).from_text(&found_in);
+                // Words of a verse the reading has moved past, still in the buffer, don't take it
+                // back: Ezekiel 12:23 sent over 12:25 at "Congratulations" (live 2026-10-28).
+                if self.behind_up(v) && !self.shares_words_with(v, &self.t.words.within(now, super::decide::NEWEST_SPEECH_MS)) {
+                    c = c.held(Hold::QuoteBehindReading);
+                }
+                self.decide(c, now);
                 let r = self.r(v);
                 self.note_cited(r.book, Some(r.chapter), Some(r.verse), false, now);
             }
@@ -694,15 +695,24 @@ impl Engine {
                 let repeats = !recent_direct && best.hits.iter().any(|h| h.0 == v);
                 if s >= SCOPED_MIN_SCORE && margin >= SCOPED_MARGIN && !repeats {
                     let c = r.confidence;
-                    self.decide(
-                        Candidate::new(vec![v], Method::Fingerprint, s, Target::Suggestions)
-                            .evidence(Evidence { similarity: Some(s), confidence: Some(c), ..Default::default() })
-                            .from_text(&texts[0]),
-                        now,
-                    );
+                    let mut c = Candidate::new(vec![v], Method::Fingerprint, s, Target::Suggestions)
+                        .evidence(Evidence { similarity: Some(s), confidence: Some(c), ..Default::default() })
+                        .from_text(&texts[0]);
+                    if self.behind_up(v) && !self.shares_words_with(v, &self.t.words.within(now, super::decide::NEWEST_SPEECH_MS)) {
+                        c = c.held(Hold::QuoteBehindReading);
+                    }
+                    self.decide(c, now);
                 }
             }
         }
+    }
+
+    /// An earlier verse of the chapter on screen.
+    fn behind_up(&self, v: VerseId) -> bool {
+        self.screen.up_verse().is_some_and(|u| {
+            let (u, v) = (self.r(u), self.r(v));
+            u.book == v.book && u.chapter == v.chapter && v.verse < u.verse
+        })
     }
 
     fn recent_citations_for_nudge(&self, now: u64) -> Vec<RecentCitation> {

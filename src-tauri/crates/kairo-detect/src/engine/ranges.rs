@@ -248,8 +248,11 @@ impl Engine {
     /// The current verse's last words heard just now (most of its last three, each as often as it says it).
     fn current_ending_heard(&self) -> bool {
         let Some(current) = self.range.current else { return false };
-        let text = self.verse_text(current).to_string();
-        let verse_words = meaningful_words(&text);
+        self.verse_wordings(current).into_iter().any(|text| self.ending_heard(text))
+    }
+
+    fn ending_heard(&self, text: &str) -> bool {
+        let verse_words = meaningful_words(text);
         let last3: Vec<&String> = verse_words.iter().rev().take(3).collect::<Vec<_>>().into_iter().rev().collect();
         let ending: Vec<&String> = { let mut e: Vec<&String> = Vec::new(); for w in &last3 { if !e.contains(w) { e.push(w); } } e };
         if ending.is_empty() {
@@ -283,11 +286,15 @@ impl Engine {
         // Only once the verse up has been read to its end: a called range's next verse opening "And
         // the LORD" mustn't move it when the verse being read says "and the LORD" mid-way (review).
         let k = if self.range.soft_quoted { 4 } else { 3 };
-        let start: Vec<String> = plain_tokens(self.verse_text(next)).into_iter().take(k).collect();
         let said_now = plain_tokens(fresh);
         // Among the newest words: they arrive a chunk at a time ("…court and said", then "said O LORD").
         let recent = &said_now[said_now.len().saturating_sub(k + OPENING_LOOKBACK)..];
-        if start.len() == k && recent.windows(k).any(|w| w == &start[..]) && (self.range.soft || self.current_ending_heard()) {
+        // In any wording: Ezekiel 12:25 read in the NLT opens "For I am the LORD! If I say it".
+        let opens = self.verse_wordings(next).into_iter().any(|t| {
+            let start: Vec<String> = plain_tokens(t).into_iter().take(k).collect();
+            start.len() == k && recent.windows(k).any(|w| w == &start[..])
+        });
+        if opens && (self.range.soft || self.current_ending_heard()) {
             self.request_range_advance(now);
             return;
         }

@@ -28,10 +28,18 @@ const CHAPTER_PENDING_TEXT_MAX_WORDS: usize = 50;
 /// few words after the citation.
 const VERSE_ONE_OPENING_WORDS: usize = 3;
 const VERSE_ONE_LOOKAHEAD: usize = 12;
+/// A named chapter's verse quoted: this many words said in a row hold at least QUOTE_IN_ORDER of
+/// the verse's words in its order ("then the earth shall yield" for "Then shall the earth yield her
+/// increase", Psalm 67:6), among them words this rare.
+const QUOTE_WINDOW: usize = 5;
+const QUOTE_IN_ORDER: usize = 4;
+const QUOTE_MIN_IDF: f32 = 6.0;
 /// A chapter's verse picked by the words that followed goes up only with one this identifying among them.
 const CHAPTER_PICK_SEND_MIN_IDF: f32 = 5.0;
 /// …found in at most this many other verses of the chapter.
 const CHAPTER_PICK_WORD_MAX_OTHERS: usize = 1;
+/// …and the words said just before the chapter that count with those after it.
+const CHAPTER_PICK_BEFORE_WORDS: usize = 20;
 /// A verse resolved against a context or chosen within a named chapter.
 pub const DIRECT_PARTIAL_SCORE: f32 = 0.90;
 /// A citation in the last minute chooses among a stem's books.
@@ -722,6 +730,9 @@ impl Engine {
                 return self.send_chapter_keyword(pending.book, pending.chapter as u32, first, true, now);
             }
         }
+        if self.send_quoted(pending.book, pending.chapter, &since, now) {
+            return true;
+        }
         if !is_final {
             let found = self.chapter_callout(pending.book, pending.chapter as u32, &since);
             return found.is_some_and(|v| self.send_chapter_keyword(pending.book, pending.chapter as u32, v, true, now));
@@ -772,6 +783,10 @@ impl Engine {
             if !waiting && self.chapter_resolved_for != Some((book, ch)) {
                 self.chapter_pending = Some(ChapterPending { book, chapter: ch, from: self.said_at(book, text), at: now });
             }
+            self.send_quoted(book, ch, text, now);
+            return;
+        }
+        if self.send_quoted(book, ch, text, now) {
             return;
         }
         if let Some((v, explicit)) = self.chapter_by_keywords(book, chapter, text) {
@@ -816,6 +831,77 @@ impl Engine {
         true
     }
 
+    /// The named chapter's verse quoted in what followed it (QUOTE_WINDOW), sent: the last one quoted
+    /// ("let the people praise thee… then the earth shall yield" is read up to Psalm 67:6). A verse
+    /// worded like another (67:3 and 67:5) counts only beside another quoted verse; on its own the
+    /// refrain rules place it.
+    fn send_quoted(&mut self, book: Book, chapter: u16, text: &str, now: u64) -> bool {
+        let quoted = self.quoted_in_chapter(book, chapter, &text_after_book_mention(text, book, chapter as u32));
+        let Some(&last) = quoted.last() else { return false };
+        let alike = |a: VerseId, b: VerseId| self.verse_text(a) == self.verse_text(b);
+        let refrain = self.k.corpus.verse_count(book, chapter).is_some_and(|n| {
+            (1..=n).filter_map(|i| self.k.id(VerseRef::new(book, chapter, i))).any(|o| o != last && alike(o, last))
+        });
+        let beside = quoted.iter().any(|q| !alike(*q, last) && self.r(*q).verse.abs_diff(self.r(last).verse) == 1);
+        if refrain && !beside {
+            return false;
+        }
+        let n = self.r(last).verse;
+        self.note(|_| format!("{} {chapter}:{n} quoted", book.name()));
+        if self.decide(Candidate::new(vec![last], Method::ChapterKeyword, DIRECT_PARTIAL_SCORE, Target::Screen), now) != Target::Screen {
+            return false;
+        }
+        self.chapter_resolved_for = Some((book, chapter));
+        self.chapter_pending = None;
+        self.screen.last_citation_at = now;
+        // The chapter was cited, not the verse: a verse quoted isn't one named, which would make it
+        // win over its twin read next (1 John 5:7 kept over 5:8, Oyedepo replay).
+        self.note_cited(book, Some(chapter), None, true, now);
+        true
+    }
+
+    /// The verses of a chapter whose words `said` quotes in order, in the order said. Words several
+    /// verses share pick none: "fear not, be strong, be of courage" fits Deuteronomy 31:6, 7 and 23,
+    /// and "the word and the blood" nearly fits both 1 John 5:7 and 5:8.
+    fn quoted_in_chapter(&self, book: Book, chapter: u16, said: &str) -> Vec<VerseId> {
+        let said = super::evidence::plain_tokens(said);
+        if said.len() < QUOTE_WINDOW {
+            return Vec::new();
+        }
+        let windows: Vec<&[String]> = said.windows(QUOTE_WINDOW).collect();
+        // Each window: the verses it quotes.
+        let mut fits: Vec<Vec<VerseId>> = vec![Vec::new(); windows.len()];
+        // …and the verses it comes close to: a window nearly as good for another verse is shared words.
+        let mut near: Vec<Vec<VerseId>> = vec![Vec::new(); windows.len()];
+        for n in 1..=self.k.corpus.verse_count(book, chapter).unwrap_or(0) {
+            let Some(id) = self.k.id(VerseRef::new(book, chapter, n)) else { continue };
+            let wordings: Vec<Vec<String>> = self.verse_wordings(id).into_iter().map(super::evidence::plain_tokens).collect();
+            for (i, w) in windows.iter().enumerate() {
+                let rare = |verse: &Vec<String>| super::evidence::meaningful_words(&w.join(" ")).iter().filter(|m| verse.contains(&m.to_lowercase())).map(|m| self.k.lexicon.idf_of(m)).sum::<f32>() >= QUOTE_MIN_IDF;
+                // "the earth shall" is in 67:7 too, but not "yield": a rival shares the rare words.
+                if wordings.iter().any(|verse| in_order(w, verse) + 1 >= QUOTE_IN_ORDER && rare(verse)) {
+                    near[i].push(id);
+                }
+                let quotes = wordings.iter().any(|verse| in_order(w, verse) >= QUOTE_IN_ORDER && rare(verse));
+                if quotes {
+                    fits[i].push(id);
+                }
+            }
+        }
+        let mut out: Vec<VerseId> = Vec::new();
+        for (f, close) in fits.into_iter().zip(near) {
+            let one_wording = close.iter().all(|v| f.first().is_some_and(|f0| self.verse_text(*v) == self.verse_text(*f0)));
+            if !f.is_empty() && one_wording {
+                for v in f {
+                    if !out.contains(&v) {
+                        out.push(v);
+                    }
+                }
+            }
+        }
+        out
+    }
+
     /// "In Matthew 11, say, come to me. 28, all you…": a verse number called
     /// out on its own after the chapter.
     pub(crate) fn chapter_callout(&self, book: Book, chapter: u32, text: &str) -> Option<VerseId> {
@@ -842,8 +928,12 @@ impl Engine {
         if let Some(v) = self.chapter_callout(book, chapter, text) {
             return Some((v, true));
         }
-        let v = self.pick_chapter_verse_by_idf(book, chapter, text)?;
+        // Only the words just before the chapter count with those after it: a minute of talk before
+        // "…go to Ezekiel twelve, are you ready" added up for 12:23 on its own (live 2026-10-28).
         let after = text_after_book_mention(text, book, chapter);
+        let before: Vec<&str> = text[..text.len() - after.len()].split_whitespace().collect();
+        let near = format!("{} {after}", before[before.len().saturating_sub(CHAPTER_PICK_BEFORE_WORDS)..].join(" "));
+        let v = self.pick_chapter_verse_by_idf(book, chapter, &near)?;
         // …and among those words one that identifies the verse: "then this script, this verse
         // should strike you. He said, but the chief priest" adds up for John 11:40 on everyday
         // words alone (dev build 2026-10-20) — that is offered, not sent.
@@ -1233,4 +1323,18 @@ mod tests {
         assert_eq!(words_after_citation("Luke chapter six four and verse 14 and Jesus returned", Some(14)), "and jesus returned");
         assert_eq!(words_after_citation("verses 3 to 5 blessed is the man", Some(3)), "blessed is the man");
     }
+}
+
+/// How many of `a`'s words appear in `b` in the same order (longest common subsequence).
+fn in_order(a: &[String], b: &[String]) -> usize {
+    let mut row = vec![0usize; b.len() + 1];
+    for x in a {
+        let mut diag = 0;
+        for (j, y) in b.iter().enumerate() {
+            let up = row[j + 1];
+            row[j + 1] = if x == y { diag + 1 } else { up.max(row[j]) };
+            diag = up;
+        }
+    }
+    row[b.len()]
 }

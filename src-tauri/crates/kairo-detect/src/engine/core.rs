@@ -335,6 +335,12 @@ impl Engine {
         self.k.lexicon.own().and_then(|o| o.text(v)).or_else(|| self.k.corpus.kjv().text(v)).unwrap_or("")
     }
 
+    /// Every wording of a verse the engine has (the KJV, the church's own, NLT, NIV…): a preacher
+    /// reading the NLT says its words, not the KJV's.
+    pub(crate) fn verse_wordings(&self, v: VerseId) -> Vec<&str> {
+        std::iter::once(self.k.corpus.kjv().text(v)).chain(self.k.lexicon.others().iter().map(|o| o.text(v))).flatten().filter(|t| !t.is_empty()).collect()
+    }
+
     pub(crate) fn r(&self, v: VerseId) -> VerseRef {
         self.k.verse_ref(v)
     }
