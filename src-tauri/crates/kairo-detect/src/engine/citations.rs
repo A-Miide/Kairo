@@ -1392,7 +1392,7 @@ mod tests {
 }
 
 /// How many of `a`'s words appear in `b` in the same order (longest common subsequence).
-fn in_order(a: &[String], b: &[String]) -> usize {
+pub(crate) fn in_order(a: &[String], b: &[String]) -> usize {
     let mut row = vec![0usize; b.len() + 1];
     for x in a {
         let mut diag = 0;

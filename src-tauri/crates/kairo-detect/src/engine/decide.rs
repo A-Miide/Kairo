@@ -461,7 +461,9 @@ impl Engine {
         // screen being read (Isaiah 53:8 held back by 53:7's "open his mouth"). The newest stretch
         // of speech is no limit with the offline engine (it sends no words locked in, and a reading
         // can run a minute without a pause), so the last few seconds of it.
-        let newest = self.t.words.within(now, NEWEST_SPEECH_MS);
+        // This stretch of speech (at most the last 6 s): the sentence before it, about the verse up,
+        // held John 14:6 back after Nehemiah 8:10 went up (path audit).
+        let newest = self.t.words.since(self.t.segment_started.max(now.saturating_sub(NEWEST_SPEECH_MS)));
         let said = source.unwrap_or(&newest);
         // The verse on screen read and then cited ("…established the heavens. Proverbs three
         // nineteen. How manifold are thy works…"): what follows its citation is something else.

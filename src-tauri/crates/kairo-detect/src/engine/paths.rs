@@ -20,6 +20,12 @@ use crate::reference::book_mentions;
 const VERBATIM_AUTOSEND_MIN: f32 = 0.95;
 /// A word this rare of a verse the reading passed, said again, means it's being read again.
 const SAID_AGAIN_MIN_IDF: f32 = 5.0;
+/// said_whole: the shortest utterance, and the share of it found in the verse in order.
+const WHOLE_MIN_WORDS: usize = 6;
+const WHOLE_SHARE: f32 = 0.9;
+const WHOLE_LONG_WORDS: usize = 10;
+const WHOLE_LONG_SHARE: f32 = 0.8;
+const WHOLE_MIN_WEIGHTY: u32 = 2;
 /// A quote this complete feeds the sermon's context and reading mode.
 const READ_SIMILARITY: f32 = 0.92;
 const CLAUSE_WINDOW_WORDS: usize = 14;
@@ -123,6 +129,11 @@ impl ReadingMode {
     }
 }
 
+/// Words that introduce a quote.
+static QUOTE_LEAD_IN: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r"(?i)\b(?:the bible says|bible says|it is written|the scripture says|scripture says|the word says|god says|jesus said|paul said|he said|it says)\b,?").unwrap()
+});
+
 /// Clauses at punctuation (6+ words), long ones also cut into overlapping
 /// windows, and the whole text last.
 fn clause_list(text: &str, min_words: usize) -> Vec<String> {
@@ -141,6 +152,11 @@ fn clause_list(text: &str, min_words: usize) -> Vec<String> {
             }
             out.push(words[words.len() - CLAUSE_WINDOW_WORDS..].join(" "));
         }
+    }
+    // The words after a lead-in, on their own: "you know the Bible says I can do all things through
+    // Christ" scored whole was diluted by the five words before the quote (path audit).
+    if let Some(m) = QUOTE_LEAD_IN.find_iter(text).last() {
+        out.push(text[m.end()..].trim().to_string());
     }
     out.push(text.to_string());
     let mut seen = HashSet::new();
@@ -462,7 +478,12 @@ impl Engine {
         // YouTube ad) lined up with Isaiah 66:2 on everyday words (dev build 2026-10-21).
         let light = lead.peak_idf < STREAM_MIN_PEAK_IDF || (!pointed_at && lead.distinct_peak_idf < STREAM_MIN_PEAK_IDF);
         // The passage in play excuses few weighty words, never none: an announced passage lasts 40 minutes.
-        let thin = intent == Target::Screen && ((!pointed_at && lead.weighty < STREAM_MIN_WEIGHTY_WORDS) || light) && !corroborated;
+        // What was just said is the verse's own words, nearly all of them, in order: "the joy of the
+        // LORD is your strength" has two weighty words but nothing else it could be (path audit).
+        // …with two weighty words at least: "in the name of Jesus Christ" is in Acts 2:38 word for
+        // word, and in every prayer.
+        let whole = lead.weighty >= WHOLE_MIN_WEIGHTY && self.said_whole(lead.verse, now);
+        let thin = intent == Target::Screen && ((!pointed_at && lead.weighty < STREAM_MIN_WEIGHTY_WORDS) || light) && !corroborated && !whole;
         let mut twin_took = false;
         if thin {
             let outcome = self.resolve_twin(lead.verse, now);
@@ -733,6 +754,21 @@ impl Engine {
     fn said_again(&self, v: VerseId, now: u64) -> bool {
         let newest: HashSet<String> = meaningful_words(&self.t.words.within(now, super::decide::NEWEST_SPEECH_MS)).iter().map(|w| stem_lite(w)).collect();
         self.verse_wordings(v).into_iter().flat_map(meaningful_words).any(|w| self.k.lexicon.idf_of(&w) >= SAID_AGAIN_MIN_IDF && newest.contains(&stem_lite(&w)))
+    }
+
+    /// The newest utterance (after any lead-in) is, nearly word for word, in `v`: at least
+    /// WHOLE_MIN_WORDS words, WHOLE_SHARE of them in the verse's order, in any wording.
+    fn said_whole(&self, v: VerseId, now: u64) -> bool {
+        // This stretch of speech only, not the sentence before it.
+        let newest = self.t.words.since(self.t.segment_started.max(now.saturating_sub(super::decide::NEWEST_SPEECH_MS)));
+        let tail = QUOTE_LEAD_IN.find_iter(&newest).last().map_or(newest.as_str(), |m| &newest[m.end()..]);
+        let said = super::evidence::plain_tokens(tail);
+        if said.len() < WHOLE_MIN_WORDS {
+            return false;
+        }
+        // Longer utterances may vary more: "this is the day that the Lord has made let us rejoice".
+        let share = if said.len() >= WHOLE_LONG_WORDS { WHOLE_LONG_SHARE } else { WHOLE_SHARE };
+        self.verse_wordings(v).into_iter().any(|t| super::citations::in_order(&said, &super::evidence::plain_tokens(t)) as f32 >= share * said.len() as f32)
     }
 
     /// An earlier verse of the chapter on screen.
