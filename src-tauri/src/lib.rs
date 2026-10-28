@@ -1339,6 +1339,7 @@ pub fn run() {
         .expect("Error building KAIRO")
         .run(|app, event| {
             if matches!(event, RunEvent::Exit | RunEvent::ExitRequested { .. }) {
+                kairo_server::shutdown();
                 app.state::<stream::Engines>().kill_now();
                 // Recover from a poisoned mutex instead of panicking — this is
                 // shutdown-time child-process cleanup; a panic here would

@@ -171,6 +171,27 @@ impl App {
 }
 
 /// Serves until the process ends.
+/// The server running in this process, for shutdown.
+static RUNNING: OnceLock<Shared> = OnceLock::new();
+
+/// Stops the sound input before the app exits. Quitting while it ran crashed Kairo (4.2.3,
+/// 2026-10-28): exit tore down the process's statics under the capture thread, which then
+/// aborted. Bounded, so a stuck input can't hold up quitting.
+pub fn shutdown() {
+    offline::end_warm();
+    let Some(app) = RUNNING.get() else { return };
+    let captures: Vec<native_audio::Capture> = [&app.capture, &app.capture_preview].into_iter().filter_map(|c| c.lock().unwrap_or_else(|p| p.into_inner()).take()).collect();
+    if captures.is_empty() {
+        return;
+    }
+    let (done, wait) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        captures.into_iter().for_each(native_audio::Capture::stop);
+        let _ = done.send(());
+    });
+    let _ = wait.recv_timeout(std::time::Duration::from_millis(1500));
+}
+
 pub async fn serve(cfg: Config) -> anyhow::Result<()> {
     routes::set_debug_log_path(cfg.app_data_dir.join("debug.log"));
     // An internal error leaves a small crash file the Report window can offer (report.rs).
@@ -202,6 +223,7 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         capture_preview: std::sync::Mutex::new(None),
         keep_awake: std::sync::Mutex::new(None),
     });
+    let _ = RUNNING.set(app.clone());
     app.refresh_presentation().await;
     tokio::spawn(osc::run(app.clone()));
     audio_stats::spawn_reporter(app.clone());

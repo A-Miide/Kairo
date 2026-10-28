@@ -148,11 +148,20 @@ pub fn coreml_worker(app: &Shared) -> Option<std::path::PathBuf> {
 /// waits for that load instead of starting a second one beside it.
 static PREPARING: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
-/// macOS drops what it prepared for the Neural Engine when Kairo is updated
-/// (the engine's program changes), so the first load after an update takes
-/// 30 s or more again. Loading the model in the background when Kairo opens
-/// keeps that wait out of Start listening.
+/// macOS drops what it prepared for the Neural Engine when Kairo is updated (the engine's program
+/// changes), so the first load after an update takes 30 s or more again, and every load takes a
+/// second. Loading the model in the background when Kairo opens, and keeping that engine waiting,
+/// takes both out of Start listening.
 pub fn prepare_at_launch(app: Shared) {
+    keep_warm(app);
+}
+
+/// An English Core ML engine loaded and waiting for the next Start listening (keep_warm).
+type Worker = (std::process::Child, std::sync::mpsc::Receiver<FromWorker>);
+static WARM: std::sync::Mutex<Option<Worker>> = std::sync::Mutex::new(None);
+
+/// Loads an English Core ML engine in the background and keeps it for the next start.
+fn keep_warm(app: Shared) {
     if !coreml() || !coreml_supported() {
         return;
     }
@@ -162,10 +171,52 @@ pub fn prepare_at_launch(app: Shared) {
     }
     let _ = std::thread::Builder::new().name("coreml-prepare".into()).spawn(move || {
         let _held = PREPARING.lock();
-        if let Err(e) = prepare_coreml(&app, &dir) {
-            eprintln!("[Offline] {e}");
+        if crate::util::lock(&WARM).is_some() {
+            return;
+        }
+        let Some(exe) = coreml_worker(&app) else { return };
+        match spawn_worker(&dir, &None, Some(&exe)).and_then(|w| wait_ready(w, &AtomicBool::new(false))) {
+            Ok(w) => *crate::util::lock(&WARM) = Some(w),
+            Err(e) => eprintln!("[Offline] {e}"),
         }
     });
+}
+
+/// The waiting engine, if it is still running.
+fn take_warm() -> Option<Worker> {
+    let (mut child, from) = crate::util::lock(&WARM).take()?;
+    match child.try_wait() {
+        Ok(None) => Some((child, from)),
+        _ => None,
+    }
+}
+
+/// Ends the waiting engine (Kairo quitting).
+pub fn end_warm() {
+    if let Some((mut child, _)) = crate::util::lock(&WARM).take() {
+        let _ = child.kill();
+        let _ = child.wait();
+    }
+}
+
+/// Waits for a started engine's model to load: the engine, or why it didn't.
+fn wait_ready((mut child, from): Worker, stopping: &AtomicBool) -> Result<Worker, String> {
+    let deadline = Instant::now() + START_WAIT;
+    loop {
+        match from.recv_timeout(Duration::from_millis(100)) {
+            Ok(FromWorker::Ready) => return Ok((child, from)),
+            Ok(FromWorker::Gone) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                let _ = child.wait();
+                return Err("the offline model could not be loaded".to_string());
+            }
+            _ if stopping.load(Ordering::SeqCst) || Instant::now() > deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("the engine didn't start in time".to_string());
+            }
+            _ => {}
+        }
+    }
 }
 
 /// Loads the Core ML model once, so macOS prepares it for the Neural Engine at install (~45 s on an
@@ -908,24 +959,12 @@ fn supervise(
     loop {
         // Start (or restart) the engine and wait for its model to load. The
         // audio queue isn't read meanwhile: it holds what's said.
-        let ready = spawn_worker(&dir, &language, coreml.as_deref()).and_then(|(mut child, from)| {
-            let deadline = Instant::now() + START_WAIT;
-            loop {
-                match from.recv_timeout(Duration::from_millis(100)) {
-                    Ok(FromWorker::Ready) => return Ok((child, from)),
-                    Ok(FromWorker::Gone) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                        let _ = child.wait();
-                        return Err("the offline model could not be loaded".to_string());
-                    }
-                    _ if stopping.load(Ordering::SeqCst) || Instant::now() > deadline => {
-                        let _ = child.kill();
-                        let _ = child.wait();
-                        return Err("the engine didn't start in time".to_string());
-                    }
-                    _ => {}
-                }
-            }
-        });
+        // The English Core ML engine kept waiting (keep_warm) starts at once.
+        let warm = if coreml.is_some() && language.is_none() && dir == model_dir(&app, "en") { take_warm() } else { None };
+        let ready = match warm {
+            Some(w) => Ok(w),
+            None => spawn_worker(&dir, &language, coreml.as_deref()).and_then(|w| wait_ready(w, &stopping)),
+        };
         let (mut child, from) = match ready {
             Ok(w) => w,
             Err(e) => {
@@ -1047,6 +1086,7 @@ fn supervise(
 /// After a session: the audio channel closed, the state told.
 pub async fn stopped(app: &Shared) {
     *app.audio.lock().await = None;
+    keep_warm(app.clone());
     if let Some((_, d)) = app.ready() {
         d.configure(|c| c.offline = false);
     }

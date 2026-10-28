@@ -10,7 +10,7 @@ use super::core::{Candidate, Engine, CONTEXT_WINDOW_MS, NAMED_PERSON_WINDOW_MS};
 use super::correction::Match;
 use super::decide::CORROBORATING_QUOTE_COVERAGE;
 use super::event::Effect;
-use super::evidence::explained_better_by;
+use super::evidence::{explained_better_by, meaningful_words, stem_lite};
 use super::scoring::{SAME_BOOK_WINDOW_MS, STREAM_IDF_FULL_CONFIDENCE, VERBATIM_CERTAIN_IDF};
 use super::twins::TwinOutcome;
 use super::types::{Evidence, Hold, Method, Target};
@@ -18,6 +18,8 @@ use crate::lexical::{fingerprint, read_share, topic_library, verbatim, Confidenc
 use crate::reference::book_mentions;
 
 const VERBATIM_AUTOSEND_MIN: f32 = 0.95;
+/// A word this rare of a verse the reading passed, said again, means it's being read again.
+const SAID_AGAIN_MIN_IDF: f32 = 5.0;
 /// A quote this complete feeds the sermon's context and reading mode.
 const READ_SIMILARITY: f32 = 0.92;
 const CLAUSE_WINDOW_WORDS: usize = 14;
@@ -264,7 +266,9 @@ impl Engine {
         let mut candidate = Candidate::new(verses, Method::Verbatim, score, intent).evidence(evidence(&top)).from_text(&found_in);
         // The verse called out already chose among the verses worded like it.
         candidate.twin_resolved = called.is_some();
-        candidate.returning = called.is_some_and(|c| self.screen.up_verse() != Some(c));
+        // …but not once the reading has gone on past it in its chapter (Ezekiel 6:1, worded like 12:21,
+        // took the reading back from 12:22, live 2026-10-28).
+        candidate.returning = called.is_some_and(|c| self.screen.up_verse() != Some(c) && !self.behind_up(c));
         self.decide(match hold { Some(why) => candidate.held(why), None => candidate }, now);
         // Read word for word, so cited — but not one of several places offered together: Matthew
         // 11:15 counted as cited then sent on "not everybody has ears to hear".
@@ -679,7 +683,7 @@ impl Engine {
                 let mut c = Candidate::new(verses, Method::Fingerprint, s, Target::Suggestions).evidence(evidence(s)).from_text(&found_in);
                 // Words of a verse the reading has moved past, still in the buffer, don't take it
                 // back: Ezekiel 12:23 sent over 12:25 at "Congratulations" (live 2026-10-28).
-                if self.behind_up(v) && !self.shares_words_with(v, &self.t.words.within(now, super::decide::NEWEST_SPEECH_MS)) {
+                if self.behind_up(v) && !self.said_again(v, now) {
                     c = c.held(Hold::QuoteBehindReading);
                 }
                 self.decide(c, now);
@@ -698,7 +702,7 @@ impl Engine {
                     let mut c = Candidate::new(vec![v], Method::Fingerprint, s, Target::Suggestions)
                         .evidence(Evidence { similarity: Some(s), confidence: Some(c), ..Default::default() })
                         .from_text(&texts[0]);
-                    if self.behind_up(v) && !self.shares_words_with(v, &self.t.words.within(now, super::decide::NEWEST_SPEECH_MS)) {
+                    if self.behind_up(v) && !self.said_again(v, now) {
                         c = c.held(Hold::QuoteBehindReading);
                     }
                     self.decide(c, now);
@@ -707,8 +711,15 @@ impl Engine {
         }
     }
 
+    /// A rare word of `v` (any wording) in the newest speech: everyday words it shares ("says", "will")
+    /// don't make a verse the reading has passed being read again (Ezekiel 12:23 over 12:25).
+    fn said_again(&self, v: VerseId, now: u64) -> bool {
+        let newest: HashSet<String> = meaningful_words(&self.t.words.within(now, super::decide::NEWEST_SPEECH_MS)).iter().map(|w| stem_lite(w)).collect();
+        self.verse_wordings(v).into_iter().flat_map(meaningful_words).any(|w| self.k.lexicon.idf_of(&w) >= SAID_AGAIN_MIN_IDF && newest.contains(&stem_lite(&w)))
+    }
+
     /// An earlier verse of the chapter on screen.
-    fn behind_up(&self, v: VerseId) -> bool {
+    pub(crate) fn behind_up(&self, v: VerseId) -> bool {
         self.screen.up_verse().is_some_and(|u| {
             let (u, v) = (self.r(u), self.r(v));
             u.book == v.book && u.chapter == v.chapter && v.verse < u.verse
