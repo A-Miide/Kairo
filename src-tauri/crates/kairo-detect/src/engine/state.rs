@@ -199,6 +199,9 @@ pub struct Range {
     /// A single verse cited, with the next verses held in case they are read on (owner, 2026-10-19):
     /// moved only on strong evidence, shown nowhere as a range, and let go after a while.
     pub soft: bool,
+    /// Held after a verse found in the words (a quote), not one cited: moving on takes more of
+    /// the next verse's opening (ranges.rs advance_range_on_next_opening).
+    pub soft_quoted: bool,
 }
 
 /// A passage cited or read recently (the sermon's context).

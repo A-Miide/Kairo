@@ -402,6 +402,17 @@ impl Engine {
                 top.retain(|h| h.verse == winner);
             }
         }
+        // Worded alike in several places, one in the chapter just named: that one. "Psalm one forty
+        // nine", then "Sing unto the Lord a new song" put 149:1 up with Psalm 96:1, 98:1 and Isaiah
+        // 42:10, and with four verses up none was held for the reading that followed.
+        if top.len() > 1 {
+            if let Some(p) = self.chapter_pending.as_ref() {
+                let named: Vec<VerseId> = top.iter().map(|h| h.verse).filter(|v| { let r = self.r(*v); r.book == p.book && r.chapter == p.chapter }).collect();
+                if named.len() == 1 {
+                    top.retain(|h| h.verse == named[0]);
+                }
+            }
+        }
         let lead = top[0];
         let alternates: Vec<Match> = top[1..].iter().map(|h| Match { verse: h.verse, similarity: h.similarity, matched_idf: Some(h.matched_idf), method: Method::Stream }).collect();
         let as_match = Match { verse: lead.verse, similarity: lead.similarity, matched_idf: Some(lead.matched_idf), method: Method::Stream };

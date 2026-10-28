@@ -24,6 +24,10 @@ const JOIN_WORDS: usize = 24;
 /// An unfinished interim citation acts only when parsed identically this recently.
 pub const INTERIM_STABLE_WINDOW_MS: u64 = 3_000;
 const CHAPTER_PENDING_TEXT_MAX_WORDS: usize = 50;
+/// A named chapter's verse 1 goes up on its first this many words said in order, among the first
+/// few words after the citation.
+const VERSE_ONE_OPENING_WORDS: usize = 3;
+const VERSE_ONE_LOOKAHEAD: usize = 12;
 /// A chapter's verse picked by the words that followed goes up only with one this identifying among them.
 const CHAPTER_PICK_SEND_MIN_IDF: f32 = 5.0;
 /// …found in at most this many other verses of the chapter.
@@ -708,6 +712,17 @@ impl Engine {
             return false;
         }
         let since = self.t.words.text(pending.from..self.t.words.end());
+        // The chapter named, and the reading starts at verse 1 word for word ("Psalm one forty nine…
+        // Praise ye the LORD. Sing…"): its first words in order are enough, as they are for reading on
+        // (ranges.rs advance_range_on_next_opening); its rarer words came five seconds in.
+        if let Some(first) = self.k.id(VerseRef::new(pending.book, pending.chapter, 1)) {
+            let toks = |t: &str| t.split_whitespace().map(|w| w.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase()).filter(|w| !w.is_empty()).collect::<Vec<String>>();
+            let opening: Vec<String> = toks(self.verse_text(first)).into_iter().take(VERSE_ONE_OPENING_WORDS).collect();
+            let after = toks(&text_after_book_mention(&since, pending.book, pending.chapter as u32));
+            if opening.len() == VERSE_ONE_OPENING_WORDS && after.windows(VERSE_ONE_OPENING_WORDS).take(VERSE_ONE_LOOKAHEAD).any(|w| w == &opening[..]) {
+                return self.send_chapter_keyword(pending.book, pending.chapter as u32, first, true, now);
+            }
+        }
         if !is_final {
             let found = self.chapter_callout(pending.book, pending.chapter as u32, &since);
             return found.is_some_and(|v| self.send_chapter_keyword(pending.book, pending.chapter as u32, v, true, now));
