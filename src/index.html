@@ -1157,6 +1157,11 @@
                                 <button class="ts-tool-btn" id="ts-add-image-btn" data-tool-name="Image" title="Add a picture — from your computer or your Media Library" aria-label="Add a picture">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2.5"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 15.5l-5.5-5.5a1.5 1.5 0 0 0-2.1 0L5 18"/></svg><span class="ts-tool-label">Image</span>
                                 </button>
+                                <!-- A QR code (a giving page, a sign-up form): a link typed, then added
+                                     as a picture (app_theme_studio.js openQrDialog). -->
+                                <button class="ts-tool-btn" id="ts-add-qr-btn" data-tool-name="QR code" title="Add a QR code — type a link, and it goes on the slide as a picture" aria-label="Add a QR code">
+                                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="14" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="3.5" y="14" width="6.5" height="6.5" rx="1"/><path d="M14 14h2.5v2.5H14zM18 18h2.5v2.5H18zM14 18.5v2M18.5 14h2"/></svg><span class="ts-tool-label">QR</span>
+                                </button>
                             </div>
                             <div class="ts-tool-tooltip" id="ts-tool-tooltip"></div>
                         </div>
@@ -1273,33 +1278,10 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 2-3 4"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                     <span>Help</span>
                 </button>
-                <!-- appVersion rides along on the same GET /api/settings the
-                     rest of this panel already loads from (loadSettings() in
-                     app.js) — not its own request. Same mark as the toolbar
-                     logo/splash screen (own gradient id since SVG ids need
-                     to be unique per element instance, not shared with
-                     .app-logo-icon's). -->
-                <div class="settings-nav-version">
-                    <svg class="settings-nav-version-mark" width="16" height="16" viewBox="0 0 24 24">
-                        <defs>
-                            <linearGradient id="kairoSettingsMarkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-                                <stop offset="0%" stop-color="#FF9130"/>
-                                <stop offset="100%" stop-color="#F5301A"/>
-                            </linearGradient>
-                        </defs>
-                        <g fill="url(#kairoSettingsMarkGrad)" transform="translate(12,11.28) scale(0.209499) translate(-119.410,-174.950)">
-                            <path d="M146.63,166.72c-12.18,2.44-21.27,10.16-26.37,20.98-1.79-11.05,2.74-21.11,10.68-28.07,4.11-3.37,8.47-5.84,13.91-7.69,1.69,4.76,2.15,9.38,1.78,14.78Z"/>
-                            <path d="M128.61,155.11c-9.5,7.8-14.2,18.25-13.89,30.52-10.31-12.38-5.79-31.33,5.27-42.2,3.46,3.77,6.06,7.27,8.61,11.68Z"/>
-                            <path d="M155.76,185.17c-11.36-3.52-22.73-1.13-31.28,7.41,1.45-7.24,6.15-12.66,11.94-16.5,7.78-4.65,16.6-6.39,25.89-4.67-.99,4.96-3.24,9.28-6.56,13.76Z"/>
-                            <path d="M106.25,155.9c-3.47,11.69-3.14,23.51,4.46,33.6-16.04-5.94-21.49-23.43-16.07-39.31,4.24,1.55,7.91,3.3,11.61,5.71Z"/>
-                            <path d="M153.82,201.55c-5.07-1.02-9.82-1.65-14.65-1.74-6.58.27-12.04,2.38-17.2,6.66,3.47-8.56,11.64-14.06,20.68-14.58,6.03-.35,11.8-.13,17.93-.16l5.57,9.91-12.34-.1Z"/>
-                            <path d="M116.87,206.44c-10.17-8.27-20-7.27-32.12-4.84l-12.08.07,5.62-9.96c6,.09,11.82-.19,17.75.24,9.05.65,17.45,5.88,20.83,14.5Z"/>
-                            <path d="M96.73,186.2l-12.43.12c-4.01-4.95-6.87-10.06-7.81-16.65,4.05-.83,7.96-1,11.92-.73.95,6.74,3.64,11.66,8.32,17.26Z"/>
-                        </g>
-                    </svg>
-                    <span class="settings-nav-wordmark">KAIRO</span>
-                    <span id="settings-nav-version"></span>
-                </div>
+                <button class="settings-nav-item" data-pane="about">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                    <span>About</span>
+                </button>
             </nav>
 
             <!-- Right: the selected category -->
@@ -1490,15 +1472,6 @@
             </section>
 
             <section class="settings-pane" data-pane="help">
-                <!-- Updates: what this copy is, and an update waiting (app_startup.js initUpdater). -->
-                <div class="settings-section" id="updates-section">
-                    <div class="settings-section-head">
-                        <div class="settings-section-label">Updates</div>
-                        <button id="upd-check-btn" class="modal-btn secondary">Check for updates</button>
-                        <button id="upd-settings-install" class="modal-btn primary hidden">Update &amp; Restart</button>
-                    </div>
-                    <p class="setting-hint" id="upd-status" style="margin:10px 0 20px;"></p>
-                </div>
                 <!-- ── HELP ────────────────────────────────────────────
                      MAINTENANCE CONTRACT — read this before touching any
                      user-facing workflow: whenever a change ships that
@@ -1556,6 +1529,7 @@
                                 <p><strong>Possible Matches</strong> holds what Kairo found but isn't certain enough to put up on its own — click one to send it. This is deliberate: a wrong verse on screen is worse than a missed one. While a song or slide is live, only a spoken citation goes up on its own; lyrics that quote scripture are offered in Possible Matches instead.</p>
                                 <p><strong>Singing and interpreters.</strong> While the room is singing, the Live Transcript Log shows <em>(music)</em> and lyrics are never sent on their own, even when they quote scripture. When a service is interpreted, the interpreter's turns show as <em>(interpretation)</em> and only the preacher's words are used for detection.</p>
                                 <p><strong>Asking for a translation out loud.</strong> When the preacher asks for a version — "John 3:16 in the NIV", "Isaiah 7:7, NLT", "switch to the New King James" — the verse on screen changes to it and the translation select flashes. It lasts for that passage: reading on stays in it, and the next verse from another passage goes back to the church's translation. Choosing a translation yourself always wins. A translation that isn't installed (the Message) is ignored, and simply mentioning one ("the NIV says…") never switches.</p>
+                                <p><strong>Reading from another translation.</strong> When the preacher reads two verses of a passage word for word from the KJV, NLT or NIV and it isn't the one on screen, the passage switches to it, the same way as asking for it out loud, and the next passage goes back to the church's translation.</p>
                                 <p>To decide every verse yourself, switch <strong>Auto</strong> off (the Auto-Deploy badge, or <em>Put confident matches on screen automatically</em> under Settings → Bible): nothing goes to the screen by itself, and every detected verse waits in Possible Matches for a click (in Director mode, on Preview for Send).</p>
                                 <p>The <strong>Live Queue</strong> marks the verse on screen right now with <strong>LIVE</strong>. If a wrong verse goes up — or something is cleared by mistake — press <strong>Back</strong> (the arrow by Clear Bible, or ⌘←) to put back what was showing before; Kairo won't immediately send the undone verse again. In the Live Transcript Log, a chip marks the words that sent each verse — click it to send that verse again.</p>
                             </div>
@@ -1623,6 +1597,7 @@
                             <div class="help-body">
                                 <p>Theme Studio is where a slide's actual design lives — background, text position/font/color, animations. A theme applies to every slide in an item that doesn't have its own override.</p>
                                 <p>A ProPresenter-imported slide is the one exception: it carries its own preserved layout directly (see Importing above), independent of whichever theme is assigned to the rest of the item — editing it in Full-Scale Edit adjusts that one slide's own layers, not a shared theme.</p>
+                                <p><strong>QR codes.</strong> The <strong>QR</strong> tool (beside Image) turns a link or some text, such as a giving page or a sign-up form, into a QR code on the slide or theme, sharp at any size. Choose square, rounded or dot-shaped dots and corners, the code's colour, a background (or none), a border or a border with words ("SCAN ME", "GIVE HERE"), and a logo in the middle. Double-click it to change it in the same window, or select it and use <strong>Style</strong> to change just the link. Kairo warns when the colours are too close for phones to read it.</p>
                                 <p>The Multi-Language theme is a special split layout — the verse's own language on one side, a translated version on the other (see Multi-Language below).</p>
                                 <p><strong>Monitor layouts</strong> design what a Monitor output shows for whoever is up front. Start from <strong>New → New monitor layout</strong> or edit one of the two under <strong>Monitor layouts</strong>. A text layer's <strong>Shows</strong> can be what is on screen now, its reference, the next slide, the time of day, the countdown or the message from the booth; add backgrounds, logos and shapes like any theme. Pick it for a Monitor under <strong>Settings → Outputs</strong> (Layout); <strong>Built-in</strong> keeps the standard view. Monitor layouts never show up as themes for slides or verses.</p>
                                 <p><strong>Director themes</strong> (Director mode only, under <strong>Screens</strong>) are whole-screen designs for layouts: a background, frames and logos, a <strong>Video zone</strong> where the camera shows and a <strong>Content zone</strong> where slides and Bible verses show, each in its own theme. Add the zones with the two tools next to Image, or start from <strong>New → New Director theme</strong>. Put a verse text layer in a Director theme and it styles the verse itself instead of using a content zone.</p>
@@ -1750,6 +1725,39 @@
                         </details>
                     </div>
                     <p class="setting-hint help-no-results" id="help-no-results" hidden>Nothing in Help mentions that. Try another word.</p>
+                </div>
+            </section>
+
+            <section class="settings-pane" data-pane="about">
+                <!-- ── ABOUT: which Kairo this is, and its updates, in one block ──
+                     The version from the same GET /api/settings the rest of Settings loads
+                     (loadSettings() in app.js); the updates part from app_startup.js initUpdater.
+                     The mark has its own gradient id: SVG ids are unique per page. -->
+                <div class="about-card" id="updates-section">
+                    <svg class="about-mark" width="16" height="16" viewBox="0 0 24 24">
+                        <defs>
+                            <linearGradient id="kairoAboutMarkGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" stop-color="#FF9130"/>
+                                <stop offset="100%" stop-color="#F5301A"/>
+                            </linearGradient>
+                        </defs>
+                        <g fill="url(#kairoAboutMarkGrad)" transform="translate(12,11.28) scale(0.209499) translate(-119.410,-174.950)">
+                            <path d="M146.63,166.72c-12.18,2.44-21.27,10.16-26.37,20.98-1.79-11.05,2.74-21.11,10.68-28.07,4.11-3.37,8.47-5.84,13.91-7.69,1.69,4.76,2.15,9.38,1.78,14.78Z"/>
+                            <path d="M128.61,155.11c-9.5,7.8-14.2,18.25-13.89,30.52-10.31-12.38-5.79-31.33,5.27-42.2,3.46,3.77,6.06,7.27,8.61,11.68Z"/>
+                            <path d="M155.76,185.17c-11.36-3.52-22.73-1.13-31.28,7.41,1.45-7.24,6.15-12.66,11.94-16.5,7.78-4.65,16.6-6.39,25.89-4.67-.99,4.96-3.24,9.28-6.56,13.76Z"/>
+                            <path d="M106.25,155.9c-3.47,11.69-3.14,23.51,4.46,33.6-16.04-5.94-21.49-23.43-16.07-39.31,4.24,1.55,7.91,3.3,11.61,5.71Z"/>
+                            <path d="M153.82,201.55c-5.07-1.02-9.82-1.65-14.65-1.74-6.58.27-12.04,2.38-17.2,6.66,3.47-8.56,11.64-14.06,20.68-14.58,6.03-.35,11.8-.13,17.93-.16l5.57,9.91-12.34-.1Z"/>
+                            <path d="M116.87,206.44c-10.17-8.27-20-7.27-32.12-4.84l-12.08.07,5.62-9.96c6,.09,11.82-.19,17.75.24,9.05.65,17.45,5.88,20.83,14.5Z"/>
+                            <path d="M96.73,186.2l-12.43.12c-4.01-4.95-6.87-10.06-7.81-16.65,4.05-.83,7.96-1,11.92-.73.95,6.74,3.64,11.66,8.32,17.26Z"/>
+                        </g>
+                    </svg>
+                    <div class="about-wordmark">KAIRO</div>
+                    <div class="setting-hint" id="about-version"></div>
+                    <p class="setting-hint" id="upd-status"></p>
+                    <div class="about-actions">
+                        <button id="upd-check-btn" class="modal-btn secondary">Check for updates</button>
+                        <button id="upd-settings-install" class="modal-btn primary hidden">Update &amp; Restart</button>
+                    </div>
                 </div>
             </section>
 

@@ -2863,8 +2863,8 @@ async function loadSettings() {
   try {
     settings = await fetchServerSettings();
     if (typeof seedMonitorOutput === 'function') seedMonitorOutput();
-    const versionEl = document.getElementById('settings-nav-version');
-    if (versionEl) versionEl.textContent = settings.appVersion ? `v${settings.appVersion}` : '';
+    const aboutEl = document.getElementById('about-version');
+    if (aboutEl) aboutEl.textContent = settings.appVersion ? `Version ${settings.appVersion}` : '';
     // Populate UI
     // The server sends deepgramApiKey MASKED ("abcd1234…") for display, never
     // the real key. It used to go straight into the input's editable .value —

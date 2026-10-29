@@ -4,8 +4,8 @@
 
 // ── Updates (Tauri only) ──────────────────────────────────────────────────
 // The Rust side emits `update-available` after the background check on startup, or after "Check
-// for updates" (Help menu, Settings → Help). An update shows once as a modal over the app; "Later"
-// keeps it waiting in Settings → Help → Updates, with Update & Restart there. A banner above the
+// for updates" (Help menu, Settings → About). An update shows once as a modal over the app; "Later"
+// keeps it waiting in Settings → About → Updates, with Update & Restart there. A banner above the
 // toolbar used to show it, under macOS's window buttons and with the notes' markdown as text
 // ("## KAIRO v4.2.1"; owner, 4.2.0 → 4.2.1).
 (function initUpdater() {
@@ -89,8 +89,8 @@
     pending = { version, notes };
     status(`Kairo ${version} is available. You have ${current()}.`);
     installBtn()?.classList.remove('hidden');
-    const nav = document.getElementById('settings-nav-version');
-    if (nav && !nav.dataset.update) { nav.dataset.update = '1'; nav.title = `Kairo ${version} is available`; nav.classList.add('has-update'); }
+    const nav = document.querySelector('.settings-nav-item[data-pane="about"]');
+    if (nav) { nav.title = `Kairo ${version} is available`; nav.classList.add('has-update'); }
     if (shownFor !== version || checking) { shownFor = version; showUpdateModal(); }
     checking = false;
   });
@@ -109,7 +109,8 @@
     tauri.core.invoke('check_updates').catch(e => { checking = false; status(`Couldn't check for updates: ${e}`); });
   });
   installBtn()?.addEventListener('click', (e) => install(e.currentTarget));
-  status(`You have ${current()}. Kairo checks for updates when it starts.`);
+  // The version is right above it in About.
+  status('Kairo checks for updates when it starts.');
 })();
 
 // ── Native app menu bridge (Tauri only) ───────────────────────────────────

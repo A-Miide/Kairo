@@ -1609,21 +1609,14 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
   background: var(--bg-input);
   overflow-y: auto;
 }
-.settings-nav-version {
-  margin-top: auto;
-  padding: var(--space-3) var(--space-2) var(--space-1);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  font-size: 11px;
-  /* Still barely visible at --text-3 and a 70% mark (owner, again): the mark
-     at full strength, the wordmark in the main text colour, the version one
-     step down — readable on the near-black sidebar. */
-  color: var(--text-2);
-}
-.settings-nav-version-mark { flex-shrink: 0; width: 18px; height: 18px; }
-.settings-nav-wordmark { color: var(--text); font-weight: 700; letter-spacing: 0.12em; }
+/* Settings → About: no card around it, in the middle of the pane. */
+.settings-pane[data-pane="about"] { height: 100%; }
+.about-card { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; height: 100%; text-align: center; }
+.about-mark { width: 40px; height: 40px; margin-bottom: 6px; }
+.about-wordmark { color: var(--text); font-weight: 700; font-size: 16px; letter-spacing: 0.12em; }
+.about-card #upd-status:empty { display: none; }
+.about-card #upd-status { margin: 10px 0 0; max-width: 420px; }
+.about-actions { display: flex; gap: 8px; margin-top: 14px; }
 
 .settings-nav-item {
   display: flex;
@@ -7289,7 +7282,7 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .upd-notes { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 1.45; color: var(--text-2); }
 .upd-notes strong { color: var(--text); font-weight: 600; }
 /* Settings' version line, when an update is waiting. */
-#settings-nav-version.has-update::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--brand, #F5301A); vertical-align: middle; }
+.settings-nav-item.has-update span::after { content: ""; display: inline-block; width: 6px; height: 6px; margin-left: 6px; border-radius: 50%; background: var(--brand, #F5301A); vertical-align: middle; }
 
 /* Shared section-header label — used by Slides/Songs/Media/Timer's own
    headers (see .cs-section-header usages in index.html), not just wherever
@@ -8730,3 +8723,25 @@ body.video-director #ts-add-videozone-btn, body.video-director #ts-add-contentzo
 
 /* Back (undo) has no button on the screen (owner, 2026-10-19): Cmd/Ctrl+Z, the menu and Director's Undo press this one. */
 #output-back-btn[hidden] { display: none; }
+
+/* Theme Studio → the QR tool (app_theme_studio.js openQrDialog): the code on the left, its design on the right. */
+.ts-qr-content { width: 760px; max-width: calc(100vw - 32px); }
+.ts-qr-body { display: grid; grid-template-columns: 280px 1fr; gap: 24px; align-items: start; padding: 20px; }
+.ts-qr-preview { display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 280px; border-radius: 10px; padding: 16px;
+  /* A checkerboard behind it, so a transparent background shows as one. */
+  background: repeating-conic-gradient(#2a2a2e 0% 25%, #222226 0% 50%) 0 0 / 16px 16px; }
+.ts-qr-preview img { width: 100%; height: auto; max-height: 320px; object-fit: contain; }
+.ts-qr-preview img:not([src]) { display: none; }
+.ts-qr-preview .setting-hint:empty { display: none; }
+.ts-qr-controls { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.ts-qr-controls > .setting-label { margin: 0; }
+.ts-qr-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.ts-qr-row .setting-label, .ts-qr-label { display: flex; flex-direction: column; gap: 6px; margin: 0; }
+.ts-qr-colors { grid-template-columns: repeat(3, auto); justify-content: start; gap: 16px; align-items: end; }
+/* The background colour and Transparent are one control: side by side, in one box. */
+.ts-qr-bg { display: flex; align-items: center; gap: 10px; }
+.ts-qr-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); text-transform: none; letter-spacing: 0; cursor: pointer; }
+.ts-qr-logo { display: flex; gap: 6px; }
+.ts-qr-logo .modal-btn { padding: 6px 12px; }
+.ts-qr-warn { margin: 0; color: var(--warning, #f5a524); }
+.ts-qr-warn:empty { display: none; }

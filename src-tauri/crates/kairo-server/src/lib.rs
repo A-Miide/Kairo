@@ -37,6 +37,7 @@ mod obs;
 mod pdf;
 pub mod propresenter;
 mod pdf_metrics;
+mod qr;
 mod music;
 mod report;
 mod routes;

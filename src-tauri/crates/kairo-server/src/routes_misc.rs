@@ -16,6 +16,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/obs/sources", get(obs_sources))
         .route("/api/stream/check", post(crate::stream_check::check))
         .route("/api/stream/ffmpeg", get(stream_ffmpeg))
+        .route("/api/qr", get(crate::qr::matrix))
         .route("/api/offline/status", get(offline_status))
         .route("/api/offline/install", post(crate::installer::route))
         .route("/api/bible-packs/status", get(crate::bible_packs::status))

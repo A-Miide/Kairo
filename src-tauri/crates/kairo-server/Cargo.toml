@@ -31,6 +31,7 @@ regex = "1.13.1"
 sherpa-onnx = "1.13.8"
 cpal = "0.15"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+qrcode = { version = "0.14", default-features = false }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 libc = "0.2"

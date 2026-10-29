@@ -568,7 +568,7 @@ fn signal_main_ready(app: AppHandle) {
     }
 }
 
-/// Settings → Help → "Check for updates": the same check as the Help menu's, answered either way.
+/// Settings → About → "Check for updates": the same check as the Help menu's, answered either way.
 #[tauri::command]
 fn check_updates(app: AppHandle) {
     check_for_updates(app, true);
