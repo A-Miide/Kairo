@@ -75,7 +75,7 @@ impl Engine {
         // The range moves only while its verse is the one up: "compare that with John 3:16 and the
         // next verse" during a Romans 8 range is John 3:17.
         if !self.range.queue.is_empty() && !back && self.range_is_up() {
-            self.request_range_advance(now);
+            self.request_range_advance("'the next verse'", now);
             return;
         }
         let Some((up, at)) = self.screen.up else { return };
@@ -129,7 +129,7 @@ impl Engine {
         }
         self.throttle.bare_number_at = now;
         if !self.range.queue.is_empty() && self.range_is_up() && step == 1 {
-            self.request_range_advance(now);
+            self.request_range_advance("the next verse number", now);
             return true;
         }
         if let Some(v) = self.verse_in_chapter(base, num.value) {

@@ -77,6 +77,8 @@ pub enum Effect {
     RangeCleared,
     ReadingMode { active: bool, chapter: Option<VerseId> },
     TopicLibrary { size: usize, words: Vec<String> },
+    /// The passage of the verse up is being read in this translation (read_in.rs).
+    ReadIn { verse: VerseId, translation: String },
     /// Ask to be woken with `Event::Timer(id)` at `at_ms`.
     WakeAt { id: TimerId, at_ms: u64 },
 }

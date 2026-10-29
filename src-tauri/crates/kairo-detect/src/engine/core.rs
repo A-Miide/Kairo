@@ -165,6 +165,7 @@ pub struct Engine {
     pub(crate) announced: Vec<(Book, u16, u64)>,
     pub(crate) check: Option<CitationCheck>,
     pub(crate) meaning: MeaningState,
+    pub(crate) read_in: super::read_in::ReadIn,
     next_id: u32,
     /// The time of the event being handled.
     pub(crate) last_now: u64,
@@ -212,6 +213,7 @@ impl Engine {
             announced: Vec::new(),
             check: None,
             meaning: MeaningState::default(),
+            read_in: Default::default(),
             next_id: 0,
             last_now: 0,
             out: Output::default(),
@@ -246,7 +248,7 @@ impl Engine {
             Event::Singing(on) => self.screen.singing = on,
             Event::ScreenCleared => self.screen.up = None,
             Event::RangeNext => {
-                self.request_range_advance(now);
+                self.request_range_advance("the operator's Next", now);
             }
             Event::RangeJump(v) => {
                 self.jump_range_to(v, now);
@@ -502,6 +504,7 @@ impl Engine {
         self.advance_range_on_last_words(now);
         self.advance_range_on_next_opening(&fresh, now);
         self.advance_range_by_content(now);
+        self.note_read_in(now);
 
         let prev_before = self.prev_words();
         let through = self.read_through_chapter(&text, prev_before.as_ref(), now);

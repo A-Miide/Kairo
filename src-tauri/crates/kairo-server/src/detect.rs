@@ -93,9 +93,10 @@ impl Detector {
     pub fn start(bible: Arc<Bible>, hub: Arc<Hub>, cfg: Config, presentation: Arc<std::sync::RwLock<Presentation>>, rt: tokio::runtime::Handle, log: Log) -> Detector {
         let (tx, rx) = mpsc::channel::<Command>();
         let me = Detector { tx: tx.clone(), on_translation: Default::default(), last_final: Default::default() };
+        let on_translation = me.on_translation.clone();
         std::thread::Builder::new()
             .name("detection".into())
-            .spawn(move || run(bible, hub, cfg, presentation, rt, tx, rx, log))
+            .spawn(move || run(bible, hub, cfg, presentation, rt, tx, rx, log, on_translation))
             .expect("detection thread");
         me
     }
@@ -198,6 +199,7 @@ fn run(
     tx: mpsc::Sender<Command>,
     rx: mpsc::Receiver<Command>,
     log: Log,
+    on_translation: Arc<std::sync::OnceLock<Box<dyn Fn(&'static str, String) + Send + Sync>>>,
 ) {
     let started = Instant::now();
     let mut engine = Engine::new(bible.k.clone(), cfg);
@@ -266,6 +268,13 @@ fn run(
             }
         }
         for e in &out.effects {
+            // The passage is being read in another translation: shown in it as if it had been asked
+            // for, back to the church's at the next passage (spoken.rs).
+            if let (Effect::ReadIn { translation, .. }, Some(f)) = (e, on_translation.get()) {
+                if let Some(code) = ["KJV", "NLT", "NIV"].into_iter().find(|c| c.eq_ignore_ascii_case(translation)) {
+                    f(code, format!("reading from the {code}"));
+                }
+            }
             if let Effect::WakeAt { id, at_ms } = e {
                 let tx = tx.clone();
                 let delay = at_ms.saturating_sub(now);
@@ -405,7 +414,7 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
                 }));
             }
             Effect::TopicLibrary { size, words } => hub.broadcast(json!({ "type": "topic-library", "size": size, "words": words })),
-            Effect::WakeAt { .. } => {}
+            Effect::WakeAt { .. } | Effect::ReadIn { .. } => {}
         }
     }
 }

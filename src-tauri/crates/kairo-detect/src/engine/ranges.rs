@@ -190,11 +190,13 @@ impl Engine {
         self.range.heard.iter().map(String::as_str).chain(std::iter::once(self.range.heard_open.as_str())).flat_map(|t| t.split_whitespace()).map(str::to_string).collect()
     }
 
-    /// Every way a range moves goes through here, so two triggers can't both advance it.
-    pub(crate) fn request_range_advance(&mut self, now: u64) -> bool {
+    /// Every way a range moves goes through here, so two triggers can't both advance it. `why` names
+    /// the trigger in the explanation (a move otherwise shows as a bare direct send).
+    pub(crate) fn request_range_advance(&mut self, why: &str, now: u64) -> bool {
         let Some(next) = self.range.queue.pop_front() else { return false };
         self.range.last_advance_at = now;
         let from = self.range.current;
+        self.note(|e| format!("range moves to {}: {why}", e.label(next)));
         self.range.current = Some(next);
         self.range_moved(from, now);
         if self.range.soft {
@@ -239,7 +241,7 @@ impl Engine {
             return;
         }
         if self.current_ending_heard() {
-            self.request_range_advance(now);
+            self.request_range_advance("the verse read to its end", now);
         }
     }
 
@@ -287,7 +289,7 @@ impl Engine {
             start.len() == k && recent.windows(k).any(|w| w == &start[..])
         });
         if opens && (self.range.soft || ended) {
-            self.request_range_advance(now);
+            self.request_range_advance("the next verse's opening words", now);
             return;
         }
         let opening: Vec<String> = meaningful_words(self.verse_text(next)).into_iter().take(4).collect();
@@ -323,7 +325,7 @@ impl Engine {
         let need = if self.range.soft { 2 } else { 1 };
         let matched = if identifying.len() >= need { hit(&identifying) >= need } else { hit(&own) >= need + 1 };
         if matched {
-            self.request_range_advance(now);
+            self.request_range_advance("the next verse's own words", now);
         }
     }
 
@@ -371,13 +373,29 @@ impl Engine {
         // prayer 36 s after Mark 8:25, "…in the name of Jesus. The Bible says that you should ask…",
         // put 8:27 up on "Jesus", "ask", "say" (YouTube captions, Hallelujah Challenge 2026-10-27).
         // Mid-reading, a few words are enough ("what God has promised it was": Romans 4:21).
-        if now.saturating_sub(self.range.moved_at) > PAUSED_READING_MS && self.shared_weight_meaningful(best, &text) < PAUSED_SKIP_MIN_IDF {
+        let paused = now.saturating_sub(self.range.moved_at) > PAUSED_READING_MS;
+        if paused && self.shared_weight_meaningful(best, &text) < PAUSED_SKIP_MIN_IDF {
+            return;
+        }
+        // A paused reading resumes with a stretch of the verse read word for word; a prayer reusing its
+        // words doesn't. Daniel 9:5–6 read in the NLT, then "we are sorry, we have sinned, we have done
+        // wrong… we have rebelled against you… we have not followed your word" put 9:8 and 9:9 up,
+        // passing over 9:7 (live, 2026-10-28). "The Lord shall alter his voice before his army" is
+        // Joel 2:11 read on (a word misheard). Mid-reading, a few words still carry it ("that what God
+        // has promised, he was also able to perform" is three of Romans 4:21's own words).
+        let said = plain_tokens(&text);
+        let read = !paused || self.verse_wordings(best).into_iter().any(|t| {
+            let (run, own) = read_run(&said, &plain_tokens(t));
+            run >= RESUME_RUN_WORDS && own >= RESUME_RUN_OWN
+        });
+        if !read {
+            self.note(|e| format!("range stays on {}: {} shares words, not read word for word", e.label(current), e.label(best)));
             return;
         }
         while self.range.queue.front().is_some_and(|v| *v != best) {
             self.range.queue.pop_front();
         }
-        self.request_range_advance(now);
+        self.request_range_advance("its words read", now);
     }
 
     /// Identifying weight (IDF sum) and count of a verse's words whose stems
@@ -432,7 +450,7 @@ impl Engine {
         if self.range.current.is_none() || verses.len() != 1 || self.range.queue.front() != Some(&verses[0]) {
             return false;
         }
-        self.request_range_advance(now)
+        self.request_range_advance("its verse called", now)
     }
 
     /// A range's next verse found by any method moves the range. A text match
@@ -459,7 +477,7 @@ impl Engine {
                 return RangeAdvance::Held;
             }
         }
-        if self.request_range_advance(now) { RangeAdvance::Moved } else { RangeAdvance::No }
+        if self.request_range_advance("found by detection", now) { RangeAdvance::Moved } else { RangeAdvance::No }
     }
 
     /// No range, a verse up within the minute, and the candidate is another
@@ -553,8 +571,57 @@ fn read_to_end(heard: &[String], verse: &[String]) -> bool {
     last.is_some_and(|l| l + 2 >= verse.len()) && matched as f32 >= READ_THROUGH * need as f32
 }
 
+/// The longest stretch of `verse` read nearly word for word in `said`: its words in order with at most
+/// RUN_GAP words missed or misheard between two of them, on either side. Returns the words matched
+/// and how many of them aren't everyday words.
+pub(super) fn read_run(said: &[String], verse: &[String]) -> (usize, usize) {
+    let mut run = vec![vec![(0usize, 0usize); verse.len()]; said.len()];
+    let mut best = (0, 0);
+    for i in 0..said.len() {
+        for j in 0..verse.len() {
+            if said[i] != verse[j] {
+                continue;
+            }
+            let mut prev = (0, 0);
+            for pi in i.saturating_sub(RUN_GAP + 1)..i {
+                for pj in j.saturating_sub(RUN_GAP + 1)..j {
+                    prev = prev.max(run[pi][pj]);
+                }
+            }
+            run[i][j] = (prev.0 + 1, prev.1 + usize::from(!is_stop_word(&said[i])));
+            best = best.max(run[i][j]);
+        }
+    }
+    best
+}
+
+/// A paused reading resumes on a run of this many of the verse's words, this many not everyday ones.
+const RESUME_RUN_WORDS: usize = 5;
+const RESUME_RUN_OWN: usize = 2;
+const RUN_GAP: usize = 2;
+
 /// read_to_end: verse words that may be skipped between two heard ones, and the share that must be heard.
 const READ_SKIP: usize = 3;
 /// A verse this short is read by the time it's up.
 const SHORT_VERSE_WORDS: usize = 4;
 const READ_THROUGH: f32 = 0.6;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn run(said: &str, verse: &str) -> (usize, usize) {
+        read_run(&plain_tokens(said), &plain_tokens(verse))
+    }
+
+    #[test]
+    fn a_reading_runs_a_prayer_scatters() {
+        // Joel 2:11 read on, "utter" misheard.
+        let joel = "And the LORD shall utter his voice before his army: for his camp is very great";
+        assert!(run("said the Lord shall alter his voice before his army", joel).0 >= RESUME_RUN_WORDS);
+        // A prayer in Daniel 9:8's words (NLT): its words, not its reading.
+        let dan = "O LORD, we and our kings, princes, and ancestors are covered with shame because we have sinned against you.";
+        let prayer = "Lord Father, we are sorry, Lord, oh God, we are sorry we have sinned, we have done wrong, Lord, oh God, we have done abominable things, oh God all mandible sanctory and we have rebelled against you";
+        assert!(run(prayer, dan).0 < RESUME_RUN_WORDS);
+    }
+}

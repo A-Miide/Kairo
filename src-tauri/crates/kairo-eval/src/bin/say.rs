@@ -138,6 +138,7 @@ fn report(k: &Knowledge, o: Output, meaning: bool, wakes: &mut Vec<(u64, Event)>
                 corrected_from.map_or(String::new(), |c| format!(" (corrects {})", label(k, c)))
             ),
             Effect::WakeAt { id, at_ms } => wakes.push((at_ms, Event::Timer(id))),
+            Effect::ReadIn { verse, translation } => println!("          -> shown in the {translation} ({} read in it)", label(k, verse)),
             _ => {}
         }
     }
