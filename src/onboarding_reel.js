@@ -1,3 +1,35 @@
+// "Welcome" in every language Kairo carries a Bible for (the nine of Settings → Bible language, app_outputs.js
+// LANG_PACKS), one word at a time and quickly: at the top of the welcome step and in the "Every language in the
+// room" tile. Any element marked data-welcome-cycle is filled and kept in step; with reduced motion the first
+// word (English) stays put.
+(() => {
+  const WELCOME = [
+    ['en', 'Welcome'], ['es', 'Bienvenido'], ['pt', 'Bem-vindo'], ['fr', 'Bienvenue'], ['de', 'Willkommen'],
+    ['yo', 'Ẹ kú àbọ̀'], ['ig', 'Nnọ̀ọ'], ['ha', 'Barka da zuwa'], ['sw', 'Karibu'],
+  ];
+  const STEP_MS = 1000;
+  const hosts = [...document.querySelectorAll('[data-welcome-cycle]')];
+  if (!hosts.length) return;
+  const rows = hosts.map((host) => WELCOME.map(([lang, word]) => {
+    const w = document.createElement('span');
+    w.className = 'obw';
+    w.lang = lang;
+    w.setAttribute('aria-hidden', 'true');
+    w.textContent = word;
+    host.appendChild(w);
+    return w;
+  }));
+  let i = 0;
+  const show = () => rows.forEach((row) => row.forEach((w, k) => w.classList.toggle('is-on', k === i)));
+  show();
+  const still = window.matchMedia('(prefers-reduced-motion: reduce)');
+  setInterval(() => {
+    if (still.matches || !hosts.some((h) => h.offsetParent !== null)) return; // nobody is looking
+    i = (i + 1) % WELCOME.length;
+    show();
+  }, STEP_MS);
+})();
+
 // The welcome step's feature reel: plays its chapters in turn (each about
 // 4.5 s, or its own data-hold), with a rail of segments that fill as they play and jump when
 // clicked. Pauses while the welcome step is out of view and starts again

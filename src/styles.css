@@ -8145,10 +8145,13 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .ob-art-import i { position: absolute; left: 30px; top: 26px; width: 54px; height: 30px; border-radius: 4px; background: linear-gradient(135deg, #F5301A, #9E1608); opacity: 0; animation: ob-out 4.5s ease-in-out infinite; }
 .ob-art-import i:nth-of-type(2) { animation-delay: 0.5s; --y: 10px; }
 @keyframes ob-out { 0%, 10% { opacity: 0; transform: none; } 40%, 85% { opacity: 1; transform: translate(70px, var(--y, -12px)); } 100% { opacity: 0; transform: translate(70px, var(--y, -12px)); } }
-.ob-art-lang span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 700; color: #fff; opacity: 0; animation: ob-word 10s ease infinite; }
-.ob-art-lang span:nth-child(2) { animation-delay: 2s; } .ob-art-lang span:nth-child(3) { animation-delay: 4s; }
-.ob-art-lang span:nth-child(4) { animation-delay: 6s; } .ob-art-lang span:nth-child(5) { animation-delay: 8s; }
-@keyframes ob-word { 0% { opacity: 0; transform: translateY(8px); } 5%, 17% { opacity: 1; transform: none; } 22%, 100% { opacity: 0; transform: translateY(-8px); } }
+/* "Welcome" in every Bible language, one word at a time (onboarding_reel.js fills [data-welcome-cycle]). */
+[data-welcome-cycle] { position: relative; }
+.obw { position: absolute; inset: 0; display: flex; align-items: center; opacity: 0; transform: translateY(0.35em); white-space: nowrap; transition: opacity 0.16s ease, transform 0.16s ease; }
+.obw.is-on { opacity: 1; transform: none; }
+.ob-art-lang .obw { justify-content: center; font-size: 20px; font-weight: 700; color: #fff; }
+.ob-hello { height: 1.3em; margin: 0 0 14px; font-size: clamp(28px, 3.2vw, 40px); font-weight: 700; letter-spacing: -0.01em; color: var(--brand); }
+.obw-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 /* 4 · ready: the app shows through, the real control is spotlit */
 .ob-spot { position: fixed; display: none; border-radius: 10px; pointer-events: none; transition: all 0.4s cubic-bezier(0.2, 0.7, 0.2, 1);
@@ -8172,7 +8175,6 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 }
 @media (prefers-reduced-motion: reduce) {
   .onboarding *, .onboarding *::before { animation: none !important; transition: none !important; }
-  .ob-art-lang span:first-child { opacity: 1; }
   .ob-art-import i { opacity: 1; transform: translate(70px, var(--y, -12px)); }
 }
 
