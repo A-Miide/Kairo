@@ -726,6 +726,26 @@ fn without_repeat(said: &std::collections::VecDeque<String>, text: &str) -> Stri
     words[k..].join(" ")
 }
 
+/// Windows' counterpart of the worker's QoS: the whole process above normal (Windows threads don't
+/// inherit a thread's priority, but every thread takes the process's class, the runtime's too), and
+/// out of EcoQoS, which on a laptop puts a process it thinks is background on the efficiency cores
+/// at low clock. Neither costs memory (the owner: nothing that grows Kairo's footprint on Windows,
+/// so the weights aren't locked here as on macOS). Best effort: Windows before 10 1709 has no EcoQoS.
+#[cfg(windows)]
+fn above_normal_unthrottled() {
+    use windows_sys::Win32::System::Threading::{
+        GetCurrentProcess, ProcessPowerThrottling, SetPriorityClass, SetProcessInformation, ABOVE_NORMAL_PRIORITY_CLASS, PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+        PROCESS_POWER_THROTTLING_EXECUTION_SPEED, PROCESS_POWER_THROTTLING_STATE,
+    };
+    // The setting named in ControlMask and left out of StateMask: never throttled.
+    let state = PROCESS_POWER_THROTTLING_STATE { Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION, ControlMask: PROCESS_POWER_THROTTLING_EXECUTION_SPEED, StateMask: 0 };
+    unsafe {
+        let me = GetCurrentProcess();
+        SetPriorityClass(me, ABOVE_NORMAL_PRIORITY_CLASS);
+        SetProcessInformation(me, ProcessPowerThrottling, (&state as *const PROCESS_POWER_THROTTLING_STATE).cast(), std::mem::size_of_val(&state) as u32);
+    }
+}
+
 fn run_worker(dir: &std::path::Path, language: Option<String>) -> i32 {
     use std::io::{Read, Write};
     // Live speech goes before a browser tab or video player on a busy media machine (a YouTube
@@ -735,6 +755,8 @@ fn run_worker(dir: &std::path::Path, language: Option<String>) -> i32 {
     unsafe {
         libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_USER_INITIATED, 0);
     }
+    #[cfg(windows)]
+    above_normal_unthrottled();
     let rec = match recognizer(dir, &Decoding::default()) {
         Ok(r) => r,
         Err(e) => {
