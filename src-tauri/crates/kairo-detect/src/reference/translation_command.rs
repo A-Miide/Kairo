@@ -14,15 +14,19 @@ use regex::Regex;
 
 /// Code → the ways it is said.
 const ALIASES: &[(&str, &[&str])] = &[
-    ("NKJV", &["new king james version", "new king james bible", "new king james", "nkjv"]),
     ("KJV", &["king james version", "king james bible", "king james", "authorized version", "kjv"]),
     ("NLT", &["new living translation", "new living", "nlt"]),
     ("NIV", &["new international version", "new international", "niv"]),
     ("ESV", &["english standard version", "english standard", "esv"]),
     ("NASB", &["new american standard bible", "new american standard version", "new american standard", "nasb"]),
-    // Not bundled: recognised so a request for it can be logged, never shown.
+    // Not bundled: recognised so a request for it can be logged, never shown. NKJV is here so "the new
+    // King James" is never taken for the KJV (its publisher declined permission, 2026-10: no file ships).
+    ("NKJV", &["new king james version", "new king james bible", "new king james", "nkjv"]),
     ("MSG", &["message bible", "message translation", "message version", "msg"]),
 ];
+
+/// Recognised in speech but without a Bible file in the app.
+const UNBUNDLED: &[&str] = &["MSG", "NKJV"];
 
 fn code_of(alias: &str) -> Option<&'static str> {
     let a = alias.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -107,7 +111,7 @@ static ACRONYM: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b(?:nkjv|kjv|nl
 
 static QUOTING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*(?:version\s+|translation\s+|bible\s+)?(?:says|said|reads|read\s+it|puts\s+it|renders|rendered|translates|translated|has\s+it|calls|called|uses)\b").unwrap());
 
-/// The last translation command in `text`: its code ("NIV", or "MSG" when it isn't bundled).
+/// The last translation command in `text`: its code ("NIV", or "MSG"/"NKJV" when it isn't bundled).
 /// With several named ("NLT or message"), the first bundled one.
 pub fn translation_command(text: &str) -> Option<&'static str> {
     let t = normalize(text);
@@ -116,7 +120,7 @@ pub fn translation_command(text: &str) -> Option<&'static str> {
     }
     let pick = |words: &str| -> Option<&'static str> {
         let codes: Vec<&'static str> = ALIAS.find_iter(words).filter_map(|a| code_of(a.as_str())).collect();
-        codes.iter().copied().find(|c| *c != "MSG").or_else(|| codes.first().copied())
+        codes.iter().copied().find(|c| !UNBUNDLED.contains(c)).or_else(|| codes.first().copied())
     };
     // The translation named in each command is the last one in its words.
     let commanded = COMMAND.find_iter(&t).filter_map(|m| ALIAS.find_iter(m.as_str()).last().and_then(|a| code_of(a.as_str()))).last();

@@ -335,8 +335,8 @@
                          wording) — one click sends to the screen. -->
                     <div id="scripture-suggest" class="cs-suggest" role="listbox" hidden></div>
                 </div>
-                <!-- All 6 are now real, distinct text — databases/bibles/
-                     translations/*.json (NKJV/NIV/ESV/NASB) plus map.json's
+                <!-- All 5 are now real, distinct text — databases/bibles/
+                     translations/*.json (NIV/ESV/NASB) plus map.json's
                      own kjv_text/nlt_text (KJV/NLT), applied by
                      applyTranslation() in the server (kairo-server). Briefly cut down to
                      just KJV/NLT when the other four turned out to be
@@ -344,7 +344,6 @@
                      were found and connected. -->
                 <select id="translation-select" class="cs-select cs-translation-select" title="English translation: the version a verse goes up in (another scripture language uses its own Bible)">
                     <option value="KJV" selected>KJV</option>
-                    <option value="NKJV">NKJV</option>
                     <option value="NLT">NLT</option>
                     <option value="NIV">NIV</option>
                     <option value="ESV">ESV</option>
@@ -1371,7 +1370,6 @@
                         <label class="setting-label" for="translation-select-settings">English translation</label>
                         <select id="translation-select-settings" class="setting-input">
                             <option value="KJV" selected>KJV</option>
-                            <option value="NKJV">NKJV</option>
                             <option value="NLT">NLT</option>
                             <option value="NIV">NIV</option>
                             <option value="ESV">ESV</option>
@@ -1676,7 +1674,7 @@
                                 <p>For a guest minister, switch the language from the chip beside <strong>Start Listening</strong>, and switch it back after.</p>
                                 <p>For a service preached in <strong>Spanish, Portuguese, French or German</strong>, set the service language and Kairo understands citations in that language ("Juan capítulo tres versículo dieciséis", "siguiente versículo") and matches verses read aloud against that language's Bible. Other languages are transcribed, and verses are found when cited or read in English.</p>
                                 <p><strong>Service languages</strong> (Settings → Language): English (US, UK, Australia, India), Spanish, Portuguese (Brazil), French, German, Italian, Dutch, Swedish, Polish, Ukrainian, Russian, Hindi, Indonesian, Korean, Japanese, Chinese (Mandarin), or Auto-detect. Deepgram covers all of them. Offline, English uses the English model (about 465 MB) and the others the <em>offline model for other languages</em> (about 475 MB): only the one the preacher's language needs is offered.</p>
-                                <p><strong>Bibles that come with Kairo</strong>, all offline: English — KJV and NLT, plus NIV, ESV, NASB and NKJV (Settings → Bible translation) — and, under <em>Bible language</em>, Spanish, Portuguese, French, German, Yoruba, Igbo, Hausa and Swahili (New Testament only). These change what a verse is shown in; what Kairo listens for is what the preacher speaks. In any language but English, the English translation setting doesn't apply.</p>
+                                <p><strong>Bibles that come with Kairo</strong>, all offline: English — KJV and NLT, plus NIV, ESV and NASB (Settings → Bible translation) — and, under <em>Bible language</em>, Spanish, Portuguese, French, German, Yoruba, Igbo, Hausa and Swahili (New Testament only). These change what a verse is shown in; what Kairo listens for is what the preacher speaks. In any language but English, the English translation setting doesn't apply.</p>
                                 <p><strong>Church vocabulary</strong> (same page) — names and words your services use that transcription may mishear: the pastor, the church, local places. One per line; used from the next Start Listening (English and auto-detect services).</p>
                                 
                                 <p><strong>Slide Translation Models</strong> are separate — they translate ordinary (non-scripture) slide/sermon text for the Multi-Language split theme, using a small bundled local model with no setup, API key, or internet connection required once downloaded.</p>

@@ -82,10 +82,6 @@ S["niv-philippians4-uncited"] = [
     ("do not be anxious about anything, but in every situation, by prayer and petition, with thanksgiving, present your requests to God", [("quote", "Philippians 4:6")]),
     ("and the peace of God, which transcends all understanding, will guard your hearts and your minds in Christ Jesus", [("quote", "Philippians 4:7")]),
 ]
-S["nkjv-psalm23-uncited"] = [
-    ("the Lord is my shepherd, I shall not want, he makes me to lie down in green pastures", [("quote", "Psalm 23:1"), ("quote", "Psalm 23:2")]),
-    ("he leads me beside the still waters, he restores my soul", [("quote", "Psalm 23:2"), ("quote", "Psalm 23:3")]),
-]
 # ── 6. Skipping verses while reading ─────────────────────────────────────────────────
 S["skip-said"] = [
     ("Romans chapter eight verse twenty eight", [("citation", "Romans 8:28")]),

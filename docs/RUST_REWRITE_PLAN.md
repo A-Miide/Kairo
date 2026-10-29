@@ -126,7 +126,7 @@ existing ones.
   with `eval/paraphrase_bench.js`; the winner ships.
 - NLT in `map.json` is missing Psalms (0/2457) and ~70 other verses. It gets
   filled only from a licensed source once Tyndale's permission arrives.
-- Note: `databases/bibles/translations/ATTRIBUTION.md` records NKJV/NIV/ESV/NASB
+- Note: `databases/bibles/translations/ATTRIBUTION.md` records NIV/ESV/NASB (NKJV was removed 2026-10 after its publisher declined)
   as coming from another app's bundle path. Confirm the rights before shipping
   them to churches.
 

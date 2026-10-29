@@ -350,7 +350,7 @@ function outputThemeMap() {
 // that doesn't exist yet. `hasPack: true` means real bundled verse text;
 // it does not mean "detects speech in this language."
 const LANG_PACKS = [
-  { code: 'en', name: 'English',    translations: 'KJV · NIV · NLT · ESV · NASB · NKJV' },
+  { code: 'en', name: 'English',    translations: 'KJV · NIV · NLT · ESV · NASB' },
   { code: 'es', name: 'Spanish',    translations: 'Reina-Valera 1909 (public domain)' },
   { code: 'pt', name: 'Portuguese', translations: 'Almeida Atualizada 1911 (GPL)' },
   { code: 'fr', name: 'French',     translations: 'Louis Segond 1910 (public domain)' },

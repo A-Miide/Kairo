@@ -4,12 +4,11 @@ Real, distinct verse text for the "Translation" setting — swapped in by
 `applyTranslation()` in `server/server.js`. KJV and NLT are the exception:
 they don't need a file here at all — KJV is already the detection corpus's
 own text (`databases/bibles/map.json`), and NLT rides along on that same
-file's `nlt_text` field. NKJV/NIV/ESV/NASB below are the four that needed
+file's `nlt_text` field. NIV/ESV/NASB below are the three that need
 their own data.
 
 | Code | Translation | Rights holder | Status |
 |---|---|---|---|
-| NKJV | New King James Version | Thomas Nelson | Copyrighted |
 | NIV | New International Version | Biblica | Copyrighted |
 | ESV | English Standard Version | Crossway | Copyrighted |
 | NASB | New American Standard Bible | The Lockman Foundation | Copyrighted |
@@ -25,8 +24,15 @@ canonical list used elsewhere in the app (`Psalm`→`Psalms`,
 `Song Of Solomon`→`Song of Solomon`) — everything else matched exactly.
 
 Unlike the public-domain/CC-licensed scripture-language packs
-(`databases/bibles/packs/ATTRIBUTION.md`), these four are commercial,
+(`databases/bibles/packs/ATTRIBUTION.md`), these three are commercial,
 copyrighted translations — they are not independently redistributable
 without whatever rights the owner already holds for them. If this project
 is ever redistributed to a party the owner's existing rights don't cover,
 this is the file to check first.
+
+## Removed: NKJV (2026-10)
+
+The NKJV file was removed. Its publisher (HarperCollins Christian Publishing / Thomas Nelson) declined
+permission to use it in this project in writing. History and earlier releases still contain it; nothing
+in the app loads it any more. A spoken "new King James" is still recognised (so it is never taken for
+the KJV) but, with no file, it is logged and ignored.
