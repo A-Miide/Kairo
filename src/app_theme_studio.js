@@ -2315,6 +2315,9 @@ function renderStage() {
       // Same as the background branch above — full drag/resize in item
       // mode too, now that it actually persists.
       tsDecorateLayerEl(div, layer, true);
+      // A QR code opens the dialog that made it, the way text opens for editing (timed by hand,
+      // like text's: see tsHandleLayerDblClick).
+      if (layer.qr) div.addEventListener('mousedown', (e) => tsHandleLayerDblClick(e, div, layer, () => openQrDialog(layer)));
       return;
     }
 
@@ -3490,7 +3493,7 @@ function tsTransformSelection(layers, bounds, { dx = 0, dy = 0, sx = 1, sy = 1 }
 // renderPreview for why.
 let tsLastLayerClickId = null;
 let tsLastLayerClickAt = 0;
-function tsHandleLayerDblClick(e, div, layer) {
+function tsHandleLayerDblClick(e, div, layer, onDouble = beginInlineTextEdit) {
   if (e.button !== 0 || e.shiftKey || e.metaKey || e.ctrlKey) return;
   const now = Date.now();
   const isDouble = tsLastLayerClickId === layer.id && (now - tsLastLayerClickAt) < 500;
@@ -3503,7 +3506,7 @@ function tsHandleLayerDblClick(e, div, layer) {
     // tsDragEnd's own re-render out from under the field this is about to
     // create and focus.
     tsCancelDrag();
-    beginInlineTextEdit(div, layer);
+    onDouble(div, layer);
   }
 }
 
@@ -5422,8 +5425,10 @@ function renderImageProps(panel, layer) {
   const thumb = document.createElement('div');
   thumb.className = 'ts-image-thumb';
   thumb.style.backgroundImage = `url("${String(layer.src || '').replace(/["\\\n\r]/g, c => encodeURIComponent(c))}")`;
+  if (layer.qr) renderQrProps(panel, layer);
   const replace = fieldBtn('Replace…', () => pickImageFile(({ src, w, h }) => {
-    layer.src = src; layer.naturalW = w; layer.naturalH = h;
+    // A picture in its place is a picture, not a QR code any more.
+    layer.src = src; layer.naturalW = w; layer.naturalH = h; delete layer.qr;
     up(); renderProps();
   }));
   // (Its slow zoom is under Animate → Keeps moving, with every other motion.)
@@ -7929,6 +7934,7 @@ document.getElementById('ts-add-contentzone-btn')?.addEventListener('click', () 
 document.getElementById('ts-add-slidezone-btn')?.addEventListener('click', () => addZone('slidezone'));
 document.getElementById('ts-add-mediazone-btn')?.addEventListener('click', () => addZone('mediazone'));
 document.getElementById('ts-add-timerzone-btn')?.addEventListener('click', () => addZone('timerzone'));
+document.getElementById('ts-add-qr-btn')?.addEventListener('click', () => openQrDialog());
 document.getElementById('ts-add-image-btn')?.addEventListener('click', (e) => {
   const r = e.currentTarget.getBoundingClientRect();
   window.KairoService.openContextMenu(r.left, r.bottom + 4, [[
@@ -7966,6 +7972,308 @@ tsImageFile?.addEventListener('change', async () => {
     toast(isVideo ? 'Could not load that video' : 'Could not load that image', 'error');
   }
 });
+
+// ── QR codes ──────────────────────────────────────────────────────────────
+// The QR tool (beside Image): a link or some text (a giving page, a sign-up form) made into a QR
+// code and added as a picture like any other. The server encodes it (GET /api/qr, kairo-server
+// qr.rs, the grid of modules); this draws it as an SVG, with the dots and corners shaped and
+// coloured, a logo in the middle, a border or a "Scan me" frame, so it is sharp at any size on any
+// output. It lives in the layer as a data URL and travels with the theme; the layer keeps its
+// design (layer.qr), so the QR tool's dialog can open it again.
+const QR_DEFAULTS = {
+  text: '', dots: 'square', eyes: 'square', dark: '#000000', light: '#ffffff',
+  transparent: false, frame: 'none', label: 'SCAN ME', frameColor: '#000000', logo: null, margin: 2,
+};
+const QR_SIZE = 420; // its width on the 1920-wide canvas
+const QR_HEX = /^#[0-9a-f]{6}$/i;
+
+const qrMatrices = new Map();
+async function qrMatrix(text, ec) {
+  const key = ec + '\n' + text;
+  if (!qrMatrices.has(key)) {
+    const res = await fetch(`/api/qr?${new URLSearchParams({ text, ec })}`);
+    if (!res.ok) throw new Error(await res.text());
+    qrMatrices.set(key, await res.json());
+  }
+  return qrMatrices.get(key);
+}
+
+function qrLuminance(hex) {
+  const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16) / 255).map(v => v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+  return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+function qrContrast(a, b) {
+  const [x, y] = [qrLuminance(a), qrLuminance(b)].sort((p, q) => q - p);
+  return (x + 0.05) / (y + 0.05);
+}
+
+// The code as SVG, in module units: the quiet zone, then the frame (if any) around it. Returns its
+// size in modules too, for the layer's shape (a "Scan me" frame makes it taller than wide).
+function qrSvg(matrix, design) {
+  const o = { ...QR_DEFAULTS, ...design };
+  const hex = (c, d) => QR_HEX.test(c || '') ? c : d;
+  // One colour for the whole code, dots and corners alike.
+  const dark = hex(o.dark, '#000000'), eye = dark, light = hex(o.light, '#ffffff'), frameColor = hex(o.frameColor, '#000000');
+  const n = matrix.size, q = Math.max(0, Math.min(6, Number(o.margin) || 0)), S = n + 2 * q;
+  const framed = o.frame === 'border' || o.frame === 'label';
+  const b = framed ? 1.6 : 0, L = o.frame === 'label' ? Math.max(5, S * 0.24) : 0;
+  const W = S + 2 * b, H = o.frame === 'label' ? b + S + L : S + 2 * b;
+  const x0 = b + q, y0 = b + q;
+  const on = (x, y) => matrix.modules[y * n + x] === '1';
+  const eyeAt = [[0, 0], [n - 7, 0], [0, n - 7]];
+  const inEye = (x, y) => eyeAt.some(([ex, ey]) => x >= ex && x < ex + 7 && y >= ey && y < ey + 7);
+  // A logo covers the middle fifth or so (the code is made with high error correction for it).
+  const k = o.logo ? Math.round(n * 0.22) | 1 : 0, l0 = (n - k) / 2;
+  const underLogo = (x, y) => k && x >= l0 - 0.5 && x < l0 + k + 0.5 && y >= l0 - 0.5 && y < l0 + k + 0.5;
+  const f = (v) => +v.toFixed(3);
+  const parts = [];
+
+  if (framed) {
+    // One shape, the code's window cut out of it: the words' band is the bottom of the same frame.
+    const r = b * 1.6, rr = (x, y, w, h, c) => `M${f(x + c)},${f(y)}H${f(x + w - c)}Q${f(x + w)},${f(y)} ${f(x + w)},${f(y + c)}V${f(y + h - c)}Q${f(x + w)},${f(y + h)} ${f(x + w - c)},${f(y + h)}H${f(x + c)}Q${f(x)},${f(y + h)} ${f(x)},${f(y + h - c)}V${f(y + c)}Q${f(x)},${f(y)} ${f(x + c)},${f(y)}Z`;
+    parts.push(`<path d="${rr(0, 0, W, H, r)}${rr(b, b, S, S, b * 0.5)}" fill="${frameColor}" fill-rule="evenodd"/>`);
+    if (L) {
+      const ink = qrLuminance(frameColor) > 0.4 ? '#000000' : '#ffffff';
+      parts.push(`<text x="${f(W / 2)}" y="${f(b + S + L * 0.5)}" font-family="Helvetica Neue, Helvetica, Arial, sans-serif" font-size="${f(L * 0.46)}" font-weight="800" letter-spacing="${f(L * 0.05)}" text-anchor="middle" dominant-baseline="middle" fill="${ink}">${escapeHtml(String(o.label || '').slice(0, 24))}</text>`);
+    }
+  }
+  if (!o.transparent) parts.push(`<rect x="${b}" y="${b}" width="${S}" height="${S}" rx="${f(b * 0.5)}" fill="${light}"/>`);
+
+  // The dots: whole runs of a row at once for square ones (no hairlines between neighbours).
+  const dots = [];
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      if (!on(x, y) || inEye(x, y) || underLogo(x, y)) continue;
+      const X = x0 + x, Y = y0 + y;
+      if (o.dots === 'dots') dots.push(`<circle cx="${f(X + 0.5)}" cy="${f(Y + 0.5)}" r="0.44"/>`);
+      else if (o.dots === 'rounded') dots.push(`<rect x="${X}" y="${Y}" width="1" height="1" rx="0.42"/>`);
+      else {
+        let run = 1;
+        while (x + run < n && on(x + run, y) && !inEye(x + run, y) && !underLogo(x + run, y)) run++;
+        dots.push(`M${X},${Y}h${run}v1h-${run}z`);
+        x += run - 1;
+      }
+    }
+  }
+  parts.push(o.dots === 'square' || !['dots', 'rounded'].includes(o.dots)
+    ? `<path d="${dots.join('')}" fill="${dark}" shape-rendering="crispEdges"/>`
+    : `<g fill="${dark}">${dots.join('')}</g>`);
+
+  // The three corners: a ring and its centre, square, rounded or round.
+  for (const [ex, ey] of eyeAt) {
+    const X = x0 + ex, Y = y0 + ey;
+    if (o.eyes === 'circle') {
+      parts.push(`<circle cx="${X + 3.5}" cy="${Y + 3.5}" r="3" fill="none" stroke="${eye}" stroke-width="1"/><circle cx="${X + 3.5}" cy="${Y + 3.5}" r="1.5" fill="${eye}"/>`);
+    } else {
+      const round = o.eyes === 'rounded';
+      parts.push(`<rect x="${X + 0.5}" y="${Y + 0.5}" width="6" height="6" rx="${round ? 1.8 : 0}" fill="none" stroke="${eye}" stroke-width="1"/><rect x="${X + 2}" y="${Y + 2}" width="3" height="3" rx="${round ? 0.9 : 0}" fill="${eye}"/>`);
+    }
+  }
+
+  if (o.logo) {
+    const X = x0 + l0, Y = y0 + l0;
+    parts.push(`<rect x="${f(X - 0.5)}" y="${f(Y - 0.5)}" width="${k + 1}" height="${k + 1}" rx="${f(k * 0.18)}" fill="${o.transparent ? '#ffffff' : light}"/>`);
+    parts.push(`<image href="${String(o.logo).replace(/"/g, '%22')}" x="${f(X + 0.3)}" y="${f(Y + 0.3)}" width="${f(k - 0.6)}" height="${f(k - 0.6)}" preserveAspectRatio="xMidYMid meet"/>`);
+  }
+
+  const px = 24; // its own pixel size only matters where SVG has none; it scales cleanly anyway
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${f(W)} ${f(H)}" width="${Math.round(W * px)}" height="${Math.round(H * px)}">${parts.join('')}</svg>`;
+  return { svg, w: W, h: H };
+}
+
+async function qrRender(design) {
+  const matrix = await qrMatrix(design.text, design.logo ? 'H' : 'M');
+  const { svg, w, h } = qrSvg(matrix, design);
+  // ' too: the outputs put a picture in url('…') (display.html).
+  return { src: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg).replace(/'/g, '%27'), w, h };
+}
+
+// A logo for the middle: kept small (it fills a fifth of the code), PNG so a cut-out stays one.
+function qrLogoFromFile(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(1, 512 / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(img.naturalWidth * s)); c.height = Math.max(1, Math.round(img.naturalHeight * s));
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      resolve(c.toDataURL('image/png'));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('That file is not a picture')); };
+    img.src = url;
+  });
+}
+
+// The QR tool's dialog: a new code, or `layer`'s again to change it.
+function openQrDialog(layer = null) {
+  if (!activeLook) return;
+  document.getElementById('ts-qr-modal')?.remove();
+  const design = { ...QR_DEFAULTS, ...(layer?.qr || {}) };
+  const opt = (pairs, v) => pairs.map(([val, label]) => `<option value="${val}"${val === v ? ' selected' : ''}>${label}</option>`).join('');
+  const modal = document.createElement('div');
+  modal.id = 'ts-qr-modal';
+  modal.className = 'modal';
+  modal.innerHTML = `
+    <div class="modal-overlay"></div>
+    <div class="modal-content ts-qr-content">
+      <div class="modal-header">
+        <h2>${layer ? 'Edit QR code' : 'QR code'}</h2>
+        <button class="modal-close-btn" data-close>
+          <svg width="16" height="16" viewBox="0 0 16 16"><path d="M3 3l10 10M13 3L3 13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+          <span>Close</span>
+        </button>
+      </div>
+      <div class="modal-body ts-qr-body">
+        <div class="ts-qr-preview">
+          <img id="ts-qr-img" alt="">
+          <p class="setting-hint" id="ts-qr-note"></p>
+        </div>
+        <div class="ts-qr-controls">
+          <label class="setting-label" for="ts-qr-text">Link or text</label>
+          <input id="ts-qr-text" class="setting-input" type="text" placeholder="https://yourchurch.org/give" autocomplete="off" spellcheck="false">
+          <div class="ts-qr-row">
+            <label class="setting-label">Dots<select class="setting-input" data-k="dots">${opt([['square', 'Square'], ['rounded', 'Rounded'], ['dots', 'Dots']], design.dots)}</select></label>
+            <label class="setting-label">Corners<select class="setting-input" data-k="eyes">${opt([['square', 'Square'], ['rounded', 'Rounded'], ['circle', 'Round']], design.eyes)}</select></label>
+          </div>
+          <div class="ts-qr-row ts-qr-colors">
+            <label class="setting-label">Code<input type="color" class="ts-prop-color" data-k="dark" value="${design.dark}"></label>
+            <div class="setting-label">Background<div class="ts-qr-bg">
+              <input type="color" class="ts-prop-color" data-k="light" value="${design.light}" aria-label="Background colour">
+              <label class="ts-qr-check"><input type="checkbox" data-k="transparent"${design.transparent ? ' checked' : ''}>Transparent</label>
+            </div></div>
+          </div>
+          <div class="ts-qr-row">
+            <label class="setting-label">Frame<select class="setting-input" data-k="frame">${opt([['none', 'None'], ['border', 'Border'], ['label', 'Border and words']], design.frame)}</select></label>
+            <label class="setting-label ts-qr-frame-color">Colour<input type="color" class="ts-prop-color" data-k="frameColor" value="${design.frameColor}"></label>
+          </div>
+          <label class="setting-label ts-qr-label">Words<input class="setting-input" type="text" data-k="label" maxlength="24" value="${escapeHtml(design.label)}"></label>
+          <div class="ts-qr-row">
+            <label class="setting-label">Margin<select class="setting-input" data-k="margin">${opt([['1', 'Thin'], ['2', 'Normal'], ['4', 'Wide']], String(design.margin))}</select></label>
+            <div class="setting-label">Logo<div class="ts-qr-logo">
+              <button type="button" class="modal-btn secondary" id="ts-qr-logo-btn">${design.logo ? 'Change…' : 'Add…'}</button>
+              <button type="button" class="modal-btn secondary${design.logo ? '' : ' hidden'}" id="ts-qr-logo-remove">Remove</button>
+            </div></div>
+          </div>
+          <p class="setting-hint ts-qr-warn" id="ts-qr-warn"></p>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="modal-btn secondary" data-close>Cancel</button>
+        <button class="modal-btn primary" id="ts-qr-add" disabled>${layer ? 'Save' : 'Add to slide'}</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+  const $ = (id) => modal.querySelector('#' + id);
+  const close = () => modal.remove();
+  modal.querySelectorAll('[data-close], .modal-overlay').forEach(el => el.addEventListener('click', close));
+  $('ts-qr-text').value = design.text;
+
+  let made = null, timer = null;
+  const sync = () => {
+    modal.querySelectorAll('[data-k]').forEach(el => {
+      const k = el.dataset.k;
+      design[k] = el.type === 'checkbox' ? el.checked : k === 'margin' ? Number(el.value) : el.value;
+    });
+    design.text = $('ts-qr-text').value.trim();
+    modal.querySelector('.ts-qr-label').classList.toggle('hidden', design.frame !== 'label');
+    modal.querySelector('.ts-qr-frame-color').classList.toggle('hidden', design.frame === 'none');
+    modal.querySelector('[data-k="light"]').disabled = design.transparent;
+    // Phones need the dots far darker than what's behind them.
+    const behind = design.transparent ? null : design.light;
+    const low = behind && qrContrast(design.dark, behind) < 3;
+    $('ts-qr-warn').textContent = low ? 'These colours are too close: phones may not read it. Make the code much darker than the background.'
+      : design.transparent ? 'Transparent: it needs a light slide behind it to be read.' : '';
+  };
+  const preview = () => {
+    sync();
+    clearTimeout(timer);
+    timer = setTimeout(async () => {
+      const want = JSON.stringify(design);
+      made = null;
+      $('ts-qr-add').disabled = true;
+      if (!design.text) { $('ts-qr-img').removeAttribute('src'); $('ts-qr-note').textContent = 'Type a link to see its code.'; return; }
+      try {
+        const out = await qrRender(design);
+        if (want !== JSON.stringify(design)) return; // changed meanwhile
+        made = { ...out, design: JSON.parse(want) };
+        $('ts-qr-img').src = out.src;
+        $('ts-qr-note').textContent = '';
+        $('ts-qr-add').disabled = false;
+      } catch (e) {
+        $('ts-qr-img').removeAttribute('src');
+        $('ts-qr-note').textContent = String(e.message || e);
+      }
+    }, 120);
+  };
+  modal.querySelectorAll('[data-k], #ts-qr-text').forEach(el => el.addEventListener(el.tagName === 'SELECT' || el.type === 'checkbox' ? 'change' : 'input', preview));
+
+  $('ts-qr-logo-btn').addEventListener('click', () => {
+    const inp = document.createElement('input');
+    inp.type = 'file'; inp.accept = 'image/*';
+    inp.addEventListener('change', async () => {
+      const file = inp.files?.[0];
+      if (!file) return;
+      try { design.logo = await qrLogoFromFile(file); } catch (e) { toast(String(e.message || e), 'error'); return; }
+      $('ts-qr-logo-btn').textContent = 'Change…';
+      $('ts-qr-logo-remove').classList.remove('hidden');
+      preview();
+    });
+    inp.click();
+  });
+  $('ts-qr-logo-remove').addEventListener('click', () => {
+    design.logo = null;
+    $('ts-qr-logo-btn').textContent = 'Add…';
+    $('ts-qr-logo-remove').classList.add('hidden');
+    preview();
+  });
+
+  const done = () => {
+    if (!made || !activeLook) return;
+    const { src, w, h } = made;
+    if (layer) {
+      // Same width, the new shape's height (a frame with words is taller).
+      layer.src = src; layer.qr = made.design; layer.naturalW = w; layer.naturalH = h;
+      layer.pos.h = Math.round(layer.pos.w * h / w);
+    } else {
+      const pw = QR_SIZE, ph = Math.round(QR_SIZE * h / w);
+      layer = {
+        id: 'image-' + Date.now(), type: 'image', name: 'QR code',
+        visible: true, src, qr: made.design, fit: 'contain', opacity: 100, radius: 0, naturalW: w, naturalH: h,
+        pos: { x: Math.round((TS_DESIGN_W - pw) / 2), y: Math.round((TS_DESIGN_H - ph) / 2), w: pw, h: ph },
+      };
+      activeLook.layers.push(layer);
+    }
+    activeLayer = layer;
+    up();
+    renderProps();
+    close();
+  };
+  $('ts-qr-add').addEventListener('click', done);
+  $('ts-qr-text').addEventListener('keydown', (e) => { if (e.key === 'Enter') done(); if (e.key === 'Escape') close(); });
+  preview();
+  $('ts-qr-text').focus();
+}
+
+// A QR code's properties: what it says (changed right here) and its whole design (the dialog).
+function renderQrProps(panel, layer) {
+  const text = document.createElement('input');
+  text.type = 'text'; text.className = 'ts-prop-input';
+  text.value = layer.qr.text; text.spellcheck = false;
+  text.addEventListener('change', async () => {
+    const design = { ...QR_DEFAULTS, ...layer.qr, text: text.value.trim() };
+    if (!design.text) return;
+    try {
+      const { src, w, h } = await qrRender(design);
+      layer.src = src; layer.qr = design; layer.naturalW = w; layer.naturalH = h;
+      up(); renderProps();
+    } catch (e) { toast(String(e.message || e), 'error'); }
+  });
+  panel.appendChild(section('style', 'QR code',
+    prop('Says', text),
+    fieldRow([fieldBtn('Edit design…', () => openQrDialog(layer))])));
+}
 
 // ── Theme import / export ─────────────────────────────────────────────────
 // .kairotheme is KAIRO's own real, distinct file type — a small envelope
