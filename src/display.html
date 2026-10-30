@@ -515,7 +515,7 @@
     // change broadcasts — see the server's WebSocket handler (kairo-server ws.rs) and its
     // /api/settings POST), and every later change arrives the same way,
     // live, no reload needed.
-    let outputAnimation = 'fade';
+    let outputAnimation = 'cut';   // the default transition: a cut (owner, 2026-10-30)
     let outputAnimationSpeed = 1;
 
     // ── Font loader ────────────────────────────────────────────────────────
@@ -2518,7 +2518,7 @@
         // ever read as either (owner: "by their order, bible supersedes
         // because it's the top").
         if (msg.type === 'detection' && msg.target === 'viewer') {
-            const verse = msg.verses && msg.verses[0];
+            const verse = msg.verses && versesShownTogether(msg.verses);
             const isBible = !!(verse && verse.book && verse.chapter && verse.verse);
             if (verse) lastLiveSlide = { msg, isBible };
             if (isBible ? !outputLayers.bible : !outputLayers.slide) return;
@@ -3193,24 +3193,35 @@
     // 2026-10-19: "like ProPresenter"). While the mouse is moving over such an output a Close output
     // button shows in a corner, and Esc does the same; the app (app_outputs.js) says which outputs
     // cover it, and switches this one off. Outputs on another screen never show it.
+    // Since 2026-10-30: a big × bottom left, as ProPresenter's (the small top-right "Close output" went
+    // unseen), shown when the app says this output covers it, or opened it so (here=1, app_outputs.js
+    // openDisplayOutput); the close goes through the server too, should the windows not share storage.
     if (!PREVIEW && !MONITOR && !CAPTURE) {
-        const covering = () => { try { return JSON.parse(localStorage.getItem('kairo-outputs-covering-app') || '[]').includes(OUTPUT_KEY); } catch { return false; } };
-        const closeOutput = () => { try { localStorage.setItem('kairo-close-output', JSON.stringify({ id: OUTPUT_KEY, at: Date.now() })); } catch {} };
+        const covering = () => { if (params.get('here') === '1') return true; try { return JSON.parse(localStorage.getItem('kairo-outputs-covering-app') || '[]').includes(OUTPUT_KEY); } catch { return false; } };
+        const closeOutput = () => {
+            try { localStorage.setItem('kairo-close-output', JSON.stringify({ id: OUTPUT_KEY, at: Date.now() })); } catch {}
+            const headers = { 'Content-Type': 'application/json' };
+            if (AUTH_TOKEN) headers.Authorization = `Bearer ${AUTH_TOKEN}`;
+            fetch(`${location.origin}/api/output/leave`, { method: 'POST', headers, body: JSON.stringify({ output: OUTPUT_KEY }) }).catch(() => {});
+        };
         const btn = document.createElement('button');
         btn.type = 'button';
-        btn.textContent = 'Close output  \u00d7';
+        btn.className = 'output-leave';
+        btn.title = 'Leave this display (Esc)';
         btn.setAttribute('aria-label', 'Close this output and go back to Kairo');
-        btn.style.cssText = 'position:fixed;top:2.2vh;right:2.2vh;z-index:2147483647;padding:1vh 2vh;font:600 2.2vh/1 system-ui,-apple-system,sans-serif;color:#fff;background:rgba(20,20,20,0.82);border:1px solid rgba(255,255,255,0.35);border-radius:1vh;cursor:pointer;opacity:0;pointer-events:none;transition:opacity 0.2s;';
+        btn.innerHTML = '<svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>';
         btn.addEventListener('click', closeOutput);
         document.documentElement.appendChild(btn);
         let hideTimer = null;
-        document.addEventListener('mousemove', () => {
+        const reveal = () => {
             if (!covering()) return;
-            btn.style.opacity = '1'; btn.style.pointerEvents = 'auto';
+            btn.classList.add('is-shown');
             clearTimeout(hideTimer);
-            hideTimer = setTimeout(() => { btn.style.opacity = '0'; btn.style.pointerEvents = 'none'; }, 2500);
-        });
+            hideTimer = setTimeout(() => btn.classList.remove('is-shown'), 3000);
+        };
+        document.addEventListener('mousemove', reveal);
         document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && covering()) closeOutput(); });
+        setTimeout(reveal, 600);   // seen once as it opens over the app
     }
 
     // 4. Reveal the window now that its own dark CSS has actually settled.
@@ -3344,6 +3355,12 @@
         // dark content already exists to fade FROM.
         if (params.get('fs') === '1') w.setFullscreen(true).catch(() => {});
     }, 50);
+
     </script>
+    <style>
+        .output-leave { position: fixed; left: 28px; bottom: 28px; z-index: 2147483647; width: 76px; height: 76px; display: grid; place-items: center; border: 1.5px solid rgba(255,255,255,0.35); border-radius: 50%; background: rgba(48,48,52,0.88); color: #fff; cursor: pointer; opacity: 0; pointer-events: none; transition: opacity 200ms ease, background 150ms ease; box-shadow: 0 6px 24px rgba(0,0,0,0.5); }
+        .output-leave.is-shown { opacity: 1; pointer-events: auto; }
+        .output-leave:hover { background: rgba(220,38,38,0.92); }
+    </style>
 </body>
 </html>

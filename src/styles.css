@@ -8898,3 +8898,31 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 .ov-empty .setting-hint { margin: 0; }
 .ov-empty-title { font-size: 14px; font-weight: 600; color: var(--text); }
 .setting-switch-row[hidden] { display: none; }
+
+/* A Live Queue verse's chapter, collapsible under its card (app.js chapterChildren). */
+.cs-live-queue-body .locked-verse-card.children-open { flex-wrap: wrap; }
+.lvc-children-toggle { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; padding: 0; border: 0; background: none; color: var(--text-3); font: inherit; font-size: 11px; cursor: pointer; }
+.lvc-children-toggle::before { content: ''; width: 0; height: 0; border-left: 4px solid currentColor; border-top: 3.5px solid transparent; border-bottom: 3.5px solid transparent; transition: transform var(--trans); }
+.children-open .lvc-children-toggle::before { transform: rotate(90deg); }
+.lvc-children-toggle:hover { color: var(--text); }
+.lvc-children { flex-basis: 100%; display: flex; flex-direction: column; gap: 1px; max-height: 260px; overflow-y: auto; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); cursor: default; }
+.lvc-child { display: flex; gap: 8px; align-items: baseline; width: 100%; padding: 5px 6px; border: 0; border-radius: var(--radius); background: none; color: var(--text-2); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.lvc-child:hover { background: var(--bg-hover); color: var(--text); }
+.lvc-child.on-screen { background: var(--brand-dim, rgba(237,28,36,0.12)); color: var(--text); }
+.lvc-child-num { flex: 0 0 22px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-3); text-align: right; }
+.lvc-child.on-screen .lvc-child-num { color: var(--brand); }
+.lvc-child-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The Previous / Next bar under the monitor, always there: at rest with nothing on screen (app.js renderVerseBar). */
+.range-nav-bar.is-idle .range-nav-label { color: var(--text-3); }
+.range-nav-btn:disabled { opacity: 0.4; cursor: default; pointer-events: none; }
+
+/* The transition, in the monitor's header beside Main, as the original grouped control: one shared
+   track, the chosen option lifted. Fade and Slide's length floats under it the same way. */
+.rs-preview-output-row { position: relative; }
+.rs-transition-inline { position: absolute; left: 50%; top: 50%; translate: -50% -50%; display: inline-flex; align-items: center; }
+.rs-transition-inline .ts-align-group, .rs-transition-inline #rs-anim-picker { gap: 0; padding: 2px; border-radius: 8px; background: rgba(255,255,255,0.05); }
+.rs-transition-inline .rs-anim-btn { width: auto; height: 22px; gap: 4px; padding: 0 7px; font-size: 10.5px; font-weight: 600; border-color: transparent; background: transparent; }
+.rs-transition-inline .rs-anim-btn.active { background: var(--bg-hover); color: var(--text); border-color: transparent; box-shadow: 0 1px 2px rgba(0,0,0,.35); }
+.rs-duration-float { position: absolute; top: calc(100% + 6px); left: 50%; translate: -50% 0; z-index: 60; margin: 0; padding: 4px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); box-shadow: 0 8px 24px rgba(0,0,0,0.45); animation: fade-up 140ms ease-out; }
+.rs-duration-float.hidden { display: none; }

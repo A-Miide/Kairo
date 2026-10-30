@@ -596,8 +596,32 @@
                  the grid on, every output that's on. Nothing to pick. -->
             <div class="rs-preview-card">
                 <div class="rs-preview-output-row">
-                    <span class="rs-preview-output-label">Monitoring</span>
                     <span class="rs-preview-output-name" id="monitor-showing">Main</span>
+                    <!-- The transition a verse or slide goes up with, right in the header (owner,
+                         2026-10-30). Each named, not icon-only (2026-10-12: "tools should be well
+                         labeled"); Fade and Slide's length in chips that float under it. -->
+                    <span class="rs-transition-inline" id="rs-transition-bar">
+                        <span class="ts-align-group" id="rs-anim-picker" role="group" aria-label="Transition">
+                            <button class="ts-align-btn rs-anim-btn" data-anim="fade" title="Fade">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6" stroke-dasharray="2.5 2.5"/></svg><span>Fade</span>
+                            </button>
+                            <button class="ts-align-btn rs-anim-btn" data-anim="slide-up" title="Slide">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="15" y2="12"/><polyline points="11 7 16 12 11 17"/><line x1="20" y1="5" x2="20" y2="19"/></svg><span>Slide</span>
+                            </button>
+                            <button class="ts-align-btn rs-anim-btn" data-anim="cut" title="Cut (instant)">
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 3 5 13 11 13 9 21 19 11 13 11 13 3"/></svg><span>Cut</span>
+                            </button>
+                        </span>
+                        <!-- Fade or Slide clicked: its length, chips floating under it that go once one
+                             is picked (owner, 2026-10-30). -->
+                        <span class="rs-duration rs-duration-float hidden" id="rs-anim-speed-row" role="group" aria-label="Transition length">
+                            <span class="ts-align-group rs-duration-chips" id="rs-anim-speed">
+                                <button class="ts-align-btn rs-anim-btn" data-speed="0.5" title="0.15 s">Quick</button>
+                                <button class="ts-align-btn rs-anim-btn" data-speed="1" title="0.3 s">Normal</button>
+                                <button class="ts-align-btn rs-anim-btn" data-speed="2" title="0.6 s">Slow</button>
+                            </span>
+                        </span>
+                    </span>
                     <!-- Toggles between Main below and a grid of live copies
                          of Main and every output that's on (renderMonitorGrid
                          in app.js). -->
@@ -683,48 +707,25 @@
                      right under the screen it changes (owner, 2026-10-01: "more
                      closer to the display monitor"), reachable without ever
                      opening Theme Studio. -->
-                <div class="rs-transition-bar" id="rs-transition-bar">
-                    <span class="rs-transition-label">Transition</span>
-                    <!-- Each transition named, not icon-only (2026-10-12: "tools
-                         should be well labeled"). -->
-                    <div class="ts-align-group" id="rs-anim-picker" role="group" aria-label="Transition">
-                        <button class="ts-align-btn rs-anim-btn" data-anim="fade" title="Fade">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round"><circle cx="9" cy="12" r="6"/><circle cx="15" cy="12" r="6" stroke-dasharray="2.5 2.5"/></svg><span>Fade</span>
-                        </button>
-                        <button class="ts-align-btn rs-anim-btn" data-anim="slide-up" title="Slide">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="15" y2="12"/><polyline points="11 7 16 12 11 17"/><line x1="20" y1="5" x2="20" y2="19"/></svg><span>Slide</span>
-                        </button>
-                        <button class="ts-align-btn rs-anim-btn" data-anim="cut" title="Cut (instant)">
-                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><polyline points="13 3 5 13 11 13 9 21 19 11 13 11 13 3"/></svg><span>Cut</span>
-                        </button>
-                    </div>
-                    <!-- Three named lengths, not a slider: a live choice wants one
-                         sure click, and a bare slider read as the Media Bin's size
-                         control (2026-10-12). display.html runs 300 ms × the value. -->
-                    <div class="rs-duration" id="rs-anim-speed-row" role="group" aria-label="Transition duration">
-                        <span class="rs-transition-label">Duration</span>
-                        <div class="ts-align-group" id="rs-anim-speed">
-                            <button class="ts-align-btn rs-anim-btn" data-speed="0.5" title="0.15 s">Quick</button>
-                            <button class="ts-align-btn rs-anim-btn" data-speed="1" title="0.3 s">Normal</button>
-                            <button class="ts-align-btn rs-anim-btn" data-speed="2" title="0.6 s">Slow</button>
-                        </div>
-                    </div>
-                </div>
                 <!-- Range navigation -->
-                <div id="range-nav-bar" class="range-nav-bar" style="display:none">
+                <div id="range-nav-bar" class="range-nav-bar is-idle">
                     <div class="range-nav-left">
                         <span class="range-nav-icon">
                             <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6h8M6 2l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                         </span>
-                        <span class="range-nav-label" id="range-nav-label">Range 1 / 3</span>
+                        <span class="range-nav-label" id="range-nav-label">Verse 1 / 3</span>
                         <span class="range-nav-ref" id="range-nav-ref"></span>
                     </div>
                     <div class="range-nav-right">
-                        <button class="range-nav-btn range-nav-next" id="range-next-btn">
+                        <button class="range-nav-btn range-nav-prev" id="verse-prev-btn" title="Previous verse">
+                            <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M10 6H2M6 2L2 6l4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                            Previous
+                        </button>
+                        <button class="range-nav-btn range-nav-next" id="range-next-btn" title="Next verse">
                             Next
                             <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 6h8M6 2l4 4-4 4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
                         </button>
-                        <button class="range-nav-btn range-nav-clear" id="range-clear-btn" title="End range">
+                        <button class="range-nav-btn range-nav-clear" id="range-clear-btn" title="End this passage">
                             <svg width="10" height="10" viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
                             End
                         </button>

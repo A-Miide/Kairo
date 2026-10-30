@@ -1964,9 +1964,12 @@ async function openDisplayOutput(d) {
   const h = scr.height || window.screen.height;
   const x = scr.left   != null ? scr.left : window.screen.width;
   const y = scr.top    != null ? scr.top  : 0;
+  // On the screen this window is on, the output covers Kairo: it offers a way out (its ×).
+  const cx = window.screenX + window.outerWidth / 2, cy = window.screenY + window.outerHeight / 2;
+  const here = cx >= x && cx < x + w && cy >= y && cy < y + h;
   if (typeof openDisplayWindow === 'function') {
     const label = `kairo-${d.id}`;
-    openDisplayWindow(label, url, { width: w, height: h, x, y, fullscreen: true });
+    openDisplayWindow(label, here ? `${url}&here=1` : url, { width: w, height: h, x, y, fullscreen: true });
     verifyDisplayWindowOpened(label);
   } else {
     // This exact fallback — silently opening the system browser instead
@@ -2733,4 +2736,10 @@ if (window.__TAURI__?.event?.listen) {
     const what = payload.stage === 'syphon' ? `${nativeSenderLabel()} isn't taking new frames for ${name}` : `The graphics for ${name} can't be captured`;
     window.kairoProblem?.(`${what}: it shows the last picture until this clears (${payload.error}).`, key);
   });
+}
+
+// The same close, through the server (display.html, /api/output/leave), should the windows not
+// share storage.
+function leaveOutputScreen(outputId) {
+  if (outputId && outputScreenMap()[outputId]) { switchOffDisplay(outputId); publishOutputsCoveringApp(); }
 }

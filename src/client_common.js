@@ -153,3 +153,23 @@ function loadGoogleFont(family) {
   link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:wght@100;200;300;400;500;600;700;800;900&display=swap`;
   document.head.appendChild(link);
 }
+
+// A short passage sent whole (2 or 3 verses of one chapter, kairo-detect SHOWN_TOGETHER_MAX) is
+// shown as one: the verses in order, each opened by its small number, under "Psalms 22:27–28"
+// (owner, 2026-10-30: it shows both verses called). Anything else: the first verse, as before.
+const SUPERSCRIPT_DIGITS = '\u2070\u00b9\u00b2\u00b3\u2074\u2075\u2076\u2077\u2078\u2079';
+function versesShownTogether(verses) {
+  const v0 = verses && verses[0];
+  if (!v0 || verses.length < 2 || verses.length > 3 || !v0.book || !v0.chapter || !v0.verse) return v0;
+  if (!verses.every(v => v.book === v0.book && v.chapter === v0.chapter && v.verse && !v.image)) return v0;
+  const sup = (n) => String(n).replace(/\d/g, d => SUPERSCRIPT_DIGITS[d]);
+  const join = (key) => verses.map(v => `${sup(v.verse)}\u2009${String(v[key] || '').trim()}`).join(' ');
+  const last = verses[verses.length - 1];
+  return {
+    ...v0,
+    text: join('text'),
+    translatedText: verses.every(v => v.translatedText) ? join('translatedText') : '',
+    reference: `${v0.book} ${v0.chapter}:${v0.verse}\u2013${last.verse}`,
+  };
+}
+

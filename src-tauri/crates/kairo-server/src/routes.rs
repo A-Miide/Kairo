@@ -33,6 +33,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/search/suggest", post(search_suggest))
         .route("/api/slides/scripture", post(slides_scripture))
         .route("/api/range/next", post(range_next))
+        .route("/api/verse/step", post(verse_step))
         .route("/api/range/clear", post(range_clear))
         .route("/api/range/jump-to", post(range_jump))
         .route("/api/service/send", post(service_send))
@@ -42,6 +43,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/service/media-control", post(media_control))
         .route("/api/service/audio-output", post(audio_output))
         .route("/api/output/back", post(output_back))
+        .route("/api/output/leave", post(output_leave))
         .route("/api/look/apply", post(look_apply))
         .route("/api/monitor-message", post(monitor_message))
         .route("/api/debug-log", post(debug_log))
@@ -151,7 +153,7 @@ async fn post_settings(State(app): State<Shared>, Json(body): Json<Map<String, V
     if animation_changed {
         app.hub.broadcast(json!({
             "type": "output-transition", "target": "viewer",
-            "animation": s.get("outputAnimation").cloned().unwrap_or_else(|| json!("fade")),
+            "animation": s.get("outputAnimation").cloned().unwrap_or_else(|| json!("cut")),
             "speed": s.get("outputAnimationSpeed").cloned().unwrap_or_else(|| json!(1)),
         }));
     }
@@ -474,6 +476,45 @@ async fn range_next(State(app): State<Shared>) -> Json<Value> {
     Json(json!({ "ok": true, "verse": active.and_then(|r| r["next"]["reference"].as_str().map(str::to_string)) }))
 }
 
+/// Previous / Next under the monitor (owner, 2026-10-30): the verse before what is up, or after it,
+/// across a chapter's end; Next inside a cited range moves the range as its own button did.
+async fn verse_step(State(app): State<Shared>, Json(body): Json<Value>) -> Json<Value> {
+    let Some((bible, d)) = app.ready() else { return Json(json!({ "ok": false, "reason": "still loading" })) };
+    let forward = body["dir"].as_i64().unwrap_or(1) >= 0;
+    let (now, in_range) = {
+        let l = crate::util::lock(&app.hub.live);
+        (l.screen_now.clone(), l.range_state.is_some())
+    };
+    if forward && in_range {
+        d.send(Event::RangeNext);
+        return Json(json!({ "ok": true }));
+    }
+    let verses = now.as_ref().and_then(|n| n["verses"].as_array().cloned()).unwrap_or_default();
+    let edge = if forward { verses.last() } else { verses.first() };
+    let Some((book, chapter, verse)) = edge.and_then(|v| Some((v["book"].as_str()?.to_string(), v["chapter"].as_u64()?, v["verse"].as_u64()?))) else {
+        return Json(json!({ "ok": false, "reason": "no verse on screen" }));
+    };
+    let step = if forward {
+        bible.find(&book, chapter, verse + 1).or_else(|| bible.find(&book, chapter + 1, 1))
+    } else if verse > 1 {
+        bible.find(&book, chapter, verse - 1)
+    } else {
+        // The last verse of the chapter before.
+        let last = chapter.checked_sub(1).filter(|c| *c > 0).map(|c| bible.chapter(&book, c));
+        last.and_then(|vs| vs.last().copied())
+    };
+    let Some(v) = step else { return Json(json!({ "ok": false, "reason": if forward { "last verse of the book" } else { "first verse of the book" } })) };
+    // Back inside a cited range: the window sends it as a range card's Send does (the range stays,
+    // its position moves); anywhere else it's the operator citing that verse.
+    if in_range {
+        let mut list = vec![bible.verse_json(v, 1.0, "direct")];
+        present(&app, bible, &mut list);
+        return Json(json!({ "ok": true, "inRange": true, "send": list.remove(0) }));
+    }
+    d.send(Event::OperatorCited(vec![v]));
+    Json(json!({ "ok": true, "verse": bible.reference(v) }))
+}
+
 async fn range_clear(State(app): State<Shared>) -> Json<Value> {
     if let Some((_, d)) = app.ready() {
         d.send(Event::RangeClear);
@@ -696,6 +737,14 @@ fn note_likely_wrong_send(app: &Shared, undone: Option<&Value>, restored: Option
 }
 
 /// Back: undoes the last change to what's on screen.
+/// An output covering the operator's own screen, left with its × (display.html): the operator
+/// window takes it off that screen, as choosing None for it in Settings → Outputs does.
+async fn output_leave(State(app): State<Shared>, Json(b): Json<Value>) -> Json<Value> {
+    let Some(output) = b["output"].as_str().filter(|o| !o.is_empty()) else { return Json(json!({ "ok": false })) };
+    app.hub.broadcast(json!({ "type": "output-leave", "output": output }));
+    Json(json!({ "ok": true }))
+}
+
 async fn output_back(State(app): State<Shared>) -> Json<Value> {
     let (prev, undone) = {
         let mut l = crate::util::lock(&app.hub.live);

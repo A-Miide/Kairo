@@ -6960,7 +6960,7 @@
   let inited = false;
   // Output transition (Fade/Slide/Cut + speed) — display-level, not per-
   // theme (see display.html's outputAnimation and its own comment there),
-  // so this quick picker lives right under the Monitoring preview instead
+  // so this quick picker lives in the monitor's header (beside Main) instead
   // of requiring a trip into Theme Studio to change how the WHOLE output
   // transitions. Persisted through the existing /api/settings store; the
   // POST there broadcasts live to display.html, so a change here takes
@@ -6970,9 +6970,16 @@
     const speedInput = document.getElementById('rs-anim-speed');
     if (!picker || !speedInput) return;
 
+    // Fade or Slide clicked: its length floats under it as chips, gone once one is picked (or on a
+    // click elsewhere, Escape); a cut has none.
+    const chips = document.getElementById('rs-anim-speed-row');
+    const showChips = (show) => chips?.classList.toggle('hidden', !show);
+    document.addEventListener('click', (e) => { if (chips && !chips.classList.contains('hidden') && !chips.contains(e.target) && !picker.contains(e.target)) showChips(false); });
+    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') showChips(false); });
+
     function setActive(anim) {
       picker.querySelectorAll('.ts-align-btn').forEach(b => b.classList.toggle('active', b.dataset.anim === anim));
-      document.getElementById('rs-anim-speed-row')?.classList.toggle('hidden', anim === 'cut');
+      if (anim === 'cut') showChips(false);
     }
     // Quick / Normal / Slow; a value saved before (any length) shows as the nearest.
     const showDuration = (value) => {
@@ -6990,15 +6997,16 @@
     let userTouched = false;
     fetchServerSettings().then(s => {
       if (userTouched) return;
-      setActive(s.outputAnimation || 'fade');
+      setActive(s.outputAnimation || 'cut');
       if (typeof s.outputAnimationSpeed === 'number' && s.outputAnimationSpeed > 0) showDuration(s.outputAnimationSpeed);
-    }).catch(() => { if (!userTouched) setActive('fade'); });
+    }).catch(() => { if (!userTouched) setActive('cut'); });
 
     picker.addEventListener('click', (e) => {
       const btn = e.target.closest('.ts-align-btn');
       if (!btn) return;
       userTouched = true;
       setActive(btn.dataset.anim);
+      showChips(btn.dataset.anim !== 'cut');
       KairoTransitions.words({ animation: btn.dataset.anim });
     });
 
@@ -7008,6 +7016,7 @@
       userTouched = true;
       const value = parseFloat(btn.dataset.speed);
       showDuration(value);
+      showChips(false);
       KairoTransitions.words({ speed: value });
     });
   }
