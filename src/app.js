@@ -321,6 +321,10 @@ function handleServerMessage(msg) {
       handleTranscript(msg);
       break;
 
+    case 'transcript-settled':
+      handleTranscriptSettled(msg);
+      break;
+
     case 'interpretation':
       window.KairoInterpreter?.onMessage(msg);
       break;
@@ -616,6 +620,26 @@ function handleSinging(msg) {
   if (wasAtBottom) scheduleTranscriptScroll();
 }
 
+// The opening of a long stretch still being said, settled by detection (server "transcript-settled",
+// the engine's on_speech): locked in the log now, not grey until the speech engine pauses.
+let settled = { words: [], spans: [] };
+const plainWord = (w) => String(w).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+function handleTranscriptSettled(msg) {
+  if (!msg.text || !transcriptDiv) return;
+  const wasAtBottom = isTranscriptAtBottom();
+  const span = document.createElement('span');
+  span.className = 'transcript-final';
+  span.innerHTML = highlightScriptureRefs(msg.text) + ' ';
+  if (interimSpan) transcriptDiv.insertBefore(span, interimSpan); else transcriptDiv.appendChild(span);
+  settled.words.push(...msg.text.split(/\s+/).filter(Boolean));
+  settled.spans.push(span);
+  if (interimSpan) {
+    const live = interimSpan.textContent.split(/\s+/).filter(Boolean);
+    interimSpan.innerHTML = highlightScriptureRefs(live.slice(msg.text.split(/\s+/).filter(Boolean).length).join(' '));
+  }
+  if (wasAtBottom) scheduleTranscriptScroll();
+}
+
 function handleTranscript(msg) {
   // The interpreter's turn: marked once, never transcribed (interpreter.js).
   const interpreted = window.KairoInterpreter ? window.KairoInterpreter.transcript(msg) : 0;
@@ -635,10 +659,18 @@ function handleTranscript(msg) {
   // has to reflect whether they were following along prior to this
   // update, not be skewed by how much new content just arrived.
   const wasAtBottom = isTranscriptAtBottom();
+  // Words detection already settled show locked (handleTranscriptSettled): the live text and the
+  // final show only what follows them. A final worded otherwise replaces them.
+  const settledWords = settled.words.length;
+  const words = String(msg.text || '').split(/\s+/).filter(Boolean);
+  const carries = settledWords > 0 && settledWords <= words.length && settled.words.every((w, i) => plainWord(w) === plainWord(words[i]));
+  const shown = carries ? words.slice(settledWords).join(' ') : msg.text;
+  if (settledWords && !carries) { settled.spans.forEach((s) => s.remove()); }
+  if (msg.isFinal || !carries) settled = { words: [], spans: [] };
   if (msg.isFinal) {
     const span = document.createElement('span');
     span.className = 'transcript-final';
-    span.innerHTML = highlightScriptureRefs(msg.text) + ' ';
+    span.innerHTML = highlightScriptureRefs(shown) + ' ';
     if (interimSpan) transcriptDiv.insertBefore(span, interimSpan);
     else transcriptDiv.appendChild(span);
     if (interimSpan) interimSpan.textContent = '';
@@ -663,7 +695,7 @@ function handleTranscript(msg) {
     // Auto-scroll — only if the operator was already following along.
     if (wasAtBottom) scheduleTranscriptScroll();
   } else {
-    if (interimSpan) { interimSpan.innerHTML = highlightScriptureRefs(msg.text); interimSpan.style.opacity = '0.5'; }
+    if (interimSpan) { interimSpan.innerHTML = highlightScriptureRefs(shown); interimSpan.style.opacity = '0.5'; }
     if (wasAtBottom) scheduleTranscriptScroll();
   }
   // Lyric follower (service.js) — every transcript segment, final or interim,

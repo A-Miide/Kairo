@@ -209,7 +209,10 @@ impl Engine {
         } else {
             self.effect(Effect::RangeMoved { current: next, remaining: self.range.queue.len() });
         }
-        self.decide(Candidate::new(vec![next], Method::Direct, 1.0, Target::Screen).reading_on(), now);
+        // A short range up whole stays up whole: the reading moves on inside it.
+        if !self.screen.together.contains(&next) {
+            self.decide(Candidate::new(vec![next], Method::Direct, 1.0, Target::Screen).reading_on(), now);
+        }
         true
     }
 

@@ -414,6 +414,7 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
                 }));
             }
             Effect::TopicLibrary { size, words } => hub.broadcast(json!({ "type": "topic-library", "size": size, "words": words })),
+            Effect::Settled { text } => hub.broadcast(json!({ "type": "transcript-settled", "text": text })),
             Effect::WakeAt { .. } | Effect::ReadIn { .. } => {}
         }
     }

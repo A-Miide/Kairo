@@ -7,14 +7,14 @@ use std::sync::LazyLock;
 use kairo_bible::{VerseId, VerseRef};
 
 use super::citations::{ends_on_growable_number, ends_on_tens_and_unit, interim_looks_incomplete, opens_with_number, tokens, DIRECT_PARTIAL_SCORE, PREV_FINAL_JOIN_WINDOW_MS};
-use super::core::{Candidate, Engine};
+use super::core::{Candidate, ChapterPending, Engine};
 use super::evidence::{meaningful_words, stem_lite};
 use super::types::{Hold, Method, Target};
 use crate::re::re;
 use crate::reference::i18n::localize;
 use crate::reference::numbers::{consume_number, is_ambiguous_number_word};
 use crate::reference::partial::BARE_NUMBER_FILLER;
-use crate::reference::{Active, Partial, Verses};
+use crate::reference::{Active, Citation, Partial, Verses};
 
 const NEXT_VERSE_COOLDOWN_MS: u64 = 4_000;
 const NEXT_VERSE_MAX_GAP_MS: u64 = 180_000;
@@ -24,6 +24,23 @@ const BARE_NUMBER_MAX_GAP_MS: u64 = 15_000;
 const VERSE_END_NUMBER_WINDOW_MS: u64 = 8_000;
 const VERSE_JUMP_MAX_WORDS: usize = 4;
 const VERSE_JUMP_COOLDOWN_MS: u64 = 2_000;
+/// How soon after a named chapter its first number still counts as the verse, in time and in words
+/// (owner, 2026-10-30: a time limit between book, chapter and verse).
+const NEXT_NUMBER_WITHIN_MS: u64 = 15_000;
+const NEXT_NUMBER_WITHIN_WORDS: usize = 15;
+/// A number counting something is not a verse: "I have three points", "forty days", "the two
+/// things". Words before it that make it a count, and words after it that it counts.
+const COUNTING: &[&str] = &[
+    "have", "has", "had", "got", "are", "were", "about", "over", "than", "only", "just", "all", "those", "these", "the", "my", "our",
+    "your", "his", "her", "their", "every", "some", "nearly", "almost", "around",
+];
+const COUNTED: &[&str] = &["day", "year", "people", "men", "women", "thousand", "million", "billion", "o'clock", "percent", "times", "a", "of"];
+/// Words ending in "s" that aren't a plural being counted.
+const NOT_PLURAL: &[&str] = &["says", "is", "was", "this", "us", "yes", "thus", "has", "does", "goes", "jesus", "his", "its", "lets", "let's", "as"];
+
+fn counted(w: &str) -> bool {
+    COUNTED.contains(&w) || (w.len() > 3 && w.ends_with('s') && !NOT_PLURAL.contains(&w))
+}
 /// A word this identifying, heard, lets a bare "verse N" in a chapter never named go up.
 const PARTIAL_OWN_WORD_MIN_IDF: f32 = 4.0;
 /// A verse of the same chapter on screen this recently also lets a bare "verse N" go up.
@@ -220,6 +237,12 @@ impl Engine {
     /// since the chapter was named, as the words come in: the offline engine locks text only at a pause,
     /// and the preacher went on for half a minute, so waiting for the final put the verses up late
     /// (live, 2026-10-29). A sentence still being said may grow, so it waits for its full stop.
+    /// A chapter named in the words just heard, waiting for its verse: its numbers may be in the same
+    /// words ("Psalm twenty two will read twenty seven and twenty eight." in one final).
+    pub(crate) fn chapter_named_now(&self, now: u64) -> bool {
+        self.chapter_pending.as_ref().is_some_and(|p| p.at == now)
+    }
+
     pub(crate) fn pending_chapter_numbers(&mut self, now: u64) -> bool {
         let Some(p) = self.chapter_pending.clone() else { return false };
         if now.saturating_sub(p.at) > super::core::CHAPTER_NAMED_WAITS_MS {
@@ -227,12 +250,12 @@ impl Engine {
         }
         let since = self.t.words.text(p.from..self.t.words.end());
         let active = Active { book: Some(p.book), chapter: Some(p.chapter as u32) };
-        // The first sentence names the chapter: its numbers are the parser's.
-        for sentence in since.split_inclusive(['.', '?', '!']).skip(1) {
-            if !sentence.trim_end().ends_with(['.', '?', '!']) {
-                continue;
-            }
-            let Some(part) = self.k.partials(self.cfg.lang).resolve(sentence, active, true) else { continue };
+        // The first number said after the chapter is its verse, whatever words come between (owner,
+        // 2026-10-30: "Psalm twenty two will read twenty seven and twenty eight", one sentence, went
+        // up only when the reading was matched). Then, as before, a later sentence's own bare numbers.
+        let next = (now.saturating_sub(p.at) <= NEXT_NUMBER_WITHIN_MS).then(|| self.next_numbers_after_chapter(&since, &p)).flatten();
+        let later = since.split_inclusive(['.', '?', '!']).skip(1).filter(|s| s.trim_end().ends_with(['.', '?', '!']));
+        for part in next.into_iter().chain(later.filter_map(|s| self.k.partials(self.cfg.lang).resolve(s, active, true))) {
             if part.citation.book != p.book || part.citation.chapter != p.chapter as u32 {
                 continue;
             }
@@ -251,6 +274,52 @@ impl Engine {
             return true;
         }
         false
+    }
+
+    /// The first number said after the waiting chapter's own number, as its verse, or "N and/to M" as
+    /// its verses, when the chapter has them. Not when another book, "chapter" or "verse" comes first
+    /// (the parser's), when the number counts something ("forty days"), or while it may still grow
+    /// ("twenty" of "twenty seven"): a word or a full stop must follow.
+    fn next_numbers_after_chapter(&self, since: &str, p: &ChapterPending) -> Option<Partial> {
+        let raw: Vec<&str> = since.split_whitespace().collect();
+        let owned: Vec<String> = raw.iter().map(|w| w.trim_matches(|c: char| !c.is_alphanumeric() && c != '\'' && c != '-').to_lowercase()).collect();
+        let words: Vec<&str> = owned.iter().map(String::as_str).collect();
+        let number = |i: usize| (!is_ambiguous_number_word(words.get(i)?)).then(|| consume_number(&words, i, None)).flatten();
+        // The chapter's own number, said with the book.
+        let at = (0..words.len().min(6)).find(|&i| number(i).is_some())?;
+        let chapter = number(at)?;
+        if chapter.value != p.chapter as i64 {
+            return None;
+        }
+        let count = self.k.shape.verses(p.book, p.chapter as u32)? as i64;
+        let from = at + chapter.consumed;
+        for i in from..words.len().min(from + NEXT_NUMBER_WITHIN_WORDS) {
+            let w = words[i];
+            if matches!(w, "verse" | "verses" | "chapter" | "chapters") || self.k.books.alias(w).is_some() {
+                return None;
+            }
+            let Some(a) = number(i) else { continue };
+            let mut end = i + a.consumed;
+            let mut b = None;
+            if matches!(words.get(end).copied(), Some("and" | "to" | "through" | "thru" | "till" | "until")) {
+                if let Some(n) = number(end + 1) {
+                    b = Some(n.value);
+                    end += 1 + n.consumed;
+                }
+            }
+            let closed = end < words.len() || raw[end - 1].ends_with(['.', '?', '!', ',']);
+            let counts = i.checked_sub(1).is_some_and(|j| COUNTING.contains(&words[j])) || words.get(end).is_some_and(|w| counted(w));
+            if !closed || counts || !(1..=count).contains(&a.value) {
+                return None;
+            }
+            let verses = match b {
+                Some(b) if b > a.value && b <= count => Verses::Span(a.value as u32, b as u32),
+                Some(_) => return None,
+                None => Verses::One(a.value as u32),
+            };
+            return Some(Partial { citation: Citation::new(p.book, p.chapter as u32, verses), chapter_given: false });
+        }
+        None
     }
 
     /// A bare "verse N" goes up when its chapter was named aloud. A chapter in play only because a

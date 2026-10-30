@@ -259,3 +259,22 @@ fn a_book_that_is_an_everyday_word_named_with_its_chapter_alone_waits_for_its_ve
     let (up, _) = outcome(&script("the genesis of it all is love and then go to verse twenty three"));
     assert!(up.is_empty(), "up {up:?}");
 }
+
+#[test]
+fn the_first_number_after_a_named_chapter_is_its_verse_whatever_words_come_between() {
+    // Live, 2026-10-30, one sentence: went up only when the reading itself was matched, 12 s later.
+    let (up, _) = outcome(&script("Our final read for now, Psalm twenty two will read twenty seven and twenty eight. I'd like us to read together in concert."));
+    assert_eq!(up, [v("Psalms", 22, 27), v("Psalms", 22, 28)]);
+    let (up, _) = outcome(&script("Isaiah forty, look at thirty one, they that wait upon the Lord."));
+    assert_eq!(up, [v("Isaiah", 40, 31)]);
+    // …but a number counting something is not a verse.
+    for said in [
+        "Romans eight, I have three points for you this morning.",
+        "Genesis one, for forty days it rained.",
+        "Romans eight, the two things we learn.",
+        "Romans eight, and in two thousand and five I went to London.",
+    ] {
+        let (up, _) = outcome(&script(said));
+        assert!(up.is_empty(), "{said}: {up:?}");
+    }
+}

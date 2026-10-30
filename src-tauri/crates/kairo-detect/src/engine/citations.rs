@@ -120,6 +120,11 @@ pub(crate) fn interim_looks_incomplete(text: &str, lang: crate::reference::Lang)
     !w.is_empty() && (is_number_word(&w) || w == "hundred" || DANGLING.contains(&w.as_str()))
 }
 
+/// The interim stops on a word that carries a citation on to where it ends ("nineteen to…").
+fn ends_on_range_word(text: &str) -> bool {
+    matches!(last_raw_word(text).to_lowercase().as_str(), "to" | "through" | "thru" | "and" | "till" | "until")
+}
+
 /// A number at the end whose own sound can still grow ("seven…teen"), in the service's
 /// language ("vinte" → "vinte e oito").
 pub(crate) fn ends_on_growable_number(text: &str, lang: crate::reference::Lang) -> bool {
@@ -539,6 +544,12 @@ impl Engine {
             // A citation at the end of a growing interim may be half-heard.
             if !is_final && !unresolved && i + 1 == count && interim_looks_incomplete(text, self.cfg.lang) {
                 if ends_on_growable_number(text, self.cfg.lang) {
+                    continue;
+                }
+                // "chapter six nineteen to…": the same verse twice isn't settled while a range is
+                // being said; the next word says where it ends (live, 2026-10-29: 6:19 went up
+                // alone, and "to twenty" never made it a range).
+                if ends_on_range_word(text) {
                     continue;
                 }
                 let key = cite_key(&c);

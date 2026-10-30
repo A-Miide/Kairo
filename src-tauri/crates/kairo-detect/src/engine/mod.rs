@@ -54,7 +54,7 @@ mod twins;
 pub mod types;
 pub mod words;
 
-pub use self::core::{Config, Engine};
+pub use self::core::{Config, Engine, SHOWN_TOGETHER_MAX};
 pub use self::meaning::MeaningThresholds;
 
 pub use event::{Answer, Effect, Event, MeaningHit, Output, Request, Segment, TimerId};

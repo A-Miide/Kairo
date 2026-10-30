@@ -159,6 +159,9 @@ pub struct CorrectedAway {
 pub struct Screen {
     /// The verse up, and when it went up.
     pub up: Option<(VerseId, u64)>,
+    /// A short range sent whole, up together: reading through it keeps it up whole (owner,
+    /// 2026-10-30: "it shows both verses called"), not one verse at a time.
+    pub together: Vec<VerseId>,
     /// Verses shown while the current book has been up.
     pub shown_this_book: HashSet<VerseId>,
     pub last_sent_book: Option<(Book, u64)>,

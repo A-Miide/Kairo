@@ -81,6 +81,9 @@ pub enum Effect {
     ReadIn { verse: VerseId, translation: String },
     /// Ask to be woken with `Event::Timer(id)` at `at_ms`.
     WakeAt { id: TimerId, at_ms: u64 },
+    /// The opening of a long stretch still being said, settled for detection (core.rs on_speech):
+    /// the transcript shows it locked too, not waiting for the speech engine's pause.
+    Settled { text: String },
 }
 
 /// Model-backed work the runtime does off the detection thread.

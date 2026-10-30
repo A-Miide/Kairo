@@ -143,7 +143,17 @@ fn score(k: &Knowledge, gt: &[GroundTruth], decisions: &[Decision], last_ms: i64
     for g in gt.iter().filter(|g| !g.keys.is_empty() && !g.paraphrase) {
         s.total += 1;
         let hit = screen.iter().enumerate().find(|(i, d)| !used.contains(i) && g.keys.contains(&d.verses[0]) && (d.at_ms - g.at_ms).abs() <= MATCH_WINDOW_MS);
-        match hit {
+        // …or a later verse of a short range sent whole, still up when it's read: the engine keeps
+        // it up together (SHOWN_TOGETHER_MAX) instead of sending that verse on its own.
+        let together = || {
+            screen.iter().enumerate().find(|(i, d)| {
+                (2..=kairo_detect::engine::SHOWN_TOGETHER_MAX).contains(&d.verses.len())
+                    && d.verses[1..].iter().any(|v| g.keys.contains(v))
+                    && d.at_ms <= g.at_ms + MATCH_WINDOW_MS
+                    && screen.get(i + 1).is_none_or(|next| next.at_ms >= g.at_ms - MATCH_WINDOW_MS)
+            })
+        };
+        match hit.or_else(together) {
             Some((i, d)) => {
                 used.insert(i);
                 s.found += 1;

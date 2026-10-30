@@ -14,6 +14,8 @@ use std::collections::HashSet;
 const RETURN_MIN_IDF: f32 = 3.0;
 /// A verse quoted again this closely comes back past the repeat filter.
 const REQUOTE_MIN_SCORE: f32 = 0.95;
+/// A verse matched this closely, word for word, goes up on its words alone (step 5b).
+const NEAR_EXACT_SCORE: f32 = 0.95;
 
 /// How long a finished range (its last verse reached) still holds off other books.
 const FINISHED_RANGE_HOLD_MS: u64 = 30_000;
@@ -180,6 +182,28 @@ impl Engine {
             target = Target::Suggestions;
         }
 
+        // 5b. Said almost word for word, one verse: it goes up (owner, 2026-10-30: "if it matches 99%
+        // it is correct"). Only the words matched in order (not a meaning or keyword match), only a
+        // verse no other verse's wording ties with once the tie-breaker has had its say, never one
+        // held for a reason of its own, already up, or behind the passage being read.
+        if target == Target::Suggestions
+            && matches!(c.method, Method::Stream | Method::Verbatim)
+            && c.score >= NEAR_EXACT_SCORE
+            && c.verses.len() == 1
+            && c.hold.is_none()
+            && !c.verbatim_disagreed
+            && self.worded_alike(top).is_empty()
+            && self.screen.up_verse() != Some(top)
+            && !self.screen.together.contains(&top)
+            && !self.screen.up_verse().is_some_and(|u| {
+                let ur = self.r(u);
+                ur.book == r.book && ur.chapter == r.chapter && r.verse < ur.verse
+            })
+        {
+            self.note(|e| format!("{} said almost word for word ({:.2}): up", e.label(top), c.score));
+            target = Target::Screen;
+        }
+
         // 6. A verse's identifying words in any order are a second opinion,
         // never an offer of their own: in a sermon those words recur, and on
         // their own they were mostly wrong.
@@ -283,7 +307,13 @@ impl Engine {
             }
         }
 
-        // 12. Don't flood the screen with the same verse.
+        // 12. A verse of a short range already up whole is up: reading on through it, or its words
+        // matched again, doesn't narrow the screen to that one verse.
+        if target == Target::Screen && c.verses.len() == 1 && self.screen.together.contains(&top) {
+            return Target::Drop;
+        }
+
+        // 12a. Don't flood the screen with the same verse.
         if target == Target::Screen {
             let spoken = matches!(c.method, Method::Direct | Method::Continuation);
             let window = if spoken { DIRECT_DEDUP_MS } else { DETECT_DEDUP_MS };
