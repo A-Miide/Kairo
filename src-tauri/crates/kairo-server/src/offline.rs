@@ -193,7 +193,9 @@ fn keep_warm(app: Shared) {
             return;
         }
         let Some(exe) = coreml_worker(&app) else { return };
-        set_engine_state(&app, "preparing", false);
+        if engine_state() != "ready" {
+            set_engine_state(&app, "preparing", false);
+        }
         let started = spawn_worker(&dir, &None, Some(&exe));
         if let Ok((child, _)) = &started {
             LOADING.store(child.id(), std::sync::atomic::Ordering::SeqCst);
@@ -263,6 +265,16 @@ fn wait_ready((mut child, from): Worker, stopping: &AtomicBool) -> Result<Worker
 /// Loads the Core ML model once, so macOS prepares it for the Neural Engine at install (~45 s on an
 /// M1) and not when someone first presses Start; it keeps what it prepared.
 pub fn prepare_coreml(app: &Shared, dir: &std::path::Path) -> Result<(), String> {
+    // Start listening meanwhile waits for this load rather than starting a second one beside it,
+    // and Settings → Audio says the engine is being prepared (a fresh install, 2026-10-30).
+    let _held = PREPARING.lock();
+    set_engine_state(app, "preparing", false);
+    let result = prepare_coreml_now(app, dir);
+    set_engine_state(app, if result.is_ok() { "ready" } else { "failed" }, false);
+    result
+}
+
+fn prepare_coreml_now(app: &Shared, dir: &std::path::Path) -> Result<(), String> {
     use std::io::BufRead;
     let exe = coreml_worker(app).ok_or("the offline speech engine is missing from this copy of Kairo")?;
     let mut child = std::process::Command::new(exe)
@@ -671,12 +683,14 @@ pub async fn start(app: Shared) -> Result<Session, Value> {
     let (started_tx, started_rx) = std::sync::mpsc::sync_channel::<Result<(), String>>(1);
     let app2 = app.clone();
     if coreml_exe.is_some() {
-        // The engine still being prepared: Settings → Audio says why Start is waiting (owner, 2026-10-30).
-        if engine_state() == "preparing" {
+        // The engine still being prepared (at launch, by setup, or by this start): Settings → Audio
+        // says why Start is waiting (owner, 2026-10-30).
+        if engine_state() == "preparing" || (crate::util::lock(&WARM).is_none() && engine_state() != "ready") {
             set_engine_state(&app, "preparing", true);
         }
         let _ = tokio::task::spawn_blocking(|| drop(PREPARING.lock())).await;
     }
+    let uses_coreml = coreml_exe.is_some();
     let worker = std::thread::Builder::new()
         .name("offline-speech".into())
         .spawn(move || supervise(app2, detector, dir, language, coreml_exe, rx, flag, started_tx))
@@ -689,6 +703,9 @@ pub async fn start(app: Shared) -> Result<Session, Value> {
         let msg = format!("Offline engine failed to start: {e}");
         state(&app, "error", Some(("unknown", msg.clone())));
         return Err(json!({ "error": msg }));
+    }
+    if uses_coreml && engine_state() != "ready" {
+        set_engine_state(&app, "ready", false);
     }
     state(&app, "connected", None);
     eprintln!("[Offline] Listening ({model} model).");

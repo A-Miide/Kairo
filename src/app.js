@@ -4142,7 +4142,7 @@ async function renderOfflineSummary() {
   if (en?.installed) row(true, `Offline: English${english.length ? ` (${english.join(', ')})` : ''}`);
   // This Mac's Neural Engine copy of the English model (server offline.rs ENGINE_STATE).
   const engine = speechEngineState || en?.engine || '';
-  if (en?.installed && engine === 'preparing') {
+  if (engine === 'preparing') {
     const r = document.createElement('div');
     r.className = 'lang-cap-row preparing';
     const m = document.createElement('span'); m.className = 'lang-cap-mark'; m.setAttribute('aria-hidden', 'true'); m.textContent = '\u2026';
