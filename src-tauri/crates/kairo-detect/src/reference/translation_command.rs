@@ -15,18 +15,20 @@ use regex::Regex;
 /// Code → the ways it is said.
 const ALIASES: &[(&str, &[&str])] = &[
     ("KJV", &["king james version", "king james bible", "king james", "authorized version", "kjv"]),
+    ("BSB", &["berean standard bible", "berean standard", "berean bible", "bsb"]),
+    // Not bundled: shown only when the church added it (API.Bible or a file), else logged. NKJV is here
+    // so "the new King James" is never taken for the KJV (its publisher declined permission, 2026-10).
+    // NIV, NLT, ESV and NASB stopped shipping 2026-10: copyrighted, with no licence for Kairo.
     ("NLT", &["new living translation", "new living", "nlt"]),
     ("NIV", &["new international version", "new international", "niv"]),
     ("ESV", &["english standard version", "english standard", "esv"]),
     ("NASB", &["new american standard bible", "new american standard version", "new american standard", "nasb"]),
-    // Not bundled: recognised so a request for it can be logged, never shown. NKJV is here so "the new
-    // King James" is never taken for the KJV (its publisher declined permission, 2026-10: no file ships).
     ("NKJV", &["new king james version", "new king james bible", "new king james", "nkjv"]),
     ("MSG", &["message bible", "message translation", "message version", "msg"]),
 ];
 
 /// Recognised in speech but without a Bible file in the app.
-const UNBUNDLED: &[&str] = &["MSG", "NKJV"];
+const UNBUNDLED: &[&str] = &["NLT", "NIV", "ESV", "NASB", "MSG", "NKJV"];
 
 fn code_of(alias: &str) -> Option<&'static str> {
     let a = alias.split_whitespace().collect::<Vec<_>>().join(" ");
@@ -107,11 +109,11 @@ static CITED_IN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(&format!(r"\b{n}[.,]?\s+(?:in\s+|from\s+)?(?:the\s+)?(?P<list>(?:{a})(?:\s*(?:,|or|and)\s*(?:the\s+)?(?:{a}))*)(?:[^a-z]|$)(?P<rest>.{{0,30}})")).unwrap()
 });
 /// A translation's letters as a word of their own ("niv", "nkjv"; spelled ones are joined by `normalize`).
-static ACRONYM: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b(?:nkjv|kjv|nlt|niv|esv|nasb)\b").unwrap());
+static ACRONYM: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\b(?:nkjv|kjv|bsb|nlt|niv|esv|nasb)\b").unwrap());
 
 static QUOTING: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\s*(?:version\s+|translation\s+|bible\s+)?(?:says|said|reads|read\s+it|puts\s+it|renders|rendered|translates|translated|has\s+it|calls|called|uses)\b").unwrap());
 
-/// The last translation command in `text`: its code ("NIV", or "MSG"/"NKJV" when it isn't bundled).
+/// The last translation command in `text`: its code ("BSB", or "NIV"/"MSG" when it isn't bundled).
 /// With several named ("NLT or message"), the first bundled one.
 pub fn translation_command(text: &str) -> Option<&'static str> {
     let t = normalize(text);

@@ -17,9 +17,9 @@ struct Fixture {
 static F: LazyLock<Fixture> = LazyLock::new(|| {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../databases/bibles");
     let corpus = Corpus::load(&dir).unwrap();
-    let nlt = corpus.load_map_nlt(&dir.join("map.json")).unwrap();
+    let bsb = corpus.load_flat("BSB", &dir.join("translations/BSB.json")).unwrap();
     let t = Instant::now();
-    let lex = Lexicon::build(&corpus, Wordings { own: None, also: vec![nlt] });
+    let lex = Lexicon::build(&corpus, Wordings { own: None, also: vec![bsb] });
     eprintln!("lexicon built in {:.1}s: {} words, {} anchors, {} verses with twins", t.elapsed().as_secs_f32(), lex.vocab().len(), lex.anchor_count(), lex.verses_with_twins());
     Fixture { corpus, lex }
 });

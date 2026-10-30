@@ -266,7 +266,6 @@ fn load_translation(corpus: &Corpus, bibles: &Path, code: &str) -> Result<Transl
             let path = bibles.join("translations/KJV.json");
             if path.exists() { corpus.load_flat("KJV", &path)? } else { kjv_copy(corpus) }
         }
-        "NLT" => corpus.load_map_nlt(&bibles.join("map.json"))?,
         other => corpus.load_flat(other, &bibles.join(format!("translations/{other}.json")))?,
     })
 }

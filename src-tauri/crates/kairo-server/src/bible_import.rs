@@ -19,7 +19,7 @@ use serde_json::{json, Value};
 use crate::Shared;
 
 /// Codes that belong to Bibles the app ships; an imported Bible can't take their place.
-const RESERVED: [&str; 5] = ["KJV", "NLT", "NIV", "ESV", "NASB"];
+const RESERVED: [&str; 2] = ["KJV", "BSB"];
 
 const USFM_CODES: [&str; 66] = [
     "GEN", "EXO", "LEV", "NUM", "DEU", "JOS", "JDG", "RUT", "1SA", "2SA", "1KI", "2KI", "1CH", "2CH", "EZR", "NEH", "EST", "JOB", "PSA", "PRO",
@@ -731,7 +731,7 @@ pub fn clean_code(raw: &str) -> Option<String> {
 }
 
 /// A short name made from a Bible's own name, not taken by a shipped Bible or one already added:
-/// "English NIV" → NIV2 (NIV ships), "World English Bible" → WEB, "New Living Translation" → NLT.
+/// "English NIV" → NIV, "Berean Standard Bible" → BSB2 (BSB ships), "World English Bible" → WEB.
 pub fn unique_code(app_data: &std::path::Path, name: &str) -> String {
     let name = name.trim();
     let name = name.strip_prefix("English:").or_else(|| name.strip_prefix("English ")).unwrap_or(name);
@@ -914,15 +914,17 @@ mod tests {
     fn codes_are_file_names_and_never_a_shipped_bible() {
         assert_eq!(clean_code("my-bible"), Some("MYBIBLE".into()));
         assert_eq!(clean_code("../x"), None);
-        assert_eq!(clean_code("niv"), None);
+        assert_eq!(clean_code("bsb"), None);
+        assert_eq!(clean_code("niv"), Some("NIV".into()), "NIV no longer ships: a church's own may take the name");
         assert_eq!(clean_code("msg"), Some("MSG".into()));
         let d = std::env::temp_dir().join("kairo_code_test");
-        assert_eq!(unique_code(&d, "English NIV"), "NIV2");
+        assert_eq!(unique_code(&d, "English NIV"), "NIV");
+        assert_eq!(unique_code(&d, "Berean Standard Bible"), "BSB2");
         assert_eq!(unique_code(&d, "World English Bible"), "WEB");
-        assert_eq!(unique_code(&d, "New Living Translation"), "NLT2");
+        assert_eq!(unique_code(&d, "New Living Translation"), "NLT");
         assert_eq!(unique_code(&d, "The Message"), "MESSAGE");
         assert_eq!(unique_code(&d, "MSG"), "MSG");
-        assert!(code_error("niv").contains("already a Bible that comes with Kairo"));
+        assert!(code_error("bsb").contains("already a Bible that comes with Kairo"));
         assert!(code_error("a").contains("2 to 8"));
         assert_eq!(clean_code("a"), None);
     }

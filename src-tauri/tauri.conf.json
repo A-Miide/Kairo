@@ -55,7 +55,6 @@
     ],
     "resources": {
       "../src": "src",
-      "../databases/bibles/map.json": "databases/bibles/map.json",
       "../databases/bibles/kjv.json": "databases/bibles/kjv.json",
       "../databases/bibles/model": "databases/bibles/model",
       "../databases/bibles/reranker_model": "databases/bibles/reranker_model",

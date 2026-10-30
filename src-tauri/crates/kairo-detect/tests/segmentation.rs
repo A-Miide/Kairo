@@ -15,13 +15,12 @@ static K: LazyLock<Arc<Knowledge>> = LazyLock::new(|| {
     Arc::new(Knowledge::build(Corpus::load(&dir).unwrap(), Wordings { own: None, also: vec![] }))
 });
 
-/// With the NLT and NIV wordings the app also matches.
+/// With the BSB wording the app also matches.
 static K_WORDINGS: LazyLock<Arc<Knowledge>> = LazyLock::new(|| {
     let dir = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../databases/bibles");
     let corpus = Corpus::load(&dir).unwrap();
-    let nlt = corpus.load_map_nlt(&dir.join("map.json")).unwrap();
-    let niv = corpus.load_flat("NIV", &dir.join("translations/NIV.json")).unwrap();
-    Arc::new(Knowledge::build(corpus, Wordings { own: None, also: vec![nlt, niv] }))
+    let bsb = corpus.load_flat("BSB", &dir.join("translations/BSB.json")).unwrap();
+    Arc::new(Knowledge::build(corpus, Wordings { own: None, also: vec![bsb] }))
 });
 
 const MS_PER_WORD: u64 = 380;
@@ -232,18 +231,18 @@ fn a_chapter_read_in_pieces_keeps_waiting_for_its_verse() {
 }
 
 #[test]
-fn the_verse_read_before_a_partial_quote_vouches_for_it() {
-    // Live, 2026-10-26, read in the NLT: "Again a message came to me from the Lord" opens a dozen
-    // chapters of Ezekiel, so it's offered; "Son of man, you've heard that proverb they quote in
-    // Israel" is only part of 12:22, and the KJV-only stream can't back it up. Read just before,
-    // 12:21 vouches for it.
-    let segs = script(&std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../eval/segmentation/ezekiel-12-verse-before.txt")).unwrap());
-    let (up, offered) = outcome_in(&K_WORDINGS, &segs);
+fn ezekiel_12_read_aloud_goes_up_in_a_wording_kairo_ships() {
+    // Live, 2026-10-26 (eval/segmentation/ezekiel-12-verse-before.txt), read in the NLT: 12:21, then
+    // part of 12:22, which went up with the NLT's wording to match. The NLT stopped shipping 2026-10
+    // (no licence): read in the BSB's words, which ship, 12:22 still goes up…
+    let read = "~ believe it was for this\nservice one to go\n~ again the word of the LORD\ncame to me saying\n~ son of man what is this proverb\nthat you have in the land of Israel";
+    let (up, offered) = outcome_in(&K_WORDINGS, &script(read));
     assert_eq!(up, [v("Ezekiel", 12, 22)], "offered {offered:?}");
 
-    // The same part of 12:22 without 12:21 before it is only offered.
-    let (up, offered) = outcome_in(&K_WORDINGS, &script("~ believe it was for this\nservice one to go\n~ you've heard that proverb\nthey quote in Israel"));
-    assert!(up.is_empty() && offered.contains(&v("Ezekiel", 12, 22)), "up {up:?}, offered {offered:?}");
+    // …and the NLT's words, no longer matched, put up nothing rather than a wrong verse.
+    let segs = script(&std::fs::read_to_string(PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../eval/segmentation/ezekiel-12-verse-before.txt")).unwrap());
+    let (up, _) = outcome_in(&K_WORDINGS, &segs);
+    assert!(up.iter().all(|u| *u == v("Ezekiel", 12, 22)), "up {up:?}");
 }
 
 #[test]

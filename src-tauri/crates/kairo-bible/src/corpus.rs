@@ -95,8 +95,6 @@ struct FlatVerse {
     verse: u16,
     #[serde(default)]
     text: Option<String>,
-    #[serde(default)]
-    nlt_text: Option<String>,
 }
 
 impl Corpus {
@@ -165,14 +163,6 @@ impl Corpus {
     pub fn load_flat(&self, code: &str, path: &Path) -> Result<Translation, BibleError> {
         let file: FlatFile = read_json(path)?;
         Ok(self.align(code, file.verses.into_iter().filter_map(|v| v.text.map(|t| (v.book, v.chapter, v.verse, t)))))
-    }
-
-    /// The NLT carried on `map.json`'s `nlt_text` field.
-    pub fn load_map_nlt(&self, path: &Path) -> Result<Translation, BibleError> {
-        let file: FlatFile = read_json(path)?;
-        Ok(self.align("NLT", file.verses.into_iter().filter_map(|v| {
-            v.nlt_text.filter(|t| !t.trim().is_empty()).map(|t| (v.book, v.chapter, v.verse, t))
-        })))
     }
 
     fn align(&self, code: &str, rows: impl Iterator<Item = (String, u16, u16, String)>) -> Translation {

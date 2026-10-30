@@ -271,7 +271,7 @@ fn run(
             // The passage is being read in another translation: shown in it as if it had been asked
             // for, back to the church's at the next passage (spoken.rs).
             if let (Effect::ReadIn { translation, .. }, Some(f)) = (e, on_translation.get()) {
-                if let Some(code) = ["KJV", "NLT", "NIV"].into_iter().find(|c| c.eq_ignore_ascii_case(translation)) {
+                if let Some(code) = ["KJV", "BSB"].into_iter().find(|c| c.eq_ignore_ascii_case(translation)) {
                     f(code, format!("reading from the {code}"));
                 }
             }

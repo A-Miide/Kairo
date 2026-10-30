@@ -254,12 +254,12 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
                 return;
             }
         };
-        let nlt = corpus.load_map_nlt(&db.join("map.json")).ok();
-        let niv = corpus.load_flat("NIV", &db.join("translations/NIV.json")).ok();
-        let also: Vec<_> = [nlt.clone(), niv].into_iter().flatten().collect();
-        let k = Arc::new(Knowledge::build(corpus, Wordings { own: None, also }));
-        let nlt = nlt.unwrap_or_else(|| k.corpus.kjv().clone());
-        let bible = Arc::new(Bible::new(k, nlt, db.clone(), starting.cfg.app_data_dir.join("packs")));
+        // The BSB (public domain) is the modern wording matched beside the KJV: as good as the NIV and
+        // NLT together on the dev sermons, which stopped shipping 2026-10 (no licence).
+        let bsb = corpus.load_flat("BSB", &db.join("translations/BSB.json")).ok();
+        let k = Arc::new(Knowledge::build(corpus, Wordings { own: None, also: bsb.clone().into_iter().collect() }));
+        let modern = bsb.unwrap_or_else(|| k.corpus.kjv().clone());
+        let bible = Arc::new(Bible::new(k, modern, db.clone(), starting.cfg.app_data_dir.join("packs")));
         let p = starting.presentation.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
         let cfg = kairo_detect::engine::Config { auto_send: p.auto_send, ..Default::default() };
         let detector = Detector::start(bible.clone(), starting.hub.clone(), cfg, starting.presentation.clone(), rt.clone(), starting.log.clone());
@@ -277,7 +277,10 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         let _ = starting.detector.set(detector);
         // Chapters of a Bible the church connected through API.Bible are fetched as verses are shown.
         let for_api = starting.clone();
-        h3.spawn(async move { api_bible::start(&for_api) });
+        h3.spawn(async move {
+            api_bible::start(&for_api);
+            routes::drop_missing_translation(&for_api).await;
+        });
         eprintln!("[Server] Detection engine ready in {:.1}s (reference + verbatim + stream + fingerprint).", t.elapsed().as_secs_f32());
         starting.hub.broadcast(json!({ "type": "worker-ready" }));
         load_meaning(&starting);
@@ -387,11 +390,7 @@ fn load_meaning(app: &Shared) {
     let rr_dir = db.join("reranker_model/Xenova/ms-marco-MiniLM-L-12-v2");
     let reranker = Reranker::load(RerankerConfig { name: "minilm-l12".into(), model: rr_dir.join("onnx/model_int8.onnx"), tokenizer: rr_dir.join("tokenizer.json"), max_tokens: 256, threads: 0 }).ok();
     let Some((bible, detector)) = app.ready() else { return };
-    let mut modern = vec![bible.nlt.clone()];
-    if let Ok(niv) = bible.k.corpus.load_flat("NIV", &db.join("translations/NIV.json")) {
-        modern.push(niv);
-    }
-    let m = Arc::new(MeaningService::new(embedder, index, reranker, bible.k.corpus.kjv().clone(), modern));
+    let m = Arc::new(MeaningService::new(embedder, index, reranker, bible.k.corpus.kjv().clone(), vec![bible.modern.clone()]));
     // Cosines differ between embedders: the thresholds go with the model, ahead of it.
     detector.configure(move |c| c.meaning_thresholds = thresholds);
     detector.meaning_ready(m.clone());

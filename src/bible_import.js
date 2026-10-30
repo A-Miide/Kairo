@@ -99,10 +99,7 @@
   // ── About → Bible copyrights: every Bible Kairo can show, with its notice ──
   const BUNDLED = [
     ['KJV', 'King James Version. Public domain outside the United Kingdom, where the rights are vested in the Crown.'],
-    ['NLT', 'Holy Bible, New Living Translation, copyright © 1996, 2004, 2015 by Tyndale House Foundation. All rights reserved.'],
-    ['NIV', 'The Holy Bible, New International Version®, NIV® Copyright © 1973, 1978, 1984, 2011 by Biblica, Inc.® All rights reserved worldwide.'],
-    ['ESV', 'The Holy Bible, English Standard Version® (ESV®), copyright © 2001 by Crossway, a publishing ministry of Good News Publishers. All rights reserved.'],
-    ['NASB', 'New American Standard Bible®, copyright © 1960, 1971, 1977, 1995, 2020 by The Lockman Foundation. All rights reserved.'],
+    ['BSB', 'The Holy Bible, Berean Standard Bible, BSB. Dedicated to the public domain by the Berean Bible Translation Committee (bereanbible.com).'],
   ];
   function renderCredits(rows) {
     const dl = $('about-credits');

@@ -12,6 +12,7 @@ use serde_json::{json, Map, Value};
 
 use crate::detect::epoch_ms;
 use crate::hub::Underneath;
+use crate::bible::Bible;
 use crate::{ws, Shared};
 
 pub fn router() -> Router<Shared> {
@@ -872,9 +873,29 @@ pub(crate) async fn restore_translation(app: &Shared, code: String) {
 /// The preacher asked for another translation ("switch to the NIV", "can I have it in NLT"):
 /// it becomes the translation for this passage (spoken.rs), and the verse on screen is shown again
 /// in it. One this install doesn't have (the Message) is only logged.
+/// Bundled, or a Bible the church added (a file, or API.Bible) under that code: an NIV of its own.
+fn translation_available(app: &Shared, bible: &Bible, code: &str) -> bool {
+    code == "KJV" || bible.translation_path(code).is_file() || crate::api_bible::connected(&app.cfg.app_data_dir, code).is_some()
+}
+
+/// A saved translation whose Bible is gone (NIV, NLT, ESV, NASB and NKJV stopped shipping, 2026-10; a Bible
+/// removed in Settings) goes back to the KJV, so a verse is never labelled with a version it isn't in.
+pub(crate) async fn drop_missing_translation(app: &Shared) {
+    let Some((bible, _)) = app.ready() else { return };
+    let Some(code) = app.settings.str("translation").await.map(|c| c.to_uppercase()) else { return };
+    if code.is_empty() || translation_available(app, bible, &code) {
+        return;
+    }
+    write_debug_global("server:translation-missing", json!({ "code": code }));
+    let mut patch = Map::new();
+    patch.insert("translation".into(), json!("KJV"));
+    let _ = app.settings.merge(patch).await;
+    app.refresh_presentation().await;
+}
+
 pub(crate) async fn spoken_translation(app: &Shared, code: &'static str, heard: String) {
     let Some((bible, _)) = app.ready() else { return };
-    let available = code == "KJV" || code == "NLT" || bible.db_dir.join("translations").join(format!("{code}.json")).is_file();
+    let available = translation_available(app, bible, code);
     let current = app.settings.str("translation").await.unwrap_or_else(|| "KJV".into());
     write_debug_global("server:translation-spoken", json!({ "code": code, "available": available, "from": current }));
     if !available || current.eq_ignore_ascii_case(code) {

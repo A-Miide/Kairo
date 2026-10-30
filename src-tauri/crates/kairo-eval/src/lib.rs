@@ -17,17 +17,33 @@ fn bibles() -> PathBuf {
     root().join("databases/bibles")
 }
 
-/// The KJV, the NLT and the NIV — what the app matches for an English service.
-pub fn translations() -> (Corpus, Translation, Translation) {
+/// The KJV and the BSB — what the app matches for an English service.
+pub fn translations() -> (Corpus, Translation) {
     let corpus = Corpus::load(&bibles()).expect("kjv");
-    let nlt = corpus.load_map_nlt(&bibles().join("map.json")).expect("nlt");
-    let niv = corpus.load_flat("NIV", &bibles().join("translations/NIV.json")).expect("niv");
-    (corpus, nlt, niv)
+    let bsb = corpus.load_flat("BSB", &bibles().join("translations/BSB.json")).expect("bsb");
+    (corpus, bsb)
+}
+
+/// The modern wordings matched beside the KJV, to measure what they add: none with
+/// `KAIRO_EVAL_KJV_ONLY` set, others in its place with `KAIRO_EVAL_MODERN=WEB=/path.json,…`
+/// (flat verse files, like `translations/BSB.json`).
+fn modern(corpus: &Corpus, bsb: Translation) -> Vec<Translation> {
+    if std::env::var_os("KAIRO_EVAL_KJV_ONLY").is_some() {
+        return vec![];
+    }
+    let Ok(list) = std::env::var("KAIRO_EVAL_MODERN") else { return vec![bsb] };
+    list.split(',')
+        .map(|item| {
+            let (code, path) = item.split_once('=').expect("CODE=path");
+            corpus.load_flat(code, Path::new(path)).expect("modern translation")
+        })
+        .collect()
 }
 
 pub fn knowledge() -> Knowledge {
-    let (corpus, nlt, niv) = translations();
-    Knowledge::build(corpus, Wordings { own: None, also: vec![nlt, niv] })
+    let (corpus, bsb) = translations();
+    let also = modern(&corpus, bsb);
+    Knowledge::build(corpus, Wordings { own: None, also })
 }
 
 fn bench_config(name: &str) -> PathBuf {
@@ -39,7 +55,7 @@ fn bench_config(name: &str) -> PathBuf {
 /// (files in `kairo-semantic/bench`), the verse index over `index_codes`
 /// (built and cached on first use).
 pub fn meaning(embedder: &str, reranker: Option<&str>, index_codes: &[&str]) -> MeaningService {
-    let (corpus, nlt, niv) = translations();
+    let (corpus, bsb) = translations();
     let mut ecfg: EmbedderConfig = serde_json::from_slice(&std::fs::read(bench_config(embedder)).expect("embedder config")).expect("embedder config");
     ecfg.model = root().join(&ecfg.model);
     ecfg.tokenizer = root().join(&ecfg.tokenizer);
@@ -50,8 +66,7 @@ pub fn meaning(embedder: &str, reranker: Option<&str>, index_codes: &[&str]) -> 
         let kjv = corpus.kjv().clone();
         let pick = |c: &str| match c {
             "KJV" => kjv.clone(),
-            "NLT" => nlt.clone(),
-            "NIV" => niv.clone(),
+            "BSB" => bsb.clone(),
             other => panic!("no translation {other}"),
         };
         let ts: Vec<Translation> = index_codes.iter().map(|c| pick(c)).collect();
@@ -67,7 +82,7 @@ pub fn meaning(embedder: &str, reranker: Option<&str>, index_codes: &[&str]) -> 
         rcfg.tokenizer = root().join(&rcfg.tokenizer);
         Reranker::load(rcfg).expect("reranker")
     });
-    MeaningService::new(embedder, index, reranker, corpus.kjv().clone(), vec![nlt, niv])
+    MeaningService::new(embedder, index, reranker, corpus.kjv().clone(), modern(&corpus, bsb))
 }
 
 /// The engine's request, answered.

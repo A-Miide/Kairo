@@ -55,11 +55,10 @@ fn kjv_text_is_clean() {
 }
 
 #[test]
-fn nlt_gaps_are_known() {
+fn bsb_covers_the_bible() {
     let c = Corpus::load(&data_dir()).unwrap();
-    let nlt = c.load_map_nlt(&data_dir().join("map.json")).unwrap();
-    let psalms = Book::from_name("Psalms").unwrap();
-    let missing: Vec<_> = nlt.missing().map(|id| c.verse_ref(id)).collect();
-    assert_eq!(missing.iter().filter(|v| v.book == psalms).count(), 2461, "all of Psalms");
-    assert!(nlt.text(c.id(r("John", 3, 16)).unwrap()).unwrap().contains("loved the world so much"));
+    let bsb = c.load_flat("BSB", &data_dir().join("translations/BSB.json")).unwrap();
+    let missing: Vec<_> = bsb.missing().map(|id| c.verse_ref(id)).collect();
+    assert!(missing.len() < 30, "BSB lacks {} KJV verses: {:?}", missing.len(), &missing[..missing.len().min(10)]);
+    assert!(bsb.text(c.id(r("John", 3, 16)).unwrap()).unwrap().contains("He gave His one and only Son"));
 }

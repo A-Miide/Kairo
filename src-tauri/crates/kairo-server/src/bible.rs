@@ -17,7 +17,8 @@ const PACK_NAME: &str = "\u{1}name";
 
 pub struct Bible {
     pub k: Arc<Knowledge>,
-    pub nlt: Translation,
+    /// The modern wording matched beside the KJV (the BSB; the KJV again when its file is missing).
+    pub modern: Translation,
     pub(crate) db_dir: PathBuf,
     /// Packs downloaded by the user (app data folder); looked at before the ones inside the app.
     user_packs: PathBuf,
@@ -28,9 +29,9 @@ pub struct Bible {
 }
 
 impl Bible {
-    pub fn new(k: Arc<Knowledge>, nlt: Translation, db_dir: PathBuf, user_packs: PathBuf) -> Bible {
+    pub fn new(k: Arc<Knowledge>, modern: Translation, db_dir: PathBuf, user_packs: PathBuf) -> Bible {
         let user_translations = user_packs.parent().unwrap_or(&user_packs).join("translations");
-        Bible { k, nlt, db_dir, user_packs, user_translations, translations: Mutex::new(HashMap::new()), languages: Mutex::new(HashMap::new()) }
+        Bible { k, modern, db_dir, user_packs, user_translations, translations: Mutex::new(HashMap::new()), languages: Mutex::new(HashMap::new()) }
     }
 
     pub fn reference(&self, v: VerseId) -> String {
@@ -55,13 +56,12 @@ impl Bible {
         (from..=to.min(from + 200)).filter_map(|v| self.find(book, chapter, v)).collect()
     }
 
-    /// The verse as the UI knows it: KJV text, the NLT beside it.
+    /// The verse as the UI knows it, in KJV text.
     pub fn verse_json(&self, v: VerseId, similarity: f32, method: &str) -> Value {
         let r = self.k.verse_ref(v);
         json!({
             "reference": self.reference(v),
             "text": self.k.corpus.kjv().text(v).unwrap_or(""),
-            "nlt_text": self.nlt.text(v).unwrap_or(""),
             "book": r.book.name(),
             "chapter": r.chapter,
             "verse": r.verse,
@@ -115,7 +115,7 @@ impl Bible {
         loaded
     }
 
-    /// The church's translation in place of the KJV text (KJV: as is; NLT: the NLT).
+    /// The church's translation in place of the KJV text.
     /// Each verse in `code`'s wording where it has one, labelled with the version it's in
     /// ("translation": what a theme's version layer shows; a verse the translation lacks stays KJV).
     pub fn apply_translation(&self, verses: &mut [Value], code: &str) {
@@ -124,15 +124,6 @@ impl Bible {
             v["translation"] = json!("KJV");
         }
         if code == "KJV" || code.is_empty() {
-            return;
-        }
-        if code == "NLT" {
-            for v in verses.iter_mut() {
-                if let Some(t) = v["nlt_text"].as_str().filter(|t| !t.is_empty()).map(str::to_string) {
-                    v["text"] = json!(t);
-                    v["translation"] = json!("NLT");
-                }
-            }
             return;
         }
         // A Bible the church connected with its own API.Bible key: the chapters kept on this computer.

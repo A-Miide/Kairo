@@ -335,19 +335,14 @@
                          wording) — one click sends to the screen. -->
                     <div id="scripture-suggest" class="cs-suggest" role="listbox" hidden></div>
                 </div>
-                <!-- All 5 are now real, distinct text — databases/bibles/
-                     translations/*.json (NIV/ESV/NASB) plus map.json's
-                     own kjv_text/nlt_text (KJV/NLT), applied by
-                     applyTranslation() in the server (kairo-server). Briefly cut down to
-                     just KJV/NLT when the other four turned out to be
-                     unwired labels; restored once the real source files
-                     were found and connected. -->
+                <!-- Real, distinct text — kjv.json and translations/BSB.json (both
+                     public domain), applied by apply_translation() in the server
+                     (kairo-server). NIV, NLT, ESV and NASB stopped shipping
+                     2026-10 (no licence); a church adds its own under Your Bibles
+                     (bible_import.js adds those options). -->
                 <select id="translation-select" class="cs-select cs-translation-select" title="English translation: the version a verse goes up in (another scripture language uses its own Bible)">
                     <option value="KJV" selected>KJV</option>
-                    <option value="NLT">NLT</option>
-                    <option value="NIV">NIV</option>
-                    <option value="ESV">ESV</option>
-                    <option value="NASB">NASB</option>
+                    <option value="BSB">BSB</option>
                 </select>
                 <!-- The second-language ("Translate to") dropdown used to
                      live here — owner, 2026-09-22: moved into Settings →
@@ -1364,15 +1359,12 @@
                 <div class="setting-switch-row">
                     <div class="setting-switch-text">
                         <label class="setting-label" for="translation-select-settings">Bible version</label>
-                        <p class="setting-hint">What a verse goes up in. The preacher can switch it out loud (&ldquo;in the NLT&rdquo;).</p>
+                        <p class="setting-hint">What a verse goes up in. The preacher can switch it out loud (&ldquo;in the NIV&rdquo;, once your church has added it).</p>
                     </div>
                     <select id="translation-select-settings" class="setting-input bp-version">
                         <optgroup label="Comes with Kairo">
                             <option value="KJV" selected>KJV</option>
-                            <option value="NLT">NLT</option>
-                            <option value="NIV">NIV</option>
-                            <option value="ESV">ESV</option>
-                            <option value="NASB">NASB</option>
+                            <option value="BSB">BSB</option>
                         </optgroup>
                     </select>
                 </div>
@@ -1599,7 +1591,7 @@
                                 <p><strong>Possible Matches</strong> holds what Kairo found but isn't certain enough to put up on its own — click one to send it. This is deliberate: a wrong verse on screen is worse than a missed one. While a song or slide is live, only a spoken citation goes up on its own; lyrics that quote scripture are offered in Possible Matches instead.</p>
                                 <p><strong>Singing and interpreters.</strong> While the room is singing, the Live Transcript Log shows <em>(music)</em> and lyrics are never sent on their own, even when they quote scripture. When a service is interpreted, the interpreter's turns show as <em>(interpretation)</em> and only the preacher's words are used for detection.</p>
                                 <p><strong>Asking for a translation out loud.</strong> When the preacher asks for a version — "John 3:16 in the NIV", "Isaiah 7:7, NLT", "switch to the New King James" — the verse on screen changes to it and the translation select flashes. It lasts for that passage: reading on stays in it, and the next verse from another passage goes back to the church's translation. Choosing a translation yourself always wins. A translation that isn't installed (the Message) is ignored, and simply mentioning one ("the NIV says…") never switches.</p>
-                                <p><strong>Reading from another translation.</strong> When the preacher reads two verses of a passage word for word from the KJV, NLT or NIV and it isn't the one on screen, the passage switches to it, the same way as asking for it out loud, and the next passage goes back to the church's translation.</p>
+                                <p><strong>Reading from another translation.</strong> When the preacher reads two verses of a passage word for word from the KJV or the BSB and it isn't the one on screen, the passage switches to it, the same way as asking for it out loud, and the next passage goes back to the church's translation.</p>
                                 <p>To decide every verse yourself, switch <strong>Auto</strong> off (the Auto-Deploy badge, or <em>Put confident matches on screen automatically</em> under Settings → Bible): nothing goes to the screen by itself, and every detected verse waits in Possible Matches for a click (in Director mode, on Preview for Send).</p>
                                 <p>The <strong>Live Queue</strong> marks the verse on screen right now with <strong>LIVE</strong>. If a wrong verse goes up — or something is cleared by mistake — press <strong>Back</strong> (the arrow by Clear Bible, or ⌘←) to put back what was showing before; Kairo won't immediately send the undone verse again. In the Live Transcript Log, a chip marks the words that sent each verse — click it to send that verse again.</p>
                             </div>
@@ -1746,7 +1738,7 @@
                                 <p>For a guest minister, switch the language from the chip beside <strong>Start Listening</strong>, and switch it back after.</p>
                                 <p>For a service preached in <strong>Spanish, Portuguese, French or German</strong>, set the service language and Kairo understands citations in that language ("Juan capítulo tres versículo dieciséis", "siguiente versículo") and matches verses read aloud against that language's Bible. Other languages are transcribed, and verses are found when cited or read in English.</p>
                                 <p><strong>Service languages</strong> (Settings → Language): English (US, UK, Australia, India), Spanish, Portuguese (Brazil), French, German, Italian, Dutch, Swedish, Polish, Ukrainian, Russian, Hindi, Indonesian, Korean, Japanese, Chinese (Mandarin), or Auto-detect. Deepgram covers all of them. Offline, English uses the English model (about 465 MB) and the others the <em>offline model for other languages</em> (about 475 MB): only the one the preacher's language needs is offered.</p>
-                                <p><strong>Bibles that come with Kairo</strong>, all offline: English — KJV and NLT, plus NIV, ESV and NASB (Settings → Bible translation) — and, under <em>Bible language</em>, Spanish, Portuguese, French, German, Yoruba, Igbo, Hausa and Swahili (New Testament only). These change what a verse is shown in; what Kairo listens for is what the preacher speaks. In any language but English, the English translation setting doesn't apply.</p>
+                                <p><strong>Bibles that come with Kairo</strong>, all offline: English — the KJV and the Berean Standard Bible (BSB), both public domain (Settings → Bible translation; add the NIV, NLT and others under Your Bibles) — and, under <em>Bible language</em>, Spanish, Portuguese, French, German, Yoruba, Igbo, Hausa and Swahili (New Testament only). These change what a verse is shown in; what Kairo listens for is what the preacher speaks. In any language but English, the English translation setting doesn't apply.</p>
                                 <p><strong>Church vocabulary</strong> (same page) — names and words your services use that transcription may mishear: the pastor, the church, local places. One per line; used from the next Start Listening (English and auto-detect services).</p>
                                 
                                 <p><strong>Slide Translation Models</strong> are separate — they translate ordinary (non-scripture) slide/sermon text for the Multi-Language split theme, using a small bundled local model with no setup, API key, or internet connection required once downloaded.</p>
@@ -1791,6 +1783,10 @@
                                 <p><strong>NDI®</strong> — NDI® is a registered trademark of Vizrt NDI AB. Kairo uses NDI's free runtime, downloaded from NDI on first use; see <a href="https://ndi.video" target="_blank" rel="noopener">ndi.video</a>. Its licence notices ship with Kairo (libndi_licenses.txt).</p>
                                 <p><strong>FFmpeg</strong> — Kairo carries a build of <a href="https://ffmpeg.org" target="_blank" rel="noopener">FFmpeg</a> (LGPL 2.1 or later), run as a separate program to convert video the app can't play directly. It is also the encoder for live streaming.</p>
                                 <p><strong>Blackmagic Design</strong> — Kairo is compatible with Blackmagic Design DeckLink. DeckLink is a trademark of Blackmagic Design Pty. Ltd.</p>
+                                <p><strong>Offline speech</strong> — run with <a href="https://github.com/k2-fsa/sherpa-onnx" target="_blank" rel="noopener">sherpa-onnx</a> (Apache 2.0), downloaded on first use. English: NVIDIA Nemotron Speech Streaming 0.6B, licensed by NVIDIA Corporation under the <a href="https://www.nvidia.com/en-us/agreements/enterprise-software/nvidia-open-model-license/" target="_blank" rel="noopener">NVIDIA Open Model License</a>. Multi-language: NVIDIA Nemotron 3.5 ASR Streaming 0.6B, under the <a href="https://openmdw.ai/license/1-1/" target="_blank" rel="noopener">OpenMDW License 1.1</a>.</p>
+                                <p><strong>Meaning and sound models</strong> — bge-small-en-v1.5 by BAAI (MIT) finds a verse put in other words, and ms-marco-MiniLM-L-12-v2 (Apache 2.0) rereads the shortlist, both as ONNX exports by Xenova. <a href="https://github.com/snakers4/silero-vad" target="_blank" rel="noopener">Silero VAD</a> (MIT) tells speech from silence. YAMNet, copyright 2022 Google LLC (Apache 2.0; its AudioSet labels CC BY 4.0), tells singing from preaching, quantised to 8 bits from the ONNX conversion by audiomagic.</p>
+                                <p><strong>Yoruba, Igbo and Hausa Bibles</strong> — © Biblica, Inc., under <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener">CC BY-SA 4.0</a>, from <a href="https://ebible.org" target="_blank" rel="noopener">eBible.org</a>. Kairo converted them to its own verse format; the text is unchanged.</p>
+                                <p><strong>Multi-Language theme Bibles</strong> — French: Martin (1744) and Spanish: Sagradas Escrituras (1569), public domain. Portuguese: Bíblia Livre, under <a href="https://creativecommons.org/licenses/by/3.0/br/" target="_blank" rel="noopener">CC BY 3.0 BR</a>. All from <a href="https://getbible.net" target="_blank" rel="noopener">getbible.net</a>, converted to Kairo's verse format.</p>
                             </div>
                         </details>
                     </div>
@@ -2223,7 +2219,7 @@
                         <div class="ob-tile">
                             <div class="ob-art ob-art-lang" aria-hidden="true"><span>Welcome</span><span>&#7864; k&uacute; &agrave;b&#7885;&#768;</span><span>Bienvenue</span><span>Nn&#7885;&#768;&#7885;</span><span>Bienvenido</span></div>
                             <h3>Every language in the room</h3>
-                            <p>Nine Bibles built in, including Yoruba, Igbo and Hausa, plus the NIV, NLT and more free through API.Bible &mdash; all working offline.</p>
+                            <p>Ten Bibles built in, including the KJV, the BSB, Yoruba, Igbo and Hausa, plus the NIV, NLT and more free through API.Bible &mdash; all working offline.</p>
                         </div>
                     </div>
                 </section>

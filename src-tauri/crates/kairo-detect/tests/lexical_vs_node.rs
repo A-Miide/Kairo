@@ -31,9 +31,8 @@ fn parse_ref(k: &Knowledge, s: &str) -> Option<VerseId> {
 fn word_matchers_agree_with_node() {
     let dir = root().join("databases/bibles");
     let corpus = Corpus::load(&dir).unwrap();
-    let nlt = corpus.load_map_nlt(&dir.join("map.json")).unwrap();
-    let niv = corpus.load_flat("NIV", &dir.join("translations/NIV.json")).unwrap();
-    let k = Knowledge::build(corpus, Wordings { own: None, also: vec![nlt, niv] });
+    let bsb = corpus.load_flat("BSB", &dir.join("translations/BSB.json")).unwrap();
+    let k = Knowledge::build(corpus, Wordings { own: None, also: vec![bsb] });
     let raw = std::fs::read_to_string(root().join("parity/lexical_node.jsonl")).expect("run parity/dump_lexical.js first");
 
     let (mut n, mut v_same, mut v_score, mut f_same, mut f_conf) = (0, 0, 0, 0, 0);
