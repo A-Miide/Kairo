@@ -73,29 +73,28 @@
     pane.innerHTML = `
       <div class="settings-section">
         <div class="settings-section-label">Director mode</div>
-        <div class="dm-card">
-          <div class="dm-row">
-            <div class="dm-text">
-              <div class="dm-name" id="dm-name">Video director mode</div>
-              <p class="setting-hint">Cameras and inputs on your outputs, with a screen for directing them: Preview and Output, saved Layouts, and the playlist and media bin. Scripture and lower-thirds draw over the video. This switch turns video on or off; the video button in the top bar only shows or hides the Director screen, and the cameras stay on air.</p>
-            </div>
-            <label class="output-toggle"><input type="checkbox" id="dm-toggle" aria-labelledby="dm-name"><span class="output-toggle-track"></span></label>
+        <!-- The same rows as the other pages (setting-switch-row), not a card of its own. -->
+        <div class="setting-switch-row">
+          <div class="setting-switch-text">
+            <label class="setting-label" id="dm-name" for="dm-toggle">Video director mode</label>
+            <p class="setting-hint">Cameras and inputs on your outputs, with a screen for directing them: Preview and Output, saved Layouts, the playlist and media bin. Scripture and lower-thirds draw over the video. The video button in the top bar only shows or hides the Director screen; the cameras stay on air.</p>
           </div>
-          <p class="dm-armed" id="dm-armed" role="status" hidden></p>
-          <div class="dm-row">
-            <div class="dm-text">
-              <label class="dm-name" for="dm-default-layout">Layout</label>
-              <p class="setting-hint">What the outputs with video show in Director mode: every verse, slide and media item follows it. The same as the Layout sent from the Director screen: change either and the other follows.</p>
-            </div>
-            <select class="setting-input" id="dm-default-layout"></select>
+          <label class="output-toggle"><input type="checkbox" id="dm-toggle" aria-labelledby="dm-name"><span class="output-toggle-track"></span></label>
+        </div>
+        <p class="dm-armed" id="dm-armed" role="status" hidden></p>
+        <div class="setting-switch-row">
+          <div class="setting-switch-text">
+            <label class="setting-label" for="dm-default-layout">Layout</label>
+            <p class="setting-hint">What outputs with video show in Director mode; every verse, slide and media item follows it. The same as the Layout sent from the Director screen: change either and the other follows.</p>
           </div>
-          <div class="dm-row" id="dm-sim-row" hidden>
-            <div class="dm-text">
-              <div class="dm-name" id="dm-sim-name">Simulate 4 cameras at 30 fps</div>
-              <p class="setting-hint">Developer. Adds four test inputs that need no camera, for measuring. Reloads the window.</p>
-            </div>
-            <label class="output-toggle"><input type="checkbox" id="dm-sim" aria-labelledby="dm-sim-name"><span class="output-toggle-track"></span></label>
+          <select class="setting-input bp-version" id="dm-default-layout"></select>
+        </div>
+        <div class="setting-switch-row" id="dm-sim-row" hidden>
+          <div class="setting-switch-text">
+            <label class="setting-label" id="dm-sim-name" for="dm-sim">Simulate 4 cameras at 30 fps</label>
+            <p class="setting-hint">Developer. Adds four test inputs that need no camera, for measuring. Reloads the window.</p>
           </div>
+          <label class="output-toggle"><input type="checkbox" id="dm-sim" aria-labelledby="dm-sim-name"><span class="output-toggle-track"></span></label>
         </div>
       </div>`;
     panes.appendChild(pane);

@@ -8745,3 +8745,149 @@ body.video-director #ts-add-videozone-btn, body.video-director #ts-add-contentzo
 .ts-qr-logo .modal-btn { padding: 6px 12px; }
 .ts-qr-warn { margin: 0; color: var(--warning, #f5a524); }
 .ts-qr-warn:empty { display: none; }
+
+/* Settings → Bible → Your Bibles */
+/* Settings → Bible */
+.setting-input.bp-version { width: 180px; flex: none; }
+.bi-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.bi-actions { display: flex; gap: 6px; text-transform: none; letter-spacing: 0; }
+.bi-action { font: inherit; font-size: 12px; font-weight: 600; color: var(--text); background: var(--bg-hover, rgba(255,255,255,.06)); border: 1px solid var(--border-md); border-radius: 7px; padding: 5px 11px; cursor: pointer; }
+.bi-action:hover, .bi-action[aria-expanded="true"] { border-color: var(--brand); color: var(--brand); }
+.bi-empty { margin: 10px 0 0; font-size: 13px; color: var(--text-3, var(--text-2)); }
+.bi-empty[hidden] { display: none; }
+.bi-panel { margin-top: 12px; padding: 12px 14px 14px; border: 1px solid var(--border-md); border-radius: 10px; display: grid; gap: 10px; }
+.bi-panel-head { display: flex; align-items: center; justify-content: space-between; }
+.bi-panel-body { display: grid; gap: 10px; }
+.bi-panel-body[hidden] { display: none; }
+.bi-close { background: none; border: 0; color: var(--text-2); font-size: 18px; line-height: 1; cursor: pointer; padding: 2px 4px; }
+.bi-close:hover { color: var(--text); }
+.bi-field { width: 100%; box-sizing: border-box; }
+div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bi-trash { background: none; border: 0; padding: 4px; border-radius: 6px; color: var(--text-2); cursor: pointer; display: inline-flex; }
+.bi-trash:hover { color: var(--danger, #e5604d); background: var(--bg-hover, rgba(255,255,255,.06)); }
+.bi-panel[hidden] { display: none; }
+.bi-panel .setting-hint { margin: 0; }
+.bi-panel-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.bi-panel-sub { font-weight: 400; color: var(--text-2); margin-left: 6px; }
+.bi-row { display: flex; align-items: center; gap: 8px; }
+.bi-btn { width: auto; flex: none; padding: 6px 14px; cursor: pointer; }
+.bi-code { width: 124px; flex: none; text-transform: uppercase; }
+.bi-key { flex: 1; min-width: 0; max-width: 320px; }
+.bi-combo { position: relative; }
+.bi-combo input { width: 100%; }
+.bi-combo-list { margin-top: 4px !important; max-height: 240px; overflow-y: auto; margin: 0; padding: 4px; list-style: none; background: var(--surface, #1b1b1d); border: 1px solid var(--border-md); border-radius: 10px; box-shadow: 0 12px 32px rgba(0,0,0,.35); }
+.bi-combo-list[hidden] { display: none; }
+.bi-combo-list .bi-group { padding: 8px 8px 4px; font-size: 10px; font-weight: 800; letter-spacing: 1px; text-transform: uppercase; color: var(--text-3, var(--text-2)); }
+.bi-combo-list .bi-opt { display: flex; align-items: baseline; gap: 8px; padding: 6px 8px; border-radius: 6px; font-size: 13px; color: var(--text); cursor: pointer; }
+.bi-combo-list .bi-opt b { min-width: 52px; }
+.bi-combo-list .bi-opt span { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bi-combo-list .bi-opt em { margin-left: auto; font-style: normal; font-size: 11px; color: var(--text-3, var(--text-2)); white-space: nowrap; }
+.bi-combo-list .bi-opt.is-active, .bi-combo-list .bi-opt:hover { background: var(--bg-hover, rgba(255,255,255,.07)); }
+.bi-combo-list .bi-none { padding: 8px; font-size: 13px; color: var(--text-2); }
+.bi-link { background: none; border: 0; padding: 0; font: inherit; color: var(--text-2); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.bi-link:hover { color: var(--text); }
+.bi-status:empty { display: none; }
+.bi-status { margin: 10px 0 0; }
+.bi-bad { color: var(--danger, #e5604d); }
+/* Added Bibles: a tile each, not a full-width row */
+.bi-list { list-style: none; margin: 10px 0 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+.bi-list li { position: relative; display: grid; gap: 2px; padding: 10px 36px 10px 12px; border: 1px solid var(--border-md); border-radius: 10px; font-size: 13px; min-width: 0; }
+.bi-list .bi-code-tag { font-weight: 700; color: var(--text); }
+.bi-list .bi-name-text { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bi-list .bi-source { font-size: 11px; color: var(--text-3, var(--text-2)); }
+.bi-list .bi-trash { position: absolute; top: 8px; right: 8px; }
+.bi-field, .bi-combo { max-width: 440px; }
+/* Your Bibles: the API.Bible card leads */
+.bi-api-card { margin-top: 0; padding: 14px 16px; border: 1px solid var(--border-md); border-radius: 12px; background: var(--bg-hover, rgba(255,255,255,.03)); display: grid; gap: 10px; }
+#api-bible > div { display: grid; gap: 10px; }
+#api-bible > div[hidden] { display: none; }
+.bi-row[hidden] { display: none; }
+.bi-api-card .setting-hint { margin: 0; }
+.bi-invite-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.bi-steps { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; color: var(--text-2); }
+.bi-steps a { color: var(--brand); font-weight: 600; }
+.bi-fine { font-size: 11px; }
+.bi-row .bi-field, .bi-row .bi-combo { flex: 1; min-width: 0; max-width: 440px; }
+.bi-account { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); flex-wrap: wrap; }
+.bi-account-dot { width: 8px; height: 8px; border-radius: 50%; background: #3fb950; flex: none; }
+.bi-account-key { color: var(--text-2); margin-left: 4px; font-variant-numeric: tabular-nums; }
+.bi-account-actions { margin-left: auto; display: flex; gap: 14px; }
+.bi-file-line { margin: 12px 0 0; }
+.bi-ways { margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 12px; align-items: stretch; }
+.bi-file-card { display: flex; flex-direction: column; gap: 10px; }
+.bi-file-card #bible-file-start, .bi-file-card #bible-file-panel { margin-top: auto; }
+.bi-list-label { margin-top: 16px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.bi-list-label + .bi-list { margin-top: 6px; }
+#api-bible .bi-row { flex-wrap: wrap; }
+#api-bible .bi-row .bi-combo { flex: 1 1 100%; max-width: none; }
+.bi-ways > * { min-width: 0; }
+#api-bible .bi-combo, #api-bible .bi-combo .bi-field { width: 100%; max-width: none; box-sizing: border-box; }
+#api-bible, #api-bible > div { grid-template-columns: minmax(0, 1fr); }
+/* Fields sit on the page's own background; buttons are buttons */
+.bi-api-card { background: transparent; }
+#api-bible .bi-row.bi-one-line { flex-wrap: nowrap; }
+#api-bible .bi-row.bi-one-line .bi-combo { flex: 1 1 auto; min-width: 0; }
+.bi-one-line .bi-field { flex: 1 1 auto; min-width: 0; max-width: none; }
+.bi-small-btn { display: inline-flex; align-items: center; gap: 6px; font: inherit; font-size: 12px; font-weight: 600; color: var(--text); background: transparent; border: 1px solid var(--border-md); border-radius: 7px; padding: 5px 10px; cursor: pointer; white-space: nowrap; }
+.bi-small-btn:hover { border-color: var(--text-2); }
+.bi-small-btn.bi-danger { color: var(--danger, #e5604d); border-color: color-mix(in srgb, var(--danger, #e5604d) 45%, transparent); }
+.bi-small-btn.bi-danger:hover { background: color-mix(in srgb, var(--danger, #e5604d) 12%, transparent); }
+.bi-account-actions { gap: 8px; }
+/* The account line: who is connected on the left, its key actions at the top right */
+.bi-account { flex-wrap: nowrap; align-items: flex-start; }
+.bi-account-text { display: grid; gap: 2px; min-width: 0; }
+.bi-account-title { display: inline-flex; align-items: center; gap: 8px; font-weight: 600; }
+.bi-account-title { white-space: nowrap; }
+.bi-account-key { margin-left: 0; font-size: 12px; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.bi-account-actions { flex: none; }
+.bi-account-text { flex: 1 1 auto; overflow: hidden; }
+.bi-account-key { max-width: 100%; }
+#api-bible-hint { overflow: hidden; text-overflow: ellipsis; }
+.bi-icon-btn { padding: 6px; }
+.bi-confirm { font-size: 12px; }
+/* The finder's list floats over the page instead of pushing the card open */
+#api-bible .bi-combo { position: relative; }
+#api-bible .bi-combo-list { position: absolute; z-index: 40; left: 0; right: 0; top: calc(100% + 4px); margin-top: 0 !important; }
+#api-bible .bi-row.bi-one-line { align-items: center; }
+/* Settings → Audio */
+.au-input-row { display: flex; gap: 8px; align-items: center; }
+.au-input-row select { flex: 1; min-width: 0; max-width: 520px; }
+.toggle-group.au-engines { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; padding: 0; background: none; border: 0; margin-top: 10px; align-items: stretch; }
+.au-engine { display: flex; flex-direction: column; gap: 12px; padding: 14px 16px; border: 1px solid var(--border-md); border-radius: 12px; cursor: pointer; min-width: 0; }
+.au-engine:has(.toggle-btn.active) { border-color: var(--brand); box-shadow: inset 0 0 0 1px var(--brand); }
+.au-engine:hover:not(:has(.toggle-btn.active)) { border-color: var(--text-2); }
+.au-engines .toggle-btn, .au-engines .toggle-btn.active, .au-engines .toggle-btn:hover:not(.active) { display: grid; gap: 4px; text-align: left; padding: 0; border: 0; background: none; color: var(--text); white-space: normal; height: auto; box-shadow: none; }
+.au-engine-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; }
+.au-engine-sub { font-size: 12px; color: var(--text-2); line-height: 1.45; font-weight: 400; }
+.au-engine-body { display: grid; gap: 6px; margin-top: auto; cursor: auto; }
+.au-engine-body .setting-hint { margin: 0; }
+.au-engine-body .lang-capability { margin: 0; }
+.bi-list .bi-credit { font-size: 11px; color: var(--text-3, var(--text-2)); line-height: 1.4; }
+.bi-list .bi-credit a { color: var(--text-2); }
+/* Onboarding: the optional API.Bible key on the last step */
+.ob-bibles { margin-top: 18px; }
+.ob-optional { font-weight: 400; color: var(--text-2); margin-left: 6px; text-transform: none; letter-spacing: 0; }
+.ob-bibles-lede { margin: 0 0 8px; font-size: 13px; line-height: 1.5; color: var(--text-2); }
+.au-dot { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--text-2); flex: none; }
+.toggle-btn.active .au-dot { background: #3fb950; border-color: #3fb950; }
+/* A missing item gets a proper warning sign, not a bare "!" (Language and Audio capability lines) */
+.lang-cap-row.missing { align-items: center; }
+.lang-cap-row.missing .lang-cap-mark { font-size: 0; width: 15px; height: 15px; background: var(--warning, #d29922); -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%272.2%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M10.29%203.86%201.82%2018a2%202%200%200%200%201.71%203h16.94a2%202%200%200%200%201.71-3L13.71%203.86a2%202%200%200%200-3.42%200z%27/%3E%3Cline%20x1%3D%2712%27%20y1%3D%279%27%20x2%3D%2712%27%20y2%3D%2713%27/%3E%3Cline%20x1%3D%2712%27%20y1%3D%2717%27%20x2%3D%2712.01%27%20y2%3D%2717%27/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%272.2%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M10.29%203.86%201.82%2018a2%202%200%200%200%201.71%203h16.94a2%202%200%200%200%201.71-3L13.71%203.86a2%202%200%200%200-3.42%200z%27/%3E%3Cline%20x1%3D%2712%27%20y1%3D%279%27%20x2%3D%2712%27%20y2%3D%2713%27/%3E%3Cline%20x1%3D%2712%27%20y1%3D%2717%27%20x2%3D%2712.01%27%20y2%3D%2717%27/%3E%3C/svg%3E") center / contain no-repeat; }
+/* Settings section numbers: settings_layout.js sets data-n on each page with more than one section. */
+.settings-section-label[data-n] { display: flex; align-items: center; gap: 8px; }
+.settings-section-label[data-n]::before {
+  content: attr(data-n);
+  width: 20px; height: 20px; flex: none; border-radius: 10px; background: var(--brand); color: #fff;
+  font-size: 11px; font-weight: 700; letter-spacing: 0; display: inline-flex; align-items: center; justify-content: center;
+}
+/* About → Bible copyrights */
+#bible-copyrights { margin-top: 16px; }
+.about-credits { margin: 10px 0 0; display: grid; grid-template-columns: max-content 1fr; gap: 8px 16px; font-size: 12px; line-height: 1.5; }
+.about-credits dt { font-weight: 700; color: var(--text); }
+.about-credits dd { margin: 0; color: var(--text-2); }
+.about-credits dd a { color: var(--text-2); }
+/* Overlays: an empty set */
+.ov-empty { margin-top: 12px; padding: 28px 16px; border: 1px dashed var(--border-md); border-radius: 12px; display: grid; justify-items: center; gap: 8px; text-align: center; }
+.ov-empty .setting-hint { margin: 0; }
+.ov-empty-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.setting-switch-row[hidden] { display: none; }

@@ -34,3 +34,30 @@
   };
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start); else start();
 })();
+
+// Numbers each Settings page's sections 1, 2, 3 in the order they show, on any page with more than
+// one; a hidden section isn't counted. Done here rather than with CSS counters, which WebKit
+// (the app's view) restarted in every section, so every number read 1 (2026-10-29).
+(function () {
+  function number() {
+    document.querySelectorAll('.settings-pane').forEach((pane) => {
+      const shown = [...pane.querySelectorAll('.settings-section-label')].filter((l) => {
+        const sec = l.closest('.settings-section') || l;
+        return sec.style.display !== 'none' && !sec.hidden;
+      });
+      shown.forEach((l, i) => {
+        const n = shown.length > 1 ? String(i + 1) : '';
+        if ((l.dataset.n || '') !== n) { if (n) l.dataset.n = n; else delete l.dataset.n; }
+      });
+    });
+  }
+  number();
+  document.addEventListener('click', (e) => { if (e.target.closest('.settings-nav-item, #settings-btn')) setTimeout(number, 0); });
+  // Sections that appear later (Director mode, Video Sources) or are shown and hidden.
+  let t = null;
+  new MutationObserver((list) => {
+    if (!list.some((m) => m.type === 'childList' || m.target.classList?.contains('settings-section'))) return;
+    clearTimeout(t);
+    t = setTimeout(number, 50);
+  }).observe(document.getElementById('settings-modal') || document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'hidden'] });
+})();

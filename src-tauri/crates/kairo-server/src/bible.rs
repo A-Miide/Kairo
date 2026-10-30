@@ -21,13 +21,16 @@ pub struct Bible {
     pub(crate) db_dir: PathBuf,
     /// Packs downloaded by the user (app data folder); looked at before the ones inside the app.
     user_packs: PathBuf,
+    /// Bibles the church added itself (Settings → Bible → Your Bibles), looked at before the bundled ones.
+    user_translations: PathBuf,
     translations: Mutex<HashMap<String, Pack>>,
     languages: Mutex<HashMap<String, Pack>>,
 }
 
 impl Bible {
     pub fn new(k: Arc<Knowledge>, nlt: Translation, db_dir: PathBuf, user_packs: PathBuf) -> Bible {
-        Bible { k, nlt, db_dir, user_packs, translations: Mutex::new(HashMap::new()), languages: Mutex::new(HashMap::new()) }
+        let user_translations = user_packs.parent().unwrap_or(&user_packs).join("translations");
+        Bible { k, nlt, db_dir, user_packs, user_translations, translations: Mutex::new(HashMap::new()), languages: Mutex::new(HashMap::new()) }
     }
 
     pub fn reference(&self, v: VerseId) -> String {
@@ -132,8 +135,40 @@ impl Bible {
             }
             return;
         }
-        let Some(pack) = self.pack(&self.translations, &code, self.db_dir.join("translations").join(format!("{code}.json"))) else { return };
+        // A Bible the church connected with its own API.Bible key: the chapters kept on this computer.
+        let app_data = self.user_translations.parent().unwrap_or(&self.user_translations);
+        if let Some(info) = crate::api_bible::connected(app_data, &code) {
+            // Labelled with the Bible's own abbreviation ("NIV"), as API.Bible requires, not the short name.
+            let label = info["abbreviation"].as_str().filter(|a| !a.is_empty()).unwrap_or(&code).to_string();
+            for v in verses.iter_mut() {
+                let (Some(b), Some(c), Some(n)) = (v["book"].as_str().and_then(Book::from_name), v["chapter"].as_u64(), v["verse"].as_u64()) else { continue };
+                if let Some(t) = crate::api_bible::verse(app_data, &code, b.index(), c as u16, n as u16) {
+                    v["text"] = json!(t);
+                    v["translation"] = json!(label);
+                    if let Some(c) = info["copyright"].as_str().filter(|c| !c.is_empty()) {
+                        v["copyright"] = json!(c);
+                    }
+                }
+            }
+            return;
+        }
+        let Some(pack) = self.pack(&self.translations, &code, self.translation_path(&code)) else { return };
         replace_text(verses, &pack, &code);
+    }
+
+    /// Where a translation's file is: one the church added, else one inside the app.
+    pub fn translation_path(&self, code: &str) -> PathBuf {
+        let added = self.user_translations.join(format!("{code}.json"));
+        if added.is_file() { added } else { self.db_dir.join("translations").join(format!("{code}.json")) }
+    }
+
+    pub fn user_translations_dir(&self) -> &std::path::Path {
+        &self.user_translations
+    }
+
+    /// Drops what was loaded for a translation, so one just added or removed is read again.
+    pub fn forget_translation(&self, code: &str) {
+        crate::util::lock(&self.translations).remove(code);
     }
 
     /// Where a language's Bible is: a downloaded copy if there is one, else the one inside the app.

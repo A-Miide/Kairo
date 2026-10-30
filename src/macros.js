@@ -156,9 +156,10 @@
     const h = host();
     if (!h) return;
     h.innerHTML = '';
-    const card = el('div', 'st-card');
+    // One Settings section: its title and New macro on one line, the note at the bottom inside it.
+    const card = el('div', 'st-card settings-section');
     const head = el('div', 'st-card-head');
-    head.appendChild(el('div', 'st-card-title', 'Your macros'));
+    head.appendChild(el('div', 'st-card-title settings-section-label', 'Macros'));
     const add = el('button', 'modal-btn primary', '+ New macro'); add.type = 'button';
     add.disabled = !!editing;
     add.addEventListener('click', () => { editing = { id: uid(), name: `Macro ${list().length + 1}`, steps: [{ kind: 'action', action: actions()[0]?.id }], isNew: true }; renderPane(); });
@@ -183,9 +184,9 @@
       body.appendChild(row);
     });
     if (editing && editing.isNew) body.appendChild(editor());
+    body.appendChild(el('p', 'setting-hint mc-foot', 'Stream Deck and OSC run the first nine as /kairo/macro-1 to /kairo/macro-9, in the order shown here.'));
     card.appendChild(body);
     h.appendChild(card);
-    h.appendChild(el('p', 'setting-hint mc-foot', 'Stream Deck and OSC run the first nine as /kairo/macro-1 to /kairo/macro-9, in the order shown here.'));
   }
 
   function editor() {

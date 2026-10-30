@@ -1287,46 +1287,22 @@
             <div class="settings-panes" id="settings-panes">
 
             <section class="settings-pane active" data-pane="audio">
-                <!-- ── AUDIO ─────────────────────────────────────── -->
+                <!-- ── AUDIO ───────────────────────────────────────────
+                     1 Sound input: what Kairo listens to, first, with its live level.
+                     2 Speech engine: Deepgram or Offline as two choices side by side (the
+                       .toggle-group stays the one control app.js reads), the key or the
+                       offline model beneath the one chosen.
+                     3 Sound output. -->
                 <div class="settings-section">
-                    <div class="settings-section-label">Sound input</div>
-
-                    <div class="setting-row-2col audio-cols">
-                    <div class="setting-col-stack">
-
+                    <div class="settings-section-label lang-step">Sound input</div>
                     <div class="setting-group">
-                        <label class="setting-label">Speech Engine</label>
-                        <div class="toggle-group" id="speech-engine-toggle">
-                            <button class="toggle-btn active" data-engine="deepgram">Deepgram</button>
-                            <button class="toggle-btn" data-engine="browser">Offline</button>
+                        <label class="setting-label" for="audio-source-settings">Listen to</label>
+                        <div class="au-input-row">
+                            <select id="audio-source-settings" class="setting-input">
+                                <option value="">Loading devices…</option>
+                            </select>
+                            <button id="refresh-devices-settings" class="bi-small-btn bi-icon-btn" title="Refresh device list" aria-label="Refresh device list"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
                         </div>
-                        <p class="setting-hint" id="speech-engine-hint">Most accurate. Needs a Deepgram key ($200 free credit to start).</p>
-                    </div>
-
-                    <!-- The offline model is chosen by the language the preacher speaks, so it is
-                         downloaded in Settings → Language, beside that choice. Here: what's
-                         installed, and a link there (app.js renderOfflineSummary). -->
-                    <div class="setting-group" id="offline-summary-group" style="display:none;">
-                        <label class="setting-label">Offline model</label>
-                        <div id="offline-summary" class="lang-capability"></div>
-                    </div>
-
-                    <div class="setting-group" id="deepgram-key-group">
-                        <label class="setting-label">Deepgram API Key</label>
-                        <input type="password" id="deepgram-key" class="setting-input" placeholder="dg_...">
-                        <p class="setting-hint">No key yet? <a href="https://console.deepgram.com/signup" target="_blank" rel="noopener">Get a free key &rarr;</a> ($200 of free credit to start).</p>
-                    </div>
-
-                    </div>
-                    <div class="setting-col-stack">
-                        <div class="setting-group">
-                            <label class="setting-label">Audio Input</label>
-                            <div style="display:flex;gap:6px;align-items:center;">
-                                <select id="audio-source-settings" class="setting-input" style="flex:1;min-width:0;">
-                                    <option value="">Loading devices…</option>
-                                </select>
-                                <button id="refresh-devices-settings" class="modal-btn secondary audio-refresh-btn" title="Refresh device list">↻</button>
-                            </div>
                             <!-- What this input is delivering: live while listening, a preview
                                  while Settings is open otherwise. Kairo evens out the level
                                  itself; the line says when the source is too quiet or clipping. -->
@@ -1337,55 +1313,156 @@
                                 <span class="input-level-status" id="input-level-status"></span>
                             </div>
                             <p class="setting-hint input-missing" id="audio-input-missing" hidden></p>
-                        </div>
-
-                    </div>
                     </div>
                 </div>
 
+                <div class="settings-section">
+                    <div class="settings-section-label lang-step">Speech engine</div>
+                    <!-- Each engine's card holds everything it needs (the key, the model), shown
+                         whether or not it is the one chosen; choosing is the card's own header. -->
+                    <div class="toggle-group au-engines" id="speech-engine-toggle">
+                        <div class="au-engine">
+                            <button class="toggle-btn active" data-engine="deepgram">
+                                <span class="au-engine-title"><span class="au-dot" aria-hidden="true"></span>Deepgram</span>
+                                <span class="au-engine-sub">Most accurate. Needs internet and a key.</span>
+                            </button>
+                            <div class="au-engine-body" id="deepgram-key-group">
+                                <input type="password" id="deepgram-key" class="setting-input bi-field" placeholder="Paste your Deepgram key" aria-label="Deepgram key">
+                                <p class="setting-hint">No key yet? <a href="https://console.deepgram.com/signup" target="_blank" rel="noopener">Get a free key</a>, with $200 of free credit to start.</p>
+                            </div>
+                        </div>
+                        <div class="au-engine">
+                            <button class="toggle-btn" data-engine="browser">
+                                <span class="au-engine-title"><span class="au-dot" aria-hidden="true"></span>Offline</span>
+                                <span class="au-engine-sub">Works without internet or a key. A little less accurate.</span>
+                            </button>
+                            <!-- The offline model is chosen by the language the preacher speaks, so it is
+                                 downloaded in Settings → Language; here, what's installed (app.js renderOfflineSummary). -->
+                            <div class="au-engine-body" id="offline-summary-group">
+                                <div id="offline-summary" class="lang-capability"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="setting-hint" id="speech-engine-hint" hidden></p>
+                </div>
+
                 <div class="settings-section" id="audio-out-section">
-                    <div class="settings-section-label">Sound output</div>
+                    <div class="settings-section-label lang-step">Sound output</div>
                     <div id="audio-out-host"></div>
                 </div>
 
             </section>
 
             <section class="settings-pane" data-pane="bible">
-            <!-- ── BIBLE ──────────────────────────────────────── -->
+            <!-- ── BIBLE ──────────────────────────────────────────
+                 1 On screen: the version a verse goes up in, Auto-Deploy, the confidence badge.
+                 2 Your Bibles: Bibles the church has the right to use, from a file or its own API.Bible
+                   account. Kairo ships no copyrighted text it has no licence for (bible_import.js). -->
             <div class="settings-section">
-                <div class="settings-section-label">Bible</div>
+                <div class="settings-section-label lang-step">On screen</div>
+
+                <div class="setting-switch-row">
+                    <div class="setting-switch-text">
+                        <label class="setting-label" for="translation-select-settings">Bible version</label>
+                        <p class="setting-hint">What a verse goes up in. The preacher can switch it out loud (&ldquo;in the NLT&rdquo;).</p>
+                    </div>
+                    <select id="translation-select-settings" class="setting-input bp-version">
+                        <optgroup label="Comes with Kairo">
+                            <option value="KJV" selected>KJV</option>
+                            <option value="NLT">NLT</option>
+                            <option value="NIV">NIV</option>
+                            <option value="ESV">ESV</option>
+                            <option value="NASB">NASB</option>
+                        </optgroup>
+                    </select>
+                </div>
 
                 <!-- Auto-Deploy: the one place this is set, for the basic screen and Director mode alike
                      (their Auto-Deploy badge only shows it). Applies the moment it is switched. -->
                 <div class="setting-switch-row">
                     <div class="setting-switch-text">
                         <label class="setting-label" for="auto-send-settings">Auto-Deploy</label>
-                        <p class="setting-hint">Put confident matches on screen automatically. Turn off to send every verse yourself: detected verses wait in Possible Matches.</p>
+                        <p class="setting-hint">Confident matches go on screen by themselves. Off: every verse waits in Possible Matches.</p>
                     </div>
                     <label class="output-toggle"><input type="checkbox" id="auto-send-settings" checked><span class="output-toggle-track"></span></label>
                 </div>
 
-                <div class="setting-row-2col">
-                    <div class="setting-group">
-                        <label class="setting-label" for="translation-select-settings">English translation</label>
-                        <select id="translation-select-settings" class="setting-input">
-                            <option value="KJV" selected>KJV</option>
-                            <option value="NLT">NLT</option>
-                            <option value="NIV">NIV</option>
-                            <option value="ESV">ESV</option>
-                            <option value="NASB">NASB</option>
-                        </select>
-                        <p class="setting-hint">The version a verse goes up in when scripture shows in English. Another language (Settings → Language) uses its own Bible instead. The preacher can ask for one out loud ("John 3:16 in the NIV") for that passage.</p>
+                <div class="setting-switch-row">
+                    <div class="setting-switch-text">
+                        <label class="setting-label" for="show-confidence-settings">Show how sure each match is</label>
+                        <p class="setting-hint">A percentage on each card in the Live Queue and Possible Matches.</p>
+                    </div>
+                    <label class="output-toggle"><input type="checkbox" id="show-confidence-settings" checked><span class="output-toggle-track"></span></label>
+                </div>
+            </div>
+
+            <!-- Your Bibles does three jobs, in this order: invite the church to get its Bibles free (and
+                 legally) from API.Bible and manage that key; show every Bible added, however it came;
+                 and, second, take a Bible file the church already has. -->
+            <div class="settings-section" id="bible-import">
+                <div class="settings-section-label lang-step">Your Bibles</div>
+
+                <div class="bi-ways">
+                <div class="bi-api-card" id="api-bible">
+                    <div id="api-bible-signin">
+                        <div class="bi-invite-title">Get Bibles free from API.Bible</div>
+                        <p class="setting-hint">A free API.Bible account gives your church 3 Bibles of its choice, like the NIV, NLT or the Message, plus dozens of free ones. Kairo downloads them so they work without internet.</p>
+                        <ol class="bi-steps">
+                            <li><a href="https://api.bible/sign-up" target="_blank" rel="noopener">Create a free account</a> and choose your Bibles there.</li>
+                            <li>Copy your API key and paste it here.</li>
+                        </ol>
+                        <div class="bi-row">
+                            <input type="password" id="api-bible-key" class="setting-input bi-field" placeholder="Paste your API key" autocomplete="off" spellcheck="false" aria-label="API.Bible key">
+                            <button type="button" id="api-bible-connect" class="setting-input btn-brand bi-btn">Connect</button>
+                            <button type="button" id="api-bible-cancel-replace" class="bi-link" hidden>Cancel</button>
+                        </div>
+                        <p class="setting-hint bi-fine">Free accounts are for non-commercial use.</p>
                     </div>
 
-                    <div class="setting-group setting-checks">
-                    <label class="bs-check-label">
-                        <input type="checkbox" id="show-confidence-settings" checked>
-                        <span><strong>Show how sure each match is</strong>
-                        <span class="setting-hint">A percentage on each card in the Live Queue and Possible Matches.</span></span>
-                    </label>
+                    <div id="api-bible-account" hidden>
+                        <div class="bi-account">
+                            <span class="bi-account-text">
+                                <span class="bi-account-title">API.Bible</span>
+                                <span class="bi-account-key"><span class="bi-account-dot" aria-hidden="true"></span><span id="api-bible-hint">Connected</span></span>
+                            </span>
+                            <span class="bi-account-actions">
+                                <button type="button" id="api-bible-replace" class="bi-small-btn bi-icon-btn" title="Replace key" aria-label="Replace key"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="7.5" cy="15.5" r="4.5"/><path d="M10.7 12.3 21 2"/><path d="m16 7 3 3"/><path d="m19 4 2 2"/></svg></button>
+                                <button type="button" id="api-bible-disconnect" class="bi-small-btn bi-icon-btn bi-danger" title="Remove key" aria-label="Remove key"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg><span class="bi-confirm" hidden></span></button>
+                            </span>
+                        </div>
+                        <div class="bi-row bi-one-line">
+                            <div class="bi-combo">
+                                <input id="api-bible-search" class="setting-input bi-field" placeholder="Add a Bible: NIV, Message, Catholic…" autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false" aria-controls="api-bible-options" aria-label="Bible to add">
+                                <ul class="bi-combo-list" id="api-bible-options" role="listbox" hidden></ul>
+                            </div>
+                            <button type="button" id="api-bible-add" class="setting-input btn-brand bi-btn">Add</button>
+                        </div>
+                        <p class="setting-hint bi-fine">Each Bible downloads to work without internet (about 1,200 of your account's calls), stays encrypted on this computer and refreshes every 30 days. Bible text provided by <a href="https://api.bible" target="_blank" rel="noopener">API.Bible</a>.</p>
+                    </div>
+                </div>
+
+                <div class="bi-api-card bi-file-card">
+                    <div class="bi-invite-title">Upload a Bible file</div>
+                    <p class="setting-hint">Already have a Bible your church may use? Kairo reads USFM, USX, OSIS and Zefania XML, or a zip of them. The file stays on this computer.</p>
+                    <div class="bi-row" id="bible-file-start">
+                        <button type="button" id="bible-import-btn" class="setting-input btn-brand bi-btn">Choose a file</button>
+                    </div>
+                    <input type="file" id="bible-import-file" accept=".usfm,.sfm,.usx,.xml,.osis,.zip" hidden>
+                    <div class="bi-panel-body" id="bible-file-panel" hidden>
+                        <div class="bi-row bi-one-line">
+                            <div class="setting-input bi-field" id="bible-file-name"></div>
+                            <button type="button" id="bible-file-add" class="setting-input btn-brand bi-btn">Add</button>
+                            <button type="button" class="bi-small-btn" data-close>Cancel</button>
+                        </div>
+                    </div>
                 </div>
                 </div>
+
+                <div class="bi-list-label">Added</div>
+                <ul class="bi-list" id="bible-list"></ul>
+                <p class="bi-empty" id="bible-list-empty">No Bibles added yet.</p>
+
+                <p class="setting-hint bi-status" id="bible-import-status" role="status"></p>
             </div>
 
             <!-- Meaning-Based Candidates (semantic layer) used to have
@@ -1449,17 +1526,12 @@
             </section>
 
             <section class="settings-pane" data-pane="streaming">
-                <div class="settings-section">
-                    <div class="settings-section-label">Streaming</div>
-                    <div id="streaming-panel"></div>
-                </div>
+                <!-- Destinations, Video, Sound, Recording: each a numbered section of its own (streaming_panel.js). -->
+                <div id="streaming-panel"></div>
             </section>
 
             <section class="settings-pane" data-pane="macros">
-                <div class="settings-section">
-                    <div class="settings-section-label">Macros</div>
-                    <div id="macros-panel"></div>
-                </div>
+                <div id="macros-panel"></div>
             </section>
 
             <section class="settings-pane" data-pane="overlays">
@@ -1757,6 +1829,14 @@
                         <button id="upd-settings-install" class="modal-btn primary hidden">Update &amp; Restart</button>
                     </div>
                 </div>
+
+                <!-- Every Bible's copyright, in one place: the page a verse's citation leads to
+                     (API.Bible terms §7.1). bible_import.js fills it. -->
+                <div class="settings-section" id="bible-copyrights">
+                    <div class="settings-section-label">Bible copyrights</div>
+                    <p class="setting-hint">Where every Bible Kairo shows comes from.</p>
+                    <dl class="about-credits" id="about-credits"></dl>
+                </div>
             </section>
 
             <section class="settings-pane" data-pane="language">
@@ -1768,7 +1848,7 @@
                  Second language: verses and slides in two languages at once (its slide
                  translator downloads when picked). app_outputs.js renderLangCapability. -->
             <div class="settings-section">
-                <div class="settings-section-label lang-step"><span class="lang-step-n">1</span>Listening</div>
+                <div class="settings-section-label lang-step">Listening</div>
                 <div class="setting-row-2col">
                     <div class="setting-group">
                     <label class="setting-label" for="stt-language">Preacher speaks</label>
@@ -1847,7 +1927,7 @@
             </div>
 
             <div class="settings-section" id="lang-screen-section">
-                <div class="settings-section-label lang-step"><span class="lang-step-n">2</span>Bible language</div>
+                <div class="settings-section-label lang-step">Bible language</div>
                 <select id="bible-language" hidden></select>
                 <div class="setting-group">
                     <label class="setting-label">Verses come from</label>
@@ -2143,7 +2223,7 @@
                         <div class="ob-tile">
                             <div class="ob-art ob-art-lang" aria-hidden="true"><span>Welcome</span><span>&#7864; k&uacute; &agrave;b&#7885;&#768;</span><span>Bienvenue</span><span>Nn&#7885;&#768;&#7885;</span><span>Bienvenido</span></div>
                             <h3>Every language in the room</h3>
-                            <p>Nine Bibles, including Yoruba, Igbo and Hausa, all working offline &mdash; and slides translated into French, Spanish or Portuguese on this computer.</p>
+                            <p>Nine Bibles built in, including Yoruba, Igbo and Hausa, plus the NIV, NLT and more free through API.Bible &mdash; all working offline.</p>
                         </div>
                     </div>
                 </section>
@@ -2183,6 +2263,14 @@
                     <div class="ob-setup">
                         <label for="first-run-mic" class="ob-label">Microphone or audio input</label>
                         <select id="first-run-mic" class="setting-input"><option value="">Finding inputs&hellip;</option></select>
+                    </div>
+                    <!-- Bibles beyond the ones that ship: the church's own free API.Bible account
+                         (bible_import.js connects the key when the tour is saved). -->
+                    <div class="ob-setup ob-bibles">
+                        <label for="first-run-api-bible-key" class="ob-label">Your church's Bibles <span class="ob-optional">optional</span></label>
+                        <p class="ob-bibles-lede">Get the NIV, NLT, the Message and more free from API.Bible. They download to work without internet.</p>
+                        <input id="first-run-api-bible-key" type="password" class="setting-input" autocomplete="off" spellcheck="false" placeholder="Paste your API.Bible key" />
+                        <a href="https://api.bible/sign-up" target="_blank" rel="noopener" class="ob-link">Get a free key &rarr;</a>
                     </div>
                 </section>
             </div>
@@ -2292,9 +2380,15 @@
             };
             function apply(value) {
                 if (hint) hint.textContent = HINTS[value] || '';
-                if (keyGrp) keyGrp.style.display = value === 'browser' ? 'none' : '';
             }
             group.addEventListener('toggle-change', function(e) { apply(e.detail.value); });
+            // A click anywhere on an engine's card chooses it, except in its own fields and links.
+            group.querySelectorAll('.au-engine').forEach(function(card) {
+                card.addEventListener('click', function(e) {
+                    if (e.target.closest('input, a, button')) return;
+                    card.querySelector('.toggle-btn').click();
+                });
+            });
             // Initial sync — in case loadSettings has already run before this IIFE.
             var active = group.querySelector('.toggle-btn.active');
             if (active) apply(active.dataset.engine);
@@ -2547,6 +2641,7 @@
     <script src="import_hub.js"></script>
     <script src="global_search.js"></script>
     <script src="onboarding_reel.js"></script>
+    <script src="bible_import.js"></script>
     <script src="dev_reload.js"></script>
 </body>
 </html>

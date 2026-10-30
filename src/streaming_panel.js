@@ -220,9 +220,9 @@
     h.innerHTML = '';
 
     // Destinations
-    const dests = el('div', 'st-card');
+    const dests = el('div', 'st-card settings-section');
     const dHead = el('div', 'st-card-head');
-    dHead.appendChild(el('div', 'st-card-title', 'Destinations'));
+    dHead.appendChild(el('div', 'st-card-title settings-section-label', 'Destinations'));
     const S = window.KairoStreaming;
     if (S && c.destinations.some(d => d.enabled !== false && d.url)) {
       const isLive = S.isLive();
@@ -248,8 +248,8 @@
     h.appendChild(dests);
 
     // Video
-    const video = el('div', 'st-card');
-    video.appendChild(el('div', 'st-card-head')).appendChild(el('div', 'st-card-title', 'Video'));
+    const video = el('div', 'st-card settings-section');
+    video.appendChild(el('div', 'st-card-head')).appendChild(el('div', 'st-card-title settings-section-label', 'Video'));
     const vb = el('div', 'st-card-body');
     vb.append(
       row('Size', 'What the viewers get', select(RESOLUTIONS.map(([v, l]) => [v, `${v} · ${l}`]), c.video.resolution, (v) => save({ ...cfg(), video: { ...cfg().video, resolution: v } }))),
@@ -260,8 +260,8 @@
     h.appendChild(video);
 
     // Audio
-    const audio = el('div', 'st-card');
-    audio.appendChild(el('div', 'st-card-head')).appendChild(el('div', 'st-card-title', 'Sound'));
+    const audio = el('div', 'st-card settings-section');
+    audio.appendChild(el('div', 'st-card-head')).appendChild(el('div', 'st-card-title settings-section-label', 'Sound'));
     const ab = el('div', 'st-card-body');
     // The same mixer each redraw (the page redraws with the live status): a fader being
     // dragged is never replaced under the pointer.
@@ -279,9 +279,9 @@
     const S3 = window.KairoStreaming;
     const r = c.record || {};
     const setRec = (patch) => save({ ...cfg(), record: { ...(cfg().record || {}), ...patch } });
-    const rec = el('div', 'st-card');
+    const rec = el('div', 'st-card settings-section');
     const rHead = el('div', 'st-card-head');
-    rHead.appendChild(el('div', 'st-card-title', 'Recording'));
+    rHead.appendChild(el('div', 'st-card-title settings-section-label', 'Recording'));
     if (S3) {
       const on = S3.isRecording();
       const rb = el('button', 'modal-btn secondary', on ? 'Stop recording' : 'Record'); rb.type = 'button';
@@ -339,14 +339,15 @@
   const style = document.createElement('style');
   style.textContent = `
     #streaming-panel { display: flex; flex-direction: column; gap: 14px; }
-    .st-card { border: 1px solid var(--border); border-radius: var(--radius-lg); background: rgba(255,255,255,0.015); }
-    .st-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
+    #streaming-panel > .st-card { margin: 0; }
+    /* Each box is a Settings section (numbered, styled like every other page). */
+    .st-card-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+    .st-card-head .settings-section-label { flex: 1; padding-bottom: 0; border-bottom: 0; margin-bottom: 0; }
     .st-card-head .modal-btn { white-space: nowrap; flex: none; }
     .st-card-head .st-go { margin-left: auto; }
     .st-card-head .st-stop { margin-left: auto; border-color: #b5532c; color: #ffd9cc; }
     .st-live { font-weight: 600; }
-    .st-card-title { font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-dim, var(--text)); }
-    .st-card-body { padding: 4px 16px 12px; display: flex; flex-direction: column; }
+    .st-card-body { padding: 0; display: flex; flex-direction: column; }
     .st-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; border-bottom: 1px solid var(--border); }
     .st-row:last-child { border-bottom: 0; }
     .st-name { font-size: 13px; font-weight: 600; color: var(--text); }

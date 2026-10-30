@@ -109,12 +109,12 @@
     const bar = el('div', 'ov-toolbar');
     const setBar = el('div', 'ov-sets');
     setsOf().forEach((name) => {
-      const b = el('button', 'ov-set' + (name === currentSet ? ' active' : ''), name);
+      const b = el('button', 'ov-set lang-pill' + (name === currentSet ? ' active' : ''), name);
       b.type = 'button';
       b.addEventListener('click', () => { currentSet = name; try { localStorage.setItem(SET_KEY, name); } catch {} render(); });
       setBar.appendChild(b);
     });
-    const newSet = el('button', 'ov-set', '+ New set'); newSet.type = 'button';
+    const newSet = el('button', 'ov-set lang-pill', '+ New set'); newSet.type = 'button';
     newSet.addEventListener('click', () => {
       const input = document.createElement('input'); input.className = 'setting-input'; input.placeholder = 'Set name'; input.maxLength = 40;
       newSet.replaceWith(input); input.focus();
@@ -159,14 +159,23 @@
     h.append(bar, about, msg);
 
     // Body: the files of this set on the left, the screen on the right.
+    // An empty set says so in one place, with the way to fill it; the screen preview only shows once
+    // there is something to place on it (an empty black stage read as broken).
+    if (!inSet.length) {
+      const empty = el('div', 'ov-empty');
+      empty.append(el('div', 'ov-empty-title', `Nothing in “${currentSet}” yet`), el('p', 'setting-hint', 'Add a logo, a badge or a lower-third: a picture or a short video.'));
+      const addHere = el('button', 'modal-btn primary', '+ Add overlay'); addHere.type = 'button';
+      addHere.addEventListener('click', () => file.click());
+      empty.appendChild(addHere);
+      h.appendChild(empty);
+      return;
+    }
     const body = el('div', 'ov-body');
     const left = el('div', 'ov-left');
     const right = el('div', 'ov-right');
     right.appendChild(buildStage());
 
-    if (!inSet.length) {
-      left.appendChild(el('p', 'setting-hint', `Nothing in "${currentSet}" yet.`));
-    } else {
+    {
       const list = el('div', 'ov-list');
       inSet.forEach((o) => {
         const r = el('div', 'ov-item' + (o.id === selectedId ? ' selected' : ''));

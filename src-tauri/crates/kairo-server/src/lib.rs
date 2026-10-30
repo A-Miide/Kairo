@@ -26,6 +26,8 @@ mod media;
 mod import;
 mod installer;
 mod bible_packs;
+mod bible_import;
+mod api_bible;
 pub mod notes;
 pub mod offline;
 // Mapped weights are only used where they can be locked in memory (macOS so far; offline::map_weights).
@@ -262,7 +264,7 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         let cfg = kairo_detect::engine::Config { auto_send: p.auto_send, ..Default::default() };
         let detector = Detector::start(bible.clone(), starting.hub.clone(), cfg, starting.presentation.clone(), rt.clone(), starting.log.clone());
         let (a, h) = (starting.clone(), rt);
-        let (a2, h2) = (a.clone(), h.clone());
+        let (a2, h2, h3) = (a.clone(), h.clone(), h.clone());
         detector.on_translation(move |code, heard| {
             let a = a.clone();
             h.spawn(async move { routes::spoken_translation(&a, code, heard).await });
@@ -273,6 +275,9 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         });
         let _ = starting.bible.set(bible);
         let _ = starting.detector.set(detector);
+        // Chapters of a Bible the church connected through API.Bible are fetched as verses are shown.
+        let for_api = starting.clone();
+        h3.spawn(async move { api_bible::start(&for_api) });
         eprintln!("[Server] Detection engine ready in {:.1}s (reference + verbatim + stream + fingerprint).", t.elapsed().as_secs_f32());
         starting.hub.broadcast(json!({ "type": "worker-ready" }));
         load_meaning(&starting);

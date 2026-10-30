@@ -4069,9 +4069,8 @@ async function renderOfflineSummary() {
   const group = document.getElementById('offline-summary-group');
   const box = document.getElementById('offline-summary');
   if (!group || !box) return;
-  const active = document.querySelector('#speech-engine-toggle .toggle-btn.active')?.dataset.engine;
-  group.style.display = active === 'browser' ? '' : 'none';
-  if (active !== 'browser') return;
+  // Shown whichever engine is chosen: the Offline card always says what it has (2026-10-29).
+  group.style.display = '';
   const spoken = String(settings.sttLanguage || 'en-US').toLowerCase();
   const need = spoken.startsWith('en') ? 'en' : 'multi';
   const get = async (m) => { try { return await (await fetch(`${SERVER}/api/offline/status?model=${m}`)).json(); } catch (_) { return null; } };
