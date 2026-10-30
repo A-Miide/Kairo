@@ -152,8 +152,22 @@ static PREPARING: std::sync::Mutex<()> = std::sync::Mutex::new(());
 /// changes), so the first load after an update takes 30 s or more again, and every load takes a
 /// second. Loading the model in the background when Kairo opens, and keeping that engine waiting,
 /// takes both out of Start listening.
+/// On the CPU (the speech engine's default since 2026-10-30) a load takes half a second, or about
+/// 4 s the first time after an install: done once at launch, so Start is quick, then let go, not kept
+/// loaded (up to 1.3 GB on an 8 GB Mac while nothing is being listened to).
 pub fn prepare_at_launch(app: Shared) {
-    keep_warm(app);
+    if !coreml() || !coreml_supported() {
+        return;
+    }
+    let dir = model_dir(&app, "en");
+    if !coreml_present(&dir) {
+        return;
+    }
+    let _ = std::thread::Builder::new().name("coreml-prepare".into()).spawn(move || {
+        if let Err(e) = prepare_coreml(&app, &dir) {
+            eprintln!("[Offline] {e}");
+        }
+    });
 }
 
 /// An English Core ML engine loaded and waiting for the next Start listening (keep_warm).
@@ -168,6 +182,23 @@ static LOADING: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new
 /// macOS rebuilds it for the Neural Engine: minutes), "ready", "failed", or "" when not used. Shown in
 /// Settings → Audio's Offline card (owner, 2026-10-30), with "speech-engine" messages as it changes.
 static ENGINE_STATE: std::sync::Mutex<&'static str> = std::sync::Mutex::new("");
+/// A load that takes longer than this is "preparing" (macOS rebuilding the model); a usual one takes
+/// a second, and says nothing (owner, 2026-10-30: it flashed at every launch).
+const PREPARING_AFTER: Duration = Duration::from_secs(3);
+/// Loads under way (the launch-time one, setup's, a start's): one still running after
+/// PREPARING_AFTER says the engine is being prepared.
+static LOADS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Says "preparing" if this load (`id`, from LOADS) is still running after PREPARING_AFTER.
+fn preparing_if_slow(app: &Shared, id: u64, waiting: bool) {
+    let app = app.clone();
+    let _ = std::thread::Builder::new().name("coreml-slow-load".into()).spawn(move || {
+        std::thread::sleep(PREPARING_AFTER);
+        if LOADS.load(Ordering::SeqCst) == id && engine_state() != "ready" {
+            set_engine_state(&app, "preparing", waiting);
+        }
+    });
+}
 
 pub fn engine_state() -> &'static str {
     *crate::util::lock(&ENGINE_STATE)
@@ -178,42 +209,6 @@ fn set_engine_state(app: &Shared, state: &'static str, waiting: bool) {
     app.hub.broadcast(json!({ "type": "speech-engine", "state": state, "waiting": waiting }));
 }
 
-/// Loads an English Core ML engine in the background and keeps it for the next start.
-fn keep_warm(app: Shared) {
-    if !coreml() || !coreml_supported() {
-        return;
-    }
-    let dir = model_dir(&app, "en");
-    if !coreml_present(&dir) {
-        return;
-    }
-    let _ = std::thread::Builder::new().name("coreml-prepare".into()).spawn(move || {
-        let _held = PREPARING.lock();
-        if crate::util::lock(&WARM).is_some() {
-            return;
-        }
-        let Some(exe) = coreml_worker(&app) else { return };
-        if engine_state() != "ready" {
-            set_engine_state(&app, "preparing", false);
-        }
-        let started = spawn_worker(&dir, &None, Some(&exe));
-        if let Ok((child, _)) = &started {
-            LOADING.store(child.id(), std::sync::atomic::Ordering::SeqCst);
-        }
-        let ready = started.and_then(|w| wait_ready(w, &AtomicBool::new(false)));
-        LOADING.store(0, std::sync::atomic::Ordering::SeqCst);
-        match ready {
-            Ok(w) => {
-                *crate::util::lock(&WARM) = Some(w);
-                set_engine_state(&app, "ready", false);
-            }
-            Err(e) => {
-                eprintln!("[Offline] {e}");
-                set_engine_state(&app, "failed", false);
-            }
-        }
-    });
-}
 
 /// The waiting engine, if it is still running.
 fn take_warm() -> Option<Worker> {
@@ -268,8 +263,12 @@ pub fn prepare_coreml(app: &Shared, dir: &std::path::Path) -> Result<(), String>
     // Start listening meanwhile waits for this load rather than starting a second one beside it,
     // and Settings → Audio says the engine is being prepared (a fresh install, 2026-10-30).
     let _held = PREPARING.lock();
-    set_engine_state(app, "preparing", false);
+    let load = LOADS.fetch_add(1, Ordering::SeqCst) + 1;
+    if engine_state() != "ready" {
+        preparing_if_slow(app, load, false);
+    }
     let result = prepare_coreml_now(app, dir);
+    LOADS.fetch_add(1, Ordering::SeqCst);
     set_engine_state(app, if result.is_ok() { "ready" } else { "failed" }, false);
     result
 }
@@ -683,10 +682,12 @@ pub async fn start(app: Shared) -> Result<Session, Value> {
     let (started_tx, started_rx) = std::sync::mpsc::sync_channel::<Result<(), String>>(1);
     let app2 = app.clone();
     if coreml_exe.is_some() {
-        // The engine still being prepared (at launch, by setup, or by this start): Settings → Audio
-        // says why Start is waiting (owner, 2026-10-30).
-        if engine_state() == "preparing" || (crate::util::lock(&WARM).is_none() && engine_state() != "ready") {
+        // The engine being prepared (at launch, by setup, or by this start): Settings → Audio says
+        // why Start is waiting (owner, 2026-10-30); a usual load of a second says nothing.
+        if engine_state() == "preparing" {
             set_engine_state(&app, "preparing", true);
+        } else if crate::util::lock(&WARM).is_none() && engine_state() != "ready" {
+            preparing_if_slow(&app, LOADS.load(Ordering::SeqCst), true);
         }
         let _ = tokio::task::spawn_blocking(|| drop(PREPARING.lock())).await;
     }
@@ -1095,6 +1096,10 @@ fn supervise(
                         // Said, in the log and to the operator: this computer can't keep up.
                         crate::routes::write_debug_global("server:speech-behind", json!({ "skippedMs": ms }));
                         hub.broadcast(json!({ "type": "speech-behind", "skippedMs": ms }));
+                        // Voice it dropped unheard is no interpreter.
+                        if let Some(c) = crate::interpretation::with(|i| i.speech_dropped()) {
+                            crate::detect::announce_interpretation(&hub, c);
+                        }
                     }
                     FromWorker::Gone => dead = true,
                     FromWorker::Ready => {}
@@ -1170,7 +1175,6 @@ fn supervise(
 /// After a session: the audio channel closed, the state told.
 pub async fn stopped(app: &Shared) {
     *app.audio.lock().await = None;
-    keep_warm(app.clone());
     if let Some((_, d)) = app.ready() {
         d.configure(|c| c.offline = false);
     }

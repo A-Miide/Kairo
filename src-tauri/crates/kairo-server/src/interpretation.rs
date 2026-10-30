@@ -34,6 +34,9 @@ const SENTENCE_REAL: f64 = 0.7;
 const PREACHER_RECENT_MS: u64 = 60_000;
 /// Silence that ends an interpretation on its own.
 const END_SILENCE_MS: u64 = 8_000;
+/// After the speech engine dropped audio to catch up, the voice it never heard as words is not
+/// another language: no turn starts for this long (live, 2026-10-30: four false turns, one 24 s).
+const AFTER_DROP_MS: u64 = 15_000;
 const SAMPLE_RATE: i32 = 16_000;
 
 /// The commonest function words of each service language: a sentence of the preacher's language
@@ -73,6 +76,8 @@ pub struct Interpreter {
     released: Vec<(String, bool)>,
     /// The service's spoken language (settings: sttLanguage, "en-US").
     lang: String,
+    /// No turn starts before this (audio clock): the speech engine dropped audio just before.
+    quiet_until: u64,
 }
 
 /// What a stretch of audio changed.
@@ -109,7 +114,19 @@ impl Interpreter {
             held: Vec::new(),
             released: Vec::new(),
             lang: "en".into(),
+            quiet_until: 0,
         }
+    }
+
+    /// The speech engine dropped audio to catch up with live speech: that voice was never heard as
+    /// words, so it says nothing about another language. Forget it, end a turn it may have started,
+    /// and start none for a while.
+    pub fn speech_dropped(&mut self) -> Option<Change> {
+        self.voiced = [0; WINDOW_S];
+        self.words = [0; WINDOW_S];
+        self.quiet_until = self.clock_ms + AFTER_DROP_MS;
+        self.held.clear();
+        self.end()
     }
 
     /// The words the service's language has (the Bible's vocabulary). Without it nothing is
@@ -187,7 +204,7 @@ impl Interpreter {
         }
         let (rate, voiced_ms) = self.window();
         let preacher_recent = self.sentence_at.is_some_and(|t| self.clock_ms.saturating_sub(t) <= PREACHER_RECENT_MS);
-        if self.known.is_some() && !self.song_live && preacher_recent && voiced_ms >= START_VOICED_MS && rate < MAX_WORDS_PER_S {
+        if self.known.is_some() && !self.song_live && preacher_recent && self.clock_ms >= self.quiet_until && voiced_ms >= START_VOICED_MS && rate < MAX_WORDS_PER_S {
             self.active = true;
             return Some(Change::Started);
         }
@@ -312,6 +329,16 @@ mod tests {
         assert_eq!(v, Verdict::Preacher);
         assert_eq!(change, Some(Change::Ended));
         assert!(!i.is_active());
+    }
+
+    #[test]
+    fn audio_the_speech_engine_dropped_is_no_interpreter() {
+        let mut i = heard();
+        i.active = true;
+        // Dropped to catch up: the turn it caused ends, and none starts for a while after.
+        assert_eq!(i.speech_dropped(), Some(Change::Ended));
+        assert!(!i.is_active());
+        assert!(i.quiet_until > i.clock_ms);
     }
 
     #[test]

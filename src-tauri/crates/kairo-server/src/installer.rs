@@ -272,8 +272,6 @@ async fn install(app: &Shared, s: &Spec, progress: &Progress) -> Result<std::pat
     let _ = tokio::task::spawn_blocking(move || crate::offline::map_weights(&d)).await;
     let _ = std::fs::write(final_dir.join(".kairo-model-version"), s.version);
     let _ = progress.send(json!({ "phase": "done", "already": false, "modelPath": final_dir }));
-    // Prepared: keep one loaded, so the first Start after setup is instant.
-    crate::offline::prepare_at_launch(app.clone());
     Ok(final_dir)
 }
 

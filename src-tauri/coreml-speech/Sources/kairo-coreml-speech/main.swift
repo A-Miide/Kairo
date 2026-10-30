@@ -15,6 +15,7 @@
 // transcribed on its own clock.
 
 import AVFoundation
+import CoreML
 import FluidAudio
 import Foundation
 
@@ -188,7 +189,19 @@ func run() async -> Int32 {
             if getppid() != parent { exit(0) }
         }
     }
-    let engine = StreamingNemotronAsrManager()
+    // The CPU, unless KAIRO_COMPUTE_UNITS says otherwise ("ane": the Neural Engine, "gpu",
+    // "all"). On an 8 GB M1 with macOS 27.2 (2026-10-30), 60 s of sermon took 12–15 s on the CPU
+    // (16 s of CPU work, 1.3 GB at most), and 40–48 s on the Neural Engine (30 s of CPU work,
+    // 2.2 GB), which also needs macOS to spend 6 minutes or more preparing the model after every
+    // macOS or Kairo update; the same words either way. Live it fell behind and dropped audio.
+    let units: MLComputeUnits
+    switch ProcessInfo.processInfo.environment["KAIRO_COMPUTE_UNITS"] {
+    case "ane": units = .cpuAndNeuralEngine
+    case "gpu": units = .cpuAndGPU
+    case "all": units = .all
+    default: units = .cpuOnly
+    }
+    let engine = StreamingNemotronAsrManager(configuration: MLModelConfigurationUtils.defaultConfiguration(computeUnits: units))
     do {
         try await engine.loadModels(from: URL(fileURLWithPath: args[1]))
     } catch {
