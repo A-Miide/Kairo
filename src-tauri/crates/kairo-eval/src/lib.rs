@@ -88,11 +88,11 @@ pub fn meaning(embedder: &str, reranker: Option<&str>, index_codes: &[&str]) -> 
 /// The engine's request, answered.
 pub fn answer(m: &MeaningService, r: &Request) -> Answer {
     match r {
-        Request::Paraphrase { id, windows, limit } => Answer::Paraphrase {
+        Request::Paraphrase { id, windows, limit, rerank_from } => Answer::Paraphrase {
             id: *id,
             // `MEANING_LIMIT=<n>`: a longer shortlist for the cross-encoder than the engine asks for.
             candidates: m
-                .paraphrase(windows, std::env::var("MEANING_LIMIT").ok().and_then(|n| n.parse().ok()).unwrap_or(*limit))
+                .paraphrase(windows, std::env::var("MEANING_LIMIT").ok().and_then(|n| n.parse().ok()).unwrap_or(*limit), *rerank_from)
                 .unwrap_or_default()
                 .into_iter()
                 .map(|f| MeaningHit { verse: f.verse, cos: f.cos, window: f.window, rerank: f.rerank, rerank_modern: f.rerank_modern })

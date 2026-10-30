@@ -294,10 +294,10 @@ fn panic_text(p: &Box<dyn std::any::Any + Send>) -> String {
 
 fn answer(m: &MeaningService, r: &Request) -> Answer {
     match r {
-        Request::Paraphrase { id, windows, limit } => Answer::Paraphrase {
+        Request::Paraphrase { id, windows, limit, rerank_from } => Answer::Paraphrase {
             id: *id,
             candidates: m
-                .paraphrase(windows, *limit)
+                .paraphrase(windows, *limit, *rerank_from)
                 .unwrap_or_default()
                 .into_iter()
                 .map(|f| MeaningHit { verse: f.verse, cos: f.cos, window: f.window, rerank: f.rerank, rerank_modern: f.rerank_modern })

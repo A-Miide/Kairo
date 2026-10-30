@@ -74,8 +74,8 @@ impl MeaningService {
     }
 
     /// The verses the windows mean, best window per verse, with cross-encoder
-    /// scores for the shortlist.
-    pub fn paraphrase(&self, windows: &[String], limit: usize) -> Result<Vec<Found>, SemanticError> {
+    /// scores for those of the shortlist at `rerank_from` cosine or above.
+    pub fn paraphrase(&self, windows: &[String], limit: usize, rerank_from: f32) -> Result<Vec<Found>, SemanticError> {
         if windows.is_empty() {
             return Ok(Vec::new());
         }
@@ -94,16 +94,18 @@ impl MeaningService {
         top.sort_by(|a, b| b.cos.total_cmp(&a.cos).then(a.verse.cmp(&b.verse)));
         top.truncate(limit);
         if let Some(rr) = &self.reranker {
-            let mut queries = Vec::with_capacity(top.len() * 2);
-            let mut passages = Vec::with_capacity(top.len() * 2);
-            for f in &top {
+            let asked: Vec<usize> = (0..top.len()).filter(|&i| top[i].cos >= rerank_from).collect();
+            let mut queries = Vec::with_capacity(asked.len() * 2);
+            let mut passages = Vec::with_capacity(asked.len() * 2);
+            for &i in &asked {
+                let f = &top[i];
                 queries.extend([texts[f.window], texts[f.window]]);
                 passages.extend([self.kjv_text(f.verse), self.modern_text(f.verse)]);
             }
             let scores = rr.score_pairs(&queries, &passages)?;
-            for (i, f) in top.iter_mut().enumerate() {
-                f.rerank = scores.get(2 * i).copied();
-                f.rerank_modern = scores.get(2 * i + 1).copied();
+            for (n, &i) in asked.iter().enumerate() {
+                top[i].rerank = scores.get(2 * n).copied();
+                top[i].rerank_modern = scores.get(2 * n + 1).copied();
             }
         }
         Ok(top)

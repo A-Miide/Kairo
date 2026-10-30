@@ -75,8 +75,8 @@ checksum (`src-tauri/crates/kairo-eval/src/bin/bundle-data.rs`):
 - **bge-small-en-v1.5** by BAAI (MIT), as the int8 ONNX export
   [`Xenova/bge-small-en-v1.5`](https://huggingface.co/Xenova/bge-small-en-v1.5)
   — the sentence embedder, and the verse index built from it.
-- **ms-marco-MiniLM-L-12-v2** (Apache 2.0), as the int8 ONNX export
-  [`Xenova/ms-marco-MiniLM-L-12-v2`](https://huggingface.co/Xenova/ms-marco-MiniLM-L-12-v2)
+- **ms-marco-MiniLM-L-6-v2** (Apache 2.0), as the int8 ONNX export
+  [`Xenova/ms-marco-MiniLM-L-6-v2`](https://huggingface.co/Xenova/ms-marco-MiniLM-L-6-v2)
   — the cross-encoder that rereads the shortlist.
 
 ## Sound models (`databases/vad`)

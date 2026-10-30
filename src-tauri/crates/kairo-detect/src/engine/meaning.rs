@@ -275,6 +275,14 @@ impl MeaningThresholds {
         scoped: (0.546, 0.03),
     };
 
+    /// The lowest cosine any cross-encoder decision takes (offer, in play, modern wording,
+    /// screen). Below it the cross-encoder's score changes nothing, so it isn't asked. The
+    /// cross-encoder is most of Kairo's own CPU in a service (profiled 2026-10-30); this spares
+    /// about a sixth of it on the dev sermons, with the same verses found and sent.
+    pub fn rerank_from(&self) -> f32 {
+        [self.offer.1, self.offer_in_play.1, self.offer_modern.1, self.send.1].into_iter().fold(f32::MAX, f32::min)
+    }
+
     /// The thresholds for the embedder of this name (`EmbedderConfig::name`).
     pub fn for_embedder(name: &str) -> MeaningThresholds {
         match name {
@@ -348,7 +356,7 @@ impl Engine {
         }
         let just_cited = now.saturating_sub(self.screen.last_citation_at) < JUST_CITED_MS;
         let id = self.next_request_id();
-        self.out.requests.push(Request::Paraphrase { id, windows: windows.clone(), limit: PARAPHRASE_LIMIT });
+        self.out.requests.push(Request::Paraphrase { id, windows: windows.clone(), limit: PARAPHRASE_LIMIT, rerank_from: self.cfg.meaning_thresholds.rerank_from() });
         self.meaning.asked = Some((id, windows, just_cited));
     }
 

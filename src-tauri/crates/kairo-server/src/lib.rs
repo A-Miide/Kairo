@@ -387,8 +387,11 @@ fn load_meaning(app: &Shared) {
             }
         }
     };
-    let rr_dir = db.join("reranker_model/Xenova/ms-marco-MiniLM-L-12-v2");
-    let reranker = Reranker::load(RerankerConfig { name: "minilm-l12".into(), model: rr_dir.join("onnx/model_int8.onnx"), tokenizer: rr_dir.join("tokenizer.json"), max_tokens: 256, threads: 0 }).ok();
+    // The 6-layer cross-encoder: the 12-layer one was most of Kairo's own CPU in a service. On
+    // the dev sermons (replay, CPU transcripts, 2026-10-30) the 6-layer found the same 67/82 with
+    // the same 3 wrong, and offered 10 of the missed 15 to the 12-layer's 9, in half the time.
+    let rr_dir = db.join("reranker_model/Xenova/ms-marco-MiniLM-L-6-v2");
+    let reranker = Reranker::load(RerankerConfig { name: "minilm-l6".into(), model: rr_dir.join("onnx/model_int8.onnx"), tokenizer: rr_dir.join("tokenizer.json"), max_tokens: 256, threads: 0 }).ok();
     let Some((bible, detector)) = app.ready() else { return };
     let m = Arc::new(MeaningService::new(embedder, index, reranker, bible.k.corpus.kjv().clone(), vec![bible.modern.clone()]));
     // Cosines differ between embedders: the thresholds go with the model, ahead of it.

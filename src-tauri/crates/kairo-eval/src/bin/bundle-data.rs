@@ -24,18 +24,18 @@ struct File {
 
 const BGE: &str = "Xenova/bge-small-en-v1.5";
 const BGE_REV: &str = "ea104dacec62c0de699686887e3f920caeb4f3e3";
-const MINILM: &str = "Xenova/ms-marco-MiniLM-L-12-v2";
-const MINILM_REV: &str = "42a4a787e30451cf9dbd09080c2a5b8dde332c1e";
+const MINILM: &str = "Xenova/ms-marco-MiniLM-L-6-v2";
+const MINILM_REV: &str = "a09144355adeed5f58c8ed011d209bf8ee5a1fec";
 
 const FILES: &[File] = &[
     File { repo: BGE, revision: BGE_REV, path: "config.json", local: "model/Xenova/bge-small-en-v1.5/config.json", size: 683, sha256: "fa73f90bf92c8cace1fbcb709626306f2bdbc9ea3e5b5f94b440df9b6aa56350" },
     File { repo: BGE, revision: BGE_REV, path: "tokenizer.json", local: "model/Xenova/bge-small-en-v1.5/tokenizer.json", size: 711396, sha256: "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66" },
     File { repo: BGE, revision: BGE_REV, path: "tokenizer_config.json", local: "model/Xenova/bge-small-en-v1.5/tokenizer_config.json", size: 366, sha256: "9261e7d79b44c8195c1cada2b453e55b00aeb81e907a6664974b4d7776172ab3" },
     File { repo: BGE, revision: BGE_REV, path: "onnx/model_quantized.onnx", local: "model/Xenova/bge-small-en-v1.5/onnx/model_quantized.onnx", size: 34014426, sha256: "6c9c6101a956d62dfb5e7190c538226c0c5bb9cb27b651234b6df063ee7dbfe4" },
-    File { repo: MINILM, revision: MINILM_REV, path: "config.json", local: "reranker_model/Xenova/ms-marco-MiniLM-L-12-v2/config.json", size: 826, sha256: "681b15ee0e4ec2cc2320b4e32e01266ebcbc8a84d55c9f0fac04cfefb7eece30" },
-    File { repo: MINILM, revision: MINILM_REV, path: "tokenizer.json", local: "reranker_model/Xenova/ms-marco-MiniLM-L-12-v2/tokenizer.json", size: 711396, sha256: "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66" },
-    File { repo: MINILM, revision: MINILM_REV, path: "tokenizer_config.json", local: "reranker_model/Xenova/ms-marco-MiniLM-L-12-v2/tokenizer_config.json", size: 1242, sha256: "0b29c7bfc889e53b36d9dd3e686dd4300f6525110eaa98c76a5dafceb2029f53" },
-    File { repo: MINILM, revision: MINILM_REV, path: "onnx/model_int8.onnx", local: "reranker_model/Xenova/ms-marco-MiniLM-L-12-v2/onnx/model_int8.onnx", size: 33940752, sha256: "4509e8d29fce1db0ecdf9413c4269ccd7787fc925ecd2bdd3fd2fe99bc9b6b6f" },
+    File { repo: MINILM, revision: MINILM_REV, path: "config.json", local: "reranker_model/Xenova/ms-marco-MiniLM-L-6-v2/config.json", size: 824, sha256: "d827779a72d27ae68cf878a6fc2e954542663fe21ca515d9f4783fc96be2d37e" },
+    File { repo: MINILM, revision: MINILM_REV, path: "tokenizer.json", local: "reranker_model/Xenova/ms-marco-MiniLM-L-6-v2/tokenizer.json", size: 711396, sha256: "d241a60d5e8f04cc1b2b3e9ef7a4921b27bf526d9f6050ab90f9267a1f9e5c66" },
+    File { repo: MINILM, revision: MINILM_REV, path: "tokenizer_config.json", local: "reranker_model/Xenova/ms-marco-MiniLM-L-6-v2/tokenizer_config.json", size: 1242, sha256: "0b29c7bfc889e53b36d9dd3e686dd4300f6525110eaa98c76a5dafceb2029f53" },
+    File { repo: MINILM, revision: MINILM_REV, path: "onnx/model_int8.onnx", local: "reranker_model/Xenova/ms-marco-MiniLM-L-6-v2/onnx/model_int8.onnx", size: 23012404, sha256: "a13ec391ca99f49886694e12d3e800521f36d4267d7d448c34421c541a2baf50" },
 ];
 
 /// The verse index, built once from these models and this KJV and kept as a

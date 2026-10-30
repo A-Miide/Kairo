@@ -89,8 +89,9 @@ pub enum Effect {
 /// Model-backed work the runtime does off the detection thread.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Request {
-    /// Meaning search over several windows of recent speech.
-    Paraphrase { id: u32, windows: Vec<String>, limit: usize },
+    /// Meaning search over several windows of recent speech. Only the verses at
+    /// `rerank_from` cosine or above go to the cross-encoder: no decision takes one below it.
+    Paraphrase { id: u32, windows: Vec<String>, limit: usize, rerank_from: f32 },
     /// Meaning search restricted to these verses.
     Scoped { id: u32, text: String, verses: Vec<VerseId>, limit: usize },
     /// Meaning and cross-encoder scores of a few verses against speech.

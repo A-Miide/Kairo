@@ -1,5 +1,5 @@
 {
-  "name": "minilm-l12",
-  "model": "databases/bibles/reranker_model/Xenova/ms-marco-MiniLM-L-12-v2/onnx/model_int8.onnx",
-  "tokenizer": "databases/bibles/reranker_model/Xenova/ms-marco-MiniLM-L-12-v2/tokenizer.json"
+  "name": "minilm-l6",
+  "model": "databases/bibles/reranker_model/Xenova/ms-marco-MiniLM-L-6-v2/onnx/model_int8.onnx",
+  "tokenizer": "databases/bibles/reranker_model/Xenova/ms-marco-MiniLM-L-6-v2/tokenizer.json"
 }
