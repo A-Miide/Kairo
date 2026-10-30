@@ -159,6 +159,7 @@ async fn offline_status(State(app): State<Shared>, Query(q): Query<std::collecti
     Json(json!({
         "model": model, "installed": installed, "needsUpdate": installed && version.as_deref() != Some(OFFLINE_VERSION),
         "modelPath": path, "installing": crate::installer::installing(model), "progress": crate::installer::progress(model), "approxMB": mb, "needed": needed,
+        "engine": if model == "en" { crate::offline::engine_state() } else { "" },
     }))
 }
 

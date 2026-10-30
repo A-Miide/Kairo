@@ -159,6 +159,24 @@ pub fn prepare_at_launch(app: Shared) {
 /// An English Core ML engine loaded and waiting for the next Start listening (keep_warm).
 type Worker = (std::process::Child, std::sync::mpsc::Receiver<FromWorker>);
 static WARM: std::sync::Mutex<Option<Worker>> = std::sync::Mutex::new(None);
+/// The engine still loading for WARM (its process id, 0 when none): Kairo quitting ends it too. The
+/// first load after an update takes 30 s or more, and the updater's restart in that time left one
+/// running with no Kairo (live, 2026-10-30: a second, dimmed Kairo in the Dock).
+static LOADING: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// The Core ML engine's model on this Mac: "preparing" while it loads (after a macOS or Kairo update,
+/// macOS rebuilds it for the Neural Engine: minutes), "ready", "failed", or "" when not used. Shown in
+/// Settings → Audio's Offline card (owner, 2026-10-30), with "speech-engine" messages as it changes.
+static ENGINE_STATE: std::sync::Mutex<&'static str> = std::sync::Mutex::new("");
+
+pub fn engine_state() -> &'static str {
+    *crate::util::lock(&ENGINE_STATE)
+}
+
+fn set_engine_state(app: &Shared, state: &'static str, waiting: bool) {
+    *crate::util::lock(&ENGINE_STATE) = state;
+    app.hub.broadcast(json!({ "type": "speech-engine", "state": state, "waiting": waiting }));
+}
 
 /// Loads an English Core ML engine in the background and keeps it for the next start.
 fn keep_warm(app: Shared) {
@@ -175,9 +193,22 @@ fn keep_warm(app: Shared) {
             return;
         }
         let Some(exe) = coreml_worker(&app) else { return };
-        match spawn_worker(&dir, &None, Some(&exe)).and_then(|w| wait_ready(w, &AtomicBool::new(false))) {
-            Ok(w) => *crate::util::lock(&WARM) = Some(w),
-            Err(e) => eprintln!("[Offline] {e}"),
+        set_engine_state(&app, "preparing", false);
+        let started = spawn_worker(&dir, &None, Some(&exe));
+        if let Ok((child, _)) = &started {
+            LOADING.store(child.id(), std::sync::atomic::Ordering::SeqCst);
+        }
+        let ready = started.and_then(|w| wait_ready(w, &AtomicBool::new(false)));
+        LOADING.store(0, std::sync::atomic::Ordering::SeqCst);
+        match ready {
+            Ok(w) => {
+                *crate::util::lock(&WARM) = Some(w);
+                set_engine_state(&app, "ready", false);
+            }
+            Err(e) => {
+                eprintln!("[Offline] {e}");
+                set_engine_state(&app, "failed", false);
+            }
         }
     });
 }
@@ -191,11 +222,17 @@ fn take_warm() -> Option<Worker> {
     }
 }
 
-/// Ends the waiting engine (Kairo quitting).
+/// Ends the waiting engine, and one still loading (Kairo quitting).
 pub fn end_warm() {
     if let Some((mut child, _)) = crate::util::lock(&WARM).take() {
         let _ = child.kill();
         let _ = child.wait();
+    }
+    let loading = LOADING.swap(0, std::sync::atomic::Ordering::SeqCst);
+    if loading != 0 {
+        // SAFETY: a signal to the engine this process started; it is still its child, so the id
+        // can't have gone to another process.
+        unsafe { libc::kill(loading as libc::pid_t, libc::SIGKILL) };
     }
 }
 
@@ -630,6 +667,10 @@ pub async fn start(app: Shared) -> Result<Session, Value> {
     let (started_tx, started_rx) = std::sync::mpsc::sync_channel::<Result<(), String>>(1);
     let app2 = app.clone();
     if coreml_exe.is_some() {
+        // The engine still being prepared: Settings → Audio says why Start is waiting (owner, 2026-10-30).
+        if engine_state() == "preparing" {
+            set_engine_state(&app, "preparing", true);
+        }
         let _ = tokio::task::spawn_blocking(|| drop(PREPARING.lock())).await;
     }
     let worker = std::thread::Builder::new()

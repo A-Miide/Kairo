@@ -8555,6 +8555,10 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .lang-cap-row { display: flex; gap: 8px; align-items: baseline; }
 .lang-cap-mark { width: 14px; flex: none; text-align: center; font-weight: 600; color: var(--text-3); }
 .lang-cap-row.ok .lang-cap-mark { color: var(--success, #3fb950); }
+/* The offline engine being prepared for this Mac (app.js renderOfflineSummary). */
+.lang-cap-row.preparing .lang-cap-mark { color: var(--accent, var(--brand)); animation: lang-cap-wait 1.4s ease-in-out infinite; }
+@keyframes lang-cap-wait { 50% { opacity: 0.35; } }
+@media (prefers-reduced-motion: reduce) { .lang-cap-row.preparing .lang-cap-mark { animation: none; } }
 .lang-cap-row.missing { color: var(--text); }
 .lang-cap-row .lang-link { white-space: nowrap; }
 .lang-cap-row.missing .lang-cap-mark { color: var(--warning, #d29922); }

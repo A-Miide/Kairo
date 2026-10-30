@@ -304,6 +304,18 @@ function handleServerMessage(msg) {
       }
       break;
 
+    case 'speech-engine':
+      // The offline engine being prepared, ready or not: its card in Settings → Audio says so, and
+      // Start pressed while it's preparing opens it there (owner, 2026-10-30).
+      speechEngineState = msg.state || '';
+      renderOfflineSummary();
+      if (msg.waiting) {
+        document.getElementById('settings-modal')?.classList.remove('hidden');
+        if (typeof showSettingsPane === 'function') showSettingsPane('audio');
+        setTimeout(() => document.getElementById('offline-summary-group')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 50);
+      }
+      break;
+
     case 'connection-state':
       handleConnectionState(msg.state, msg.error, msg.errorKind);
       break;
@@ -4097,6 +4109,7 @@ wireOfflineModelInstaller({
 
 // Settings → Audio no longer downloads models: it says what's installed and where to get the
 // one the service language needs (Settings → Language).
+let speechEngineState = '';
 async function renderOfflineSummary() {
   const group = document.getElementById('offline-summary-group');
   const box = document.getElementById('offline-summary');
@@ -4127,6 +4140,19 @@ async function renderOfflineSummary() {
   const english = langs.filter(o => o.value.startsWith('en')).map(o => o.textContent.replace(/^English \((.*)\)$/, '$1'));
   const others = langs.filter(o => !o.value.startsWith('en') && o.value !== 'multi').map(o => o.textContent);
   if (en?.installed) row(true, `Offline: English${english.length ? ` (${english.join(', ')})` : ''}`);
+  // This Mac's Neural Engine copy of the English model (server offline.rs ENGINE_STATE).
+  const engine = speechEngineState || en?.engine || '';
+  if (en?.installed && engine === 'preparing') {
+    const r = document.createElement('div');
+    r.className = 'lang-cap-row preparing';
+    const m = document.createElement('span'); m.className = 'lang-cap-mark'; m.setAttribute('aria-hidden', 'true'); m.textContent = '\u2026';
+    const t = document.createElement('span');
+    t.textContent = 'Preparing the speech engine for this Mac. After a macOS or Kairo update this can take a few minutes; listening starts by itself when it\u2019s ready. Keep Kairo open meanwhile.';
+    r.append(m, t);
+    box.appendChild(r);
+  } else if (en?.installed && engine === 'failed') {
+    row(false, 'The speech engine couldn\u2019t be prepared. Quit and reopen Kairo, or use Deepgram for now.');
+  }
   if (multi?.installed) row(true, `Offline: ${others.join(', ')}${langs.some(o => o.value === 'multi') ? ', and Auto-detect' : ''}`);
   const needed = need === 'en' ? en : multi;
   // What's missing and how big it is, not "English needs the offline model" (read as something wrong

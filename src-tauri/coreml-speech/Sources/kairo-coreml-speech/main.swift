@@ -179,6 +179,15 @@ func run() async -> Int32 {
     }
     // Live speech goes before a browser tab or video player on a busy media machine (offline.rs).
     pthread_set_qos_class_self_np(QOS_CLASS_USER_INITIATED, 0)
+    // Kairo gone (quit, updated, crashed) while the model loads or the line is quiet: nothing will
+    // close stdin to end this, so go too. An update's restart left one running alone (2026-10-30).
+    let parent = getppid()
+    Thread.detachNewThread {
+        while true {
+            Thread.sleep(forTimeInterval: 1)
+            if getppid() != parent { exit(0) }
+        }
+    }
     let engine = StreamingNemotronAsrManager()
     do {
         try await engine.loadModels(from: URL(fileURLWithPath: args[1]))
