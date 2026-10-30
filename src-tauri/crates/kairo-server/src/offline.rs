@@ -228,11 +228,15 @@ pub fn end_warm() {
         let _ = child.kill();
         let _ = child.wait();
     }
-    let loading = LOADING.swap(0, std::sync::atomic::Ordering::SeqCst);
-    if loading != 0 {
-        // SAFETY: a signal to the engine this process started; it is still its child, so the id
-        // can't have gone to another process.
-        unsafe { libc::kill(loading as libc::pid_t, libc::SIGKILL) };
+    // Only the Core ML engine (macOS) loads at launch.
+    #[cfg(target_os = "macos")]
+    {
+        let loading = LOADING.swap(0, std::sync::atomic::Ordering::SeqCst);
+        if loading != 0 {
+            // SAFETY: a signal to the engine this process started; it is still its child, so the id
+            // can't have gone to another process.
+            unsafe { libc::kill(loading as libc::pid_t, libc::SIGKILL) };
+        }
     }
 }
 
