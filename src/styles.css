@@ -2926,7 +2926,8 @@ select {
 .setting-hint {
   /* Readable (2026-10-12): was 10px at 70% opacity — dark grey on dark grey. */
   font-size: 12px; color: #8c8c93; margin: 6px 0 0 0;
-  line-height: 1.45; max-width: 62ch;
+  /* Full width of its container, wrapping onto the next line (owner, 2026-10-29). */
+  line-height: 1.45; max-width: none;
 }
 
 /* ── Custom Select Dropdown ─────────────────────────────────────── */
