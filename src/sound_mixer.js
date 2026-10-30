@@ -137,6 +137,7 @@
         top.appendChild(rm);
       }
       const bottom = el('div', 'mx-bottom');
+      const level = el('div', 'mx-level');
       const meter = el('div', 'mx-meter'); meter.appendChild(document.createElement('i'));
       const fader = el('input', 'mx-fader'); fader.type = 'range'; fader.min = String(MIN_DB); fader.max = String(MAX_DB); fader.step = '0.5';
       fader.value = String(Number(c.gainDb) || 0);
@@ -146,27 +147,35 @@
       showDb(Number(fader.value));
       fader.addEventListener('input', () => { showDb(Number(fader.value)); save(channels().map(x => x.id === c.id ? { ...x, gainDb: Number(fader.value) } : x)); });
       fader.addEventListener('dblclick', () => { fader.value = '0'; fader.dispatchEvent(new Event('input')); });
-      bottom.append(meter, fader, db);
+      // One line: the live level runs inside the fader's track, the knob sets the gain.
+      level.append(meter, fader);
+      bottom.append(level, db);
       row.append(top, bottom);
       root.appendChild(row);
       meterFor(deviceOf(c).deviceId);
     });
-    const foot = el('div', 'mx-foot');
-    const add = el('button', 'modal-btn secondary', '+ Add input'); add.type = 'button';
-    add.disabled = list.length >= 6 || !devices.length;
-    add.addEventListener('click', () => {
-      const used = new Set(channels().map(x => deviceOf(x).deviceId));
-      const d = devices.find(x => !used.has(x.deviceId)) || devices[0];
-      if (!d) return;
-      save([...channels(), { id: uid(), deviceId: d.deviceId, label: d.label, gainDb: 0, muted: false }]);
-      renderAll();
-    });
-    foot.appendChild(add);
+    // Add sits above the inputs, as every Add in Settings; a page that has its own header for it
+    // (Settings → Streaming → Sound) puts it there instead (data-add-elsewhere).
+    if (!root.dataset.addElsewhere) {
+      const head = el('div', 'mx-head');
+      const add = el('button', 'modal-btn secondary', '+ Add input'); add.type = 'button';
+      add.disabled = !canAdd();
+      add.addEventListener('click', addInput);
+      head.appendChild(add);
+      root.prepend(head);
+    }
     const S = window.KairoStreaming;
-    if (S && (S.isLive() || S.isRecording())) foot.appendChild(el('span', 'setting-hint', 'Levels and mutes change straight away. An input added or removed is used the next time you go live or record.'));
-    root.appendChild(foot);
+    if (S && (S.isLive() || S.isRecording())) root.appendChild(el('p', 'setting-hint mx-note', 'Levels and mutes change straight away. An input added or removed is used the next time you go live or record.'));
     mounted.add(root);
     if (!raf) raf = requestAnimationFrame(tick);
+  }
+  function canAdd() { return channels().length < 6 && devices.length > 0; }
+  function addInput() {
+    const used = new Set(channels().map(x => deviceOf(x).deviceId));
+    const d = devices.find(x => !used.has(x.deviceId)) || devices[0];
+    if (!d) return;
+    save([...channels(), { id: uid(), deviceId: d.deviceId, label: d.label, gainDb: 0, muted: false }]);
+    renderAll();
   }
   function renderAll() { [...mounted].forEach(r => { if (r.isConnected) render(r); else mounted.delete(r); }); }
   async function mount(root) { await loadDevices(); render(root); }
@@ -212,23 +221,26 @@
     .mx-mute { height: 30px; padding: 0 12px; border-radius: 7px; border: 1px solid var(--border-md, rgba(255,255,255,0.14)); background: transparent; color: var(--text); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
     .mx-mute.is-on { background: #5a2414; border-color: #8f3d1f; color: #ffe9e0; }
     .mx-remove { width: 28px; height: 30px; border-radius: 7px; border: 1px solid var(--border); background: transparent; color: var(--text-2, var(--text)); cursor: pointer; }
-    .mx-bottom { display: grid; grid-template-columns: minmax(60px, 1fr) minmax(100px, 2fr) 64px; gap: 10px; align-items: center; }
-    .mx-meter { height: 8px; border-radius: 4px; background: rgba(255,255,255,0.07); overflow: hidden; }
+    .mx-bottom { display: grid; grid-template-columns: 1fr 64px; gap: 10px; align-items: center; }
+    .mx-level { position: relative; height: 20px; display: flex; align-items: center; }
+    .mx-meter { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); height: 6px; border-radius: 3px; background: rgba(255,255,255,0.09); overflow: hidden; }
     .mx-meter i { display: block; height: 100%; width: 0; background: #6f9a5b; transition: width 60ms linear; }
     .mx-meter i.is-hot { background: #b5532c; }
     .mx-ch.is-muted .mx-meter i { width: 0 !important; }
     .mx-ch.is-muted .mx-fader { opacity: .45; }
-    .mx-fader { width: 100%; accent-color: var(--accent, #ff6a3d); }
+    .mx-fader { position: relative; width: 100%; height: 20px; margin: 0; -webkit-appearance: none; appearance: none; background: transparent; cursor: pointer; }
+    .mx-fader::-webkit-slider-runnable-track { height: 6px; background: transparent; }
+    .mx-fader::-webkit-slider-thumb { -webkit-appearance: none; width: 14px; height: 14px; margin-top: -4px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 1px rgba(0,0,0,.35), 0 1px 3px rgba(0,0,0,.4); }
     .mx-db { font-size: 12px; color: var(--text-2, var(--text)); font-variant-numeric: tabular-nums; text-align: right; }
-    .mx-foot { display: flex; align-items: center; gap: 10px; padding-top: 8px; flex-wrap: wrap; }
-    .mx-foot .setting-hint { margin: 0; }
+    .mx-head { display: flex; justify-content: flex-end; }
+    .mx-note { margin: 6px 0 0; }
     .mx-pop { width: 380px; padding: 12px 14px; }
     .mx-pop-title { font-size: 12px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--text-dim, var(--text)); margin-bottom: 4px; }
     .tb-sound-btn[hidden] { display: none; }
   `;
   document.head.appendChild(style);
 
-  window.KairoMixer = { mount, forEngine, channels, isMounted: (r) => mounted.has(r) };
+  window.KairoMixer = { mount, forEngine, channels, addInput, canAdd, isMounted: (r) => mounted.has(r) };
   const hook = () => { if (window.KairoStreaming) window.KairoStreaming.onChange(renderButton); else setTimeout(hook, 500); };
   hook();
   onSettingsChange(renderButton);

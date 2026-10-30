@@ -233,7 +233,7 @@
     .mc-editor .st-form-buttons .modal-btn { white-space: nowrap; }
     .mc-key { font-size: 11px; color: var(--text-3, #8b8b96); }
     .mc-empty { margin: 12px 0; }
-    .mc-foot { margin: 0 2px; }
+    .mc-foot { margin: 0; }
     .mc-editor { border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin: 10px 0; display: flex; flex-direction: column; gap: 10px; background: rgba(255,255,255,0.02); }
     .mc-name-input { max-width: 320px; }
     .mc-steps { display: flex; flex-direction: column; }

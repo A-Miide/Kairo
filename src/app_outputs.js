@@ -895,8 +895,8 @@ function renderAudioLaneGroup(host) {
 
   const list = document.createElement('div');
   list.className = 'al-tracks';
-  g.appendChild(list);
 
+  // Add first, above the tracks it adds to (as every Add in Settings).
   const add = document.createElement('button');
   add.type = 'button'; add.className = 'modal-btn secondary'; add.textContent = '+ Add music';
   const file = document.createElement('input');
@@ -908,7 +908,7 @@ function renderAudioLaneGroup(host) {
     const r = await lane.upload(file.files); file.value = '';
     msg.textContent = r.failed.length ? r.failed.join(' \u00b7 ') : '';
   });
-  g.append(add, file, msg);
+  g.append(add, file, msg, list);
 
   const mk = (label, control) => { const r = document.createElement('div'); r.className = 'al-row'; const l = document.createElement('span'); l.textContent = label; r.append(l, control); return r; };
   const pill = (onChange) => {

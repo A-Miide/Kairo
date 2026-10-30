@@ -261,11 +261,20 @@
 
     // Audio
     const audio = el('div', 'st-card settings-section');
-    audio.appendChild(el('div', 'st-card-head')).appendChild(el('div', 'st-card-title settings-section-label', 'Sound'));
+    const aHead = el('div', 'st-card-head');
+    aHead.appendChild(el('div', 'st-card-title settings-section-label', 'Sound'));
+    // Add input on the section's own line, like Add destination above.
+    if (window.KairoMixer) {
+      const addIn = el('button', 'modal-btn secondary', '+ Add input'); addIn.type = 'button';
+      addIn.disabled = !window.KairoMixer.canAdd();
+      addIn.addEventListener('click', () => window.KairoMixer.addInput());
+      aHead.appendChild(addIn);
+    }
+    audio.appendChild(aHead);
     const ab = el('div', 'st-card-body');
     // The same mixer each redraw (the page redraws with the live status): a fader being
     // dragged is never replaced under the pointer.
-    if (!mixerEl) mixerEl = el('div');
+    if (!mixerEl) { mixerEl = el('div'); mixerEl.dataset.addElsewhere = '1'; }
     if (window.KairoMixer && !window.KairoMixer.isMounted(mixerEl)) window.KairoMixer.mount(mixerEl);
     const mixer = mixerEl;
     ab.append(
