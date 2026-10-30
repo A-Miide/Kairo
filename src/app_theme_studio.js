@@ -989,6 +989,41 @@ DEFAULT_LOOKS.push(
     ] },
 );
 
+// Burst (owner, 2026-10-29: a conference title slide as reference): a pale panel holding the
+// verse and reference laid out as in Full — Background, and a right panel of accent rays on a
+// deep tone — one sunburst cut into three rings, each ring turned a little, so the rays step.
+// A theme set in three colours (blue, Kairo's brand red, green); each rays picture is
+// src/backgrounds/burst-<name>.svg, a layer of its own you can swap or resize in Theme Studio.
+const BURST_INK = '#0b0b0f';
+const BURST_SETS = [
+  { key: 'blue',  name: 'Blue',  paper: '#D9DFEB', accent: '#5E4CF2', deep: '#241B4A' },
+  { key: 'brand', name: 'Brand', paper: '#E8E3E1', accent: '#F5301A', deep: '#2A0B07' },
+  { key: 'green', name: 'Green', paper: '#DDE8E1', accent: '#1FA35A', deep: '#0B2A1A' },
+];
+function burstTheme(c) {
+  return { id: `burst-${c.key}`, name: `Burst — ${c.name}`, layout: 'fullscreen', animation: 'fade',
+    groupId: 'grp-burst', groupName: 'Burst',
+    layers: [
+      { id: 'bg', type: 'background', name: 'Canvas', visible: true, fill: 'solid', color: c.paper, color2: c.paper, opacity: 100, angle: 0 },
+      { id: 'burst-bg', type: 'background', name: 'Burst base', visible: true, fill: 'solid', color: c.deep, color2: c.deep,
+        opacity: 100, angle: 0, radius: 0, pos: { x: 1320, y: 0, w: 600, h: 1080 } },
+      { id: 'burst', type: 'background', name: 'Burst rays', visible: true, fill: 'image', src: `backgrounds/burst-${c.key}.svg`,
+        color: '#00000000', color2: c.deep, opacity: 100, angle: 0, radius: 0, pos: { x: 1320, y: 0, w: 600, h: 1080 } },
+      // Full — Background's verse and reference, fitted to the pale panel (0-1320).
+      { id: 'verse', type: 'text', name: 'Verse', visible: true, binding: 'verse', customText: '',
+        pos: { x: 150, y: 190, w: 1020, h: 700 },
+        font: { family: 'Manrope', size: 64, weight: 500, italic: false, lineHeight: 1.35, letterSpacing: 0, transform: 'none' },
+        color: BURST_INK, opacity: 100, align: 'center',
+        shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
+      { id: 'ref', type: 'text', name: 'Reference', visible: true, binding: 'reference', customText: '', follows: 'verse',
+        pos: { x: 150, y: 820, w: 1020, h: 0 },
+        font: { family: 'Manrope', size: 28, weight: 700, italic: false, lineHeight: 1.2, letterSpacing: 4, transform: 'uppercase' },
+        color: c.accent, opacity: 100, align: 'center',
+        shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
+    ] };
+}
+DEFAULT_LOOKS.push(...BURST_SETS.map(burstTheme));
+
 // Sample words for the Monitor-only bindings, in Theme Studio and thumbnails.
 const MONITOR_SAMPLES = { 'mon-next': 'And the next slide waits here', 'mon-next-ref': 'Next · Verse 2', 'mon-clock': '10:42', 'mon-message': 'Five minutes left' };
 window.KAIRO_MONITOR_SAMPLES = MONITOR_SAMPLES;
