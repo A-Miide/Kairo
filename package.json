@@ -1,6 +1,6 @@
 {
   "name": "kairo",
-  "version": "4.4.0",
+  "version": "4.4.1",
   "description": "KAIRO — live scripture detection for church services (Tauri + Rust)",
   "scripts": {
     "server": "cargo run --release --manifest-path src-tauri/Cargo.toml -p kairo-server",
