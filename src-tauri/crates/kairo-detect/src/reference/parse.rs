@@ -32,7 +32,7 @@ use kairo_bible::Book;
 use super::books::{numbered_prefix, Books};
 use super::citation::{Citation, Shape, Verses};
 use super::i18n::Lang;
-use super::numbers::{consume_number, is_ambiguous_number_word, Num, ORDINALS};
+use super::numbers::{consume_number, is_ambiguous_number_word, plain_number, Num, ORDINALS};
 use crate::re::words;
 
 /// The book and chapter being read, if any (already past expiry checks).
@@ -54,6 +54,17 @@ fn get<'a>(w: &[&'a str], i: usize) -> &'a str {
 
 fn num(w: &[&str], i: usize, max: Option<u32>) -> Option<Num> {
     consume_number(w, i, max.map(i64::from))
+}
+
+/// A spoken digit ("one" .. "nine", "oh"/"zero"), as a word only: "3 1 6" typed as digits is a list.
+fn word_digit(w: &str) -> Option<i64> {
+    if w.is_empty() || !w.bytes().all(|b| b.is_ascii_alphabetic()) {
+        return None;
+    }
+    if w == "oh" {
+        return Some(0);
+    }
+    plain_number(w).filter(|n| (0..=9).contains(n))
 }
 
 fn n32(v: i64) -> u32 {
@@ -173,6 +184,22 @@ impl Parser<'_> {
             }
         }
         let mut ch = ch?;
+        // "Psalm two three verse one": two spoken digits right before "verse" are a two-digit chapter
+        // (23) when the book has that chapter.
+        if ch.consumed == 1 {
+            if let (Some(d1), Some(d2)) = (word_digit(get(w, idx)), word_digit(get(w, idx + 1))) {
+                let pair = d1 * 10 + d2;
+                // …or, with no "verse" said, when the number after them is a verse only the longer chapter has
+                // ("Isaiah four one ten": Isaiah 4 ends at verse 6, Isaiah 41 has a verse 10).
+                let only_pair_has_it = num(w, idx + 2, None).is_some_and(|n| {
+                    let n = n32(n.value);
+                    self.shape.verses(book, d1 as u32).is_some_and(|c| n > c) && self.shape.verses(book, pair as u32).is_some_and(|c| n <= c)
+                });
+                if d1 >= 1 && (is_verse_word(get(w, idx + 2)) || only_pair_has_it) && pair <= i64::from(self.shape.chapters(book)) {
+                    ch = Num { value: pair, consumed: 2 };
+                }
+            }
+        }
         let mut chapter = n32(ch.value);
         let chapter_at = idx;
         idx += ch.consumed;
@@ -221,6 +248,31 @@ impl Parser<'_> {
         }
 
         let mut v = num(w, idx, None);
+        // "John three one six": two spoken digits after the chapter are a two-digit verse (16) when the
+        // chapter has it. Consecutive digits stay the next verse said straight after ("one two" is
+        // verses 1 and 2), see the loop below.
+        if let Some(x) = v {
+            if x.consumed == 1 {
+                if let (Some(d1), Some(d2)) = (word_digit(get(w, idx)), word_digit(get(w, idx + 1))) {
+                    let pair = d1 * 10 + d2;
+                    let fits = self.shape.verses(book, chapter).is_none_or(|n| pair <= i64::from(n));
+                    if d1 >= 1 && d2 != d1 + 1 && fits {
+                        v = Some(Num { value: pair, consumed: 2 });
+                    }
+                }
+            }
+        }
+        // "Romans eight to twenty eight", "Romans 8-28": a number after "to" that the book has no chapter
+        // for can only be the verse.
+        if v.is_none() && !verse_kw && get(w, idx) == "to" {
+            if let Some(n) = num(w, idx + 1, None) {
+                let n_v = n32(n.value);
+                if n_v > self.shape.chapters(book) && self.shape.verses(book, chapter).is_some_and(|c| n_v <= c) {
+                    v = Some(n);
+                    idx += 1;
+                }
+            }
+        }
         let mut repositioned = false;
         let mut restated = None;
 

@@ -35,6 +35,7 @@ pub fn normalize(text: &str, books: &Books, lang: Lang) -> String {
     let t = if lang == Lang::En { text.to_lowercase() } else { localize(text, lang) };
     let t = drop_fillers(&t);
     let t = roman_after_keywords(&t);
+    let t = if lang == Lang::En { spoken_variants(&t, books) } else { t };
     let t = drop_possessives(&t);
     let t = join_split_digits(&t);
     let t = number_punctuation(&t);
@@ -43,6 +44,153 @@ pub fn normalize(text: &str, books: &Books, lang: Lang) -> String {
     let t = collapse_stutters(&t);
     let t = ordinal_forms(&t, books);
     self_corrections(&t)
+}
+
+/// Ways a citation is said, or written by a recogniser, that the grammar never sees as such: Roman numerals
+/// and "Jon" for a numbered John, "John the first", "twenty and eight", "twenty-eighth", "point"/"stroke"
+/// for the colon, "versus"/"vs"/"v" for verse, "one-ten" for Psalm 110, accent spellings ("tree", "wan",
+/// "fo", "tin") and "nought"/"nil" for zero. Each rewrite needs the citation's own context (a book, a
+/// verse or chapter word, a neighbouring number) so ordinary speech is left alone.
+fn spoken_variants(t: &str, books: &Books) -> String {
+    static NUM: LazyLock<String> = LazyLock::new(|| {
+        let mut keys: Vec<&str> = WORD_TO_NUM_ORDERED.iter().map(|(w, _)| w.as_str()).collect();
+        keys.sort_by_key(|k| std::cmp::Reverse(k.len()));
+        format!("{}|[0-9]{{1,3}}", keys.join("|"))
+    });
+    const NUMBERED: &str = "john|peter|corinthians|thessalonians|timothy|kings|samuel|chronicles";
+    const TENS: &str = "twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety";
+    const TEENS: &str = "ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen";
+    // "I John four four", "II Timothy one seven": the numeral is the book's number.
+    static ROMAN_BOOK: LazyLock<fancy_regex::Regex> =
+        LazyLock::new(|| fre(&format!(r"{WB}(iii|ii|i) ({NUMBERED}){WB}(?= (?:chapter|{}){WB})", *NUM)));
+    // "first Jon four four": no book is called "first Jonah", so the recogniser dropped the "h" of John.
+    static JON: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?-u:\b)(first|second|third|1st|2nd|3rd|one|two|three) jon(?-u:\b)"));
+    // "John the first, four four", "Timothy the second chapter one verse seven".
+    static BOOK_THE_ORD: LazyLock<fancy_regex::Regex> =
+        LazyLock::new(|| fre(&format!(r"{WB}({NUMBERED}) the (first|second|third),?(?= (?:chapter|{}){WB})", *NUM)));
+    // "verse twenty and eight" is 28.
+    static TENS_AND: LazyLock<regex::Regex> =
+        LazyLock::new(|| re(&format!(r"(?-u:\b)(verses?|chapter) ({TENS}) and (one|two|three|four|five|six|seven|eight|nine)(?-u:\b)")));
+    // "Romans eight twenty-eighth" is 8:28.
+    static TENS_ORD: LazyLock<regex::Regex> = LazyLock::new(|| {
+        re(&format!(r"(?-u:\b)({}|verse|verses|chapter) ({TENS})[ -](first|second|third|fourth|fifth|sixth|seventh|eighth|ninth)(?-u:\b)", *NUM))
+    });
+    // "Romans eight point twenty eight": a point, stroke or slash after a book and its chapter is the colon.
+    static SEPARATOR: LazyLock<fancy_regex::Regex> =
+        LazyLock::new(|| fre(&format!(r"{WB}([a-z]+) ({}) (?:point|stroke|slash|dot) (?=(?:{}){WB})", *NUM, *NUM)));
+    // "Psalm one ten, versus one", "ten vs 1", "ten v one".
+    static VERSUS: LazyLock<fancy_regex::Regex> =
+        LazyLock::new(|| fre(&format!(r"{WB}({}),? (?:versus|vss?|v)\.? (?=(?:{}){WB})", *NUM, *NUM)));
+    // "Elihu said in chapter thirty two and verse eight of Job": the book said last, put first where the grammar looks.
+    static BOOK_LAST: LazyLock<fancy_regex::Regex> = LazyLock::new(|| {
+        fre(&format!(
+            r"{WB}chapter ((?:(?:{TENS})[ -])?(?:{n})),? (?:and )?(?:the )?verses? ((?:(?:{TENS})[ -])?(?:{n})) of (?:the )?(?:book of )?((?:(?:first|second|third|[123]) )?[a-z]+){WB}",
+            n = *NUM
+        ))
+    });
+    static VERSE_OF_CHAPTER_OF_BOOK: LazyLock<fancy_regex::Regex> = LazyLock::new(|| {
+        fre(&format!(
+            r"{WB}verses? ((?:(?:{TENS})[ -])?(?:{n})) of (?:the )?chapter ((?:(?:{TENS})[ -])?(?:{n})) of (?:the )?(?:book of )?((?:(?:first|second|third|[123]) )?[a-z]+){WB}",
+            n = *NUM
+        ))
+    });
+    // "five dash seven": a spoken dash is "to".
+    static DASH: LazyLock<fancy_regex::Regex> =
+        LazyLock::new(|| fre(&format!(r"{WB}({}) (?:dash|hyphen) (?=(?:{}){WB})", *NUM, *NUM)));
+    // "Psalm one-ten" is 110, not a range of psalms; "Psalm one oh ten" likewise.
+    static PSALM_ONE_HYPHEN: LazyLock<fancy_regex::Regex> =
+        LazyLock::new(|| fre(&format!(r"{WB}(psalms?) one-(?=(?:{TEENS}|{TENS}){WB})")));
+    static PSALM_ONE_OH: LazyLock<regex::Regex> =
+        LazyLock::new(|| re(&format!(r"(?-u:\b)(psalms?) one (?:oh|zero|nought|naught|nil) ({TEENS})(?-u:\b)")));
+    static FOURTY: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?-u:\b)fourty(?-u:\b)"));
+    // Accent spellings and zero words, read as numbers only beside a citation's own words.
+    static ACCENT: LazyLock<fancy_regex::Regex> = LazyLock::new(|| {
+        fre(&format!(
+            r"{WB}([a-z]+) (tree|thri|free|fo|wan|tin|nought|naught|nil){WB}(?= (?:{n}|tree|thri|free|fo|wan|tin|verse|verses|chapter|to|and){WB}|\s*[:,.]|\s*$)",
+            n = *NUM
+        ))
+    });
+    let accent_value = |w: &str| match w {
+        "tree" | "thri" | "free" => "three",
+        "fo" => "four",
+        "wan" => "one",
+        "tin" => "ten",
+        _ => "zero",
+    };
+
+    let mut t = t.to_string();
+    if t.contains("fourty") {
+        t = FOURTY.replace_all(&t, "forty").into_owned();
+    }
+    if t.contains("i ") || t.contains("ii") {
+        t = freplace(&ROMAN_BOOK, &t, |c| format!("{} {}", match &c[1] { "i" => "first", "ii" => "second", _ => "third" }, &c[2])).into_owned();
+    }
+    if t.contains(" jon") {
+        t = JON.replace_all(&t, "$1 john").into_owned();
+    }
+    if t.contains(" the ") {
+        t = freplace(&BOOK_THE_ORD, &t, |c| format!("{} {}", &c[2], &c[1])).into_owned();
+    }
+    if t.contains(" and ") {
+        t = TENS_AND.replace_all(&t, "$1 $2 $3").into_owned();
+    }
+    if ["first", "second", "third", "fourth", "fifth", "sixth", "seventh", "eighth", "ninth"].iter().any(|o| t.contains(o)) {
+        t = TENS_ORD
+            .replace_all(&t, |c: &regex::Captures| {
+                let unit = match &c[3] {
+                    "first" => "one",
+                    "second" => "two",
+                    "third" => "three",
+                    "fourth" => "four",
+                    "fifth" => "five",
+                    "sixth" => "six",
+                    "seventh" => "seven",
+                    "eighth" => "eight",
+                    _ => "nine",
+                };
+                format!("{} {} {}", &c[1], &c[2], unit)
+            })
+            .into_owned();
+    }
+    if t.contains(" point ") || t.contains(" stroke ") || t.contains(" slash ") || t.contains(" dot ") {
+        t = freplace(&SEPARATOR, &t, |c| if books.is_single_word(&c[1]) { format!("{} {} : ", &c[1], &c[2]) } else { c[0].to_string() }).into_owned();
+    }
+    if t.contains("chapter") && t.contains(" of ") {
+        let is_book = |b: &str| b.rsplit(' ').next().is_some_and(|w| books.is_single_word(w) || books.alias(w).is_some());
+        t = freplace(&BOOK_LAST, &t, |c| if is_book(&c[3]) { format!("{} chapter {} verse {}", &c[3], &c[1], &c[2]) } else { c[0].to_string() }).into_owned();
+        t = freplace(&VERSE_OF_CHAPTER_OF_BOOK, &t, |c| if is_book(&c[3]) { format!("{} chapter {} verse {}", &c[3], &c[2], &c[1]) } else { c[0].to_string() }).into_owned();
+    }
+    if t.contains(" dash ") || t.contains(" hyphen ") {
+        t = freplace(&DASH, &t, |c| format!("{} to ", &c[1])).into_owned();
+    }
+    if t.contains(" v ") || t.contains(" vs") || t.contains("versus") {
+        t = freplace(&VERSUS, &t, |c| format!("{} verse ", &c[1])).into_owned();
+    }
+    if t.contains("psalm") {
+        t = freplace(&PSALM_ONE_HYPHEN, &t, |c| format!("{} one ", &c[1])).into_owned();
+        t = PSALM_ONE_OH.replace_all(&t, "$1 one $2").into_owned();
+    }
+    // One word at a time, so "wan wan zero" settles from left to right.
+    for _ in 0..4 {
+        let next = freplace(&ACCENT, &t, |c| {
+            let (prev, word) = (&c[1], &c[2]);
+            let zero = matches!(word, "nought" | "naught" | "nil");
+            let numeric = plain_number(prev).is_some() || matches!(prev, "oh" | "hundred") || is_accent_word(prev);
+            let announced = books.is_single_word(prev) || matches!(prev, "chapter" | "verse" | "verses" | "and");
+            let ok = if zero { numeric } else if word == "tin" { numeric || prev == "and" } else { numeric || announced };
+            if ok { format!("{prev} {}", accent_value(word)) } else { c[0].to_string() }
+        })
+        .into_owned();
+        if next == t {
+            break;
+        }
+        t = next;
+    }
+    t
+}
+
+fn is_accent_word(w: &str) -> bool {
+    matches!(w, "tree" | "thri" | "free" | "fo" | "wan" | "tin")
 }
 
 /// Hesitations inside a citation: "in chapter um one verse thirteen" (Piper, dev build 2026-10-21).
@@ -172,6 +320,10 @@ fn ordinal_forms(t: &str, books: &Books) -> String {
     static UNIT_OF: LazyLock<regex::Regex> = LazyLock::new(|| {
         re(&format!(r"(?-u:\b)(?:the )?(?:({})|([0-9]{{1,3}})(?:st|nd|rd|th)) (chapter|verse) of(?-u:\b)", *ORD_ALT))
     });
+    // "Isaiah forty first chapter, tenth verse": both said as ordinals.
+    static ORD_CHAPTER_VERSE: LazyLock<regex::Regex> = LazyLock::new(|| {
+        re(&format!(r"(?-u:\b)(?:the )?({o}) chapter,?(?: and)?(?: the)? ({o}) verse(?-u:\b)", o = *ORD_ALT))
+    });
     static ORD_PSALM: LazyLock<regex::Regex> = LazyLock::new(|| re(&format!(r"(?-u:\b)(?:the )?({}) psalm(?-u:\b)", *ORD_ALT)));
     static NUM_PSALM: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?-u:\b)(?:the )?([0-9]{1,3})(?:st|nd|rd|th) psalm(?-u:\b)"));
     static BOOK_PHRASE_TEST: LazyLock<regex::Regex> = LazyLock::new(|| re(r" (?:book|epistle|letter) (?:of|to) "));
@@ -188,7 +340,23 @@ fn ordinal_forms(t: &str, books: &Books) -> String {
         re(r"(?-u:\b)some ?one ((?:ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen)|(?:twenty|thirty|forty|fifty)(?: (?:one|two|three|four|five|six|seven|eight|nine))?),? (verse|verses|vers|chapter)(?-u:\b)")
     });
 
+    // "Psalm one ten, one to three" heard as "San one one one zero one to three" (the same on both speech
+    // engines, live 2026-10-29): "san" is Psalm only before a run of spoken digits that ends at a "to" or a
+    // verse word, so "San Francisco" and "San Antonio" are untouched.
+    static SAN_PSALM: LazyLock<regex::Regex> = LazyLock::new(|| {
+        re(r"(?-u:\b)san ((?:(?:zero|oh|one|two|three|four|five|six|seven|eight|nine) ){3,}(?:to|through|verse|verses|chapter)(?-u:\b))")
+    });
+    // …and the doubled "one" in front of that "zero" ("one one one zero" is Psalm 110, not 111 with a verse
+    // starting at zero): no psalm is 1110, and a verse never begins at zero, so one of the ones is the recogniser's.
+    static DOUBLED_ONE_BEFORE_ZERO: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?-u:\b)psalm one one one (zero|oh)(?-u:\b)"));
+
     let mut t = t.to_string();
+    if t.contains("san ") {
+        t = SAN_PSALM.replace_all(&t, "psalm $1").into_owned();
+    }
+    if t.contains("psalm one one one ") {
+        t = DOUBLED_ONE_BEFORE_ZERO.replace_all(&t, "psalm one one $1").into_owned();
+    }
     if t.contains("one ") {
         t = SOMEONE_PSALM.replace_all(&t, "psalm 1$1 $2").into_owned();
         t = SOMEONE_PSALM_WORDS
@@ -203,6 +371,11 @@ fn ordinal_forms(t: &str, books: &Books) -> String {
     }
     if t.contains(" down to ") {
         t = DOWN_TO.replace_all(&t, "$1 to $2").into_owned();
+    }
+    if t.contains(" chapter") && t.contains(" verse") {
+        t = ORD_CHAPTER_VERSE
+            .replace_all(&t, |c: &regex::Captures| format!("chapter {} verse {}", ORDINALS[&c[1]], ORDINALS[&c[2]]))
+            .into_owned();
     }
     if t.contains("chapter of ") || t.contains("verse of ") {
         let src = t.clone();
@@ -344,6 +517,19 @@ mod tests {
         assert_eq!(n("one one zero"), "one one zero");
         assert_eq!(n("Someone 25, verse one and two"), "psalm 125 verse one and two");
         assert_eq!(n("someone 25 years ago"), "someone 25 years ago");
+    }
+
+    #[test]
+    fn psalm_one_ten_as_the_recogniser_wrote_it() {
+        // Live 2026-10-29: both speech engines wrote "Psalm one ten, one to three" this way.
+        assert_eq!(n("And then from San One One One Zero One to Three"), "and then from psalm one one zero one to three");
+        assert_eq!(n("from Psalm One One One Zero One to Three"), "from psalm one one zero one to three");
+        assert_eq!(n("from Psalm one one one zero one to three"), "from psalm one one zero one to three");
+        // Psalm 111 spoken digit by digit, and ordinary "san" talk, are untouched.
+        assert_eq!(n("Psalm one one one verse one"), "psalm one one one verse one");
+        assert_eq!(n("Psalm one one one"), "psalm one one one");
+        assert_eq!(n("we went to San Francisco and then to San Antonio"), "we went to san francisco and then to san antonio");
+        assert_eq!(n("San one one to three"), "san one one to three");
     }
 
     #[test]

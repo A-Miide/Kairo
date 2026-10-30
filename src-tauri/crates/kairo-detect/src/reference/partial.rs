@@ -38,7 +38,9 @@ pub struct Partial {
 /// Words that can come before a bare verse number and still leave it a
 /// verse call.
 pub(crate) const BARE_NUMBER_FILLER: &[&str] =
-    &["and", "so", "now", "okay", "ok", "um", "uh", "then", "also", "yes", "yeah", "right", "alright", "verse", "verses", "next"];
+    &["and", "so", "now", "okay", "ok", "um", "uh", "then", "also", "yes", "yeah", "right", "alright", "verse", "verses", "next",
+      // "Psalm twenty two. We'll read twenty seven and twenty eight": once a chapter is called, the numbers after it are its verses
+      "read", "reading", "we'll", "well", "let's", "lets", "let", "us", "we", "will", "go", "going"];
 
 /// Words skipped when looking back from "verse N" for another passage. "from" is one letter from
 /// "rom" (Romans): "go from verse twenty one" was read as another book and the verse dropped (live,
@@ -184,26 +186,40 @@ impl PartialResolver<'_> {
         }
 
         if allow_bare_number {
+            // A chapter called, then numbers: they are its verses, unless the chapter has no verse that
+            // high ("twenty seven and twenty eight" after Psalm 22; "forty" after it is not a verse).
             let chapter = active.chapter?;
-            for i in 0..w.len().min(3) {
+            let fits = |v: u32| v >= 1 && v <= self.shape.verses(book, chapter).unwrap_or(0).min(self.shape.max_verse());
+            for i in 0..w.len().min(5) {
                 if i > 0 && !BARE_NUMBER_FILLER.contains(&w[i - 1]) {
                     break;
                 }
                 let Some(n) = consume_number(&w, i, None) else { continue };
-                if i + n.consumed != w.len() {
-                    continue;
-                }
                 if i > 0 && (self.books.alias(w[i - 1]).is_some() || self.books.numbered_variants(w[i - 1]).is_some()) {
                     continue;
                 }
-                if n.consumed == 1 && (is_ambiguous_number_word(w[i]) || (w[i] == "one" && w.len() > 1)) {
-                    continue;
+                let ambiguous = |at: usize, c: usize| c == 1 && (is_ambiguous_number_word(w[at]) || w[at] == "one");
+                let first = n32(n.value);
+                let end = i + n.consumed;
+                if end == w.len() {
+                    if (n.consumed == 1 && (is_ambiguous_number_word(w[i]) || (w[i] == "one" && w.len() > 1))) || !fits(first) {
+                        continue;
+                    }
+                    return found(chapter, Verses::One(first), false);
                 }
-                let v = n32(n.value);
-                if v < 1 || v > self.shape.max_verse() {
-                    continue;
+                // "twenty seven and twenty eight", "five to eight": a pair that closes the sentence.
+                let joiner = get(&w, end);
+                if matches!(joiner, "and" | "to" | "through") && !ambiguous(i, n.consumed) {
+                    let Some(m) = consume_number(&w, end + 1, None) else { continue };
+                    if end + 1 + m.consumed != w.len() || ambiguous(end + 1, m.consumed) {
+                        continue;
+                    }
+                    let last = n32(m.value);
+                    let ok = if joiner == "and" { last == first + 1 } else { last > first };
+                    if ok && fits(first) && fits(last) {
+                        return found(chapter, Verses::Span(first, last), false);
+                    }
                 }
-                return found(chapter, Verses::One(v), false);
             }
         }
         None
