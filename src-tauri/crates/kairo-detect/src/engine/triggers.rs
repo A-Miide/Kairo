@@ -215,6 +215,44 @@ impl Engine {
         self.partial_confirms_context(sent, v, &p, now);
     }
 
+    /// A chapter named without a verse, then its verses said as bare numbers in a sentence of their own:
+    /// "Psalm twenty two. We'll read twenty seven and twenty eight." Looked for in each sentence finished
+    /// since the chapter was named, as the words come in: the offline engine locks text only at a pause,
+    /// and the preacher went on for half a minute, so waiting for the final put the verses up late
+    /// (live, 2026-10-29). A sentence still being said may grow, so it waits for its full stop.
+    pub(crate) fn pending_chapter_numbers(&mut self, now: u64) -> bool {
+        let Some(p) = self.chapter_pending.clone() else { return false };
+        if now.saturating_sub(p.at) > super::core::CHAPTER_NAMED_WAITS_MS {
+            return false;
+        }
+        let since = self.t.words.text(p.from..self.t.words.end());
+        let active = Active { book: Some(p.book), chapter: Some(p.chapter as u32) };
+        // The first sentence names the chapter: its numbers are the parser's.
+        for sentence in since.split_inclusive(['.', '?', '!']).skip(1) {
+            if !sentence.trim_end().ends_with(['.', '?', '!']) {
+                continue;
+            }
+            let Some(part) = self.k.partials(self.cfg.lang).resolve(sentence, active, true) else { continue };
+            if part.citation.book != p.book || part.citation.chapter != p.chapter as u32 {
+                continue;
+            }
+            let verses = self.citation_verses(&part.citation);
+            let Some(&first) = verses.first() else { continue };
+            if verses.len() > 1 {
+                self.set_range(verses.clone(), now);
+            }
+            let sent = self.decide(Candidate::new(verses, self.partial_method(&part), DIRECT_PARTIAL_SCORE, Target::Screen), now);
+            if sent == Target::Screen {
+                self.jump_range_to(first, now);
+                self.chapter_resolved_for = Some((p.book, p.chapter));
+                self.chapter_pending = None;
+            }
+            self.partial_confirms_context(sent, first, &part, now);
+            return true;
+        }
+        false
+    }
+
     /// A bare "verse N" goes up when its chapter was named aloud. A chapter in play only because a
     /// quote of it was matched may be one the recogniser lost the book of ("Psalm one ten, verse one
     /// to three" heard as "someone wants the rule, verse one to three" with Matthew 24 in play): then,

@@ -179,6 +179,10 @@ pub const CONTEXT_WINDOW_MS: u64 = 5 * 60 * 1000;
 /// How long a chapter named without a verse waits for its verse ("go to Ezekiel twelve", then the
 /// introduction, then "verse twenty one").
 pub const CHAPTER_NAMED_WAITS_MS: u64 = 3 * 60 * 1000;
+/// A stretch with no final this long (words) is locked in pieces by the engine itself (Engine::on_speech).
+pub const SELF_LOCK_AFTER: usize = 30;
+pub const SELF_LOCK_MIN: usize = 20;
+pub const SELF_LOCK_TAIL: usize = 8;
 /// …and waits this long for a verse number called out.
 pub const VERSE_CALL_WAITS_MS: u64 = 10 * 60 * 1000;
 /// An announced passage stays in play this long (a sermon spends most of its time on its text).
@@ -438,8 +442,61 @@ impl Engine {
         self.next_id
     }
 
-    /// The funnel.
+    /// Every recogniser, on every platform, comes through here. One that ends an utterance only at a
+    /// pause (the Core ML engine; any engine while a preacher talks on) sends a single interim that grows
+    /// for half a minute or more, and everything that works on finished words (verse numbers after a
+    /// chapter, reading through a passage, verse ends, chapter follow-ups, quotes) waited for it (live,
+    /// 2026-10-29). So once a stretch runs past SELF_LOCK_AFTER words, its settled part is locked here, in
+    /// pieces of at least SELF_LOCK_MIN words, the newest SELF_LOCK_TAIL kept live, and never cut where a
+    /// citation may carry on ("John three", "verse", "and"). An engine that locks words itself (ONNX,
+    /// Deepgram's finals) never reaches the threshold, so nothing changes for it.
     fn on_speech(&mut self, seg: Segment, now: u64) {
+        let words: Vec<&str> = seg.text.split_whitespace().collect();
+        let plain = |w: &str| w.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
+        let carries = self.t.self_locked.len() <= words.len()
+            && !self.t.self_locked.is_empty()
+            && self.t.self_locked.iter().zip(&words).all(|(a, b)| plain(a) == plain(b));
+        if !carries {
+            self.t.self_locked.clear();
+        }
+        let held = self.t.self_locked.len();
+        if seg.is_final {
+            self.t.self_locked.clear();
+            let rest = words[held..].join(" ");
+            return self.on_speech_heard(Segment { text: rest, ..seg }, now);
+        }
+        if words.len() - held >= SELF_LOCK_AFTER {
+            if let Some(cut) = self.safe_lock_cut(&words, held + SELF_LOCK_MIN, words.len() - SELF_LOCK_TAIL) {
+                let chunk = words[held..cut].join(" ");
+                self.t.self_locked.extend(words[held..cut].iter().map(|w| w.to_string()));
+                self.on_speech_heard(Segment { text: chunk, is_final: true, speech_final: false, continues_live: true }, now);
+            }
+        }
+        let held = self.t.self_locked.len();
+        self.on_speech_heard(Segment { text: words[held..].join(" "), ..seg }, now);
+    }
+
+    /// Where a long stretch may be locked: the last place at or before `hi` (and after `lo`) that isn't
+    /// right after a word a citation goes on from, nor next to a number.
+    fn safe_lock_cut(&self, words: &[&str], lo: usize, hi: usize) -> Option<usize> {
+        const CARRY: [&str; 16] = ["verse", "verses", "chapter", "chapters", "and", "to", "through", "of", "in", "the", "book", "first", "second", "third", "says", "read"];
+        let books = crate::reference::Books::get();
+        let plain = |w: &str| w.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
+        let number = |w: &str| w.chars().any(|c| c.is_ascii_digit()) || crate::reference::numbers::word_value(w).is_some();
+        let mut cut = hi;
+        while cut > lo {
+            let last = plain(words[cut - 1]);
+            let next = words.get(cut).map(|w| plain(w)).unwrap_or_default();
+            if !CARRY.contains(&last.as_str()) && !number(&last) && !number(&next) && books.alias(&last).is_none() && books.alias(&next).is_none() {
+                return Some(cut);
+            }
+            cut -= 1;
+        }
+        None
+    }
+
+    /// The funnel.
+    fn on_speech_heard(&mut self, seg: Segment, now: u64) {
         let text = fold_accents(&seg.text);
         if seg.is_final && !text.is_empty() {
             self.t.words_heard += text.split_whitespace().count() as u64;
@@ -456,7 +513,7 @@ impl Engine {
             let fresh = self.note_range_speech(&text, false, false);
             self.advance_range_on_last_words(now);
             self.advance_range_on_next_opening(&fresh, now);
-            let found = self.process_references(&text, false, now);
+            let found = self.process_references(&text, false, now) || self.pending_chapter_numbers(now);
             self.check_citation_siblings(&text, false, false, now);
             if !found && self.verse_call_context(now).book.is_some() && !self.announces_different_book(&text, self.prev_words(), now) {
                 self.interim_partial(&text, now);
@@ -508,7 +565,7 @@ impl Engine {
 
         let prev_before = self.prev_words();
         let through = self.read_through_chapter(&text, prev_before.as_ref(), now);
-        let mut found = through || self.process_references_final(&text, &sent_from_interim, now);
+        let mut found = through || self.process_references_final(&text, &sent_from_interim, now) || self.pending_chapter_numbers(now);
         self.check_citation_siblings(&text, true, false, now);
         if self.spoken_correction(&text, true, now) {
             found = true;

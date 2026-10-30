@@ -75,6 +75,10 @@ pub struct Transcript {
     pub words_heard: u64,
     /// The interim in progress.
     pub interim: String,
+    /// Words of the stretch in progress the engine locked itself (Engine::on_speech): a recogniser that
+    /// only ends an utterance at a pause sends one ever-growing interim, and this keeps all but its
+    /// newest words moving through everything that works on finished words.
+    pub self_locked: Vec<String>,
     pub sentence: SentenceBuffer,
     /// Citation key → when an interim last parsed it (interim stability).
     pub interim_seen: HashMap<String, u64>,

@@ -51,9 +51,6 @@ fn re(p: &str) -> Regex {
 /// A book by any name or code a file might use: USFM or OSIS codes, the English name ("Song of Songs",
 /// "Revelation of John"), numbered books written "1 John", "I John", "First John" or "1John", and a
 /// book's number (1 to 66) when the whole thing is a number.
-pub(crate) fn osis_code(book: usize) -> &'static str {
-    OSIS_CODES[book]
-}
 
 /// The three-letter book code (GEN, JHN) that API.Bible names its chapters by ("JHN.3").
 pub(crate) fn usfm_code(book: usize) -> &'static str {
