@@ -306,3 +306,17 @@ fn a_chapter_number_heard_before_it_was_finished_is_not_left_waiting() {
     ));
     assert_eq!(s.last().map(String::as_str), Some("Romans 8:28"), "{s:?}");
 }
+
+#[test]
+fn a_verse_heard_live_then_finished_as_a_range_follows_the_reading() {
+    // "John 3:16" up from the live text, then the final "…to 17": the range is in play, and 3:17
+    // goes up once 3:16 has been read, one verse at a time.
+    let segs = script(
+        "~ John three sixteen
+         John three sixteen to seventeen
+         for God so loved the world that he gave his only begotten Son that whosoever believeth in him should not perish but have everlasting life",
+    );
+    let s = sends(&segs);
+    assert_eq!(s.first().map(String::as_str), Some("John 3:16"), "{s:?}");
+    assert!(s.iter().any(|x| x.starts_with("John 3:17")), "{s:?}");
+}

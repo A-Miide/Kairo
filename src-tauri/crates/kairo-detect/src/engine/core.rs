@@ -181,8 +181,6 @@ pub const CONTEXT_WINDOW_MS: u64 = 5 * 60 * 1000;
 /// How long a chapter named without a verse waits for its verse ("go to Ezekiel twelve", then the
 /// introduction, then "verse twenty one").
 pub const CHAPTER_NAMED_WAITS_MS: u64 = 3 * 60 * 1000;
-/// A range this short goes up whole and stays up whole while it's read; a longer one steps through.
-pub const SHOWN_TOGETHER_MAX: usize = 3;
 /// A stretch with no final this long (words) is locked in pieces by the engine itself (Engine::on_speech).
 pub const SELF_LOCK_AFTER: usize = 30;
 pub const SELF_LOCK_MIN: usize = 20;
@@ -256,7 +254,6 @@ impl Engine {
             Event::Singing(on) => self.screen.singing = on,
             Event::ScreenCleared => {
                 self.screen.up = None;
-                self.screen.together.clear();
             }
             Event::RangeNext => {
                 self.request_range_advance("the operator's Next", now);
@@ -659,7 +656,6 @@ impl Engine {
 
     /// Back: the screen shows `up` again; `taken_down` mustn't come straight back.
     fn restored(&mut self, up: Option<VerseId>, taken_down: Option<VerseId>, now: u64) {
-        self.screen.together.clear();
         match up {
             Some(v) => {
                 self.mark_shown(v, now);
@@ -699,9 +695,6 @@ impl Engine {
     /// The one way a verse leaves the engine, for the screen or Possible Matches (the server then
     /// routes a screen verse by Auto-send and Director mode).
     pub(crate) fn show(&mut self, verses: Vec<VerseId>, method: Method, score: f32, target: Target, corrected_from: Option<VerseId>) {
-        if target == Target::Screen {
-            self.screen.together = if (2..=SHOWN_TOGETHER_MAX).contains(&verses.len()) { verses.clone() } else { Vec::new() };
-        }
         self.effect(Effect::Show { verses, method, score, target, corrected_from });
     }
 

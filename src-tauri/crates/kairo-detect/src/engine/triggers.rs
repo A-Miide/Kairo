@@ -424,8 +424,8 @@ impl Engine {
     }
 
     /// "Genesis chapter 21 verse 1 and then we go to verse 6", said as one breath, is a range call
-    /// (owner, 2026-10-31): 21:1 and 21:6 up together, as "verses 1 and 6" already were, and the
-    /// reading goes on from there. Missed before: the citation took the stretch and its trailing
+    /// (owner, 2026-10-31): 21:1 up, then 21:6 as the reading reaches it, as "verses 1 and 6"
+    /// already were. Missed before: the citation took the stretch and its trailing
     /// verse went unread.
     pub(crate) fn next_step_verse(&mut self, text: &str, now: u64) -> bool {
         let Some(m) = NEXT_STEP.find_iter(text).last() else { return false };
@@ -436,8 +436,13 @@ impl Engine {
         let Some(p) = self.k.partials(self.cfg.lang).resolve(tail, self.verse_call_context(now), true) else { return false };
         let next = self.citation_verses(&p.citation);
         let Some(&first_next) = next.first() else { return false };
-        // What this breath's citation put up, in the same chapter.
-        let mut verses: Vec<VerseId> = if self.screen.together.is_empty() { self.screen.up_verse().into_iter().collect() } else { self.screen.together.clone() };
+        // What this breath's citation called, in the same chapter: the range it set ("verses 1 and 2,
+        // then we go to verse 6"), else the verse up.
+        let up = self.screen.up_verse();
+        let mut verses: Vec<VerseId> = match up {
+            Some(u) if !self.range.soft && self.range.all.contains(&u) => self.range.all.clone(),
+            _ => up.into_iter().collect(),
+        };
         let same_chapter = |e: &Self, v: VerseId| {
             let (a, b) = (e.r(v), e.r(first_next));
             a.book == b.book && a.chapter == b.chapter

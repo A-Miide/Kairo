@@ -491,10 +491,9 @@ async fn learned_forget() -> Json<Value> {
 }
 
 /// Previous / Next under the monitor (owner, 2026-10-30): the verse before what is up, or after it,
-/// across a chapter's end; Next inside a cited range moves the range as its own button did. A short
-/// passage up whole (2 or 3 verses together) is one step: Next goes past it, Previous before it.
-/// Moving the range there put verse 2 alone on the output while the monitor kept the passage
-/// (release check, 2026-10-31).
+/// across a chapter's end; Next inside a cited range moves the range as its own button did. A range
+/// shows a verse at a time (owner, 2026-11-01), so what is up is the first verse sent: a range
+/// called "Luke 10:1-2 and 17-19" and still on 10:1 steps to 10:2, not past 10:19.
 async fn verse_step(State(app): State<Shared>, Json(body): Json<Value>) -> Json<Value> {
     let Some((bible, d)) = app.ready() else { return Json(json!({ "ok": false, "reason": "still loading" })) };
     let forward = body["dir"].as_i64().unwrap_or(1) >= 0;
@@ -503,12 +502,12 @@ async fn verse_step(State(app): State<Shared>, Json(body): Json<Value>) -> Json<
         (l.screen_now.clone(), l.range_state.is_some())
     };
     let verses = now.as_ref().and_then(|n| n["verses"].as_array().cloned()).unwrap_or_default();
-    let in_range = range && verses.len() < 2;
+    let in_range = range;
     if forward && in_range {
         d.send(Event::RangeNext);
         return Json(json!({ "ok": true }));
     }
-    let edge = if forward { verses.last() } else { verses.first() };
+    let edge = verses.first();
     let Some((book, chapter, verse)) = edge.and_then(|v| Some((v["book"].as_str()?.to_string(), v["chapter"].as_u64()?, v["verse"].as_u64()?))) else {
         return Json(json!({ "ok": false, "reason": "no verse on screen" }));
     };

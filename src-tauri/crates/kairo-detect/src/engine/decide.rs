@@ -194,7 +194,6 @@ impl Engine {
             && !c.verbatim_disagreed
             && self.worded_alike(top).is_empty()
             && self.screen.up_verse() != Some(top)
-            && !self.screen.together.contains(&top)
             && !self.screen.up_verse().is_some_and(|u| {
                 let ur = self.r(u);
                 ur.book == r.book && ur.chapter == r.chapter && r.verse < ur.verse
@@ -313,12 +312,6 @@ impl Engine {
             target = Target::Suggestions;
         }
 
-        // 12. A verse of a short range already up whole is up: reading on through it, or its words
-        // matched again, doesn't narrow the screen to that one verse.
-        if target == Target::Screen && c.verses.len() == 1 && self.screen.together.contains(&top) {
-            return Target::Drop;
-        }
-
         // 12a. Don't flood the screen with the same verse.
         if target == Target::Screen {
             let spoken = matches!(c.method, Method::Direct | Method::Continuation);
@@ -326,13 +319,13 @@ impl Engine {
             let same_book_continuation = self.screen.last_sent_book.is_some_and(|(b, t)| b == r.book && now.saturating_sub(t) < SAME_BOOK_WINDOW_MS)
                 && self.screen.last_detected.map(|(v, _, _)| v) != Some(top);
             let overrides_weaker = spoken && self.screen.last_detected.is_some_and(|(_, _, m)| !matches!(m, Method::Direct | Method::Continuation));
-            // …or more of it than is up now: "Genesis 21 verse 1 and then we go to verse 6" puts 21:1
-            // up, then 21:1 with 21:6 (triggers.rs, next_step_verse).
+            // …or a range called from the verse up that isn't the range in play yet: "John 3:16" heard
+            // live, then "…to 17" in the final, is that range from now on (its first verse stays up,
+            // the rest follow the reading).
             let wider_range = c.method == Method::Direct
                 && c.verses.len() > 1
                 && self.screen.last_detected.map(|(v, _, _)| v) == Some(top)
-                && (c.verses.len() > self.range.all.len()
-                    || (c.verses.len() <= super::core::SHOWN_TOGETHER_MAX && c.verses.len() > self.screen.together.len().max(1)));
+                && self.range.all != c.verses;
             if !same_book_continuation && !overrides_weaker && !wider_range && !c.returning {
                 if self.screen.last_detected.is_some_and(|(v, t, _)| v == top && now.saturating_sub(t) < window) {
                     return Target::Drop;

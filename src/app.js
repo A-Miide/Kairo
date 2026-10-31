@@ -775,7 +775,7 @@ function handleDetection(msg) {
   if (target === 'viewer' && (topScore == null || topScore >= CLIENT_VIEWER_MIN_SCORE)) {
     showInViewer(verses, method, topScore, correctedFrom, look);
     if (method !== 'service') noteTranscriptSend(sentReference(verses));
-    screenVerseRef = verses[0].book && verses[0].book !== 'Service' && verses[0].chapter > 0 ? sentReference(verses) : '';
+    screenVerseRef = verses[0].book && verses[0].book !== 'Service' && verses[0].chapter > 0 ? verses[0].reference : '';
     screenSlide = screenVerseRef ? null : { label: verses[0].label || verses[0].reference || '' };
     renderVerseBar();
     chapterChildrenFollow(verses);
@@ -829,8 +829,8 @@ function handleTranslationChanged({ translation, heard }) {
 // ── Transcript log: which words sent which verse ────────────────────────────
 // A small chip after the line being spoken when a verse went up; double-click
 // any line to search it (a miss is usually right there in the words).
-// "Psalms 22:27-28" for verses sent together in one chapter, not just the first (owner, 2026-10-30);
-// the search understands it, so the chip sends them all again.
+// "Psalms 22:27-28" for a range sent in one chapter, not just the first verse (owner, 2026-10-30);
+// the search understands it, so the chip sends the range again.
 function sentReference(verses) {
   const first = verses[0], last = verses[verses.length - 1];
   if (verses.length > 1 && first.book && first.book === last.book && first.chapter === last.chapter) {
@@ -1102,22 +1102,16 @@ function repaintPreviewWithOutputLook() {
   renderPreviewScreen(a.text, a.reference, null, a.translatedText, a.image, a.fit, a.styleByLayerId, a.timerText, a.sectionLabel);
 }
 
-// The Live Queue cards of what is on screen now are marked LIVE (none while a slide is up or the
-// screen is clear): the verse, both or all three of a short passage shown together, or, for a verse
-// shown from a chapter open under its card (no card of its own), that card (owner, 2026-10-30).
+// The Live Queue card of what is on screen now is marked LIVE (none while a slide is up or the
+// screen is clear), one verse at a time, however long its range; or, for a verse shown from a
+// chapter open under its card (no card of its own), that card (owner, 2026-10-30).
 function markLiveInQueue(reference) {
   currentDisplayCard?.querySelectorAll('.is-live').forEach(c => c.classList.remove('is-live'));
   if (!reference) return;
-  const refs = new Set([reference]);
-  // "Psalms 22:27", or a passage shown whole, "Psalms 22:27–28".
-  const m = String(reference).match(/^(.+) (\d+):(\d+)(?:\u2013(\d+))?$/);
-  if (m) for (let n = Number(m[3]); n <= Number(m[4] || m[3]); n++) refs.add(`${m[1]} ${m[2]}:${n}`);
-  if (m && screenVerseNums.book === m[1] && String(screenVerseNums.chapter) === m[2]) {
-    screenVerseNums.verses.forEach(v => refs.add(`${m[1]} ${m[2]}:${v}`));
-  }
-  let marked = 0;
-  refs.forEach(r => { const c = currentDisplayCard?.querySelector(`[data-ref="${CSS.escape(r)}"]`); if (c) { c.classList.add('is-live'); marked++; } });
-  if (!marked && m) currentDisplayCard?.querySelector(`.locked-verse-card.children-open[data-book="${CSS.escape(m[1])}"][data-chapter="${m[2]}"]`)?.classList.add('is-live');
+  const m = String(reference).match(/^(.+) (\d+):(\d+)$/);
+  const card = currentDisplayCard?.querySelector(`[data-ref="${CSS.escape(reference)}"]`);
+  if (card) card.classList.add('is-live');
+  if (!card && m) currentDisplayCard?.querySelector(`.locked-verse-card.children-open[data-book="${CSS.escape(m[1])}"][data-chapter="${m[2]}"]`)?.classList.add('is-live');
 }
 
 // The Bible version of the verse in the preview (display.html currentVersion), set as it's shown.
@@ -1385,9 +1379,7 @@ function showInViewerNow(verses, method, topScore, correctedFrom = null, look = 
   // (service.js sendTimerSegmentToSlideLayer); the per-second countdown then
   // updates that same [data-binding="timer"] element via onTimerAction, the
   // same split display.html uses (renderStage seeds it, handleActionBadge ticks it).
-  // A short passage sent whole shows whole, as on the output (client_common.js versesShownTogether).
-  const shown = versesShownTogether(verses) || v;
-  renderPreviewScreen(cleanVerseText(shown.text), shown.reference, look, shown.translatedText || '', v.image || null, v.fit || 'contain', v.slideStyle || {}, v.timerText || '', v.label || '');
+  renderPreviewScreen(cleanVerseText(v.text), v.reference, look, v.translatedText || '', v.image || null, v.fit || 'contain', v.slideStyle || {}, v.timerText || '', v.label || '');
 
   // A playlist send (song/slide deck/announcement/scripture item run from
   // the service) isn't a scripture detection — the Bible tab's Live Queue,
@@ -1750,9 +1742,8 @@ function renderChapterChildren(card) {
 function chapterChildrenFollow(verses) {
   const v0 = verses?.[0];
   const bible = v0 && v0.book && v0.book !== 'Service' && v0.chapter > 0;
-  // What is up: a short passage shows whole (SHOWN_TOGETHER_MAX, 3), a longer one its first verse.
-  const up = verses.length > 3 ? [v0] : verses;
-  screenVerseNums = bible ? { book: v0.book, chapter: v0.chapter, verses: up.filter(v => v.book === v0.book && v.chapter === v0.chapter).map(v => v.verse) } : { book: '', chapter: 0, verses: [] };
+  // What is up: the first verse of what was sent; a range follows the reader a verse at a time.
+  screenVerseNums = bible ? { book: v0.book, chapter: v0.chapter, verses: [v0.verse] } : { book: '', chapter: 0, verses: [] };
   currentDisplayCard?.querySelectorAll('.locked-verse-card.children-open').forEach((card) => {
     if (bible && card.dataset.book === v0.book && card.dataset.chapter === String(v0.chapter)) renderChapterChildren(card);
     else if (bible) closeChapterChildren(card);
@@ -1855,7 +1846,7 @@ const rangeNavRef   = document.getElementById('range-nav-ref');
 // A slide on screen instead (owner, 2026-10-30): the same two buttons step the deck, as the
 // Next/Previous slide shortcuts do.
 let rangeOn = null;        // { current, total, next } while a cited range runs
-let screenVerseRef = '';   // the Bible verse(s) on screen, '' when none
+let screenVerseRef = '';   // the Bible verse on screen, '' when none
 let screenSlide = null;    // { label } while a slide is on screen
 function renderVerseBar() {
   if (!rangeNavBar) return;
@@ -1865,8 +1856,7 @@ function renderVerseBar() {
   rangeNavBar.style.display = 'flex';
   rangeNavBar.classList.toggle('is-idle', idle);
   for (const id of ['verse-prev-btn', 'range-next-btn']) { const b = document.getElementById(id); if (b) b.disabled = idle; }
-  // A short passage is up whole (both or all three verses): its reference, not "Verse 1 / 2".
-  const counted = rangeOn && !(rangeOn.total <= 3 && screenVerseRef);
+  const counted = !!rangeOn;
   if (rangeNavLabel) rangeNavLabel.textContent = idle ? 'Nothing on screen' : counted ? `Verse  ${rangeOn.current} / ${rangeOn.total}` : slide ? (screenSlide.label || 'Slide') : screenVerseRef.replace(/(\d)-(\d)/, '$1\u2013$2');
   if (rangeNavRef) rangeNavRef.textContent = counted ? (rangeOn.next ? `→ ${rangeOn.next.reference}` : 'Last verse') : '';
   const end = document.getElementById('range-clear-btn');
@@ -1977,9 +1967,8 @@ function handleRangeVerses({ verses, activeRef }) {
   currentDisplayCard.insertBefore(fragment, currentDisplayCard.firstChild);
   dropSuggestionsCoveredByQueue();
 
-  // Update live preview to the active verse; a short passage is up whole, as on the output.
-  const together = versesShownTogether(verses);
-  const active = together !== verses[0] ? together : (verses.find(v => v.reference === activeRef) || verses[0]);
+  // Update live preview to the active verse.
+  const active = verses.find(v => v.reference === activeRef) || verses[0];
   if (active) renderPreviewScreen(cleanVerseText(active.text), active.reference, null, active.translatedText || '');
 }
 
@@ -1990,8 +1979,6 @@ function handleRangeActive(activeRef) {
     card.classList.toggle('range-active', isActive);
     card.classList.toggle('range-queued', !isActive);
   });
-  // A short passage (2 or 3 verses) is up whole and stays so while it's read: the preview too.
-  if (rangeRefs.size >= 2 && rangeRefs.size <= 3) return;
   // Update live preview
   const activeCard = currentDisplayCard.querySelector(`.range-verse-card[data-ref="${activeRef}"]`);
   if (activeCard) {

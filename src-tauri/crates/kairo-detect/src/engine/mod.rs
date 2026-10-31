@@ -55,7 +55,7 @@ mod twins;
 pub mod types;
 pub mod words;
 
-pub use self::core::{Config, Engine, SHOWN_TOGETHER_MAX};
+pub use self::core::{Config, Engine};
 pub use self::meaning::MeaningThresholds;
 pub use learned::Learned;
 
