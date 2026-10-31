@@ -307,6 +307,12 @@ impl Engine {
             }
         }
 
+        // 11a. A verse this church's operator has taken back down after it went up on wording alone
+        // (learned.rs) is offered, not sent, when only wording brings it up again.
+        if target == Target::Screen && !c.method.names_its_verse() && self.cfg.learned.taken_down.contains(&top) {
+            target = Target::Suggestions;
+        }
+
         // 12. A verse of a short range already up whole is up: reading on through it, or its words
         // matched again, doesn't narrow the screen to that one verse.
         if target == Target::Screen && c.verses.len() == 1 && self.screen.together.contains(&top) {

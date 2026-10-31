@@ -21,6 +21,7 @@ pub mod detect;
 pub mod hub;
 pub mod interpretation;
 mod clock;
+mod learned;
 mod library;
 mod media;
 mod import;
@@ -273,6 +274,7 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
             let a = a2.clone();
             h2.spawn(async move { routes::restore_translation(&a, code).await });
         });
+        learned::start(&starting.cfg.app_data_dir, bible.clone(), detector.clone());
         let _ = starting.bible.set(bible);
         let _ = starting.detector.set(detector);
         // Chapters of a Bible the church connected through API.Bible are fetched as verses are shown.

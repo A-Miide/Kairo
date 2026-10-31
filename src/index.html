@@ -1387,6 +1387,16 @@
                     </div>
                     <label class="output-toggle"><input type="checkbox" id="show-confidence-settings" checked><span class="output-toggle-track"></span></label>
                 </div>
+
+                <!-- Learned from your services (learned.rs): automatic, from what the operator does anyway;
+                     kept on this computer only. Forget starts it over (a new preacher). -->
+                <div class="setting-switch-row">
+                    <div class="setting-switch-text">
+                        <label class="setting-label">Learned from your services</label>
+                        <p class="setting-hint" id="learned-summary">Kairo learns your preacher&rsquo;s way of saying verses, the verses your church comes back to, and the ones you take down. It stays on this computer.</p>
+                    </div>
+                    <button type="button" class="modal-btn secondary" id="learned-forget">Forget</button>
+                </div>
             </div>
 
             <!-- Your Bibles does three jobs, in this order: invite the church to get its Bibles free (and

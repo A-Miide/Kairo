@@ -141,6 +141,9 @@ impl Detector {
 
     /// Transcript and detectors, for what is the preacher's.
     fn forward(&self, hub: &Hub, text: &str, is_final: bool, confidence: f32, speech_final: bool, words: Option<Value>, continues_live: bool) {
+        if is_final {
+            crate::learned::heard(text);
+        }
         let mut msg = json!({ "type": "transcript", "text": text, "isFinal": is_final, "confidence": confidence });
         if let Some(w) = words {
             msg["words"] = w;
@@ -382,6 +385,7 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
                     let how = crate::notes::How::of(method.wire());
                     let at = epoch_ms();
                     log.lock().unwrap_or_else(std::sync::PoisonError::into_inner).shown.extend(verses.iter().take(1).map(|v| crate::notes::Shown { verse: *v, at, how }));
+                    verses.iter().for_each(|v| crate::learned::shown(*v));
                 }
             }
             Effect::RangeSet { verses, current } => {

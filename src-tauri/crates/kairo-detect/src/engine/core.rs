@@ -32,11 +32,13 @@ pub struct Config {
     /// Say why each decision went where it did (`Output::notes`).
     pub explain: bool,
     pub meaning_thresholds: MeaningThresholds,
+    /// What this church's services taught (learned.rs); empty by default.
+    pub learned: std::sync::Arc<super::learned::Learned>,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { lang: Lang::En, auto_send: true, auto_correct: true, offline: false, meaning: false, explain: false, meaning_thresholds: MeaningThresholds::LEGACY }
+        Config { lang: Lang::En, auto_send: true, auto_correct: true, offline: false, meaning: false, explain: false, meaning_thresholds: MeaningThresholds::LEGACY, learned: Default::default() }
     }
 }
 

@@ -463,7 +463,12 @@ impl Engine {
         let top = *ranked.first()?;
         let second = ranked.iter().find(|r| r.hit.verse != top.hit.verse);
         let named = book_mentions_recent(self);
-        let affinity = |v: VerseId| self.passage_affinity(v, now).max(if named.contains(&self.r(v).book) { 2.0 } else { 0.0 });
+        // A verse the church has had up time and again (learned.rs) is offered as readily as a
+        // passage in play; only offered, never sent.
+        let affinity = |v: VerseId| {
+            let familiar = named.contains(&self.r(v).book) || self.cfg.learned.familiar.contains(&v);
+            self.passage_affinity(v, now).max(if familiar { 2.0 } else { 0.0 })
+        };
         let out = |target: Target, score: f32| Some((top.hit.verse, target, score, top.hit.rerank, top.lex));
         match top.hit.rerank {
             Some(rr) => {

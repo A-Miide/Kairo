@@ -210,6 +210,28 @@ const bibleTranslateToSelect = document.getElementById('bible-translate-to-selec
 const deepgramKeyInput    = document.getElementById('deepgram-key');
 const translationSettings = document.getElementById('translation-select-settings');
 const showConfSettings    = document.getElementById('show-confidence-settings');
+
+// Settings → Bible → Learned from your services (learned.rs on the server).
+const learnedSummary = document.getElementById('learned-summary');
+function showLearned(s) {
+  if (!learnedSummary || !s) return;
+  const parts = [];
+  if (s.bookWords) parts.push(`${s.bookWords} way${s.bookWords === 1 ? '' : 's'} your preacher says a book`);
+  if (s.familiar) parts.push(`${s.familiar} verse${s.familiar === 1 ? '' : 's'} your church comes back to`);
+  if (s.heldBack) parts.push(`${s.heldBack} verse${s.heldBack === 1 ? '' : 's'} you took down, now only offered`);
+  learnedSummary.textContent = parts.length
+    ? `So far: ${parts.join('; ')}. It stays on this computer.`
+    : 'Kairo learns your preacher\u2019s way of saying verses, the verses your church comes back to, and the ones you take down. It stays on this computer.';
+}
+function refreshLearned() {
+  fetch('/api/learned').then(r => r.json()).then(showLearned).catch(() => {});
+}
+document.getElementById('learned-forget')?.addEventListener('click', () => {
+  if (!confirm('Forget everything Kairo has learned from your services?')) return;
+  fetch('/api/learned', { method: 'DELETE' }).then(r => r.json()).then(showLearned).catch(() => {});
+});
+document.querySelector('.settings-nav-item[data-pane="bible"]')?.addEventListener('click', refreshLearned);
+settingsBtn?.addEventListener('click', refreshLearned);
 const audioSourceSettings = document.getElementById('audio-source-settings');
 const refreshDevicesBtn   = document.getElementById('refresh-devices-settings');
 // OBS's own fields (URL/password/text-source/enable/test) are built

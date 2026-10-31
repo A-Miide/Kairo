@@ -21,6 +21,7 @@ pub fn router() -> Router<Shared> {
         .route("/health", get(health))
         .route("/api/settings", get(get_settings).post(post_settings))
         .route("/api/test-transcript", post(test_transcript))
+        .route("/api/learned", get(learned).delete(learned_forget))
         .route("/api/start-listening", post(start_listening))
         .route("/api/stop-listening", post(stop_listening))
         .route("/api/audio-inputs", get(audio_inputs))
@@ -393,6 +394,9 @@ async fn search(State(app): State<Shared>, Json(body): Json<Value>) -> Response 
         if !verses.is_empty() {
             let json_verses: Vec<Value> = verses.iter().map(|v| bible.verse_json(*v, 1.0, "direct")).collect();
             let method = if matches!(c.verses, Verses::One(_)) { "reference" } else { "range" };
+            if let Some(&v) = verses.first() {
+                crate::learned::operator_put_up(v);
+            }
             d.send(Event::OperatorCited(verses));
             let mut out = json!({ "result": json_verses[0], "method": method });
             if method == "range" {
@@ -476,20 +480,34 @@ async fn range_next(State(app): State<Shared>) -> Json<Value> {
     Json(json!({ "ok": true, "verse": active.and_then(|r| r["next"]["reference"].as_str().map(str::to_string)) }))
 }
 
+/// Settings → Bible → Learned from your services (learned.rs).
+async fn learned() -> Json<Value> {
+    Json(crate::learned::summary())
+}
+
+async fn learned_forget() -> Json<Value> {
+    crate::learned::forget();
+    Json(crate::learned::summary())
+}
+
 /// Previous / Next under the monitor (owner, 2026-10-30): the verse before what is up, or after it,
-/// across a chapter's end; Next inside a cited range moves the range as its own button did.
+/// across a chapter's end; Next inside a cited range moves the range as its own button did. A short
+/// passage up whole (2 or 3 verses together) is one step: Next goes past it, Previous before it.
+/// Moving the range there put verse 2 alone on the output while the monitor kept the passage
+/// (release check, 2026-10-31).
 async fn verse_step(State(app): State<Shared>, Json(body): Json<Value>) -> Json<Value> {
     let Some((bible, d)) = app.ready() else { return Json(json!({ "ok": false, "reason": "still loading" })) };
     let forward = body["dir"].as_i64().unwrap_or(1) >= 0;
-    let (now, in_range) = {
+    let (now, range) = {
         let l = crate::util::lock(&app.hub.live);
         (l.screen_now.clone(), l.range_state.is_some())
     };
+    let verses = now.as_ref().and_then(|n| n["verses"].as_array().cloned()).unwrap_or_default();
+    let in_range = range && verses.len() < 2;
     if forward && in_range {
         d.send(Event::RangeNext);
         return Json(json!({ "ok": true }));
     }
-    let verses = now.as_ref().and_then(|n| n["verses"].as_array().cloned()).unwrap_or_default();
     let edge = if forward { verses.last() } else { verses.first() };
     let Some((book, chapter, verse)) = edge.and_then(|v| Some((v["book"].as_str()?.to_string(), v["chapter"].as_u64()?, v["verse"].as_u64()?))) else {
         return Json(json!({ "ok": false, "reason": "no verse on screen" }));
@@ -603,6 +621,8 @@ pub(crate) async fn send_service_slide(app: &Shared, mut verse: Value, look: Val
         match verse["book"].as_str().and_then(|b| bible.find(b, verse["chapter"].as_u64().unwrap_or(0), verse["verse"].as_u64().unwrap_or(0))) {
             Some(v) => {
                 d.send(Event::OperatorSent(v));
+                crate::learned::operator_put_up(v);
+                crate::learned::shown(v);
                 song_live(&app, false);
                 crate::util::lock(&app.log).shown.push(crate::notes::Shown { verse: v, at: epoch_ms(), how: crate::notes::How::Cited });
             }
@@ -730,6 +750,12 @@ fn note_likely_wrong_send(app: &Shared, undone: Option<&Value>, restored: Option
     let reference = m["verses"][0]["reference"].as_str().unwrap_or("").to_string();
     let back_to = restored.and_then(|r| r["verses"][0]["reference"].as_str()).unwrap_or("").to_string();
     eprintln!("[Detect] Back {:.1}s after {reference} went up by itself ({method}): likely a wrong send", on_screen as f64 / 1000.0);
+    if let Some((bible, _)) = app.ready() {
+        let v = &m["verses"][0];
+        if let Some(id) = bible.find(v["book"].as_str().unwrap_or(""), v["chapter"].as_u64().unwrap_or(0), v["verse"].as_u64().unwrap_or(0)) {
+            crate::learned::taken_down(id, method);
+        }
+    }
     write_debug_line(app, "server:likely-wrong-send", json!({
         "reference": reference, "method": method, "score": m["topScore"], "secondsOnScreen": (on_screen as f64 / 100.0).round() / 10.0,
         "correctedFrom": m["correctedFrom"], "backTo": back_to,

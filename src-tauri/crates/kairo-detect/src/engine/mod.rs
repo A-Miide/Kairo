@@ -42,6 +42,7 @@ mod decide;
 mod detour;
 pub mod event;
 pub mod evidence;
+pub mod learned;
 mod meaning;
 mod named;
 mod paths;
@@ -56,6 +57,7 @@ pub mod words;
 
 pub use self::core::{Config, Engine, SHOWN_TOGETHER_MAX};
 pub use self::meaning::MeaningThresholds;
+pub use learned::Learned;
 
 pub use event::{Answer, Effect, Event, MeaningHit, Output, Request, Segment, TimerId};
 pub use scoring::{Ledger, Score, ScoreContext};

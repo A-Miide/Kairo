@@ -396,6 +396,7 @@ impl Engine {
                 _ => s.to_string(),
             }
         };
+        let text = self.cfg.learned.books_put_back(&text);
         let text = PSALM_HEARD.replace_all(&text, |c: &regex::Captures| format!("Psalm {} verse {}", digits(&c[1]), digits(&c[2])));
         self.k.parser(self.cfg.lang).parse_all(&text, self.active(now))
     }
