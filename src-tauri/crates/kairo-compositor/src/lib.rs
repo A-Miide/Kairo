@@ -55,6 +55,9 @@ impl Gpu {
             ..Default::default()
         }))
         .map_err(|e| format!("GPU unusable: {e}"))?;
+        // wgpu's default is to panic on any GPU error: on air, a logged error and a frame that
+        // didn't change are far better than an output that stops.
+        device.on_uncaptured_error(Arc::new(|e: wgpu::Error| eprintln!("[Compositor] GPU error: {e}")));
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("kairo-compositor"),

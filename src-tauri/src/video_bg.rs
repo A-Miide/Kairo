@@ -10,8 +10,8 @@
 //! laid over it — blending old into new for a Fade — and handed to the
 //! output's senders.
 //!
-//! With `KAIRO_GPU_COMPOSITOR=1` (docs/DIRECTOR_COMPOSITOR.md, not yet the default) the laying
-//! over happens on the GPU instead: ffmpeg hands over NV12 rather than converting to BGRA, the
+//! On a computer with a usable GPU (docs/DIRECTOR_COMPOSITOR.md; `KAIRO_GPU_COMPOSITOR=0` turns
+//! it off) the laying over happens on the GPU instead: ffmpeg hands over NV12 rather than converting to BGRA, the
 //! snapshot is uploaded only when it changes, and the fade and the composite are drawn by
 //! kairo-compositor. Without a usable GPU the CPU path below runs as before.
 
@@ -30,7 +30,9 @@ use kairo_compositor::{Canvas, Gpu, Layer, Rect, Source};
 fn gpu() -> Option<Arc<Gpu>> {
     static GPU: std::sync::OnceLock<Option<Arc<Gpu>>> = std::sync::OnceLock::new();
     GPU.get_or_init(|| {
-        if std::env::var("KAIRO_GPU_COMPOSITOR").ok().as_deref() != Some("1") {
+        // On unless KAIRO_GPU_COMPOSITOR=0 (the owner's call, 2026-10-31: the app is young enough
+        // to make the change now). No usable GPU falls back to the CPU path.
+        if std::env::var("KAIRO_GPU_COMPOSITOR").ok().as_deref() == Some("0") {
             return None;
         }
         match Gpu::new() {
@@ -379,7 +381,7 @@ mod tests {
         let cpu = || {
             let mut u: Rusage = unsafe { std::mem::zeroed() };
             unsafe { getrusage(0, &mut u) };
-            u.utime.0 as f64 + u.utime.1 as f64 / 1e6 + u.stime.0 as f64 + u.stime.1 as f64 / 1e6
+            u.utime[0] as f64 + u.utime[1] as f64 / 1e6 + u.stime[0] as f64 + u.stime[1] as f64 / 1e6
         };
         let before = cpu();
         let bg = super::VideoBg::start(std::path::Path::new(&ff), video.into(), "cover", w, h, 30, move |f| {
@@ -410,8 +412,8 @@ mod tests {
     #[cfg(unix)]
     #[repr(C)]
     struct Rusage {
-        utime: (i64, i64),
-        stime: (i64, i64),
+        utime: [i64; 2],
+        stime: [i64; 2],
         rest: [i64; 14],
     }
     #[cfg(unix)]

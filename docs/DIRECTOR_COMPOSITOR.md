@@ -1,7 +1,9 @@
 # Director mode on the GPU: the native compositor
 
-Owner's brief (2026-10-31): Director mode should get the same wins as OBS. Testing comes later,
-so everything here is built behind a switch that is off by default.
+Owner's brief (2026-10-31): Director mode should get the same wins as OBS. On by default (the
+owner's call: the app is young enough to make the change now), with the CPU path as the fallback
+where there is no usable GPU, and `KAIRO_GPU_COMPOSITOR=0` to turn it off on a machine that has
+trouble. GPU errors are logged, never fatal.
 
 ## Why
 
@@ -55,7 +57,7 @@ Windows, Vulkan on Linux; no Tauri in it), owns the GPU and one **canvas** per o
 
 1. **Core** (this branch first): the crate, the scene, NV12 and BGRA layers, fades, async
    readback; video backgrounds for NDI / Syphon / DeckLink rendered through it instead of
-   `video_bg.rs`'s CPU mixing, behind `KAIRO_GPU_COMPOSITOR=1`.
+   `video_bg.rs`'s CPU mixing.
 2. **Cameras**: one native capture per device for the whole app (ffmpeg's avfoundation / dshow
    / v4l2 input, NV12), shared by every canvas, replacing a capture per window.
 3. **Outputs**: screens as native windows presenting the canvas, Syphon from the GPU texture,
@@ -70,4 +72,4 @@ Each phase compiles and runs on its own, with the old path kept until it is test
 - Cross-platform from the start (wgpu), so Windows gets every phase.
 - Don't raise memory: frames are pooled; GPU textures replace CPU copies rather than adding to
   them; Windows footprint must not grow.
-- Nothing ships enabled until the owner has tested it.
+- Every phase keeps the old path as its fallback.
