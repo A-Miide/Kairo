@@ -204,11 +204,14 @@
     noteEl.textContent = 'This browser can’t listen. Type instead, as a preacher would say it.';
   }
 
-  micBtn.addEventListener('click', async () => {
+  // Listening starts the moment the button is tapped: a browser may refuse the microphone to a
+  // page that starts it later (after the Bible downloads). The Bible loads alongside, and what
+  // was heard meanwhile is matched once it's in.
+  let lastHeard = '';
+  micBtn.addEventListener('click', () => {
     if (!Recognition) return;
     if (listening) { setListening(false); rec && rec.stop(); return; }
-    micLabel.textContent = 'Getting the Bible ready…';
-    await load();
+    load().then(() => lastHeard && detect(lastHeard));
     rec = new Recognition();
     rec.lang = 'en-US';
     rec.continuous = true;
@@ -222,7 +225,8 @@
       }
       const all = (finalText + ' ' + interim).trim();
       heardEl.textContent = all.split(/\s+/).slice(-40).join(' ');
-      detect(all.split(/\s+/).slice(-60).join(' '));
+      lastHeard = all.split(/\s+/).slice(-60).join(' ');
+      detect(lastHeard);
     };
     // Anything but a pause ends listening and says why, rather than failing silently.
     rec.onerror = e => {
@@ -238,7 +242,11 @@
     };
     // Browsers stop after a pause: carry on while the visitor hasn't stopped it.
     rec.onend = () => { if (listening) try { rec.start(); } catch (_) {} };
-    try { rec.start(); setListening(true); } catch (_) { setListening(false); }
+    rec.onstart = () => { if (!lastHeard) heardEl.textContent = 'Listening… say a verse.'; };
+    try { rec.start(); setListening(true); } catch (err) {
+      setListening(false);
+      noteEl.textContent = `Listening couldn\u2019t start (${err.message || err}). Type instead.`;
+    }
   });
 
   let typedTimer = null;
