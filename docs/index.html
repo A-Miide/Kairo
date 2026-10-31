@@ -192,7 +192,7 @@
     .demo-shots figcaption { margin-top: 12px; font-size: 13px; font-weight: 600; color: var(--muted); text-align: center; }
     @media (max-width: 720px) { .demo-shots { grid-template-columns: 1fr; } }
 
-    .section-lead { max-width: 720px; color: #b4b4ba; font-size: 17px; margin: -24px 0 36px; }
+    .section-lead { max-width: 720px; color: #b4b4ba; font-size: 17px; margin: 0 0 36px; }
     .section-lead strong { color: var(--text); }
     .pill { display: inline-block; background: rgba(245,48,26,0.14); color: var(--red); border: 1px solid rgba(245,48,26,0.3); border-radius: 999px; padding: 2px 10px; font-size: 11px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 12px; }
     .whatsnew { margin-bottom: 96px; }
@@ -460,7 +460,7 @@
     /* ── How it hears ── */
     .hears, .present, .bibles { max-width: 1200px; margin: 0 auto 96px; padding: 0 24px; }
     .hears h2, .present h2, .bibles h2 { font-size: clamp(26px, 4vw, 40px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.15; margin-bottom: 16px; }
-    .section-lead { font-size: 16px; color: #aaa; max-width: 640px; margin-bottom: 36px; }
+
     .hear-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
     .hear { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 16px; padding: 18px; display: flex; flex-direction: column; gap: 14px; }
     .hear q { font-size: 15px; font-weight: 600; line-height: 1.45; color: #eee; quotes: "\201C" "\201D"; }
@@ -495,6 +495,22 @@
       .shots, .bible-grid, .req-grid { grid-template-columns: 1fr; }
       .hear-grid { grid-template-columns: 1fr; }
     }
+    /* Bibles cell */
+    .viz-bibles { display: flex; flex-wrap: wrap; gap: 6px; align-content: flex-end; }
+    .viz-bibles span { border: 1px solid var(--border); background: var(--bg-card); border-radius: 999px; padding: 5px 11px; font-weight: 700; color: #bbb; }
+    .viz-bibles span.on { background: rgba(245,48,26,0.12); border-color: rgba(245,48,26,0.4); color: #ff8a7a; }
+    /* What you need: one panel */
+    .req-panel { background: var(--bg-panel); border: 1px solid var(--border); border-radius: 20px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .req-row { padding: 24px 28px; border-bottom: 1px solid var(--border); }
+    .req-row:nth-child(odd) { border-right: 1px solid var(--border); }
+    .req-row:nth-last-child(-n+2) { border-bottom: none; }
+    .req-row h4 { font-size: 12px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+    .req-row p { font-size: 14px; color: #bbb; line-height: 1.6; }
+    @media (max-width: 760px) {
+      .req-panel { grid-template-columns: 1fr; }
+      .req-row:nth-child(odd) { border-right: none; }
+      .req-row:nth-last-child(2) { border-bottom: 1px solid var(--border); }
+    }
   </style>
 </head>
 <body>
@@ -509,7 +525,6 @@
       <li><a href="#try">Try it</a></li>
       <li><a href="#hears">How it hears</a></li>
       <li><a href="#features">Features</a></li>
-      <li><a href="#bibles">Bibles</a></li>
       <li><a href="#requirements">What you need</a></li>
     </ul>
     <a class="nav-dl" href="#download">Download</a>
@@ -619,11 +634,6 @@
     </details>
   </section>
 
-  <!-- ── What it is, in four words ── -->
-  <div class="trust">
-    <span>Free</span><span>Works without internet</span><span>Mac, Windows and Linux</span><span>Stays on your computer</span>
-  </div>
-
   <!-- ── How it hears: what a preacher says, and what goes up ── -->
   <section class="hears" id="hears">
     <div class="section-label">How it hears</div>
@@ -632,12 +642,8 @@
     <div class="hear-grid">
       <div class="hear"><q>Turn with me to John chapter three, verse sixteen</q><div class="got"><b>John 3:16</b><span>The reference, as it&rsquo;s said</span></div></div>
       <div class="hear"><q>For God so loved the world, that he gave his only begotten Son&hellip;</q><div class="got"><b>John 3:16</b><span>Just reading it, no reference</span></div></div>
-      <div class="hear"><q>Psalm twenty-three, we&rsquo;ll read one to three</q><div class="got"><b>Psalm 23:1&ndash;3</b><span>A passage, up together</span></div></div>
-      <div class="hear"><q>&hellip;and look at verse seventeen</q><div class="got"><b>John 3:17</b><span>Follows the chapter you&rsquo;re in</span></div></div>
       <div class="hear"><q>Genesis twenty-one, verse one, and then we go to verse six</q><div class="got"><b>Genesis 21:1, 6</b><span>Verses called together</span></div></div>
       <div class="hear"><q>God works everything together for good for those who love him</q><div class="got offer"><b>Romans 8:28</b><span>In their own words: offered, not sent</span></div></div>
-      <div class="hear"><q>Read that in the NIV</q><div class="got"><b>NIV</b><span>Switches version, once your church adds it</span></div></div>
-      <div class="hear"><q>G&eacute;nesis cap&iacute;tulo uno, vers&iacute;culo uno</q><div class="got"><b>Genesis 1:1</b><span>Other languages too</span></div></div>
     </div>
   </section>
 
@@ -706,11 +712,10 @@
       </div>
 
       <div class="bc">
-        <h3>Passages read whole</h3>
-        <p>&ldquo;Psalm 23, verses one to three&rdquo; goes up together, then follows the reading verse by verse.</p>
-        <div class="viz viz-range">
-          <p><sup>1</sup>The LORD is my shepherd; I shall not want. <sup>2</sup>He maketh me to lie down in green pastures&hellip; <sup>3</sup>He restoreth my soul&hellip;</p>
-          <small>PSALM 23:1&ndash;3</small>
+        <h3>Your church&rsquo;s Bibles</h3>
+        <p>The KJV and Berean Standard Bible built in, the NIV, NLT and more free through API.Bible, or a Bible file you already have.</p>
+        <div class="viz viz-bibles">
+          <span class="on">KJV</span><span>BSB</span><span>NIV</span><span>NLT</span><span>The Message</span><span>Espa&ntilde;ol</span><span>Fran&ccedil;ais</span><span>Yor&ugrave;b&aacute;</span><span>Kiswahili</span>
         </div>
       </div>
 
@@ -729,31 +734,9 @@
         </div>
       </div>
 
-      <div class="bc">
-        <h3>The whole service in one place</h3>
-        <p>Slides, songs, timers and media, with Theme Studio for your own looks and a monitor of every output.</p>
-        <div class="viz viz-plan">
-          <div class="vz-label">Sunday</div>
-          <div class="vz-item"><span class="vz-kind">Slides</span>Welcome</div>
-          <div class="vz-item"><span class="vz-kind">Song</span>Way Maker</div>
-          <div class="vz-item live"><span class="vz-kind">Bible</span>Sermon: John 3:16<span class="vz-live">LIVE</span></div>
-          <div class="vz-item"><span class="vz-kind">Timer</span>Offering 5:00</div>
-          <div class="vz-item"><span class="vz-kind">Media</span>Announcements video</div>
-        </div>
-      </div>
-
-      <div class="bc span2">
-        <h3>Director mode, streaming and recording</h3>
-        <p>Cameras with Preview and Program, layouts and a key for each input; stream and record from KAIRO, or send it to OBS, ProPresenter, vMix or Resolume.</p>
-        <div class="viz viz-director">
-          <div class="vz-cam"><span class="vz-tag">Preview</span><div class="vz-cam-l3">John 3:16</div></div>
-          <div class="vz-cam pgm"><span class="vz-tag on">Program</span><div class="vz-cam-l3">Psalm 23:1</div></div>
-          <div class="vz-chips"><span>NDI</span><span>Syphon</span><span>DeckLink</span><span>OBS</span><span>ProPresenter</span></div>
-        </div>
-      </div>
     </div>
 
-    <p class="bento-more">Also: an interpreter in the room isn&rsquo;t mistaken for the sermon &middot; scripture heard during a song is offered, not sent over the lyrics &middot; verse numbers in English, Spanish, French, Portuguese, German, Yoruba, Igbo, Hausa and Swahili.</p>
+    <p class="bento-more">Also in KAIRO: slides, songs, timers and media &middot; Theme Studio &middot; Director mode with cameras &middot; streaming and recording &middot; NDI, Syphon and DeckLink outputs for OBS, ProPresenter and vMix</p>
   </section>
 
   <!-- ── Present: the real app ── -->
@@ -766,75 +749,15 @@
     </div>
   </section>
 
-  <!-- ── Bibles ── -->
-  <section class="bibles" id="bibles">
-    <div class="section-label">Your Bibles</div>
-    <h2>The versions your church reads</h2>
-    <div class="bible-grid">
-      <div class="bible-card"><h3>Built in</h3><p>The King James Version and the Berean Standard Bible, both free to use and share, plus Spanish, Portuguese, French, German, Yoruba, Igbo, Hausa and Swahili.</p></div>
-      <div class="bible-card"><h3>Free through API.Bible</h3><p>A free API.Bible account gives your church Bibles like the NIV, NLT and the Message. KAIRO keeps them on your computer for services without internet.</p></div>
-      <div class="bible-card"><h3>Ones you already have</h3><p>Add a Bible file your church may use. KAIRO reads USFM, USX, OSIS and Zefania XML.</p></div>
-    </div>
-  </section>
-
-  <!-- ── How it works ── -->
-  <section class="how" id="how">
-    <div class="section-label">Setup</div>
-    <h2>Up and running in minutes</h2>
-    <div class="steps">
-      <div class="step"><div class="step-num">1</div><div><h3>Download and install</h3><p>Pick your system at the top of this page. On a Mac it opens like any other app; on Windows, click <strong>More info &rarr; Run anyway</strong> the first time.</p></div></div>
-      <div class="step"><div class="step-num">2</div><div><h3>Connect the sound</h3><p>Plug in a feed from your sound desk, or a USB audio interface, and choose it in <strong>Settings &rarr; Audio</strong>. A direct feed gives the cleanest transcript.</p></div></div>
-      <div class="step"><div class="step-num">3</div><div><h3>Choose how to listen</h3><p><strong>Offline</strong> runs on your computer with no internet and no account. <strong>Deepgram</strong> listens in the cloud if you have a key.</p></div></div>
-      <div class="step"><div class="step-num">4</div><div><h3>Start Listening</h3><p>Verses go up as they&rsquo;re preached, to your screens, or into OBS, ProPresenter and others as an NDI or Syphon source.</p></div></div>
-    </div>
-  </section>
-
   <!-- ── Requirements ── -->
   <section class="reqs" id="requirements">
     <div class="section-label">Requirements</div>
     <h2>What you need</h2>
-    <div class="req-grid">
-      <div class="req-card">
-        <h4>A computer</h4>
-        <ul>
-          <li><strong>Mac:</strong> Apple Silicon or Intel, macOS 12 or later. Offline listening on Apple Silicon needs macOS 14 or later.</li>
-          <li><strong>Windows:</strong> Windows 10 or 11, 64-bit.</li>
-          <li><strong>Linux:</strong> Ubuntu 24.04+, Debian 13+ or Fedora 39+.</li>
-          <li>8 GB of memory is plenty, and an ordinary office PC keeps up.</li>
-          <li>About 2 GB free for KAIRO and its offline speech model.</li>
-        </ul>
-      </div>
-      <div class="req-card">
-        <h4>The preacher&rsquo;s sound</h4>
-        <ul>
-          <li>Best: a feed from your sound desk, through the computer&rsquo;s line-in or a USB audio interface.</li>
-          <li>To try it out, the computer&rsquo;s own microphone works.</li>
-        </ul>
-      </div>
-      <div class="req-card">
-        <h4>A way to listen</h4>
-        <ul>
-          <li><strong>Offline</strong> (the default): runs on your computer. Free, private, no internet. Downloads once, the first time.</li>
-          <li><strong>Deepgram</strong>: cloud listening for the clearest transcript. Needs internet and a Deepgram key.</li>
-        </ul>
-      </div>
-      <div class="req-card">
-        <h4>Internet, only for</h4>
-        <ul>
-          <li>Downloading KAIRO, its offline model and updates.</li>
-          <li>Deepgram, and adding Bibles from API.Bible.</li>
-          <li>Streaming, if you stream from KAIRO.</li>
-        </ul>
-      </div>
-      <div class="req-card wide">
-        <h4>Optional</h4>
-        <ul>
-          <li>A projector, TV or second screen for each output you want.</li>
-          <li>ProPresenter, OBS, vMix or Resolume: take KAIRO in as an NDI source (with the free NDI Tools runtime), or as Syphon on Mac and Spout on Windows. OBS 28 or later can also take the verse as text.</li>
-          <li>A Blackmagic DeckLink card, for a video output to your switcher.</li>
-          <li>Cameras, for Director mode.</li>
-        </ul>
-      </div>
+    <div class="req-panel">
+      <div class="req-row"><h4>A computer</h4><p>A Mac with macOS 12 or later (offline listening on Apple Silicon needs macOS 14), Windows 10 or 11, or Ubuntu, Debian or Fedora. An ordinary office PC with 8 GB of memory is plenty.</p></div>
+      <div class="req-row"><h4>The preacher&rsquo;s sound</h4><p>A feed from your sound desk or a USB audio interface. The computer&rsquo;s own microphone is fine for trying it.</p></div>
+      <div class="req-row"><h4>Internet</h4><p>Only to download KAIRO and its offline speech model. After that, services run without it.</p></div>
+      <div class="req-row"><h4>Optional</h4><p>A screen or projector per output, a Deepgram key for cloud listening, NDI Tools for ProPresenter or OBS, a DeckLink card, cameras for Director mode.</p></div>
     </div>
   </section>
 
