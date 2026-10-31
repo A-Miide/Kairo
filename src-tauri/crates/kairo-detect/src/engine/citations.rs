@@ -508,9 +508,13 @@ impl Engine {
                 continue;
             }
             // One verse of another chapter cited in passing, no reading announced: the chapter
-            // waiting for its verse keeps waiting (verse_call_context).
+            // waiting for its verse keeps waiting (verse_call_context). Unless that chapter was this
+            // citation heard before its number was finished, the same mention of the book
+            // ("Jeremiah thirty" in an interim, then "…thirty one and verse thirty four"): chapter
+            // 30 was never named.
+            let unfinished = self.chapter_pending.as_ref().is_some_and(|p| p.book == book && p.from == self.said_at(book, joined_text.as_deref().unwrap_or(text)));
             let passing = match (&self.chapter_pending, &c.verses) {
-                (Some(p), Verses::One(v)) if (p.book, p.chapter) != (book, ch) && !super::detour::READING_CUE.is_match(text) => Some((book, ch, *v as u16, now)),
+                (Some(p), Verses::One(v)) if !unfinished && (p.book, p.chapter) != (book, ch) && !super::detour::READING_CUE.is_match(text) => Some((book, ch, *v as u16, now)),
                 _ => None,
             };
             if passing.is_none() {

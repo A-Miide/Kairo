@@ -278,3 +278,31 @@ fn the_first_number_after_a_named_chapter_is_its_verse_whatever_words_come_betwe
         assert!(up.is_empty(), "{said}: {up:?}");
     }
 }
+
+#[test]
+fn a_chapter_number_heard_before_it_was_finished_is_not_left_waiting() {
+    // Shiloh 2025 (offline engine): "Jeremiah thirty" in an interim, then "…thirty one and verse
+    // thirty four". 31:34 goes up, and chapter 30 was never named: a "verse fifteen" read after
+    // Isaiah 60:15 two minutes on isn't Jeremiah 30:15.
+    let segs = script(
+        "~ Jeremiah thirty
+         ~ Jeremiah thirty one and verse thirty
+         ~ Jeremiah thirty one and verse thirty four
+         Jeremiah thirty one and verse thirty four
+         they shall all know me
+         he said and they shall teach no more every man his neighbour and every man his brother saying know the LORD
+         arise shine for thy light is come
+         the Gentiles shall come to thy light and kings to the brightness of thy rising
+         whereas thou hast been forsaken and hated I will make thee an eternal excellency a joy of many generations verse fifteen",
+    );
+    let s = sends(&segs);
+    assert_eq!(s.first().map(String::as_str), Some("Jeremiah 31:34"), "{s:?}");
+    assert!(!s.iter().any(|x| x.starts_with("Jeremiah 30")), "{s:?}");
+    // …while a chapter named, then another verse of the same book cited in passing, still waits.
+    let s = sends(&script(
+        "turn with me to Romans eight
+         you know Romans five eight says God commendeth his love toward us
+         now look at verse twenty eight",
+    ));
+    assert_eq!(s.last().map(String::as_str), Some("Romans 8:28"), "{s:?}");
+}
