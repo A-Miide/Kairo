@@ -39,7 +39,7 @@ jobs:
           $words = [Timing]::Run((Get-Content -Raw script.txt), "$PWD\sermon.wav")
           $words | Set-Content -Encoding utf8 timing.tsv
           "{0} words timed" -f $words.Count
-          ffprobe -v error -show_entries format=duration -of default=nk=1:nw=1 sermon.wav
+          "{0:N1} min of audio" -f (([long]($words[-1] -split "`t")[1]) / 60000)
       - uses: actions/upload-artifact@v4
         with:
           name: voice-timing
