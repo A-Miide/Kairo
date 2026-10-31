@@ -180,12 +180,12 @@
     if (!bible) return;
     const ref = lastReference(text);
     if (ref && ref.len - ref.end < 40) {
-      show(ref.b, ref.c, ref.from, ref.to, 'Found by the reference you said');
+      show(ref.b, ref.c, ref.from, ref.to, 'Found by the reference');
       return;
     }
     const after = ref ? numbersToDigits(words(text).join(' ')).slice(ref.end) : text;
     const q = quoted(after);
-    if (q) show(q.b, q.c, q.v, q.v, 'Found by its words alone, no reference needed');
+    if (q) show(q.b, q.c, q.v, q.v, 'Found by its words, no reference');
   }
 
   // ── Listening ────────────────────────────────────────────────────────
@@ -246,7 +246,6 @@
     clearTimeout(typedTimer);
     typedTimer = setTimeout(async () => {
       await load();
-      heardEl.textContent = typed.value;
       detect(typed.value);
     }, 250);
   });
@@ -254,7 +253,6 @@
   root.querySelectorAll('[data-try]').forEach(chip => chip.addEventListener('click', async () => {
     await load();
     typed.value = chip.dataset.try;
-    heardEl.textContent = chip.dataset.try;
     detect(chip.dataset.try);
   }));
 })();

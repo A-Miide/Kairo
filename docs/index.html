@@ -333,25 +333,31 @@
     .try-mic.on { animation: try-pulse 1.6s ease-in-out infinite; }
     @keyframes try-pulse { 0%, 100% { box-shadow: 0 0 0 0 rgba(245,48,26,0.5); } 50% { box-shadow: 0 0 0 8px rgba(245,48,26,0); } }
     .try-chips { display: flex; flex-wrap: wrap; gap: 6px; }
-    .try-chips-label { flex-basis: 100%; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
     .try-chips button {
-      background: var(--bg-card); border: 1px solid var(--border); color: var(--text);
+      background: var(--bg); border: 1px solid var(--border); color: var(--text);
       border-radius: 999px; padding: 5px 11px; font: inherit; font-size: 12px; cursor: pointer;
     }
     .try-chips button:hover { border-color: rgba(255,255,255,0.18); }
     .try-typed {
-      background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px;
+      background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
       padding: 10px 12px; color: var(--text); font: inherit; font-size: 14px; width: 100%;
     }
     .try-typed:focus { outline: none; border-color: rgba(245,48,26,0.5); }
-    .try-status {
-      background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px;
-      padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; flex: 1; min-height: 92px;
+    .try-card {
+      background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--r);
+      padding: 12px; display: flex; flex-direction: column; gap: 10px;
     }
-    .try-status-label { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
-    .try-heard { font-size: 14px; color: #ccc; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
-    .try-how { font-size: 12px; font-weight: 700; color: var(--green); margin-top: auto; }
-    .try-how:not(:empty)::before { content: "\2713  "; }
+    .try-card-label { font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); margin: 2px 2px -6px; }
+    .try-heard { font-size: 14px; color: #ccc; min-height: 42px; padding: 0 2px; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+    .try-or { display: flex; align-items: center; gap: 10px; font-size: 11px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+    .try-or::before, .try-or::after { content: ""; flex: 1; height: 1px; background: var(--border); }
+    .try-screen { position: relative; }
+    .try-how {
+      position: absolute; top: 14px; left: 14px; font-size: 11px; font-weight: 700;
+      background: rgba(0,0,0,0.22); color: #fff; border-radius: 999px; padding: 4px 10px;
+    }
+    .try-how:empty { display: none; }
+    .try-how::before { content: "\2713  "; }
     .hero .try-note { max-width: none; font-size: 11px; color: var(--muted); line-height: 1.5; margin: 0; }
     @media (max-width: 760px) {
       .try { grid-template-columns: 1fr; margin-top: 0; }
@@ -390,25 +396,29 @@
     <!-- Try it (demo/demo.js): the visitor says a verse, the browser listens, the page finds it. -->
     <div class="try" id="try">
       <div class="try-screen">
+        <div class="try-how" id="try-how"></div>
         <div class="try-screen-text" id="try-screen-text">Say &ldquo;John three sixteen&rdquo;, or start quoting a verse.</div>
         <div class="try-screen-ref" id="try-screen-ref">KAIRO</div>
       </div>
       <div class="try-side">
-        <button type="button" class="try-mic" id="try-mic">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
-          <span id="try-mic-label">Tap and say a verse</span>
-        </button>
-        <input type="text" class="try-typed" id="try-typed" placeholder="Or type what a preacher would say" aria-label="Type what a preacher would say">
-        <div class="try-chips">
-          <span class="try-chips-label">Or try one</span>
-          <button type="button" data-try="Turn with me to Psalm twenty three verses one to three">Psalm 23, verses 1 to 3</button>
-          <button type="button" data-try="For God so loved the world that he gave his only begotten Son">&ldquo;For God so loved the world&hellip;&rdquo;</button>
-          <button type="button" data-try="Romans eight twenty eight">Romans eight twenty eight</button>
+        <!-- Speak: the button and what was heard, together. -->
+        <div class="try-card">
+          <button type="button" class="try-mic" id="try-mic">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
+            <span id="try-mic-label">Tap and say a verse</span>
+          </button>
+          <div class="try-card-label">Heard</div>
+          <div class="try-heard" id="try-heard">Tap the button, then speak as a preacher would.</div>
         </div>
-        <div class="try-status">
-          <div class="try-status-label">Heard</div>
-          <div class="try-heard" id="try-heard">Nothing yet</div>
-          <div class="try-how" id="try-how"></div>
+        <div class="try-or"><span>or type it</span></div>
+        <!-- Type: the field and examples to put in it, together. -->
+        <div class="try-card">
+          <input type="text" class="try-typed" id="try-typed" placeholder="What a preacher would say" aria-label="Type what a preacher would say">
+          <div class="try-chips">
+            <button type="button" data-try="Turn with me to Psalm twenty three verses one to three">Psalm 23, verses 1 to 3</button>
+            <button type="button" data-try="For God so loved the world that he gave his only begotten Son">&ldquo;For God so loved the world&hellip;&rdquo;</button>
+            <button type="button" data-try="Romans eight twenty eight">Romans eight twenty eight</button>
+          </div>
         </div>
         <p class="try-note" id="try-note">Your browser does the listening: Chrome and Edge send it to Google to write down, Safari to Apple. Nothing comes to us. This is a taste; the app hears far more.</p>
       </div>
