@@ -1,0 +1,48 @@
+name: Voice timing
+
+# When each line of the stress script is spoken (stress.yml). Windows' voice reads the same text
+# the same way every time, so a stress run's log can be lined up with these times afterwards
+# (spoken → transcribed → detected) without playing the 3 hours again. Push to timing-* to run.
+on:
+  push:
+    branches: ['timing-*']
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Read the script, noting when each word starts
+        shell: pwsh
+        run: |
+          python .github/stress/script.py databases/bibles/kjv.json script.txt 34000
+          Add-Type -AssemblyName System.Speech
+          $code = @'
+          using System;
+          using System.Collections.Concurrent;
+          using System.Speech.Synthesis;
+          public static class Timing {
+              public static string[] Run(string text, string wav) {
+                  var said = new ConcurrentQueue<string>();
+                  var voice = new SpeechSynthesizer();
+                  voice.SpeakProgress += (s, e) => said.Enqueue(e.CharacterPosition + "\t" + (long)e.AudioPosition.TotalMilliseconds);
+                  voice.SetOutputToWaveFile(wav);
+                  voice.Speak(text);
+                  System.Threading.Thread.Sleep(3000);
+                  voice.Dispose();
+                  return said.ToArray();
+              }
+          }
+          '@
+          Add-Type -TypeDefinition $code -ReferencedAssemblies ([System.Speech.Synthesis.SpeechSynthesizer].Assembly.Location), System.Collections.Concurrent, System.Threading.Thread, System.Runtime
+          $words = [Timing]::Run((Get-Content -Raw script.txt), "$PWD\sermon.wav")
+          $words | Set-Content -Encoding utf8 timing.tsv
+          "{0} words timed" -f $words.Count
+          ffprobe -v error -show_entries format=duration -of default=nk=1:nw=1 sermon.wav
+      - uses: actions/upload-artifact@v4
+        with:
+          name: voice-timing
+          path: |
+            timing.tsv
+            script.txt
