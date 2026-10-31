@@ -17,6 +17,7 @@
     "allow-get-server-token",
     "allow-output-capture",
     "allow-output-video",
+    "allow-output-camera",
     "allow-stream-program"
   ]
 }

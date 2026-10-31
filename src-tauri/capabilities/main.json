@@ -55,6 +55,7 @@
     "allow-syphon-update-media",
     "allow-syphon-update-timer",
     "allow-output-video",
+    "allow-output-camera",
     "allow-stream-start",
     "allow-stream-stop",
     "allow-stream-status",
