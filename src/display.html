@@ -3303,6 +3303,32 @@
                     request(0);
                 });
         };
+        // A live camera in the Video layer, full frame, with no full-frame video over it: the app
+        // shows it from its own shared capture at the output's rate (src-tauri camera.rs), so
+        // it isn't drawn here, where a snapshot only catches it when the page changes. A camera
+        // the app can't show (no GPU compositor, not found) stays in the snapshots.
+        let camKey = '', camRefused = '';
+        const syncCamera = () => {
+            const layer = document.getElementById('video-layer');
+            if (!layer) return;
+            const v = baseVideo ? null : [...layer.querySelectorAll('video')].find(e => e.srcObject && parseFloat(getComputedStyle(e).opacity) >= 0.99);
+            const track = v && v.srcObject.getVideoTracks ? v.srcObject.getVideoTracks()[0] : null;
+            const label = track && track.readyState === 'live' && !layer.dataset.zone ? track.label : '';
+            const handed = !!label && label !== camRefused;
+            layer.classList.toggle('cap-under', handed);
+            const fit = layer.dataset.fit === 'contain' ? 'contain' : 'cover';
+            const key = handed ? `${label}|${fit}` : '';
+            if (key === camKey) return;
+            camKey = key;
+            invoke('output_camera', { id: outputParam, label: handed ? label : null, fit, width: capW, height: capH })
+                .catch((err) => {
+                    console.warn('[capture] camera stays in the snapshots:', err);
+                    if (camKey !== key) return;
+                    camRefused = label; camKey = '';
+                    layer.classList.remove('cap-under');
+                    request(0);
+                });
+        };
         const request = (fadeMs) => {
             if (!invoke) return;
             fade = Math.max(fade, fadeMs);
@@ -3310,6 +3336,7 @@
             // Long enough for layout, images and fonts of a change to settle.
             wait = setTimeout(() => {
                 syncBaseVideo();
+                syncCamera();
                 const f = fade; fade = 0;
                 invoke('output_capture', { id: outputParam, width: capW, height: capH, fadeMs: f }).catch(() => {});
             }, 60);

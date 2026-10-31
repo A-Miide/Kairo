@@ -64,6 +64,8 @@ pub struct VideoBg {
     stop: Arc<AtomicBool>,
     overlay: Arc<Mutex<Overlay>>,
     child: Arc<Mutex<Option<Child>>>,
+    /// A camera's frames, held while this output shows it (camera.rs).
+    _camera: Option<crate::camera::Held>,
 }
 
 impl VideoBg {
@@ -130,8 +132,18 @@ impl VideoBg {
 
         if let Some(gpu) = gpu {
             let (s, o, l) = (stop.clone(), overlay.clone(), latest.clone());
-            thread::spawn(move || mix_on_gpu(gpu, s, o, l, width, height, fps, push));
-            return Ok(VideoBg { file, fit: fit.to_string(), stop, overlay, child: Arc::new(Mutex::new(Some(child))) });
+            // ffmpeg already fitted the video to the canvas.
+            let feed = move |gpu: &Gpu, video: &mut Option<Source>| -> bool {
+                let Ok(mut l) = l.lock() else { return false };
+                if !l.1 {
+                    return false;
+                }
+                l.1 = false;
+                let v = video.get_or_insert_with(|| Source::nv12(gpu, width, height));
+                v.upload_nv12(gpu, &l.0).is_ok()
+            };
+            thread::spawn(move || mix_on_gpu(gpu, s, o, "fill".into(), feed, width, height, fps, push));
+            return Ok(VideoBg { file, fit: fit.to_string(), stop, overlay, child: Arc::new(Mutex::new(Some(child))), _camera: None });
         }
 
         // Mixer: every frame, the video with the overlay on top.
@@ -195,7 +207,34 @@ impl VideoBg {
             });
         }
 
-        Ok(VideoBg { file, fit: fit.to_string(), stop, overlay, child: Arc::new(Mutex::new(Some(child))) })
+        Ok(VideoBg { file, fit: fit.to_string(), stop, overlay, child: Arc::new(Mutex::new(Some(child))), _camera: None })
+    }
+
+    /// Shows the camera `label` (the shared capture, camera.rs) under the output's page, fitted as
+    /// the page fitted it, at `fps`. GPU compositor only: without it the page keeps drawing the
+    /// camera itself, as before.
+    pub fn start_camera(hub: &Arc<crate::camera::Hub>, ffmpeg: &Path, label: &str, fit: &str, width: u32, height: u32, fps: u32, push: impl Fn(Arc<Frame>) + Send + 'static) -> Result<VideoBg, String> {
+        let gpu = gpu().ok_or("the GPU compositor is off")?;
+        let held = hub.hold(ffmpeg, label)?;
+        let latest = held.latest.clone();
+        let stop = Arc::new(AtomicBool::new(false));
+        let overlay = Arc::new(Mutex::new(Overlay::default()));
+        let mut seen = 0u64;
+        let feed = move |gpu: &Gpu, video: &mut Option<Source>| -> bool {
+            let Ok(l) = latest.lock() else { return false };
+            if l.seq == seen {
+                return false;
+            }
+            seen = l.seq;
+            if video.as_ref().is_none_or(|v| (v.width, v.height) != (l.width, l.height)) {
+                *video = Some(Source::nv12(gpu, l.width, l.height));
+            }
+            video.as_ref().is_some_and(|v| v.upload_nv12(gpu, &l.nv12).is_ok())
+        };
+        let (s, o) = (stop.clone(), overlay.clone());
+        let fit_mode = fit.to_string();
+        thread::spawn(move || mix_on_gpu(gpu, s, o, fit_mode, feed, width, height, fps, push));
+        Ok(VideoBg { file: PathBuf::from(format!("camera:{label}")), fit: fit.to_string(), stop, overlay, child: Arc::new(Mutex::new(None)), _camera: Some(held) })
     }
 
     /// A new snapshot of what sits on top (blended in over `fade_ms`).
@@ -232,10 +271,22 @@ const POOL: usize = 4;
 /// The mixer on the GPU: the NV12 video, the latest snapshot over it (faded from the one before),
 /// read back into pooled frames for the senders, one frame behind.
 #[allow(clippy::too_many_arguments)]
-fn mix_on_gpu(gpu: Arc<Gpu>, stop: Arc<AtomicBool>, overlay: Arc<Mutex<Overlay>>, latest: Arc<Mutex<(Vec<u8>, bool)>>, width: u32, height: u32, fps: u32, push: impl Fn(Arc<Frame>)) {
+fn mix_on_gpu(
+    gpu: Arc<Gpu>,
+    stop: Arc<AtomicBool>,
+    overlay: Arc<Mutex<Overlay>>,
+    fit: String,
+    // Uploads the newest video frame into the source (making it, or remaking it at a new size);
+    // true when it did.
+    mut feed: impl FnMut(&Gpu, &mut Option<Source>) -> bool,
+    width: u32,
+    height: u32,
+    fps: u32,
+    push: impl Fn(Arc<Frame>),
+) {
     let period = Duration::from_secs_f64(1.0 / fps.max(1) as f64);
     let mut canvas = Canvas::new(&gpu, width, height);
-    let video = Source::nv12(&gpu, width, height);
+    let mut video: Option<Source> = None;
     // Two page pictures: the one on air, and the one it fades from.
     let pages = [Source::bgra(&gpu, width, height), Source::bgra(&gpu, width, height)];
     let mut page_to: Option<usize> = None;
@@ -244,12 +295,7 @@ fn mix_on_gpu(gpu: Arc<Gpu>, stop: Arc<AtomicBool>, overlay: Arc<Mutex<Overlay>>
     let mut pool: Vec<Arc<Frame>> = Vec::new();
     let mut next = Instant::now();
     while !stop.load(Ordering::Relaxed) {
-        if let Ok(mut l) = latest.lock() {
-            if l.1 {
-                have_video = video.upload_nv12(&gpu, &l.0).is_ok();
-                l.1 = false;
-            }
-        }
+        have_video |= feed(&gpu, &mut video);
         let ov = overlay.lock().ok().map(|o| (o.to.clone(), o.from.is_some(), o.started, o.fade));
         let mut fade_t = None;
         if let Some((Some(to), fading, started, fade)) = ov {
@@ -268,9 +314,10 @@ fn mix_on_gpu(gpu: Arc<Gpu>, stop: Arc<AtomicBool>, overlay: Arc<Mutex<Overlay>>
                 }
             }
         }
-        if have_video {
+        if let (true, Some(video)) = (have_video, video.as_ref()) {
             let full = Rect::full(width, height);
-            let mut layers = vec![Layer { source: &video, rect: full, crop: None, opacity: 1.0, fade_from: None }];
+            let (rect, crop) = kairo_compositor::fit(&fit, video.width, video.height, full);
+            let mut layers = vec![Layer { source: video, rect, crop: Some(crop), opacity: 1.0, fade_from: None }];
             if let Some(s) = page_to {
                 layers.push(Layer { source: &pages[s], rect: full, crop: None, opacity: 1.0, fade_from: fade_t.map(|t| (&pages[1 - s], t)) });
             }
@@ -329,7 +376,7 @@ mod tests {
         let sample = Arc::new(std::sync::Mutex::new(Vec::new()));
         let (f2, s2) = (frames.clone(), sample.clone());
         let cpu = || {
-            let mut u: libc_rusage = unsafe { std::mem::zeroed() };
+            let mut u: Rusage = unsafe { std::mem::zeroed() };
             unsafe { getrusage(0, &mut u) };
             u.utime.0 as f64 + u.utime.1 as f64 / 1e6 + u.stime.0 as f64 + u.stime.1 as f64 / 1e6
         };
@@ -360,13 +407,13 @@ mod tests {
     }
 
     #[repr(C)]
-    struct libc_rusage {
+    struct Rusage {
         utime: (i64, i64),
         stime: (i64, i64),
         rest: [i64; 14],
     }
     extern "C" {
-        fn getrusage(who: i32, usage: *mut libc_rusage) -> i32;
+        fn getrusage(who: i32, usage: *mut Rusage) -> i32;
     }
 
     #[test]

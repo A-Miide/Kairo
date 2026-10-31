@@ -8,6 +8,7 @@ mod capture;
 mod stream;
 mod senders;
 mod video_bg;
+mod camera;
 mod decklink;
 mod ndi;
 #[cfg(target_os = "macos")]
@@ -792,6 +793,42 @@ fn push_frame(app: &AppHandle, id: &str, frame: Arc<capture::Frame>, fade: u32) 
 #[derive(Default)]
 struct VideoBgState(Mutex<std::collections::HashMap<String, video_bg::VideoBg>>);
 
+// A live camera under an NDI / Syphon / DeckLink output (camera.rs, video_bg.rs): the capture
+// window hands it over instead of drawing it, so it moves at the output's rate rather than only
+// when a snapshot is taken. GPU compositor only: an error keeps it in the page, as before. Kept
+// apart from the output's video background ("<id>#camera"): a video ending doesn't stop it.
+#[tauri::command]
+async fn output_camera(app: AppHandle, id: String, label: Option<String>, fit: Option<String>, width: u32, height: u32) -> Result<(), String> {
+    let key = format!("{id}#camera");
+    let Some(label) = label.filter(|l| !l.is_empty()) else {
+        if let Some(v) = app.state::<VideoBgState>().0.lock().map_err(|e| e.to_string())?.remove(&key) { v.stop(); }
+        return Ok(());
+    };
+    let fit = fit.unwrap_or_else(|| "cover".into());
+    let same = std::path::PathBuf::from(format!("camera:{label}"));
+    if app.state::<VideoBgState>().0.lock().map_err(|e| e.to_string())?.get(&key).is_some_and(|v| v.file == same && v.fit == fit) {
+        return Ok(());
+    }
+    let (port, token) = { let c = app.state::<ServerConfig>(); (c.port, c.token.clone()) };
+    let found: serde_json::Value = reqwest::Client::new()
+        .get(format!("http://127.0.0.1:{port}/api/stream/ffmpeg"))
+        .bearer_auth(&token)
+        .send().await.map_err(|e| e.to_string())?
+        .json().await.map_err(|e| e.to_string())?;
+    let ffmpeg = found["path"].as_str().ok_or("no ffmpeg to open the camera")?.to_string();
+    let hub = app.state::<Arc<camera::Hub>>().inner().clone();
+    let (app2, id2) = (app.clone(), id.clone());
+    let (w, h) = (width.clamp(16, 7680), height.clamp(16, 4320));
+    // Opening a camera takes a moment: off the async runtime.
+    let v = tauri::async_runtime::spawn_blocking(move || {
+        video_bg::VideoBg::start_camera(&hub, std::path::Path::new(&ffmpeg), &label, &fit, w, h, 30, move |frame| push_frame(&app2, &id2, frame, 0))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    if let Some(old) = app.state::<VideoBgState>().0.lock().map_err(|e| e.to_string())?.insert(key, v) { old.stop(); }
+    Ok(())
+}
+
 #[tauri::command]
 async fn output_video(app: AppHandle, id: String, url: Option<String>, fit: Option<String>, width: u32, height: u32) -> Result<(), String> {
     let Some(url) = url.filter(|u| !u.is_empty()) else {
@@ -1131,6 +1168,7 @@ pub fn run() {
         .manage(CaptureState::default())
         .manage(stream::Engines::default())
         .manage(VideoBgState::default())
+        .manage(Arc::new(camera::Hub::default()))
         // An output's capture window closing ends its video background.
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
@@ -1176,6 +1214,7 @@ pub fn run() {
             record_status,
             record_reveal,
             output_video,
+            output_camera,
             decklink_list,
             decklink_start,
             decklink_stop,

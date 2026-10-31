@@ -387,7 +387,7 @@ pub struct Inputs {
 }
 
 /// Which FFmpeg input device kind this computer uses.
-fn device_format() -> Option<&'static str> {
+pub(crate) fn device_format() -> Option<&'static str> {
     if cfg!(target_os = "macos") { Some("avfoundation") } else if cfg!(target_os = "windows") { Some("dshow") } else { None }
 }
 
@@ -923,7 +923,7 @@ fn set_status(shared: &Shared, on_status: &OnStatus, f: impl FnOnce(&mut Pipelin
     on_status(snapshot);
 }
 
-fn list_devices(ffmpeg: &Path) -> (Vec<String>, Vec<String>) {
+pub(crate) fn list_devices(ffmpeg: &Path) -> (Vec<String>, Vec<String>) {
     let args: &[&str] = match device_format() {
         Some("avfoundation") => &["-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
         Some("dshow") => &["-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy"],

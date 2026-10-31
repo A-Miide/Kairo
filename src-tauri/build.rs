@@ -39,6 +39,7 @@ fn main() {
                 "output_capture",
                 "output_capture_supported",
                 "output_video",
+                "output_camera",
                 "decklink_list",
                 "decklink_start",
                 "decklink_stop",
