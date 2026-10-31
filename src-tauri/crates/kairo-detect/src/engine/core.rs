@@ -529,7 +529,9 @@ impl Engine {
             } else if !found {
                 self.on_screen_partial(&text, false, now);
             }
-            self.spoken_correction(&text, false, now);
+            if !self.spoken_correction(&text, false, now) && found && !super::citations::ends_on_growable_number(&text, self.cfg.lang) {
+                self.next_step_verse(&text, now);
+            }
             // "…goes to twenty three" acts as the number is heard, once it can't grow further.
             if !found && !super::citations::ends_on_growable_number(&text, self.cfg.lang) {
                 self.bare_number_continuation(&text, now);
@@ -580,6 +582,8 @@ impl Engine {
         };
         self.check_citation_siblings(&text, true, false, now);
         if self.spoken_correction(&text, true, now) {
+            found = true;
+        } else if found && self.next_step_verse(&text, now) {
             found = true;
         } else if !found && self.verse_call_context(now).book.is_some() {
             found = self.final_partial(&text, prev_before.as_ref(), now);

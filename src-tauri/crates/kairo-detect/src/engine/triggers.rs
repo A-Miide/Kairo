@@ -59,6 +59,9 @@ static BACK: LazyLock<regex::Regex> = LazyLock::new(|| re(r"\b(previous verse|ve
 /// A preacher taking back the number just said: "Romans 8:28, sorry, verse 31".
 static CORRECTION_WORD: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?i)\b(sorry|i mean|i meant|rather|correction|pardon me|excuse me|my mistake)\b[\s,.;:!-]*"));
 static VERSE_OR_CHAPTER_NEXT: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?i)^(verses?|chapter)\b"));
+/// The next step of a reading announced after a citation, in the same breath: "Genesis chapter 21
+/// verse 1 and then we go to verse 6" (owner, 2026-10-31). What follows it is a verse call of its own.
+static NEXT_STEP: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?i)\b(then|next|after that|later|(?:we|let us|let's|i want us to)?\s*(?:go|move|jump|skip|come|turn|look)\s+(?:down |on |over |back )?to)\b[\s,.;:!-]*(?:(?:we|let us|let's)\s+(?:go|move|jump|skip|come|turn|look)\s+(?:down |on |over |back )?to\s+)?"));
 
 fn filler(w: &str) -> bool {
     BARE_NUMBER_FILLER.contains(&w)
@@ -418,6 +421,41 @@ impl Engine {
             self.interim_partial(tail, now);
             false
         }
+    }
+
+    /// "Genesis chapter 21 verse 1 and then we go to verse 6", said as one breath, is a range call
+    /// (owner, 2026-10-31): 21:1 and 21:6 up together, as "verses 1 and 6" already were, and the
+    /// reading goes on from there. Missed before: the citation took the stretch and its trailing
+    /// verse went unread.
+    pub(crate) fn next_step_verse(&mut self, text: &str, now: u64) -> bool {
+        let Some(m) = NEXT_STEP.find_iter(text).last() else { return false };
+        let tail = text[m.end()..].trim_start();
+        if !VERSE_OR_CHAPTER_NEXT.is_match(tail) || !self.reading.is_valid(now) {
+            return false;
+        }
+        let Some(p) = self.k.partials(self.cfg.lang).resolve(tail, self.verse_call_context(now), true) else { return false };
+        let next = self.citation_verses(&p.citation);
+        let Some(&first_next) = next.first() else { return false };
+        // What this breath's citation put up, in the same chapter.
+        let mut verses: Vec<VerseId> = if self.screen.together.is_empty() { self.screen.up_verse().into_iter().collect() } else { self.screen.together.clone() };
+        let same_chapter = |e: &Self, v: VerseId| {
+            let (a, b) = (e.r(v), e.r(first_next));
+            a.book == b.book && a.chapter == b.chapter
+        };
+        if verses.is_empty() || !verses.iter().all(|&v| same_chapter(self, v)) {
+            return false;
+        }
+        for v in next {
+            if !verses.contains(&v) {
+                verses.push(v);
+            }
+        }
+        verses.sort();
+        if verses.len() < 2 {
+            return false;
+        }
+        self.set_range(verses.clone(), now);
+        self.decide(Candidate::new(verses, Method::Direct, 1.0, Target::Screen), now) == Target::Screen
     }
 
     /// "verse N" said once the reading context has lapsed, against the

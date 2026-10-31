@@ -326,7 +326,13 @@ impl Engine {
             let same_book_continuation = self.screen.last_sent_book.is_some_and(|(b, t)| b == r.book && now.saturating_sub(t) < SAME_BOOK_WINDOW_MS)
                 && self.screen.last_detected.map(|(v, _, _)| v) != Some(top);
             let overrides_weaker = spoken && self.screen.last_detected.is_some_and(|(_, _, m)| !matches!(m, Method::Direct | Method::Continuation));
-            let wider_range = c.method == Method::Direct && c.verses.len() > 1 && self.screen.last_detected.map(|(v, _, _)| v) == Some(top) && c.verses.len() > self.range.all.len();
+            // …or more of it than is up now: "Genesis 21 verse 1 and then we go to verse 6" puts 21:1
+            // up, then 21:1 with 21:6 (triggers.rs, next_step_verse).
+            let wider_range = c.method == Method::Direct
+                && c.verses.len() > 1
+                && self.screen.last_detected.map(|(v, _, _)| v) == Some(top)
+                && (c.verses.len() > self.range.all.len()
+                    || (c.verses.len() <= super::core::SHOWN_TOGETHER_MAX && c.verses.len() > self.screen.together.len().max(1)));
             if !same_book_continuation && !overrides_weaker && !wider_range && !c.returning {
                 if self.screen.last_detected.is_some_and(|(v, t, _)| v == top && now.saturating_sub(t) < window) {
                     return Target::Drop;
