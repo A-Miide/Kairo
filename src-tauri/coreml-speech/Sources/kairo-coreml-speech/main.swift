@@ -26,9 +26,41 @@ let resetAfterWords = 300
 let utteranceEndSecs = 1.2
 /// The model decodes in chunks of this many samples (560 ms).
 let chunkSamples = 8_960
-/// Audio waiting longer than this is dropped and recognition starts at the newest (offline.rs).
+/// Audio waiting longer than this is dropped and recognition starts at the newest, unless this
+/// computer decodes fast enough to catch up (`Pace`); then only past `maxBehindHard` (offline.rs).
 let maxBehind = 4.0
+let maxBehindHard = 15.0
 let maxBehindSinging = 1.0
+/// Decoding at least this much faster than real time catches up on a backlog instead of dropping it.
+let minPace = 1.25
+/// The pace is measured over this much of the latest audio.
+let paceWindow = 30.0
+
+/// How fast this computer decodes: seconds of audio per second spent decoding, over the latest
+/// `paceWindow` of audio. A stall (the disk, a busy moment) barely moves it; a computer that can't
+/// keep up shows it within half a minute.
+struct Pace {
+    private var spans: [(audio: Double, busy: Double)] = []
+    private var audio = 0.0
+    private var busy = 0.0
+    mutating func add(audio a: Double, busy b: Double) {
+        spans.append((a, b))
+        audio += a
+        busy += b
+        while let first = spans.first, audio - first.audio >= paceWindow {
+            audio -= first.audio
+            busy -= first.busy
+            spans.removeFirst()
+        }
+    }
+    var value: Double { busy > 0 ? audio / busy : .infinity }
+}
+
+/// The catch-up rule (offline.rs too_far_behind): audio that arrived `waited` seconds ago and isn't
+/// decoded yet is dropped only when this computer can't catch up on it, or it's too old to use.
+func tooFarBehind(_ waited: Double, pace: Double) -> Bool {
+    waited > maxBehindHard || (waited > maxBehind && pace < minPace)
+}
 let singingFrame = UInt32.max
 
 let out = FileHandle.standardOutput
@@ -172,6 +204,49 @@ func readExactly(_ n: Int) -> Data? {
     return data
 }
 
+/// Locks the compiled model into memory for as long as this program runs; returns the bytes locked.
+///
+/// Core ML doesn't decode from the model's weight files: it compiles them once into its cache
+/// (com.apple.e5rt.e5bundlecache, 1.1 GB for the encoder on the CPU) and maps that, and the
+/// encoder reads all of it every chunk. Mapped from a file, those are clean pages, the first thing
+/// macOS takes back when memory runs short, so decoding waited on the disk. Measured on an 8 GB M1
+/// listening to YouTube in Safari through BlackHole (2026-10-31): 740 MB of the 1.1 GB in memory,
+/// ~800 MB read back from the disk every 10 s, and 54 s of 80 s of speech dropped. The ONNX engine
+/// locks its weights the same way (onnx_weights.rs, pin).
+///
+/// Only a mapping of its own is locked: the files Core ML mapped are found by walking this
+/// process's regions, then opened and mapped again read-only here, which locks the same pages.
+/// Locking Core ML's regions in place instead panicked the kernel on macOS 27.2 (2026-10-31): a
+/// region's file name comes from the next region with a file, so a region without one (the
+/// commpage) was locked too.
+func pinCompiledModel() -> Int {
+    let me = getpid()
+    var files = Set<String>()
+    var address: UInt64 = 0
+    var info = proc_regionwithpathinfo()
+    let infoSize = Int32(MemoryLayout<proc_regionwithpathinfo>.stride)
+    while proc_pidinfo(me, PROC_PIDREGIONPATHINFO, address, &info, infoSize) == infoSize {
+        let path = withUnsafeBytes(of: info.prp_vip.vip_path) { String(cString: $0.bindMemory(to: CChar.self).baseAddress!) }
+        if path.contains("e5bundlecache") { files.insert(path) }
+        let next = info.prp_prinfo.pri_address + info.prp_prinfo.pri_size
+        if next <= address { break }
+        address = next
+    }
+    var locked = 0
+    for path in files {
+        let fd = open(path, O_RDONLY)
+        guard fd >= 0 else { continue }
+        defer { close(fd) }
+        var st = stat()
+        guard fstat(fd, &st) == 0, (st.st_mode & S_IFMT) == S_IFREG, st.st_size > 0 else { continue }
+        let len = Int(st.st_size)
+        // Kept mapped (and locked) until this program ends.
+        guard let map = mmap(nil, len, PROT_READ, MAP_SHARED, fd, 0), map != MAP_FAILED else { continue }
+        if mlock(map, len) == 0 { locked += len } else { munmap(map, len) }
+    }
+    return locked
+}
+
 func run() async -> Int32 {
     let args = CommandLine.arguments
     guard args.count >= 2 else {
@@ -208,6 +283,10 @@ func run() async -> Int32 {
         FileHandle.standardError.write("[Offline] \(error.localizedDescription)\n".data(using: .utf8)!)
         return 2
     }
+    let pinned = pinCompiledModel()
+    FileHandle.standardError.write((pinned > 0
+        ? "[Offline] \(pinned >> 20) MB of the compiled model locked in memory\n"
+        : "[Offline] the compiled model isn't locked in memory\n").data(using: .utf8)!)
     let ack = ProcessInfo.processInfo.environment["KAIRO_SPEECH_ACK"] == "1"
     say("ready")
 
@@ -234,6 +313,7 @@ func run() async -> Int32 {
     reader.start()
 
     let heard = Transcriber(engine: engine)
+    var pace = Pace()
     while true {
         guard let item = inbox.take(), let (arrived, samples) = item else {
             // Closed: no one is listening any more. Finished: the last words.
@@ -242,14 +322,16 @@ func run() async -> Int32 {
         }
         let sung = inbox.singing
         let waited = Date().timeIntervalSince(arrived)
-        if waited > maxBehind || (sung && waited > maxBehindSinging) {
-            // Behind live speech: drop what is waiting, say so, start fresh at the newest.
+        if tooFarBehind(waited, pace: pace.value) || (sung && waited > maxBehindSinging) {
+            // Behind live speech and not catching up: drop what is waiting, say so, start fresh
+            // at the newest.
             let (more, ended) = inbox.drain()
             if let h = await heard.cut() { h.emit() }
             say(["k": "s", "ms": (samples.count + more) * 1000 / Int(sampleRate), "sung": sung])
             if ended { return 0 }
             continue
         }
+        let started = Date()
         do {
             try await heard.accept(samples)
         } catch {
@@ -257,6 +339,7 @@ func run() async -> Int32 {
             return 3
         }
         for h in await heard.pump() { h.emit() }
+        pace.add(audio: Double(samples.count) / sampleRate, busy: Date().timeIntervalSince(started))
         if ack { say(["k": "a"]) }
     }
 }

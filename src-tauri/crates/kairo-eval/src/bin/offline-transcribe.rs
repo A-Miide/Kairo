@@ -112,6 +112,7 @@ fn main() {
     // fast as it decodes (the deterministic default, what the app does whenever it keeps up).
     let realtime = args.iter().any(|a| a == "--realtime");
     let mut skips: Vec<Value> = Vec::new();
+    let mut pace = kairo_server::offline::Pace::default();
     loop {
         let n = read_full(&mut pcm, &mut buf);
         if n == 0 {
@@ -123,7 +124,7 @@ fn main() {
             let now = Instant::now();
             if now < arrives {
                 std::thread::sleep(arrives - now);
-            } else if kairo_server::offline::too_far_behind(now - arrives) {
+            } else if kairo_server::offline::too_far_behind(now - arrives, pace.value()) {
                 // Everything that has arrived by now is dropped, as the worker drops its queue.
                 let at = (fed * 1000 / SAMPLE_RATE_HZ) as u64;
                 let mut dropped = samples.len();
@@ -142,6 +143,7 @@ fn main() {
             }
         }
         fed += samples.len();
+        let busy = Instant::now();
         heard.accept(&samples);
         let t = (fed * 1000 / SAMPLE_RATE_HZ) as u64;
         if interp_on {
@@ -152,6 +154,7 @@ fn main() {
         for h in heard.pump() {
             record(h, t, &mut cues, &mut inputs);
         }
+        pace.add(samples.len() as f64 / SAMPLE_RATE_HZ as f64, busy.elapsed());
     }
     if realtime {
         let total: u64 = skips.iter().filter_map(|s| s["skippedMs"].as_u64()).sum();

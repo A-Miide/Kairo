@@ -33,10 +33,11 @@ const UTTERANCE_END_SECS: f32 = 1.2;
 const START_WAIT: Duration = Duration::from_secs(240);
 
 /// Live speech stays live: audio still waiting to be decoded when it is older than this is
-/// dropped and recognition starts again at the newest audio. On a computer too busy to decode
-/// in real time the backlog otherwise grew for the whole service (measured 2026-10-16: 5.4
-/// minutes behind after an hour), detection reacting to things said minutes before. The live
-/// worker and `offline-transcribe --realtime` both use this rule (see [`too_far_behind`]).
+/// dropped and recognition starts again at the newest audio, unless this computer is catching up
+/// ([`MAX_BEHIND_HARD`]). On a computer too busy to decode in real time the backlog otherwise
+/// grew for the whole service (measured 2026-10-16: 5.4 minutes behind after an hour), detection
+/// reacting to things said minutes before. The live worker and `offline-transcribe --realtime`
+/// both use this rule (see [`too_far_behind`]).
 pub const MAX_BEHIND: Duration = Duration::from_secs(4);
 
 /// While singing is heard, no backlog at all is kept. Singing costs the recogniser half as much
@@ -46,9 +47,52 @@ pub const MAX_BEHIND: Duration = Duration::from_secs(4);
 /// heard live, not 4 s late.
 pub const MAX_BEHIND_SINGING: Duration = Duration::from_secs(1);
 
-/// The catch-up rule: audio that arrived `waited` ago and isn't decoded yet is too old to use.
-pub fn too_far_behind(waited: Duration) -> bool {
-    waited > MAX_BEHIND
+/// Past [`MAX_BEHIND`] the waiting audio is kept while this computer decodes fast enough to catch up
+/// on it ([`Pace`]); this is as late as live speech may run even then. Dropping at 4 s whatever the
+/// pace lost speech to a stall alone: on an 8 GB M1 under memory pressure (2026-10-31) the engine
+/// decoded at 7x real time between stalls and dropped 54 s of 80 s of speech.
+pub const MAX_BEHIND_HARD: Duration = Duration::from_secs(15);
+
+/// Decoding at least this much faster than real time catches up on a backlog instead of dropping it.
+pub const MIN_PACE: f64 = 1.25;
+
+/// The pace is measured over this much of the latest audio, in seconds.
+const PACE_WINDOW: f64 = 30.0;
+
+/// How fast this computer decodes: seconds of audio per second spent decoding, over the latest
+/// [`PACE_WINDOW`] of audio. A stall (the disk, a busy moment) barely moves it; a computer that
+/// can't keep up shows it within half a minute.
+#[derive(Default)]
+pub struct Pace {
+    spans: std::collections::VecDeque<(f64, f64)>,
+    audio: f64,
+    busy: f64,
+}
+
+impl Pace {
+    pub fn add(&mut self, audio: f64, busy: Duration) {
+        let busy = busy.as_secs_f64();
+        self.spans.push_back((audio, busy));
+        self.audio += audio;
+        self.busy += busy;
+        while let Some(&(a, b)) = self.spans.front() {
+            if self.audio - a < PACE_WINDOW {
+                break;
+            }
+            self.audio -= a;
+            self.busy -= b;
+            self.spans.pop_front();
+        }
+    }
+    pub fn value(&self) -> f64 {
+        if self.busy > 0.0 { self.audio / self.busy } else { f64::INFINITY }
+    }
+}
+
+/// The catch-up rule: audio that arrived `waited` ago and isn't decoded yet is dropped only when
+/// this computer can't catch up on it (`pace`, [`Pace::value`]), or it's too old to use.
+pub fn too_far_behind(waited: Duration, pace: f64) -> bool {
+    waited > MAX_BEHIND_HARD || (waited > MAX_BEHIND && pace < MIN_PACE)
 }
 
 /// A frame length that isn't audio: one byte follows, 1 while singing is heard, else 0.
@@ -884,6 +928,7 @@ fn run_worker(dir: &std::path::Path, language: Option<String>) -> i32 {
         say(json!({ "k": k, "t": t }).to_string());
     };
     let mut last_pump = Instant::now();
+    let mut pace = Pace::default();
     loop {
         if gone.load(Ordering::SeqCst) {
             return 0;
@@ -891,8 +936,9 @@ fn run_worker(dir: &std::path::Path, language: Option<String>) -> i32 {
         match rx.recv_timeout(Duration::from_millis(15)) {
             Ok(Some((arrived, chunk))) => {
                 let sung = singing.load(Ordering::Relaxed);
-                if too_far_behind(arrived.elapsed()) || (sung && arrived.elapsed() > MAX_BEHIND_SINGING) {
-                    // Behind live speech: drop what is waiting, say so, start fresh at the newest.
+                if too_far_behind(arrived.elapsed(), pace.value()) || (sung && arrived.elapsed() > MAX_BEHIND_SINGING) {
+                    // Behind live speech and not catching up: drop what is waiting, say so, start
+                    // fresh at the newest.
                     let mut dropped = chunk.len() / 2;
                     let mut ended = false;
                     while let Ok(next) = rx.try_recv() {
@@ -911,7 +957,9 @@ fn run_worker(dir: &std::path::Path, language: Option<String>) -> i32 {
                     continue;
                 }
                 let samples: Vec<f32> = chunk.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect();
+                let started = Instant::now();
                 heard.accept(&samples);
+                pace.add(samples.len() as f64 / SAMPLE_RATE_HZ as f64, started.elapsed());
             }
             Ok(None) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
                 if let Some(h) = heard.finish() {
@@ -926,6 +974,8 @@ fn run_worker(dir: &std::path::Path, language: Option<String>) -> i32 {
             for h in heard.pump() {
                 emit(h);
             }
+            // Decoding happens here: its time counts against the audio accepted since.
+            pace.add(0.0, last_pump.elapsed());
         }
     }
 }
@@ -1186,9 +1236,29 @@ mod tests {
     #[test]
     fn live_speech_stays_live() {
         use std::time::Duration;
-        assert!(!super::too_far_behind(Duration::from_millis(500)), "a normal wait is decoded");
-        assert!(!super::too_far_behind(super::MAX_BEHIND), "exactly at the limit is still decoded");
-        assert!(super::too_far_behind(super::MAX_BEHIND + Duration::from_millis(1)), "older than the limit is dropped");
+        let slow = 1.0;
+        let fast = 7.0;
+        assert!(!super::too_far_behind(Duration::from_millis(500), slow), "a normal wait is decoded");
+        assert!(!super::too_far_behind(super::MAX_BEHIND, slow), "exactly at the limit is still decoded");
+        assert!(super::too_far_behind(super::MAX_BEHIND + Duration::from_millis(1), slow), "too slow to catch up: dropped");
+        assert!(!super::too_far_behind(super::MAX_BEHIND + Duration::from_secs(5), fast), "catching up: kept");
+        assert!(super::too_far_behind(super::MAX_BEHIND_HARD + Duration::from_millis(1), fast), "too old even when catching up");
+    }
+
+    #[test]
+    fn a_stall_barely_moves_the_pace() {
+        use std::time::Duration;
+        let mut pace = super::Pace::default();
+        assert!(pace.value().is_infinite(), "nothing measured yet: assumed able");
+        for _ in 0..50 {
+            pace.add(0.56, Duration::from_millis(80));
+        }
+        pace.add(0.56, Duration::from_secs(5));
+        assert!(pace.value() > super::MIN_PACE, "one 5 s stall in 30 s of audio: {}", pace.value());
+        for _ in 0..60 {
+            pace.add(0.56, Duration::from_millis(1100));
+        }
+        assert!(pace.value() < super::MIN_PACE, "slower than real time: {}", pace.value());
     }
 
     #[test]
