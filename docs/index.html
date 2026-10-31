@@ -364,6 +364,92 @@
       .try-screen { padding: 20px; aspect-ratio: auto; min-height: 210px; }
       .try-screen-text { max-height: none; }
     }
+    /* ── Features bento ── */
+    .bento {
+      display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px;
+      background: var(--border); border: 1px solid var(--border); border-radius: 20px; overflow: hidden;
+    }
+    .bc { background: var(--bg-panel); padding: 26px 26px 0; display: flex; flex-direction: column; min-height: 300px; overflow: hidden; }
+    .bc.span2 { grid-column: span 2; }
+    .bc h3 { font-size: 17px; font-weight: 700; letter-spacing: -0.01em; margin-bottom: 6px; }
+    .bc > p { font-size: 13.5px; color: #999; line-height: 1.55; max-width: 460px; }
+    .viz { margin-top: auto; padding: 22px 0 26px; font-size: 12px; }
+    .vz-label { font-size: 10px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-bottom: 8px; }
+    .vz-tag { font-size: 9px; font-weight: 800; letter-spacing: 0.1em; text-transform: uppercase; background: rgba(0,0,0,0.35); color: #fff; padding: 2px 7px; border-radius: 4px; align-self: flex-start; }
+    .vz-tag.on { background: var(--red); }
+    /* detection */
+    .viz-detect { display: grid; grid-template-columns: 1fr 1.1fr; gap: 12px; }
+    .vz-transcript, .vz-queue { background: var(--bg-card); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+    .vz-transcript p { color: #bbb; line-height: 1.6; }
+    .vz-transcript mark { background: rgba(245,48,26,0.18); color: #ff8a7a; border-radius: 3px; padding: 0 2px; }
+    .vz-card { border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-top: 6px; display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; }
+    .vz-card b { font-size: 12px; }
+    .vz-card i { grid-column: 1 / -1; color: #888; font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .vz-card.live { border-color: rgba(245,48,26,0.6); background: rgba(245,48,26,0.06); }
+    .vz-live { background: var(--red); color: #fff; font-size: 9px; font-weight: 800; border-radius: 999px; padding: 1px 7px; align-self: center; }
+    /* matches */
+    .vz-match { display: flex; align-items: center; gap: 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; margin-top: 6px; }
+    .vz-match b { flex: 1; font-size: 12px; }
+    .vz-match.dim { opacity: 0.5; }
+    .pct { font-size: 11px; font-weight: 800; color: #fbbf24; width: 30px; }
+    .pct.hi { color: var(--green); }
+    .send { font-size: 10px; font-weight: 700; border: 1px solid var(--border); border-radius: 5px; padding: 2px 8px; color: #ccc; }
+    /* offline */
+    .viz-offline { display: flex; flex-direction: column; gap: 14px; }
+    .vz-stat b { display: block; font-size: 34px; font-weight: 900; letter-spacing: -0.03em; line-height: 1; }
+    .vz-stat b small { font-size: 16px; color: var(--muted); font-weight: 700; }
+    .vz-stat span { color: #888; font-size: 12px; }
+    /* outputs */
+    .viz-outputs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+    .vz-out { aspect-ratio: 16 / 10; border-radius: 10px; padding: 9px; display: flex; flex-direction: column; justify-content: space-between; text-align: center; overflow: hidden; }
+    .vz-out em { font-style: normal; font-weight: 700; font-size: 11px; line-height: 1.35; }
+    .vz-out small { font-size: 8px; font-weight: 800; letter-spacing: 0.1em; }
+    .vz-out.red { background: linear-gradient(135deg, #F5301A, #B8200F); color: #fff; }
+    .vz-out.cream { background: #f4efe4; color: #2b2620; }
+    .vz-out.cream em { font-family: Georgia, serif; font-style: italic; font-weight: 400; }
+    .vz-out.cream .vz-tag { background: rgba(0,0,0,0.08); color: #2b2620; }
+    .vz-out.stream { background: linear-gradient(160deg, #3a3f4a, #1b1d22); color: #fff; justify-content: space-between; }
+    .vz-out .l3 { background: rgba(0,0,0,0.55); border-left: 3px solid var(--red); border-radius: 4px; padding: 5px 7px; text-align: left; }
+    .vz-out .l3 em { font-size: 9.5px; display: block; }
+    /* learning */
+    .viz-learn { display: flex; flex-direction: column; gap: 8px; }
+    .vz-heard { background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 9px 11px; color: #aaa; }
+    .vz-heard q { color: #ddd; }
+    .vz-heard.ok { border-color: rgba(34,197,94,0.35); }
+    .vz-heard b { color: var(--green); }
+    .vz-arrow { color: var(--muted); font-size: 11px; padding-left: 4px; }
+    /* range */
+    .viz-range { background: linear-gradient(135deg, #F5301A, #B8200F); border-radius: 12px; padding: 16px; text-align: center; color: #fff; margin: auto 0 26px; }
+    .viz-range p { font-weight: 700; font-size: 12px; line-height: 1.5; }
+    .viz-range sup { font-size: 0.65em; opacity: 0.8; }
+    .viz-range small { display: block; margin-top: 8px; font-size: 9px; font-weight: 800; letter-spacing: 0.12em; }
+    /* notes */
+    .vz-page { background: #f6f3ee; color: #222; border-radius: 8px 8px 0 0; padding: 14px 16px 18px; display: flex; flex-direction: column; gap: 6px; transform: translateY(26px); box-shadow: 0 10px 30px rgba(0,0,0,0.4); }
+    .vz-page b { font-size: 13px; }
+    .vz-pt { font-size: 11px; font-weight: 700; } .vz-pt i { color: #c2321c; font-style: normal; }
+    .vz-line { height: 5px; border-radius: 3px; background: #d9d3c8; }
+    .w80 { width: 80%; } .w70 { width: 70%; } .w60 { width: 60%; } .w50 { width: 50%; }
+    .viz-notes { padding-bottom: 0; }
+    /* service plan */
+    .viz-plan { display: flex; flex-direction: column; gap: 5px; }
+    .vz-item { display: flex; align-items: center; gap: 10px; background: var(--bg-card); border: 1px solid var(--border); border-radius: 8px; padding: 7px 10px; color: #ccc; }
+    .vz-item.live { border-color: rgba(245,48,26,0.6); background: rgba(245,48,26,0.06); color: #fff; }
+    .vz-item .vz-live { margin-left: auto; }
+    .vz-kind { font-size: 9px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); width: 42px; }
+    /* director */
+    .viz-director { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .vz-cam { aspect-ratio: 16 / 8; border-radius: 10px; background: radial-gradient(ellipse at 50% 30%, rgba(255,190,120,0.18), transparent 60%), linear-gradient(180deg, #2a2420 0%, #141210 70%); border: 2px solid #3b3f48; padding: 8px; display: flex; flex-direction: column; justify-content: space-between; }
+    .vz-cam.pgm { border-color: var(--red); }
+    .vz-cam-l3 { background: rgba(0,0,0,0.55); border-left: 3px solid var(--red); border-radius: 4px; padding: 4px 7px; font-weight: 700; font-size: 10px; align-self: flex-start; }
+    .vz-chips { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 6px; }
+    .vz-chips span { border: 1px solid var(--border); border-radius: 6px; padding: 4px 9px; font-size: 11px; font-weight: 700; color: #aaa; }
+    .bento-more { margin-top: 18px; font-size: 13px; color: var(--muted); text-align: center; }
+    @media (max-width: 860px) {
+      .bento { grid-template-columns: 1fr; }
+      .bc.span2 { grid-column: auto; }
+      .viz-detect, .viz-director { grid-template-columns: 1fr; }
+      .bc { min-height: 0; }
+    }
   </style>
 </head>
 <body>
@@ -527,30 +613,113 @@
     <div class="section-label">Everything in KAIRO</div>
     <h2>Detection, plus the whole presentation system around it</h2>
 
-    <h3 class="group">Hear and detect</h3>
-    <div class="feat-grid">
-      <div class="feat-card"><h3>Live verse detection</h3><p>Hears citations and quotes as they&rsquo;re preached and puts the verse on screen. It remembers the sermon&rsquo;s book and chapter, so &ldquo;verse 17&rdquo; or &ldquo;the next verse&rdquo; still resolves.</p></div>
-      <div class="feat-card"><h3>Possible Matches</h3><p>When it&rsquo;s unsure it offers the verse for you to send instead of sending it. Paraphrases are only ever offers.</p></div>
-      <div class="feat-card"><h3>Cloud or offline speech</h3><p>Use Deepgram, or transcribe entirely on your machine with no internet, no API key and no monthly cost. The offline model downloads on first use.</p></div>
-      <div class="feat-card"><h3>Verse numbers in other languages</h3><p>Understands spoken verse numbers in English, Spanish, French and more, and reads &ldquo;from 28 down to 31&rdquo; as a range.</p></div>
-      <div class="feat-card"><h3>Interpreter in the room</h3><p>Notices when an interpreter is speaking, so their words aren&rsquo;t mistaken for the sermon, and offers a Multi-Language theme for Spanish, French and Portuguese.</p></div>
-      <div class="feat-card"><h3>Songs stay safe</h3><p>While a lyrics slide is up, scripture it hears is offered in Possible Matches rather than sent over the song.</p></div>
+    <!-- A bento of what KAIRO does, each cell showing it with a piece of the app's own interface. -->
+    <div class="bento">
+      <div class="bc span2">
+        <h3>Scripture on screen as it&rsquo;s preached</h3>
+        <p>KAIRO hears the reference, or the verse being read, and puts it up. &ldquo;Verse 17&rdquo; and &ldquo;the next verse&rdquo; still land, because it keeps the sermon&rsquo;s book and chapter.</p>
+        <div class="viz viz-detect">
+          <div class="vz-transcript">
+            <div class="vz-label">Live transcript</div>
+            <p>&hellip;so turn with me to <mark>John chapter three verse sixteen</mark>. For God so loved the world, that he gave&hellip;</p>
+          </div>
+          <div class="vz-queue">
+            <div class="vz-label">Live queue</div>
+            <div class="vz-card live"><b>John 3:16</b><span class="vz-live">LIVE</span><i>For God so loved the world, that he gave his only begotten Son&hellip;</i></div>
+            <div class="vz-card"><b>John 3:17</b><i>For God sent not his Son into the world to condemn&hellip;</i></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="bc">
+        <h3>Unsure? It asks first</h3>
+        <p>A verse it isn&rsquo;t sure of waits in Possible Matches for one click. A wrong verse on screen is worse than a missed one.</p>
+        <div class="viz viz-matches">
+          <div class="vz-label">Possible matches</div>
+          <div class="vz-match"><span class="pct hi">94%</span><b>Romans 8:28</b><span class="send">Send</span></div>
+          <div class="vz-match"><span class="pct">71%</span><b>Philippians 4:13</b><span class="send">Send</span></div>
+          <div class="vz-match dim"><span class="pct">52%</span><b>Isaiah 40:31</b><span class="send">Send</span></div>
+        </div>
+      </div>
+
+      <div class="bc">
+        <h3>No internet, no monthly bill</h3>
+        <p>Speech is turned into text on your own computer. Nothing leaves the building.</p>
+        <div class="viz viz-offline">
+          <div class="vz-stat"><b>222<small> / 222</small></b><span>verse references caught in a 3-hour test on a 2-core Windows PC</span></div>
+          <div class="vz-stat"><b>~2<small> s</small></b><span>from the verse being said to it being found, the same in hour three as in hour one</span></div>
+        </div>
+      </div>
+
+      <div class="bc span2">
+        <h3>Every screen, its own look</h3>
+        <p>Projector, livestream and lobby each get their own theme, from one place. Screens, NDI, Syphon and DeckLink.</p>
+        <div class="viz viz-outputs">
+          <div class="vz-out red"><span class="vz-tag">Projector</span><em>The LORD is my shepherd; I shall not want.</em><small>PSALM 23:1</small></div>
+          <div class="vz-out stream"><span class="vz-tag">Livestream</span><div class="l3"><em>The LORD is my shepherd; I shall not want.</em><small>PSALM 23:1</small></div></div>
+          <div class="vz-out cream"><span class="vz-tag">Lobby</span><em>The LORD is my shepherd; I shall not want.</em><small>PSALM 23:1</small></div>
+        </div>
+      </div>
+
+      <div class="bc">
+        <h3>Learns your preacher</h3>
+        <p>Correct it once and KAIRO remembers how your preacher says a book, which verses your church returns to, and what you took down.</p>
+        <div class="viz viz-learn">
+          <div class="vz-heard">Heard <q>Zom one ten, verse one</q></div>
+          <div class="vz-arrow">&darr; you put up Psalm 110</div>
+          <div class="vz-heard ok">Next time <q>Zom one twenty one</q> &rarr; <b>Psalm 121:1</b></div>
+        </div>
+      </div>
+
+      <div class="bc">
+        <h3>Passages read whole</h3>
+        <p>&ldquo;Psalm 23, verses one to three&rdquo; goes up together, then follows the reading verse by verse.</p>
+        <div class="viz viz-range">
+          <p><sup>1</sup>The LORD is my shepherd; I shall not want. <sup>2</sup>He maketh me to lie down in green pastures&hellip; <sup>3</sup>He restoreth my soul&hellip;</p>
+          <small>PSALM 23:1&ndash;3</small>
+        </div>
+      </div>
+
+      <div class="bc">
+        <h3>Sermon notes, written for you</h3>
+        <p>After the service: the main passage, each point with the scriptures behind it, and the prayer points, as a PDF.</p>
+        <div class="viz viz-notes">
+          <div class="vz-page">
+            <b>Enough is Enough</b>
+            <span class="vz-line w80"></span><span class="vz-line w60"></span>
+            <div class="vz-pt">1 &middot; <i>Romans 8:28</i></div>
+            <span class="vz-line w70"></span>
+            <div class="vz-pt">2 &middot; <i>Psalm 110:1&ndash;3</i></div>
+            <span class="vz-line w50"></span>
+          </div>
+        </div>
+      </div>
+
+      <div class="bc">
+        <h3>The whole service in one place</h3>
+        <p>Slides, songs, timers and media, with Theme Studio for your own looks and a monitor of every output.</p>
+        <div class="viz viz-plan">
+          <div class="vz-label">Sunday</div>
+          <div class="vz-item"><span class="vz-kind">Slides</span>Welcome</div>
+          <div class="vz-item"><span class="vz-kind">Song</span>Way Maker</div>
+          <div class="vz-item live"><span class="vz-kind">Bible</span>Sermon: John 3:16<span class="vz-live">LIVE</span></div>
+          <div class="vz-item"><span class="vz-kind">Timer</span>Offering 5:00</div>
+          <div class="vz-item"><span class="vz-kind">Media</span>Announcements video</div>
+        </div>
+      </div>
+
+      <div class="bc span2">
+        <h3>Director mode, streaming and recording</h3>
+        <p>Cameras with Preview and Program, layouts and a key for each input; stream and record from KAIRO, or send it to OBS, ProPresenter, vMix or Resolume.</p>
+        <div class="viz viz-director">
+          <div class="vz-cam"><span class="vz-tag">Preview</span><div class="vz-cam-l3">John 3:16</div></div>
+          <div class="vz-cam pgm"><span class="vz-tag on">Program</span><div class="vz-cam-l3">Psalm 23:1</div></div>
+          <div class="vz-chips"><span>NDI</span><span>Syphon</span><span>DeckLink</span><span>OBS</span><span>ProPresenter</span></div>
+        </div>
+      </div>
     </div>
 
-    <h3 class="group">Present</h3>
-    <div class="feat-grid">
-      <div class="feat-card"><h3>Slides, songs, timers and media</h3><p>Run the whole service from one place, not only the verses.</p></div>
-      <div class="feat-card"><h3>Theme Studio</h3><p>Design layered on-screen looks with your own fonts, colours, gradients and blur, with a live preview before it goes to the display.</p></div>
-      <div class="feat-card"><h3>Stage Monitor</h3><p>See every output in one view, with what&rsquo;s live and what&rsquo;s next.</p></div>
-      <div class="feat-card"><h3>Multiple outputs</h3><p>Send to screens, NDI, Syphon and DeckLink, each with its own theme and layout. A saved screen waits for you and reopens when it&rsquo;s plugged back in.</p></div>
-    </div>
-
-    <h3 class="group">Produce</h3>
-    <div class="feat-grid">
-      <div class="feat-card"><h3>Director mode</h3><p>Cameras with Preview and Program, layouts, and a key for each input. Press Space to send.</p></div>
-      <div class="feat-card"><h3>Streaming and recording</h3><p>Stream and record from KAIRO, with recording that copies the stream&rsquo;s own picture so nothing is encoded twice.</p></div>
-      <div class="feat-card"><h3>Works with OBS, ProPresenter and more</h3><p>Add KAIRO as an NDI or Syphon source in OBS, ProPresenter, vMix or Resolume, or write the verse straight into an OBS text source.</p></div>
-    </div>
+    <p class="bento-more">Also: an interpreter in the room isn&rsquo;t mistaken for the sermon &middot; scripture heard during a song is offered, not sent over the lyrics &middot; verse numbers in English, Spanish, French, Portuguese, German, Yoruba, Igbo, Hausa and Swahili.</p>
   </section>
 
   <!-- ── How it works ── -->
