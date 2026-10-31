@@ -32,6 +32,9 @@ DEMUXERS="matroska,avi,asf,flv,mov,mpegts,mpegps,mpegvideo,ogg,mxf,h264,hevc,m4v
 DECODERS="h264,hevc,mpeg1video,mpeg2video,mpeg4,msmpeg4v1,msmpeg4v2,msmpeg4v3,wmv1,wmv2,wmv3,vc1,vp8,vp9,theora,prores,mjpeg,dvvideo,h263,h263p,flv,rawvideo,\
 aac,aac_latm,mp3,mp3float,mp2,ac3,eac3,dca,wmav1,wmav2,wmapro,vorbis,opus,flac,alac,pcm_s16le,pcm_s16be,pcm_s24le,pcm_s24be,pcm_s32le,pcm_f32le,pcm_u8,pcm_alaw,pcm_mulaw,adpcm_ms,adpcm_ima_wav"
 PARSERS="h264,hevc,mpeg4video,mpegvideo,vc1,vp8,vp9,aac,aac_latm,ac3,mpegaudio,flac,opus,vorbis,dca,h263"
+# Decoding on the Mac's video engine (-hwaccel videotoolbox). --disable-everything turns these off
+# too, so without them the flag fell back to the CPU unnoticed (2026-10-31).
+HWACCELS="h264_videotoolbox,hevc_videotoolbox,mpeg1_videotoolbox,mpeg2_videotoolbox,mpeg4_videotoolbox,h263_videotoolbox,prores_videotoolbox,vp9_videotoolbox"
 
 for ARCH in "${ARCHS[@]}"; do
   SRC="$WORK/src-$ARCH"
@@ -56,6 +59,7 @@ for ARCH in "${ARCHS[@]}"; do
       --enable-indev=avfoundation,lavfi \
       --enable-filter=scale,format,null,anull,aresample,aformat,setsar,fps,crop,pad,overlay,streamselect,color,anullsrc,split,amix,volume \
       --enable-bsf=aac_adtstoasc,extract_extradata,h264_mp4toannexb \
+      --enable-hwaccel="$HWACCELS" \
       ${EXTRA[@]+"${EXTRA[@]}"} >"$WORK/configure-$ARCH.log" 2>&1 || { tail -30 "$WORK/configure-$ARCH.log" >&2; exit 1; }
     make -j"$(sysctl -n hw.ncpu)" ffmpeg >"$WORK/make-$ARCH.log" 2>&1 || { tail -30 "$WORK/make-$ARCH.log" >&2; exit 1; }
   )

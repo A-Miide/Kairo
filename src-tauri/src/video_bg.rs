@@ -51,7 +51,9 @@ impl VideoBg {
             _ => format!("scale={width}:{height}:force_original_aspect_ratio=decrease,pad={width}:{height}:(ow-iw)/2:(oh-ih)/2:color=black"),
         };
         let mut child = Command::new(ffmpeg)
-            .args(["-nostdin", "-loglevel", "error", "-re", "-stream_loop", "-1", "-i"])
+            // Decoded on the computer's video engine where there is one (VideoToolbox on a Mac,
+            // D3D11 on Windows), on the CPU otherwise.
+            .args(["-nostdin", "-loglevel", "error", "-hwaccel", "auto", "-re", "-stream_loop", "-1", "-i"])
             .arg(&file)
             .args(["-an", "-vf", &format!("{scale},format=bgra"), "-r", &fps.to_string(), "-f", "rawvideo", "pipe:1"])
             .stdin(Stdio::null())
@@ -62,7 +64,8 @@ impl VideoBg {
         let mut out = child.stdout.take().ok_or("ffmpeg gave no output")?;
         let stop = Arc::new(AtomicBool::new(false));
         let overlay = Arc::new(Mutex::new(Overlay::default()));
-        let latest: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
+        // The newest decoded frame, and whether the mixer has used it yet.
+        let latest: Arc<Mutex<(Vec<u8>, bool)>> = Arc::new(Mutex::new((vec![0u8; w * h * 4], false)));
 
         // Decoder: whole frames from ffmpeg into `latest`. The first one says
         // ffmpeg can do this at all (an older bundled ffmpeg can't).
@@ -78,11 +81,10 @@ impl VideoBg {
                         break;
                     }
                     if let Some(tx) = first.take() { let _ = tx.send(true); }
+                    // Handed over by swapping buffers, not copying 8 MB a frame.
                     if let Ok(mut l) = latest.lock() {
-                        match l.as_mut() {
-                            Some(v) => v.copy_from_slice(&buf),
-                            None => *l = Some(buf.clone()),
-                        }
+                        std::mem::swap(&mut l.0, &mut buf);
+                        l.1 = true;
                     }
                 }
             });
@@ -102,21 +104,37 @@ impl VideoBg {
             thread::spawn(move || {
                 let mut next = Instant::now();
                 let mut mixed_over = vec![0u8; w * h * 4];
+                // Finished frames are written into ones no sender holds any more, so a frame costs
+                // no 8 MB allocation (and the page faults of fresh memory) once the pool is warm.
+                let mut pool: Vec<Arc<Frame>> = Vec::new();
+                let mut have_video = false;
                 // Diagnostics: KAIRO_VIDEO_DUMP=<dir> saves one mixed frame a second as a PNG.
                 let dump = std::env::var_os("KAIRO_VIDEO_DUMP").map(PathBuf::from);
                 let (mut frames, mut last_dump) = (0u64, Instant::now());
                 while !stop.load(Ordering::Relaxed) {
-                    let video = latest.lock().ok().and_then(|l| l.clone());
-                    if let Some(mut px) = video {
+                    // A frame no sender still holds; a new one only while every pooled one is held.
+                    let slot = pool.iter_mut().position(|f| Arc::get_mut(f).is_some()).unwrap_or_else(|| {
+                        pool.push(Arc::new(Frame { width, height, bgra: vec![0u8; w * h * 4] }));
+                        pool.len() - 1
+                    });
+                    let px = &mut Arc::get_mut(&mut pool[slot]).expect("unshared pooled frame").bgra;
+                    if let Ok(mut l) = latest.lock() {
+                        have_video |= l.1;
+                        if have_video {
+                            px.copy_from_slice(&l.0);
+                            l.1 = false;
+                        }
+                    }
+                    if have_video {
                         let ov = overlay.lock().ok().map(|o| (o.to.clone(), o.from.clone(), o.started, o.fade));
                         if let Some((Some(to), from, started, fade)) = ov {
                             let t = started.map_or(1.0, |s| s.elapsed().as_secs_f32() / fade.as_secs_f32().max(0.001));
                             match from {
                                 Some(f) if t < 1.0 && f.bgra.len() == to.bgra.len() => {
                                     blend(&mut mixed_over, &f.bgra, &to.bgra, t);
-                                    over(&mut px, &mixed_over);
+                                    over(px, &mixed_over);
                                 }
-                                _ => over(&mut px, &to.bgra),
+                                _ => over(px, &to.bgra),
                             }
                         }
                         frames += 1;
@@ -127,7 +145,11 @@ impl VideoBg {
                                 let _ = img.save(dir.join(format!("mix-{frames:06}.png")));
                             }
                         }
-                        push(Arc::new(Frame { width, height, bgra: px }));
+                        push(pool[slot].clone());
+                    }
+                    // Past the pool's size, a frame goes once sent: its senders free it.
+                    if pool.len() > POOL {
+                        pool.swap_remove(slot);
                     }
                     next += period;
                     let now = Instant::now();
@@ -166,6 +188,9 @@ impl Drop for VideoBg {
         self.stop();
     }
 }
+
+/// Frames kept for reuse: one being written, and the ones senders still hold.
+const POOL: usize = 4;
 
 /// `dst` (opaque video) with premultiplied `top` laid over it.
 fn over(dst: &mut [u8], top: &[u8]) {

@@ -151,7 +151,8 @@ impl Video {
         // Longest side capped at 1920 px: plenty for a screen, and quick to convert.
         let scale = "scale='if(gt(iw,ih),min(1920,iw),-2)':'if(gt(iw,ih),-2,min(1920,ih))',format=yuv420p";
         let mut cmd = Command::new(ff);
-        cmd.args(["-hide_banner", "-nostdin", "-y", "-i"]).arg(src);
+        // Decoded on the computer's video engine where there is one (the CPU otherwise).
+        cmd.args(["-hide_banner", "-nostdin", "-y", "-hwaccel", "auto", "-i"]).arg(src);
         cmd.args(["-map", "0:v:0", "-map", "0:a:0?", "-sn", "-dn", "-vf", scale, "-c:v", enc]);
         match enc {
             "libx264" => { cmd.args(["-preset", "veryfast", "-crf", "20"]); }

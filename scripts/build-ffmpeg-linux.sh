@@ -44,7 +44,10 @@ if [[ "$TARGET" == windows ]]; then
   VPX_TARGET="--target=x86_64-win64-gcc"
   # d3d11va: FFmpeg 9's Media Foundation encoder (mfenc.c) uses D3D11 types
   # unconditionally, and --disable-autodetect leaves it off.
-  FF_PLATFORM=(--target-os=mingw32 --arch=x86_64 --cross-prefix="$CROSS" --enable-mediafoundation --enable-d3d11va --enable-encoder=h264_mf
+  # The D3D11 decoders: decoding on the GPU's video engine (-hwaccel auto). --disable-everything
+  # turns them off with everything else (2026-10-31).
+  HWACCELS="h264_d3d11va,h264_d3d11va2,hevc_d3d11va,hevc_d3d11va2,vp9_d3d11va,vp9_d3d11va2,mpeg2_d3d11va,mpeg2_d3d11va2,vc1_d3d11va,vc1_d3d11va2,wmv3_d3d11va,wmv3_d3d11va2"
+  FF_PLATFORM=(--target-os=mingw32 --arch=x86_64 --cross-prefix="$CROSS" --enable-mediafoundation --enable-d3d11va --enable-hwaccel="$HWACCELS" --enable-encoder=h264_mf
                --enable-schannel --enable-protocol=tls,rtmps --enable-indev=dshow
                --extra-ldflags=-static)
 fi

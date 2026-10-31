@@ -29,6 +29,10 @@ const DEFAULT_FRAME_W: i32 = 1280;
 const DEFAULT_FRAME_H: i32 = 720;
 const SEND_FPS_N: i32 = 30;     // Frame-rate numerator (30/1 = 30 fps): smooth fades of captured frames
 const SEND_FPS_D: i32 = 1;
+/// A picture that hasn't changed is sent again this often, so receivers keep the source live.
+/// NDI compresses every frame it's given on the CPU: a still verse resent 30 times a second
+/// cost 30 compressions a second for nothing (2026-10-31). Fades and video still go at 30 fps.
+const KEEPALIVE: Duration = Duration::from_millis(200);
 // FourCC for BGRA = ('B','G','R','A') little-endian = 0x41524742
 const FOURCC_BGRA: u32 = 0x4152_4742;
 
@@ -345,6 +349,9 @@ pub fn start(source_name: &str, width: i32, height: i32, shared: Arc<Mutex<NdiHa
             let mut fade: Option<(Vec<u8>, Arc<crate::capture::Frame>, std::time::Instant, Duration)> = None;
 
             let frame_period = Duration::from_millis(1000 / SEND_FPS_N as u64);
+            // Whether `buf` changed since it was last sent, and when that was.
+            let mut changed = true;
+            let mut last_sent: Option<std::time::Instant> = None;
             loop {
                 // Drain pending commands (latest update wins; stop terminates).
                 let mut should_stop = false;
@@ -385,11 +392,13 @@ pub fn start(source_name: &str, width: i32, height: i32, shared: Arc<Mutex<NdiHa
                                 fade = None;
                             }
                             captured = true;
+                            changed = true;
                         }
                     }
                 }
                 if should_stop { break; }
                 if let Some((from, to, started, dur)) = &fade {
+                    changed = true;
                     let t = started.elapsed().as_secs_f32() / dur.as_secs_f32().max(0.001);
                     if t >= 1.0 {
                         buf.copy_from_slice(&to.bgra);
@@ -399,6 +408,7 @@ pub fn start(source_name: &str, width: i32, height: i32, shared: Arc<Mutex<NdiHa
                     }
                 }
                 if got_update && !captured {
+                    changed = true;
                     render_frame(&mut buf, frame_w, frame_h, &latest_verse, &latest_ref, latest_media.as_ref(), &latest_timer, &mut font_system, &mut swash_cache);
                 }
 
@@ -417,7 +427,11 @@ pub fn start(source_name: &str, width: i32, height: i32, shared: Arc<Mutex<NdiHa
                     p_metadata: std::ptr::null(),
                     timestamp: 0,
                 };
-                (lib.send_video)(sender, &frame);
+                if changed || last_sent.is_none_or(|t| t.elapsed() >= KEEPALIVE) {
+                    (lib.send_video)(sender, &frame);
+                    last_sent = Some(std::time::Instant::now());
+                    changed = false;
+                }
 
                 thread::sleep(frame_period);
             }
