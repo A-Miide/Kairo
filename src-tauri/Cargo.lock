@@ -2686,6 +2686,7 @@ dependencies = [
  "kairo-semantic",
  "kairo-server",
  "ort",
+ "regex",
  "serde_json",
  "sha2",
  "sherpa-onnx",

@@ -311,7 +311,22 @@ pub fn prepare_coreml(app: &Shared, dir: &std::path::Path) -> Result<(), String>
     if engine_state() != "ready" {
         preparing_if_slow(app, load, false);
     }
-    let result = prepare_coreml_now(app, dir);
+    // Before anything loads it (Start waits for this lock): an install, or the first launch after an
+    // update, keeps part of the encoder int8 (coreml_encoder) once the engine has checked, on this
+    // Mac, that it computes what the published one does; Core ML then compiles it once.
+    if let Some(exe) = coreml_worker(app) {
+        crate::coreml_encoder::rewrite_installed(dir, |a, b| crate::coreml_encoder::compare_with_engine(&exe, a, b));
+    }
+    let mut result = prepare_coreml_now(app, dir);
+    // Not loaded with the encoder rewritten (or cut short by a crash): the published one back, and
+    // the rewrite given up here only if that one loads, so it was the reason.
+    if result.is_err() && crate::coreml_encoder::restore(dir) {
+        eprintln!("[Offline] the encoder didn't load as rewritten: back to the published one");
+        result = prepare_coreml_now(app, dir);
+        if result.is_ok() {
+            crate::coreml_encoder::decline(dir);
+        }
+    }
     LOADS.fetch_add(1, Ordering::SeqCst);
     set_engine_state(app, if result.is_ok() { "ready" } else { "failed" }, false);
     result

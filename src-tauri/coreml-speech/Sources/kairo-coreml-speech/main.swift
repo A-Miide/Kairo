@@ -13,6 +13,9 @@
 //          audio dropped to stay live.
 // KAIRO_SPEECH_ACK=1 (offline-transcribe only): {"k":"a"} after each frame, so a recording is
 // transcribed on its own clock.
+//   kairo-coreml-speech --compare <encoder.mlmodelc> <encoder.mlmodelc>: how far apart the two
+//   encoders' outputs are on the same input, "K1 compare <difference>"; exits 0 when within
+//   `compareTolerance` (kairo-server coreml_encoder.rs, before it keeps a rewritten encoder).
 
 import AVFoundation
 import CoreML
@@ -247,6 +250,91 @@ func pinCompiledModel() -> Int {
     return locked
 }
 
+/// The encoder's outputs, rewritten (coreml_encoder.rs) against as published, may differ by this
+/// much (relative to the published one's size) on any chunk. Measured on an 8 GB M1 with macOS 27.2
+/// (2026-10-31), 8 chunks: at most 2.3% for the rewrite Kairo ships (5% with all 193 linears
+/// rewritten); one with its scales left out, 217%. An encoder computing wrong is off by about
+/// 100%, or not a number.
+let compareTolerance = 0.05
+let compareChunks = 8
+
+/// Runs both encoders on the same made-up mel chunks (each carrying its own state from chunk to
+/// chunk, as decoding does) and says how far apart they came out: the largest difference over the
+/// chunks, the distance between the outputs over the size of the first's.
+func compareEncoders(_ a: String, _ b: String, units: MLComputeUnits) -> Int32 {
+    let config = MLModelConfiguration()
+    config.computeUnits = units
+    func array(_ shape: [Int], _ type: MLMultiArrayDataType, _ fill: (Int) -> Double) throws -> MLMultiArray {
+        let m = try MLMultiArray(shape: shape.map { NSNumber(value: $0) }, dataType: type)
+        for i in 0..<m.count { m[i] = NSNumber(value: fill(i)) }
+        return m
+    }
+    // The same numbers every time and on every Mac: a linear congruential generator, made normal.
+    var seed: UInt64 = 20261031
+    func uniform() -> Double {
+        seed = seed &* 6364136223846793005 &+ 1442695040888963407
+        return (Double(seed >> 11) + 0.5) / Double(1 << 53)
+    }
+    func normal() -> Double { sqrt(-2 * log(uniform())) * cos(2 * Double.pi * uniform()) }
+    do {
+        let models = try [a, b].map { try MLModel(contentsOf: URL(fileURLWithPath: $0), configuration: config) }
+        var states = try models.map { _ in
+            [
+                "cache_channel": try array([1, 24, 70, 1024], .float32) { _ in 0 },
+                "cache_len": try array([1], .int32) { _ in 0 },
+                "cache_time": try array([1, 24, 1024, 8], .float32) { _ in 0 },
+            ]
+        }
+        var worst = 0.0
+        for _ in 0..<compareChunks {
+            let mel = try array([1, 128, 65], .float32) { _ in 2 * normal() }
+            let length = try array([1], .int32) { _ in 65 }
+            var encoded: [MLMultiArray] = []
+            for (i, model) in models.enumerated() {
+                var inputs = states[i]
+                inputs["mel"] = mel
+                inputs["mel_length"] = length
+                let out = try model.prediction(from: MLDictionaryFeatureProvider(dictionary: inputs))
+                guard let e = out.featureValue(for: "encoded")?.multiArrayValue,
+                      let channel = out.featureValue(for: "cache_channel_out")?.multiArrayValue,
+                      let len = out.featureValue(for: "cache_len_out")?.multiArrayValue,
+                      let time = out.featureValue(for: "cache_time_out")?.multiArrayValue
+                else { throw CocoaError(.featureUnsupported) }
+                encoded.append(e)
+                states[i] = ["cache_channel": channel, "cache_len": len, "cache_time": time]
+            }
+            var (diff, size) = (0.0, 0.0)
+            for j in 0..<encoded[0].count {
+                let (x, y) = (encoded[0][j].doubleValue, encoded[1][j].doubleValue)
+                diff += (x - y) * (x - y)
+                size += x * x
+            }
+            // Not a number (NaN) fails too: NaN is never within the tolerance.
+            let d = size > 0 ? sqrt(diff / size) : .infinity
+            worst = d.isNaN || d > worst ? d : worst
+        }
+        say("compare \(worst)")
+        return worst <= compareTolerance ? 0 : 1
+    } catch {
+        FileHandle.standardError.write("[Offline] \(error.localizedDescription)\n".data(using: .utf8)!)
+        return 2
+    }
+}
+
+/// The CPU, unless KAIRO_COMPUTE_UNITS says otherwise ("ane": the Neural Engine, "gpu",
+/// "all"). On an 8 GB M1 with macOS 27.2 (2026-10-30), 60 s of sermon took 12–15 s on the CPU
+/// (16 s of CPU work, 1.3 GB at most), and 40–48 s on the Neural Engine (30 s of CPU work,
+/// 2.2 GB), which also needs macOS to spend 6 minutes or more preparing the model after every
+/// macOS or Kairo update; the same words either way. Live it fell behind and dropped audio.
+func computeUnits() -> MLComputeUnits {
+    switch ProcessInfo.processInfo.environment["KAIRO_COMPUTE_UNITS"] {
+    case "ane": return .cpuAndNeuralEngine
+    case "gpu": return .cpuAndGPU
+    case "all": return .all
+    default: return .cpuOnly
+    }
+}
+
 func run() async -> Int32 {
     let args = CommandLine.arguments
     guard args.count >= 2 else {
@@ -264,17 +352,9 @@ func run() async -> Int32 {
             if getppid() != parent { exit(0) }
         }
     }
-    // The CPU, unless KAIRO_COMPUTE_UNITS says otherwise ("ane": the Neural Engine, "gpu",
-    // "all"). On an 8 GB M1 with macOS 27.2 (2026-10-30), 60 s of sermon took 12–15 s on the CPU
-    // (16 s of CPU work, 1.3 GB at most), and 40–48 s on the Neural Engine (30 s of CPU work,
-    // 2.2 GB), which also needs macOS to spend 6 minutes or more preparing the model after every
-    // macOS or Kairo update; the same words either way. Live it fell behind and dropped audio.
-    let units: MLComputeUnits
-    switch ProcessInfo.processInfo.environment["KAIRO_COMPUTE_UNITS"] {
-    case "ane": units = .cpuAndNeuralEngine
-    case "gpu": units = .cpuAndGPU
-    case "all": units = .all
-    default: units = .cpuOnly
+    let units = computeUnits()
+    if args[1] == "--compare", args.count >= 4 {
+        return compareEncoders(args[2], args[3], units: units)
     }
     let engine = StreamingNemotronAsrManager(configuration: MLModelConfigurationUtils.defaultConfiguration(computeUnits: units))
     do {
