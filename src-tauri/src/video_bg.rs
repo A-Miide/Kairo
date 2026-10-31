@@ -365,6 +365,7 @@ mod tests {
     /// it, and prints the frames delivered and the CPU this process used. Run once with and once
     /// without KAIRO_GPU_COMPOSITOR=1:
     ///   cargo test --release -p kairo --lib video_bg::tests::plays -- --ignored --nocapture
+    #[cfg(unix)]
     #[test]
     #[ignore]
     fn plays() {
@@ -406,12 +407,14 @@ mod tests {
         assert_eq!(*sample.lock().unwrap(), vec![255, 255, 255, 255], "the page is over the video");
     }
 
+    #[cfg(unix)]
     #[repr(C)]
     struct Rusage {
         utime: (i64, i64),
         stime: (i64, i64),
         rest: [i64; 14],
     }
+    #[cfg(unix)]
     extern "C" {
         fn getrusage(who: i32, usage: *mut Rusage) -> i32;
     }
