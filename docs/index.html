@@ -511,6 +511,25 @@
       .req-row:nth-child(odd) { border-right: none; }
       .req-row:nth-last-child(2) { border-bottom: 1px solid var(--border); }
     }
+    /* ── Spotlights ── */
+    .spot { max-width: 1200px; margin: 0 auto 112px; padding: 0 24px; display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); gap: 56px; align-items: center; }
+    .spot.flip { grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); }
+    .spot.flip .spot-text { order: 2; }
+    .spot h2 { font-size: clamp(28px, 4vw, 44px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.1; margin-bottom: 16px; }
+    .spot-text > p { font-size: 17px; color: #b4b4ba; line-height: 1.6; margin-bottom: 22px; }
+    .spot ul { list-style: none; display: flex; flex-direction: column; gap: 10px; }
+    .spot li { font-size: 15px; color: #ddd; padding-left: 26px; position: relative; }
+    .spot li::before { content: ""; position: absolute; left: 0; top: 0.45em; width: 14px; height: 8px; border-left: 2px solid var(--red); border-bottom: 2px solid var(--red); transform: rotate(-45deg); }
+    .spot-shot { position: relative; }
+    .spot-shot img { width: 100%; display: block; border-radius: 16px; border: 1px solid var(--border); box-shadow: 0 30px 80px rgba(0,0,0,0.55); }
+    .spot-shot .spot-inset { position: absolute; width: 46%; right: -18px; bottom: -36px; border-radius: 12px; }
+    #director-shot:empty { display: none; }
+    #director-shot:empty ~ * , .spot.flip:has(#director-shot:empty) { grid-template-columns: 1fr; }
+    @media (max-width: 900px) {
+      .spot, .spot.flip { grid-template-columns: 1fr; gap: 28px; }
+      .spot.flip .spot-text { order: 0; }
+      .spot-shot .spot-inset { position: static; width: 70%; margin: -40px 0 0 auto; }
+    }
   </style>
 </head>
 <body>
@@ -692,34 +711,6 @@
       </div>
 
       <div class="bc span2">
-        <h3>Every screen, its own look</h3>
-        <p>Projector, livestream and lobby each get their own theme, from one place. Screens, NDI, Syphon and DeckLink.</p>
-        <div class="viz viz-outputs">
-          <div class="vz-out red"><span class="vz-tag">Projector</span><em>The LORD is my shepherd; I shall not want.</em><small>PSALM 23:1</small></div>
-          <div class="vz-out stream"><span class="vz-tag">Livestream</span><div class="l3"><em>The LORD is my shepherd; I shall not want.</em><small>PSALM 23:1</small></div></div>
-          <div class="vz-out cream"><span class="vz-tag">Lobby</span><em>The LORD is my shepherd; I shall not want.</em><small>PSALM 23:1</small></div>
-        </div>
-      </div>
-
-      <div class="bc">
-        <h3>Learns your preacher</h3>
-        <p>Correct it once and KAIRO remembers how your preacher says a book, which verses your church returns to, and what you took down.</p>
-        <div class="viz viz-learn">
-          <div class="vz-heard">Heard <q>Zom one ten, verse one</q></div>
-          <div class="vz-arrow">&darr; you put up Psalm 110</div>
-          <div class="vz-heard ok">Next time <q>Zom one twenty one</q> &rarr; <b>Psalm 121:1</b></div>
-        </div>
-      </div>
-
-      <div class="bc">
-        <h3>Your church&rsquo;s Bibles</h3>
-        <p>The KJV and Berean Standard Bible built in, the NIV, NLT and more free through API.Bible, or a Bible file you already have.</p>
-        <div class="viz viz-bibles">
-          <span class="on">KJV</span><span>BSB</span><span>NIV</span><span>NLT</span><span>The Message</span><span>Espa&ntilde;ol</span><span>Fran&ccedil;ais</span><span>Yor&ugrave;b&aacute;</span><span>Kiswahili</span>
-        </div>
-      </div>
-
-      <div class="bc">
         <h3>Sermon notes, written for you</h3>
         <p>After the service: the main passage, each point with the scriptures behind it, and the prayer points, as a PDF.</p>
         <div class="viz viz-notes">
@@ -734,19 +725,60 @@
         </div>
       </div>
 
+      <div class="bc">
+        <h3>Learns your preacher</h3>
+        <p>Correct it once and KAIRO remembers how your preacher says a book, which verses your church returns to, and what you took down.</p>
+        <div class="viz viz-learn">
+          <div class="vz-heard">Heard <q>Zom one ten, verse one</q></div>
+          <div class="vz-arrow">&darr; you put up Psalm 110</div>
+          <div class="vz-heard ok">Next time <q>Zom one twenty one</q> &rarr; <b>Psalm 121:1</b></div>
+        </div>
+      </div>
+
+      <div class="bc span2">
+        <h3>Your church&rsquo;s Bibles</h3>
+        <p>The KJV and Berean Standard Bible built in, the NIV, NLT and more free through API.Bible, or a Bible file you already have.</p>
+        <div class="viz viz-bibles">
+          <span class="on">KJV</span><span>BSB</span><span>NIV</span><span>NLT</span><span>The Message</span><span>Espa&ntilde;ol</span><span>Fran&ccedil;ais</span><span>Yor&ugrave;b&aacute;</span><span>Kiswahili</span>
+        </div>
+      </div>
+
     </div>
 
-    <p class="bento-more">Also in KAIRO: slides, songs, timers and media &middot; Theme Studio &middot; Director mode with cameras &middot; streaming and recording &middot; NDI, Syphon and DeckLink outputs for OBS, ProPresenter and vMix</p>
+    <p class="bento-more">Also in KAIRO: slides, songs, timers and media &middot; Theme Studio &middot; sermon notes &middot; works with OBS, ProPresenter, vMix and Resolume</p>
   </section>
 
-  <!-- ── Present: the real app ── -->
-  <section class="present" id="present">
-    <div class="section-label">See it</div>
-    <h2>Built for the booth</h2>
-    <div class="shots">
-      <figure><img src="tour-monitor.jpg" alt="KAIRO's monitor showing the verse on every output" loading="lazy"><figcaption><b>Watch every screen at once.</b> What&rsquo;s live, what&rsquo;s next, and Previous / Next one click away.</figcaption></figure>
-      <figure><img src="tour-outputs.jpg" alt="KAIRO's output settings with a theme for each screen" loading="lazy"><figcaption><b>A theme for each screen.</b> A saved screen waits for you and comes back when it&rsquo;s plugged in again.</figcaption></figure>
+  <!-- ── Spotlight: outputs ── -->
+  <section class="spot" id="outputs">
+    <div class="spot-text">
+      <div class="section-label">Outputs</div>
+      <h2>Every screen gets its own look</h2>
+      <p>The projector, the livestream, the lobby TV and the stage monitor each get their own theme, from one verse going up once.</p>
+      <ul>
+        <li>Screens, NDI, Syphon or Spout, and Blackmagic DeckLink</li>
+        <li>A monitor of every output: what&rsquo;s live, what&rsquo;s next</li>
+        <li>A screen you saved comes back when it&rsquo;s plugged in again</li>
+      </ul>
     </div>
+    <div class="spot-shot">
+      <img src="tour-monitor.jpg" alt="KAIRO's monitor showing the same verse on four outputs, each in its own theme" loading="lazy">
+      <img class="spot-inset" src="tour-outputs.jpg" alt="Choosing a theme for an output in KAIRO" loading="lazy">
+    </div>
+  </section>
+
+  <!-- ── Spotlight: Director mode (its shot: director.jpg, from the real app with cameras) ── -->
+  <section class="spot flip" id="director">
+    <div class="spot-text">
+      <div class="section-label">Director mode</div>
+      <h2>Cameras and scripture, one switcher</h2>
+      <p>Turn on Director mode and KAIRO becomes a switcher for your cameras, with the verse placed beside the preacher.</p>
+      <ul>
+        <li>Preview and Program, with Space to send</li>
+        <li>Layouts that frame the verse beside the camera, one key each</li>
+        <li>Stream and record what the output shows, straight from KAIRO</li>
+      </ul>
+    </div>
+    <div class="spot-shot" id="director-shot"></div>
   </section>
 
   <!-- ── Requirements ── -->
