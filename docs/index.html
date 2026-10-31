@@ -523,6 +523,13 @@
     .spot-shot { position: relative; }
     .spot-shot img { width: 100%; display: block; border-radius: 16px; border: 1px solid var(--border); box-shadow: 0 30px 80px rgba(0,0,0,0.55); }
     .spot-shot .spot-inset { position: absolute; width: 46%; right: -18px; bottom: -36px; border-radius: 12px; }
+    /* A wide shot (Director mode's whole screen): the text above it, the shot across the page. */
+    .spot.wide { grid-template-columns: 1fr; gap: 32px; }
+    .spot.wide .spot-text { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 56px; align-items: end; }
+    .spot.wide .spot-text .section-label, .spot.wide .spot-text h2 { grid-column: 1; }
+    .spot.wide .spot-text > p { grid-column: 1; }
+    .spot.wide .spot-text ul { grid-column: 2; grid-row: 2 / span 2; align-self: end; margin-bottom: 22px; }
+    @media (max-width: 900px) { .spot.wide .spot-text { display: block; } .spot.wide .spot-text ul { margin-bottom: 0; } }
     #director-shot:empty { display: none; }
     #director-shot:empty ~ * , .spot.flip:has(#director-shot:empty) { grid-template-columns: 1fr; }
     @media (max-width: 900px) {
@@ -752,7 +759,7 @@
   </section>
 
   <!-- ── Spotlight: Director mode (its shot: director.jpg, from the real app with cameras) ── -->
-  <section class="spot flip" id="director">
+  <section class="spot wide" id="director">
     <div class="spot-text">
       <div class="section-label">Director mode</div>
       <h2>Cameras and scripture, one switcher</h2>
@@ -763,7 +770,7 @@
         <li>Stream and record what the output shows, straight from KAIRO</li>
       </ul>
     </div>
-    <div class="spot-shot" id="director-shot"></div>
+    <div class="spot-shot" id="director-shot"><img src="director.jpg" alt="KAIRO in Director mode: inputs, Preview and Output, and the verse queue" loading="lazy"></div>
   </section>
 
   <!-- ── Requirements ── -->
