@@ -6725,11 +6725,12 @@
   // ProPresenter source files arrive already segmented into slides by
   // whoever built them there — re-chunking by line count would undo that
   // work, so these default the delimiter to "keep as-is" (0) instead of the
-  // plain-text default. Freeform text/.docx/.pptx has no such boundaries to
-  // preserve, so it keeps defaulting to DEFAULT_LINES_PER_SLIDE.
+  // plain-text default. A PowerPoint deck arrives the same way, a slide per slide
+  // (a deck imported as 2-line slides lost its own). Freeform text/.docx has no such
+  // boundaries to preserve, so it keeps defaulting to DEFAULT_LINES_PER_SLIDE.
   function beginImportResult(d, fallbackTitle, opts = {}) {
     const destination = opts.destination || 'playlist';
-    const keepAsIs = /^pro/.test(d.format || '');
+    const keepAsIs = /^(pro|pptx$)/.test(d.format || '');
     if (d.items && d.items.length) {
       const [first, ...rest] = d.items;
       pendingExtraBlockItems = rest;
