@@ -209,10 +209,14 @@
         const fm = fontMetrics(leadFont);
         const natural = (fm.asc + fm.desc) * leadSize;
         const mult = p.lineMult || pr.lineMult || 1;
-        let lineH = p.lineExact ? p.lineExact * textScale * fit : natural * mult * PP_LINE_FACTOR;
+        // An "exact" height far under the type's size was a minimum: RTF's \sl20 means "at least 1 pt",
+        // and earlier imports stored it as exact, which stacked every line of a slide on one another.
+        const exact = p.lineExact && p.lineExact >= 0.3 * (lead.size || base.size || 36) ? p.lineExact : 0;
+        let lineH = exact ? exact * textScale * fit : natural * mult * PP_LINE_FACTOR;
+        if (p.lineMin) lineH = Math.max(lineH, p.lineMin * textScale * fit);
         if (pr.maxLine > 0) lineH = Math.min(lineH, pr.maxLine * textScale * fit);
         if (pr.minLine > 0) lineH = Math.max(lineH, pr.minLine * textScale * fit);
-        if (!p.lineExact && pr.lineSpacing) lineH += pr.lineSpacing * textScale * fit;
+        if (!exact && pr.lineSpacing) lineH += pr.lineSpacing * textScale * fit;
         const before = (p.before != null ? p.before : (pi > 0 ? pr.before : 0)) || 0;
         const after = (p.after != null ? p.after : pr.after) || 0;
         const indent = (p.indent != null ? p.indent : pr.indent) || 0;

@@ -270,8 +270,13 @@ impl Rtf {
         let p = &self.para;
         let mut v = json!({ "align": if p.align.is_empty() { "natural" } else { p.align }, "runs": std::mem::take(&mut self.runs) });
         let o = v.as_object_mut().unwrap();
+        // RTF's \sl: with \slmult1 a multiple of a line (in 240ths); otherwise twips, and positive
+        // means "at least" (Cocoa writes \sl20 for a one point minimum on every paragraph, which is
+        // no height at all), negative "exactly".
         if p.sl != 0 {
-            if p.slmult { o.insert("lineMult".into(), json!(p.sl as f64 / 240.0)); } else { o.insert("lineExact".into(), json!(p.sl as f64 / 20.0)); }
+            if p.slmult { o.insert("lineMult".into(), json!(p.sl as f64 / 240.0)); }
+            else if p.sl < 0 { o.insert("lineExact".into(), json!(-p.sl as f64 / 20.0)); }
+            else { o.insert("lineMin".into(), json!(p.sl as f64 / 20.0)); }
         }
         if p.sb != 0 { o.insert("before".into(), json!(p.sb as f64 / 20.0)); }
         if p.sa != 0 { o.insert("after".into(), json!(p.sa as f64 / 20.0)); }
@@ -868,6 +873,24 @@ second line}";
         assert_eq!(paras[0]["runs"][1]["t"], "God");
         assert_eq!(paras[0]["runs"][1]["b"], true);
         assert_eq!(plain_text(&p), "Glory to God– it’s\nsecond line"); // the space after \b0 is its delimiter
+    }
+
+    #[test]
+    fn rtf_line_spacing_is_a_minimum_unless_negative() {
+        let para = |sl: &str| {
+            let p = parse_rtf(&format!("{{\\rtf1\\ansi{{\\fonttbl\\f0 Arial;}}\\pard{sl}\\f0\\fs40 Hello}}"));
+            p.as_array().unwrap()[0].clone()
+        };
+        // Cocoa's one point minimum (a Psalm 47 slide from ProPresenter 21): not an exact height.
+        let p = para("\\sl20");
+        assert!(p.get("lineExact").is_none() && p["lineMin"] == 1.0, "{p}");
+        // Negative is exact, positive with \slmult1 a multiple.
+        let p = para("\\sl-480");
+        assert!(p["lineExact"] == 24.0 && p.get("lineMin").is_none(), "{p}");
+        let p = para("\\sl192\\slmult1");
+        assert!((p["lineMult"].as_f64().unwrap() - 0.8).abs() < 1e-9 && p.get("lineExact").is_none(), "{p}");
+        let p = para("");
+        assert!(p.get("lineExact").is_none() && p.get("lineMin").is_none() && p.get("lineMult").is_none(), "{p}");
     }
 
     #[test]
