@@ -440,10 +440,24 @@ fn decode_entities(s: &str) -> String {
     s.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&#39;", "'").replace("&apos;", "'")
 }
 
+/// A paragraph's text runs, its line breaks and tabs, in order. A run written empty (`<w:t/>`)
+/// holds nothing: it mustn't swallow the markup up to the next one's end.
+fn docx_paragraph_text(body: &str) -> String {
+    static PIECE: LazyLock<Regex> = LazyLock::new(|| re(r"(?s)<w:t\b[^>]*?(?:/>|>(.*?)</w:t>)|<w:br\b[^>]*/>|<w:cr\b[^>]*/>|<w:tab\b[^>]*/>"));
+    let mut text = String::new();
+    for piece in PIECE.captures_iter(body) {
+        match piece.get(1) {
+            Some(t) => text.push_str(&decode_entities(t.as_str())),
+            None if piece[0].starts_with("<w:tab") => text.push(' '),
+            None if piece[0].starts_with("<w:t") => {}
+            None => text.push('\n'),
+        }
+    }
+    text
+}
+
 fn from_docx(buf: &[u8]) -> Result<Vec<Value>, ImportError> {
-    // A paragraph's text runs, its line breaks and tabs, in order; its style.
     static P: LazyLock<Regex> = LazyLock::new(|| re(r"(?s)<w:p\b[^>]*?(?:/>|>(.*?)</w:p>)"));
-    static PIECE: LazyLock<Regex> = LazyLock::new(|| re(r"(?s)<w:t\b[^>]*>(.*?)</w:t>|<w:br\b[^>]*/>|<w:cr\b[^>]*/>|<w:tab\b[^>]*/>"));
     static STYLE: LazyLock<Regex> = LazyLock::new(|| re(r#"<w:pStyle\b[^>]*w:val="([^"]+)""#));
     let files = unzip(buf, |n| n == "word/document.xml")?;
     let xml = files.first().map(|f| String::from_utf8_lossy(&f.1).into_owned()).ok_or_else(|| err("no document.xml — is this really a .docx?"))?;
@@ -451,14 +465,7 @@ fn from_docx(buf: &[u8]) -> Result<Vec<Value>, ImportError> {
         .captures_iter(&xml)
         .map(|m| {
             let body = m.get(1).map_or("", |b| b.as_str());
-            let mut text = String::new();
-            for piece in PIECE.captures_iter(body) {
-                match piece.get(1) {
-                    Some(t) => text.push_str(&decode_entities(t.as_str())),
-                    None if piece[0].starts_with("<w:tab") => text.push(' '),
-                    None => text.push('\n'),
-                }
-            }
+            let text = docx_paragraph_text(body);
             let style = STYLE.captures(body).map(|s| s[1].to_lowercase()).unwrap_or_default();
             Para { lines: text.split('\n').map(|l| l.trim().to_string()).collect(), heading: style.starts_with("heading") || style == "title" }
         })
@@ -466,29 +473,83 @@ fn from_docx(buf: &[u8]) -> Result<Vec<Value>, ImportError> {
     Ok(blocks_from(&paras))
 }
 
-fn from_pptx(buf: &[u8]) -> Result<Vec<Value>, ImportError> {
+/// A slide's text, a line for each paragraph and each line break inside one (Shift-Enter in
+/// PowerPoint, how a scripture or a song's lines are usually typed). A slide number's field is
+/// not text of the slide; a run written empty (`<a:t/>`) holds nothing, and must not swallow the
+/// markup up to the next one's end.
+fn pptx_slide_lines(xml: &str) -> Vec<String> {
+    static P: LazyLock<Regex> = LazyLock::new(|| re(r"(?s)<a:p\b[^>]*?(?:/>|>(.*?)</a:p>)"));
+    static PIECE: LazyLock<Regex> = LazyLock::new(|| re(r"(?s)<a:t\b[^>]*?(?:/>|>(.*?)</a:t>)|<a:br\b[^>]*?(?:/>|>.*?</a:br>)"));
+    static SLIDE_NUMBER: LazyLock<Regex> = LazyLock::new(|| re(r#"(?s)<a:fld\b[^>]*\btype="slidenum"[^>]*>.*?</a:fld>"#));
+    let xml = SLIDE_NUMBER.replace_all(xml, "");
+    let mut lines = Vec::new();
+    for p in P.captures_iter(&xml) {
+        let mut line = String::new();
+        for piece in PIECE.captures_iter(p.get(1).map_or("", |m| m.as_str())) {
+            match piece.get(1) {
+                Some(text) => line.push_str(&decode_entities(text.as_str())),
+                None if piece[0].starts_with("<a:br") => lines.push(std::mem::take(&mut line)),
+                None => {}
+            }
+        }
+        lines.push(line);
+    }
+    lines.into_iter().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect()
+}
+
+/// The slides' parts in the order of the deck: presentation.xml's list of slides, each by the
+/// part its relationship names (the numbers in the parts' names don't follow a reordered deck).
+fn pptx_slide_order(presentation: &str, rels: &str) -> Vec<String> {
+    static SLD_ID: LazyLock<Regex> = LazyLock::new(|| re(r#"<p:sldId\b[^>]*\br:id="([^"]+)""#));
+    static REL: LazyLock<Regex> = LazyLock::new(|| re(r"<Relationship\b[^>]*>"));
+    static REL_ID: LazyLock<Regex> = LazyLock::new(|| re(r#"\bId="([^"]+)""#));
+    static REL_TARGET: LazyLock<Regex> = LazyLock::new(|| re(r#"\bTarget="([^"]+)""#));
+    let part = |target: &str| match target.strip_prefix('/') {
+        Some(absolute) => absolute.to_string(),
+        None => format!("ppt/{}", target.trim_start_matches("./")),
+    };
+    let targets: HashMap<String, String> = REL
+        .find_iter(rels)
+        .filter_map(|r| Some((REL_ID.captures(r.as_str())?[1].to_string(), part(&REL_TARGET.captures(r.as_str())?[1]))))
+        .collect();
+    SLD_ID.captures_iter(presentation).filter_map(|c| targets.get(&c[1]).cloned()).collect()
+}
+
+/// The slides' text, in the deck's order, without the hidden ones (PowerPoint skips them when it
+/// presents): with a note saying how many were left out.
+fn from_pptx(buf: &[u8]) -> Result<(Vec<Value>, Option<String>), ImportError> {
     static SLIDE: LazyLock<Regex> = LazyLock::new(|| re(r"^ppt/slides/slide(\d+)\.xml$"));
-    static P: LazyLock<Regex> = LazyLock::new(|| re(r"(?s)<a:p\b[^>]*>(.*?)</a:p>"));
-    static T: LazyLock<Regex> = LazyLock::new(|| re(r"(?s)<a:t\b[^>]*>(.*?)</a:t>"));
-    let mut files = unzip(buf, |n| SLIDE.is_match(n))?;
-    if files.is_empty() {
+    static HIDDEN: LazyLock<Regex> = LazyLock::new(|| re(r#"<p:sld\b[^>]*\bshow="(?:0|false)""#));
+    let files = unzip(buf, |n| SLIDE.is_match(n) || n == "ppt/presentation.xml" || n == "ppt/_rels/presentation.xml.rels")?;
+    let text = |name: &str| files.iter().find(|f| f.0 == name).map(|f| String::from_utf8_lossy(&f.1).into_owned());
+    let mut slides: Vec<&(String, Vec<u8>)> = files.iter().filter(|f| SLIDE.is_match(&f.0)).collect();
+    if slides.is_empty() {
         return Err(err("no slides found — is this really a .pptx?"));
     }
-    let n = |s: &str| SLIDE.captures(s).and_then(|c| c[1].parse::<u32>().ok()).unwrap_or(0);
-    files.sort_by_key(|f| n(&f.0));
-    let mut out = Vec::new();
-    for (i, (_, data)) in files.iter().enumerate() {
+    let number = |s: &str| SLIDE.captures(s).and_then(|c| c[1].parse::<u32>().ok()).unwrap_or(0);
+    slides.sort_by_key(|f| number(&f.0));
+    // The deck's own order, when it can be read; slides it doesn't list aren't in the deck.
+    if let (Some(presentation), Some(rels)) = (text("ppt/presentation.xml"), text("ppt/_rels/presentation.xml.rels")) {
+        let order = pptx_slide_order(&presentation, &rels);
+        let listed: Vec<&(String, Vec<u8>)> = order.iter().filter_map(|name| slides.iter().copied().find(|f| &f.0 == name)).collect();
+        if !listed.is_empty() {
+            slides = listed;
+        }
+    }
+    let (mut out, mut hidden) = (Vec::new(), 0);
+    for (i, (_, data)) in slides.iter().enumerate() {
         let xml = String::from_utf8_lossy(data);
-        let lines: Vec<String> = P
-            .captures_iter(&xml)
-            .map(|p| T.captures_iter(&p[1]).map(|t| decode_entities(&t[1])).collect::<String>().trim().to_string())
-            .filter(|l| !l.is_empty())
-            .collect();
+        if HIDDEN.is_match(&xml) {
+            hidden += 1;
+            continue;
+        }
+        let lines = pptx_slide_lines(&xml);
         if !lines.is_empty() {
             out.push(labelled(lines, i + 1));
         }
     }
-    Ok(out)
+    let note = (hidden > 0).then(|| format!("{hidden} hidden slide{} left out.", if hidden == 1 { "" } else { "s" }));
+    Ok((out, note))
 }
 
 // ── ProPresenter ────────────────────────────────────────────────────────────
@@ -783,7 +844,10 @@ pub fn import_slides(filename: &str, buf: &[u8], assets: &pp::Assets) -> Result<
     match ext.as_str() {
         "txt" | "md" | "json" => blocks("text", from_text(&String::from_utf8_lossy(buf))),
         "docx" => blocks("docx", from_docx(buf)?),
-        "pptx" => blocks("pptx", from_pptx(buf)?),
+        "pptx" => {
+            let (b, note) = from_pptx(buf)?;
+            Ok(Imported::Blocks { format: "pptx", blocks: b, note, warnings: Vec::new() })
+        }
         "pro6" | "pro" | "pro7" => {
             let b = presentation(buf, &pp::Archive::empty(), assets, &mut warnings)?;
             Ok(Imported::Blocks { format: if looks_like_pro6_xml(buf) { "pro6" } else { "pro7" }, blocks: b, note: None, warnings })
@@ -976,6 +1040,44 @@ pub fn from_pro_theme(buf: &[u8], assets: &pp::Assets) -> Result<(Vec<Value>, Ve
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn pptx_slide_text() {
+        let p = |runs: &str| format!("<a:p><a:pPr/>{runs}</a:p>");
+        let r = |text: &str| format!("<a:r><a:rPr lang=\"en-US\"/><a:t>{text}</a:t></a:r>");
+        // A line break inside a paragraph (bare, or with its own properties) is a line of its own.
+        let xml = p(&format!("{}<a:br/>{}<a:br><a:rPr lang=\"en-US\"/></a:br>{}", r("O clap your hands,"), r("all ye people;"), r("shout unto God")));
+        assert_eq!(pptx_slide_lines(&xml), ["O clap your hands,", "all ye people;", "shout unto God"]);
+        // An empty run written <a:t/> holds nothing: it doesn't swallow the markup after it.
+        let xml = p(&format!("<a:r><a:t/></a:r>{}", r("Sunday Service")));
+        assert_eq!(pptx_slide_lines(&xml), ["Sunday Service"]);
+        // The slide number isn't the slide's text; a date or another field is kept.
+        let xml = format!("{}{}", p(&r("Closing")), p("<a:fld id=\"{1}\" type=\"slidenum\"><a:rPr/><a:t>6</a:t></a:fld>"));
+        assert_eq!(pptx_slide_lines(&xml), ["Closing"]);
+        let xml = p("<a:fld id=\"{2}\" type=\"datetime1\"><a:rPr/><a:t>11/1/2026</a:t></a:fld>");
+        assert_eq!(pptx_slide_lines(&xml), ["11/1/2026"]);
+        // Empty paragraphs, self-closed ones too, and entities.
+        let xml = format!("<a:p/>{}{}", p(""), p(&r("Offering &amp; tithes &lt;5&gt;")));
+        assert_eq!(pptx_slide_lines(&xml), ["Offering & tithes <5>"]);
+    }
+
+    #[test]
+    fn docx_paragraph_text_skips_an_empty_run() {
+        let body = r#"<w:r><w:t>Psalm 47</w:t></w:r><w:r><w:br/></w:r><w:r><w:t/></w:r><w:r><w:tab/><w:t xml:space="preserve">King James</w:t></w:r>"#;
+        assert_eq!(docx_paragraph_text(body), "Psalm 47\n King James");
+    }
+
+    #[test]
+    fn pptx_slides_in_the_decks_order() {
+        let presentation = r#"<p:sldIdLst><p:sldId id="256" r:id="rId2"/><p:sldId r:id="rId7" id="260"/><p:sldId id="257" r:id="rId3"/></p:sldIdLst>"#;
+        let rels = r#"<Relationships>
+            <Relationship Id="rId1" Type="x/slideMaster" Target="slideMasters/slideMaster1.xml"/>
+            <Relationship Id="rId2" Type="x/slide" Target="slides/slide1.xml"/>
+            <Relationship Target="slides/slide2.xml" Type="x/slide" Id="rId3"/>
+            <Relationship Id="rId7" Type="x/slide" Target="/ppt/slides/slide6.xml"/></Relationships>"#;
+        assert_eq!(pptx_slide_order(presentation, rels), ["ppt/slides/slide1.xml", "ppt/slides/slide6.xml", "ppt/slides/slide2.xml"]);
+        assert!(pptx_slide_order("<p:presentation/>", rels).is_empty());
+    }
+
     use super::*;
 
     #[test]
