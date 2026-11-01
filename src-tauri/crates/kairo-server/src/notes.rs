@@ -89,6 +89,8 @@ pub enum Kind {
     Point,
     Topic,
     Whole,
+    /// A stretch of the sermon, cut where its scripture or numbered points change (see `segments`).
+    Part,
 }
 
 #[derive(Clone, Debug)]
@@ -98,6 +100,8 @@ pub struct Section {
     pub at: u64,
     pub quotes: Vec<Quote>,
     pub scriptures: Vec<Passage>,
+    /// What the preacher said here, in the writer's words (empty in an outline).
+    pub bullets: Vec<String>,
 }
 
 pub struct Notes {
@@ -110,6 +114,10 @@ pub struct Notes {
     pub themes: Vec<String>,
     pub people: Vec<String>,
     pub passage_count: usize,
+    /// One sentence on the whole sermon (written notes only).
+    pub summary: String,
+    /// The sections were put into words by the writer, not outlined.
+    pub written: bool,
 }
 
 // ── Speech into units ───────────────────────────────────────────────────────
@@ -930,7 +938,7 @@ pub fn build(k: &Knowledge, session: &Session, meaning: Option<&dyn Meaning>) ->
     let main = main_text(k, session, &passages);
     let verse_texts: Vec<String> = session.shown.iter().map(|s| k.corpus.kjv().text(s.verse).unwrap_or("").to_string()).collect();
 
-    let points: Vec<Section> = detect_points(&units).into_iter().map(|p| Section { kind: Kind::Point, heading: clip(&tidy(&p.text), 30), at: p.at, quotes: Vec::new(), scriptures: Vec::new() }).collect();
+    let points: Vec<Section> = detect_points(&units).into_iter().map(|p| Section { kind: Kind::Point, heading: clip(&tidy(&p.text), 30), at: p.at, quotes: Vec::new(), scriptures: Vec::new(), bullets: Vec::new() }).collect();
     let prayer_points = detect_prayer_points(&units, 12);
     let prayers: Vec<String> = prayer_points.iter().map(|p| norm(&p.text)).collect();
     let headings = word_sets(&points.iter().map(|p| p.heading.clone()).collect::<Vec<_>>());
@@ -941,9 +949,9 @@ pub fn build(k: &Knowledge, session: &Session, meaning: Option<&dyn Meaning>) ->
         .collect();
 
     let mut sections: Vec<Section> = if points.is_empty() {
-        vec![Section { kind: Kind::Whole, heading: String::new(), at: 0, quotes: Vec::new(), scriptures: Vec::new() }]
+        vec![Section { kind: Kind::Whole, heading: String::new(), at: 0, quotes: Vec::new(), scriptures: Vec::new(), bullets: Vec::new() }]
     } else {
-        std::iter::once(Section { kind: Kind::Opening, heading: "Opening".into(), at: 0, quotes: Vec::new(), scriptures: Vec::new() }).chain(points).collect()
+        std::iter::once(Section { kind: Kind::Opening, heading: "Opening".into(), at: 0, quotes: Vec::new(), scriptures: Vec::new(), bullets: Vec::new() }).chain(points).collect()
     };
 
     // Meaning: each part's lines are the quotable sentences nearest what the
@@ -1017,7 +1025,7 @@ pub fn build(k: &Knowledge, session: &Session, meaning: Option<&dyn Meaning>) ->
                                 let at = carry.first().or(list.first()).map_or(0, |c| c.at);
                                 let mut all = std::mem::take(&mut carry);
                                 all.extend(list);
-                                topics.push((Section { kind: Kind::Topic, heading: h.text.clone(), at, quotes: Vec::new(), scriptures: Vec::new() }, all));
+                                topics.push((Section { kind: Kind::Topic, heading: h.text.clone(), at, quotes: Vec::new(), scriptures: Vec::new(), bullets: Vec::new() }, all));
                             }
                         }
                     }
@@ -1082,6 +1090,160 @@ pub fn build(k: &Knowledge, session: &Session, meaning: Option<&dyn Meaning>) ->
         prayer_points,
         themes: themes(k, &units, &session.shown),
         people: people(k, &units),
+        summary: String::new(),
+        written: false,
+    }
+}
+
+// ── Sections for the writer, and the outline without one ────────────────────
+
+/// A stretch of the sermon: its words and the scriptures that came up in it. What Kairo hands the
+/// writer to put into words, or outlines itself when there is no writer.
+#[derive(Clone, Debug)]
+pub struct Segment {
+    pub at: u64,
+    pub end: u64,
+    pub text: String,
+    pub refs: Vec<String>,
+}
+
+/// The writer's words for each segment, in order ("s1", "s2", …), and for the sermon.
+#[derive(Clone, Debug, Default)]
+pub struct Written {
+    pub title: String,
+    pub summary: String,
+    pub sections: Vec<(String, String, Vec<String>)>,
+}
+
+/// Where the sermon changes subject, as indexes of the units that start a new part: the preacher's
+/// own numbered points when there are at least three, else equal parts of the sermon, each cut
+/// moved to the nearest place (within an eighth of a part) where the chapter on screen changes.
+fn cut_points(k: &Knowledge, units: &[Unit], shown: &[Shown], minutes: u64) -> Vec<usize> {
+    let total: usize = units.iter().map(|u| word_count(&u.text)).sum();
+    let parts = (((minutes + 4) / 8) as usize).clamp(1, 10).min(total / 250).max(1);
+    let index_of = |at: u64| units.iter().position(|u| u.at >= at).unwrap_or(units.len());
+    let mut cuts: Vec<usize> = Vec::new();
+    let points = detect_points(units);
+    if points.len() >= 3 && points.len() <= 12 {
+        cuts = points.iter().map(|p| index_of(p.at)).filter(|i| *i > 0).collect();
+        // What comes before point one is its own part only when it's more than a greeting.
+        let before: usize = units.iter().take(cuts.first().copied().unwrap_or(0)).map(|u| word_count(&u.text)).sum();
+        if before < 150 && !cuts.is_empty() {
+            cuts.remove(0);
+        }
+    } else if parts > 1 {
+        let chapter_at = |i: usize| -> Option<(String, u32)> {
+            let at = units[i].at;
+            shown.iter().rev().find(|s| s.at <= at).map(|s| {
+                let r = k.verse_ref(s.verse);
+                (r.book.name().to_string(), r.chapter as u32)
+            })
+        };
+        let mut running = 0;
+        let mut cumulative: Vec<usize> = Vec::with_capacity(units.len());
+        for u in units {
+            running += word_count(&u.text);
+            cumulative.push(running);
+        }
+        let reach = (units.len() / (parts * 8)).max(1);
+        for j in 1..parts {
+            let want = total * j / parts;
+            let target = cumulative.iter().position(|c| *c >= want).unwrap_or(units.len() - 1);
+            let from = target.saturating_sub(reach).max(1);
+            let to = (target + reach).min(units.len() - 1);
+            let moved = (from..=to).filter(|i| chapter_at(*i).is_some() && chapter_at(*i) != chapter_at(*i - 1)).min_by_key(|i| i.abs_diff(target));
+            cuts.push(moved.unwrap_or(target));
+        }
+    }
+    cuts.sort_unstable();
+    cuts.dedup();
+    // A part of under 200 words joins the one before it.
+    let mut kept: Vec<usize> = Vec::new();
+    let mut last = 0;
+    for c in cuts {
+        let words: usize = units[last..c].iter().map(|u| word_count(&u.text)).sum();
+        if c > last && words >= 200 {
+            kept.push(c);
+            last = c;
+        }
+    }
+    kept
+}
+
+/// The sermon in parts, each with its words and the scriptures that came up in it.
+pub fn segments(k: &Knowledge, session: &Session) -> Vec<Segment> {
+    let (units, _) = units(&session.lines);
+    if units.is_empty() {
+        return Vec::new();
+    }
+    let first = session.lines.iter().map(|l| l.at).filter(|a| *a > 0).min();
+    let last = session.lines.iter().map(|l| l.at).max();
+    let minutes = first.zip(last).map(|(a, b)| b.saturating_sub(a) / 60_000).unwrap_or(0);
+    let mut shown = session.shown.clone();
+    shown.sort_by_key(|s| s.at);
+    let mut starts = vec![0usize];
+    starts.extend(cut_points(k, &units, &shown, minutes));
+    starts
+        .iter()
+        .enumerate()
+        .map(|(i, &a)| {
+            let b = starts.get(i + 1).copied().unwrap_or(units.len());
+            let (at, end) = (if i == 0 { 0 } else { units[a].at }, starts.get(i + 1).map_or(u64::MAX, |n| units[*n].at));
+            let mut refs: Vec<String> = Vec::new();
+            for s in shown.iter().filter(|s| s.at >= at && s.at < end) {
+                let r = k.verse_ref(s.verse);
+                let name = format!("{} {}:{}", r.book.name(), r.chapter, r.verse);
+                if !refs.contains(&name) {
+                    refs.push(name);
+                }
+            }
+            Segment { at, end, text: units[a..b].iter().map(|u| u.text.as_str()).collect::<Vec<_>>().join(" "), refs }
+        })
+        .collect()
+}
+
+/// The notes with no writer: each part headed by its scripture, with the verses that came up and
+/// their words. Works the same on every machine. The segments go to the writer, where there is one.
+pub fn outline(k: &Knowledge, session: &Session, meaning: Option<&dyn Meaning>) -> (Notes, Vec<Segment>) {
+    let mut notes = build(k, session, meaning);
+    let segs = segments(k, session);
+    notes.sections = segs
+        .iter()
+        .enumerate()
+        .map(|(i, g)| {
+            let mine: Vec<Shown> = session.shown.iter().filter(|x| x.at >= g.at && x.at < g.end).copied().collect();
+            let scriptures = group(k, &mine);
+            let mut biggest: Vec<&Passage> = scriptures.iter().collect();
+            biggest.sort_by_key(|p| std::cmp::Reverse(p.verses.len()));
+            biggest.truncate(2);
+            let heading = compact(k, &biggest).join(", ");
+            // No quoted lines: from a noisy transcript they read as nonsense, and the scriptures are what is certain.
+            Section { kind: Kind::Part, heading: if heading.is_empty() { format!("Part {}", i + 1) } else { heading }, at: g.at, quotes: Vec::new(), scriptures, bullets: Vec::new() }
+        })
+        .collect();
+    notes.themes.clear();
+    notes.people.clear();
+    (notes, segs)
+}
+
+/// Puts the writer's words into the outline: a part it wrote nothing for stays as outlined.
+pub fn apply_written(notes: &mut Notes, session_name: &str, written: &Written) {
+    let mut any = false;
+    for (i, s) in notes.sections.iter_mut().enumerate() {
+        let id = format!("s{}", i + 1);
+        if let Some((_, heading, bullets)) = written.sections.iter().find(|w| w.0 == id).filter(|w| !w.2.is_empty() && !w.1.trim().is_empty()) {
+            s.heading = heading.trim().to_string();
+            s.bullets = bullets.clone();
+            s.quotes.clear();
+            any = true;
+        }
+    }
+    if any {
+        notes.written = true;
+        notes.summary = written.summary.trim().to_string();
+        if session_name.trim().is_empty() && !written.title.trim().is_empty() {
+            notes.title = written.title.trim().trim_matches('"').to_string();
+        }
     }
 }
 
@@ -1102,6 +1264,18 @@ pub fn same_meaning(original: &str, corrected: &str, sim: f32) -> bool {
 const BRAND: &str = "#F5301A";
 const INK: &str = "#1d1d1f";
 const MUTED: &str = "#6e6e73";
+
+/// A verse's words for the notes: the translator's {braces} dropped, and a long one cut at a word.
+fn clip_verse(text: &str) -> String {
+    static NOTE: LazyLock<Regex> = LazyLock::new(|| re(r"\{[^{}]*:[^{}]*\}"));
+    let t = NOTE.replace_all(text, "").replace(['{', '}'], "");
+    let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
+    if t.chars().count() <= 170 {
+        return t;
+    }
+    let cut: String = t.chars().take(170).collect();
+    format!("{}…", cut.rsplit_once(' ').map_or(cut.as_str(), |(a, _)| a))
+}
 
 fn how_label(h: How) -> &'static str {
     match h {
@@ -1135,6 +1309,10 @@ pub fn render_pdf(k: &Knowledge, notes: &Notes, when: &str) -> Vec<u8> {
     d.space(5.0);
     d.rule(w, &brand, 1.5);
     d.space(6.0);
+    if !notes.summary.is_empty() {
+        d.text(&notes.summary, Face::Regular, 12.5, &ink, 0.0, w, 2.0);
+        d.space(4.0);
+    }
     // Themes and people, one line each.
     for (label, list) in [("Themes", &notes.themes), ("People", &notes.people)] {
         if !list.is_empty() {
@@ -1143,7 +1321,12 @@ pub fn render_pdf(k: &Knowledge, notes: &Notes, when: &str) -> Vec<u8> {
         }
     }
 
-    if !notes.main_text.is_empty() {
+    let by_parts = notes.sections.iter().any(|s| s.kind == Kind::Part);
+    if !notes.main_text.is_empty() && by_parts {
+        // Its verses are inside the parts they came up in.
+        let refs = compact(k, &notes.main_text.iter().collect::<Vec<_>>()).join("  ·  ").replace(' ', "\u{00A0}");
+        d.text(&format!("Main text   {refs}"), Face::Regular, 10.5, &muted, 0.0, w, 1.5);
+    } else if !notes.main_text.is_empty() {
         heading(&mut d, if notes.main_text.len() > 1 { "The texts" } else { "The text" }, &brand);
         for p in &notes.main_text {
             d.keep_room(60.0);
@@ -1171,7 +1354,7 @@ pub fn render_pdf(k: &Knowledge, notes: &Notes, when: &str) -> Vec<u8> {
                     d.keep_room(55.0);
                     d.text(&s.heading, Face::Bold, 12.0, &ink, 22.0, w - 22.0, 0.0);
                 }
-                Kind::Point | Kind::Topic => {
+                Kind::Point | Kind::Topic | Kind::Part => {
                     n += 1;
                     let h = d.height_of(&s.heading, Face::Bold, 12.0, w - 22.0, 1.5);
                     d.keep_room(h + 40.0);
@@ -1182,13 +1365,42 @@ pub fn render_pdf(k: &Knowledge, notes: &Notes, when: &str) -> Vec<u8> {
                 }
                 Kind::Whole => {}
             }
+            for b in &s.bullets {
+                let h = d.height_of(b, Face::Regular, 11.5, w - 34.0, 1.5);
+                d.keep_room(h + 4.0);
+                d.space(3.0);
+                let y = d.y;
+                d.text_at("•", Face::Bold, 11.5, &brand, d.left + 11.0, y);
+                d.text(b, Face::Regular, 11.5, &ink, 28.0, w - 28.0, 1.5);
+            }
             for q in &s.quotes {
                 let line = if q.text.ends_with(['.', '!', '?']) { q.text.clone() } else { format!("{}.", q.text.trim_end_matches([' ', ',', ';', ':', '–', '—', '-'])) };
                 d.space(3.0);
                 d.text(&format!("“{line}”"), Face::Oblique, 11.5, &ink, 22.0, w - 22.0, 1.5);
             }
+            if s.kind == Kind::Part {
+                // The scriptures of this part, with their words: nothing is listed apart from it.
+                for p in s.scriptures.iter().take(8) {
+                    d.keep_room(48.0);
+                    d.space(5.0);
+                    d.text(&reference(k, p), Face::Bold, 10.0, &brand, 22.0, w - 22.0, 1.5);
+                    for v in p.verses.iter().take(3) {
+                        let line = format!("{}  {}", k.verse_ref(*v).verse, clip_verse(k.corpus.kjv().text(*v).unwrap_or("")));
+                        d.text(&line, Face::Regular, 9.5, &muted, 28.0, w - 28.0, 1.3);
+                    }
+                    if p.verses.len() > 3 {
+                        d.text("…", Face::Regular, 9.5, &muted, 28.0, w - 28.0, 1.3);
+                    }
+                }
+                if s.scriptures.len() > 8 {
+                    let rest: Vec<&Passage> = s.scriptures.iter().skip(8).collect();
+                    let refs: Vec<String> = compact(k, &rest).into_iter().map(|r| r.replace(' ', "\u{00A0}")).collect();
+                    d.space(4.0);
+                    d.text(&format!("Also  {}", refs.join("  ·  ")), Face::Regular, 9.5, &muted, 22.0, w - 22.0, 1.3);
+                }
+            }
             // Scriptures by how they came up.
-            for how in [How::Read, How::Cited, How::Alluded] {
+            for how in [How::Read, How::Cited, How::Alluded].into_iter().filter(|_| s.kind != Kind::Part) {
                 let of_kind: Vec<&Passage> = s.scriptures.iter().filter(|p| p.how == how).collect();
                 let refs: Vec<String> = compact(k, &of_kind).into_iter().map(|r| r.replace(' ', "\u{00A0}")).collect();
                 if refs.is_empty() {
@@ -1218,7 +1430,7 @@ pub fn render_pdf(k: &Knowledge, notes: &Notes, when: &str) -> Vec<u8> {
     }
 
     // The footer under the notes, or at the foot of the last page.
-    let footer = "Notes generated by Kairo from the live session.";
+    let footer = if notes.written { "Written on this Mac with Apple Intelligence from the live session; scriptures by Kairo." } else { "Outline made by Kairo from the live session: each part's scriptures and their words." };
     let y = (d.y + 14.0).min(crate::pdf::PAGE_H - 44.0);
     let x = d.left + (w - text_width(footer, Face::Regular, 8.5)) / 2.0;
     d.text_at(footer, Face::Regular, 8.5, &muted, x, y);
@@ -1255,6 +1467,125 @@ mod tests {
     fn a_lone_number_one_isnt_a_list() {
         let (u, _) = units(&lines(&["The number one thing is love.", "Number one, we must pray."]));
         assert!(detect_points(&u).is_empty());
+    }
+
+    // ── Parts of the sermon, the outline, and the writer's words ────────────────────────────────
+
+    static K: LazyLock<Knowledge> = LazyLock::new(|| {
+        let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../databases/bibles");
+        Knowledge::build(kairo_bible::Corpus::load(&dir).unwrap(), kairo_detect::lexical::Wordings { own: None, also: vec![] })
+    });
+
+    fn verse(book: &str, c: u16, v: u16) -> VerseId {
+        K.id(kairo_bible::VerseRef::new(kairo_bible::Book::from_name(book).unwrap(), c, v)).unwrap()
+    }
+
+    /// `n` sentences of fifty words, thirty seconds apart.
+    fn sermon(n: usize) -> Vec<Line> {
+        (0..n).map(|i| Line { text: format!("{}.", (0..50).map(|w| format!("word{}x{}", i, w)).collect::<Vec<_>>().join(" ")), at: 1_000 + i as u64 * 30_000 }).collect()
+    }
+
+    fn two_passages() -> Session {
+        let mut session = Session { name: String::new(), lines: sermon(60), ..Default::default() };
+        let at = |i: usize| session.lines[i].at;
+        // Isaiah 58 through the first half; Luke 4 from sentence 31, just after the cut would fall.
+        session.shown = vec![
+            Shown { verse: verse("Isaiah", 58, 6), at: at(5), how: How::Read },
+            Shown { verse: verse("Isaiah", 58, 7), at: at(12), how: How::Cited },
+            Shown { verse: verse("Luke", 4, 18), at: at(31), how: How::Read },
+            Shown { verse: verse("Luke", 4, 19), at: at(45), how: How::Alluded },
+        ];
+        session
+    }
+
+    #[test]
+    fn the_sermon_is_cut_where_its_chapter_changes() {
+        let session = two_passages();
+        let parts = segments(&K, &session);
+        assert_eq!(parts.len(), 4, "30 minutes is four parts");
+        // Every word is in exactly one part.
+        assert_eq!(parts.iter().map(|p| word_count(&p.text)).sum::<usize>(), 3000);
+        // No part holds both chapters: the cut that would have fallen at sentence 30 moved to 31.
+        for p in &parts {
+            assert!(p.refs.iter().all(|r| r.starts_with("Isaiah")) || p.refs.iter().all(|r| r.starts_with("Luke")), "{:?}", p.refs);
+        }
+        assert!(parts[0].refs.iter().any(|r| r == "Isaiah 58:6"));
+        assert!(parts.last().unwrap().refs.iter().any(|r| r == "Luke 4:19"));
+        assert_eq!(parts[0].at, 0);
+        assert_eq!(parts.last().unwrap().end, u64::MAX);
+    }
+
+    #[test]
+    fn a_short_sermon_is_one_part() {
+        let session = Session { lines: sermon(8), ..Default::default() };
+        assert_eq!(segments(&K, &session).len(), 1);
+        assert!(segments(&K, &Session::default()).is_empty());
+    }
+
+    #[test]
+    fn the_preachers_numbered_points_are_the_parts() {
+        let filler = |n: usize, lead: &str| format!("{lead} {}.", (0..n).map(|w| format!("filler{w}")).collect::<Vec<_>>().join(" "));
+        let mut texts: Vec<String> = (0..4).map(|_| filler(50, "Welcome to our service this morning")).collect();
+        for n in ["one", "two", "three"] {
+            texts.push(filler(50, &format!("Number {n} trigger of favor is humility before God")));
+            texts.extend((0..4).map(|_| filler(50, "And then we see how it works in the life of a believer")));
+        }
+        let lines: Vec<Line> = texts.into_iter().enumerate().map(|(i, text)| Line { text, at: 1_000 + i as u64 * 20_000 }).collect();
+        let parts = segments(&K, &Session { lines, ..Default::default() });
+        assert_eq!(parts.len(), 4, "the opening, then a part for each point");
+        assert!(parts[1].text.starts_with("Number one"), "{}", &parts[1].text[..40]);
+        assert!(parts[3].text.starts_with("Number three"));
+    }
+
+    #[test]
+    fn the_outline_is_headed_by_scripture_and_the_writer_fills_it_in() {
+        let session = two_passages();
+        let (mut notes, parts) = outline(&K, &session, None);
+        assert_eq!(notes.sections.len(), parts.len());
+        assert!(notes.sections.iter().all(|s| s.kind == Kind::Part));
+        assert!(notes.sections[0].heading.starts_with("Isaiah 58"), "{}", notes.sections[0].heading);
+        assert!(notes.sections[0].scriptures.iter().any(|p| p.how == How::Read));
+        assert!(notes.themes.is_empty() && notes.people.is_empty());
+        let heading_without_scripture = notes.sections.iter().find(|s| s.scriptures.is_empty()).map(|s| s.heading.clone());
+        if let Some(h) = heading_without_scripture {
+            assert!(h.starts_with("Part "), "{h}");
+        }
+        let before = render_pdf(&K, &notes, "Sunday");
+        assert!(before.starts_with(b"%PDF"));
+
+        // The writer wrote the first and third parts and nothing for the second.
+        let written = Written {
+            title: "Strength in the Lord".into(),
+            summary: "About strength.".into(),
+            sections: vec![("s1".into(), " Be strong ".into(), vec!["The preacher said so.".into()]), ("s2".into(), String::new(), Vec::new()), ("s3".into(), "Go on".into(), vec!["Again.".into(), "And again.".into()])],
+        };
+        let second = notes.sections[1].heading.clone();
+        apply_written(&mut notes, "", &written);
+        assert!(notes.written);
+        assert_eq!((notes.title.as_str(), notes.summary.as_str()), ("Strength in the Lord", "About strength."));
+        assert_eq!((notes.sections[0].heading.as_str(), notes.sections[0].bullets.len()), ("Be strong", 1));
+        assert!(notes.sections[0].quotes.is_empty());
+        assert_eq!((notes.sections[1].heading.as_str(), notes.sections[1].bullets.len()), (second.as_str(), 0), "a part it wrote nothing for stays as outlined");
+        assert_eq!(notes.sections[2].bullets, ["Again.", "And again."]);
+        let after = render_pdf(&K, &notes, "Sunday");
+        assert!(after.starts_with(b"%PDF") && after.len() != before.len());
+
+        // A name the operator typed is kept; nothing written means nothing changes.
+        let (mut named, _) = outline(&K, &session, None);
+        named.title = "Typed".into();
+        apply_written(&mut named, "Typed", &written);
+        assert_eq!(named.title, "Typed");
+        let (mut untouched, _) = outline(&K, &session, None);
+        apply_written(&mut untouched, "", &Written { title: "X".into(), summary: "Y".into(), sections: Vec::new() });
+        assert!(!untouched.written && untouched.summary.is_empty());
+    }
+
+    #[test]
+    fn a_verse_in_the_notes_has_its_braces_and_footnotes_dropped_and_is_cut_at_a_word() {
+        assert_eq!(clip_verse("And God said, {Let} there be light {the light: Heb. light}."), "And God said, Let there be light .");
+        let long = "word ".repeat(80);
+        let c = clip_verse(&long);
+        assert!(c.ends_with('…') && c.chars().count() <= 172, "{c}");
     }
 
     #[test]

@@ -37,6 +37,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/translate/languages", get(translate_languages))
         .route("/api/service/import", post(service_import))
         .route("/api/export", post(export))
+        .route("/api/notes/capability", get(notes_capability))
         .route("/api/semantic-model/install", post(bundled_install))
         .route("/api/reranker-model/install", post(bundled_install))
         .route("/api/translate-model/install", post(crate::mt::install_route))
@@ -210,8 +211,28 @@ async fn sermon_notes(app: &Shared, b: &Value, date: &str) -> Result<(String, Ve
     }
     let meaning = app.meaning.get().cloned();
     let date = date.to_string();
+    // The outline first: it's the notes on every machine, and the parts the writer is given.
+    let name = session.name.clone();
+    let (mut notes, segments, session) = {
+        let bible = bible.clone();
+        tokio::task::spawn_blocking(move || {
+            let (notes, segments) = crate::notes::outline(&bible.k, &session, meaning.as_deref().map(|m| m as &dyn crate::notes::Meaning));
+            (notes, segments, session)
+        })
+        .await
+        .map_err(|e| e.to_string())?
+    };
+    let _ = session;
+    if !segments.is_empty() {
+        match crate::notes_writer::available(app).await {
+            Ok(()) => match crate::notes_writer::write(app, &segments).await {
+                Ok(written) => crate::notes::apply_written(&mut notes, &name, &written),
+                Err(e) => eprintln!("[Notes] the writer failed, outline instead: {e}"),
+            },
+            Err(why) => eprintln!("[Notes] outline only: {why}"),
+        }
+    }
     tokio::task::spawn_blocking(move || {
-        let notes = crate::notes::build(&bible.k, &session, meaning.as_deref().map(|m| m as &dyn crate::notes::Meaning));
         let when = notes
             .started_at
             .and_then(|ms| chrono::DateTime::from_timestamp_millis(ms as i64))
@@ -223,6 +244,14 @@ async fn sermon_notes(app: &Shared, b: &Value, date: &str) -> Result<(String, Ve
     })
     .await
     .map_err(|e| e.to_string())
+}
+
+/// Whether this machine writes the sermon notes (Apple Intelligence) or outlines them.
+async fn notes_capability(State(app): State<Shared>) -> Json<Value> {
+    match crate::notes_writer::available(&app).await {
+        Ok(()) => Json(json!({ "written": true })),
+        Err(why) => Json(json!({ "written": false, "reason": why })),
+    }
 }
 
 async fn export(axum::extract::State(app): axum::extract::State<Shared>, Json(b): Json<Value>) -> axum::response::Response {

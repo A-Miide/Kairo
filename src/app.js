@@ -4796,15 +4796,25 @@ async function exportSession(kind, name = '') {
 }
 
 // Export → Sermon notes: ask for the sermon's name, then build the PDF.
+let sermonNotesWritten = false;   // this Mac writes the notes (Apple Intelligence) rather than outlining them
 function openSermonNotesDialog() {
   const modal = document.getElementById('sermon-notes-modal');
   const input = document.getElementById('sn-name');
   const status = document.getElementById('sn-status');
   const btn = document.getElementById('sn-download');
   if (!modal) return;
-  const hint = 'Each point of the sermon with its quotable lines and the scriptures referenced in it, then the prayer points — in the preacher\'s own words, saved as a PDF in Downloads.';
-  status.textContent = sessionTranscriptParts.length ? hint : 'Nothing captured yet — start listening first, then come back here.';
+  const outlineHint = 'Each part of the sermon with its scriptures and their words, then the prayer points — saved as a PDF in Downloads.';
+  const writtenHint = 'Written on this Mac by Apple Intelligence: a title, a summary, and each part of the sermon in short points with its scriptures and their words — saved as a PDF in Downloads. A long sermon takes a few minutes.';
+  sermonNotesWritten = false;
+  status.textContent = sessionTranscriptParts.length ? outlineHint : 'Nothing captured yet — start listening first, then come back here.';
   btn.disabled = !sessionTranscriptParts.length;
+  if (sessionTranscriptParts.length) {
+    // Which kind of notes this machine makes, and why not the written kind when it can't.
+    fetch(`${SERVER}/api/notes/capability`).then(r => r.json()).then(c => {
+      sermonNotesWritten = !!c.written;
+      status.textContent = c.written ? writtenHint : (c.reason ? `${outlineHint} ${c.reason}` : outlineHint);
+    }).catch(() => {});
+  }
   modal.classList.remove('hidden');
   setTimeout(() => input.focus(), 0);
 }
@@ -4821,7 +4831,7 @@ function openSermonNotesDialog() {
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') btn.click(); if (e.key === 'Escape') close(); });
   btn.addEventListener('click', async () => {
     btn.disabled = true; btn.textContent = 'Preparing…';
-    status.textContent = 'Reading the sermon — this takes a few seconds…';
+    status.textContent = sermonNotesWritten ? 'Writing the notes on this Mac — a long sermon takes a few minutes. Keep Kairo open…' : 'Building the notes — this takes a few seconds…';
     try {
       const out = await exportSession('notes', input.value.trim());
       status.textContent = `Saved to Downloads: ${out.file}`;

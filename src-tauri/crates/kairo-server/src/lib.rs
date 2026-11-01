@@ -30,6 +30,7 @@ mod bible_packs;
 mod bible_import;
 mod api_bible;
 pub mod notes;
+pub mod notes_writer;
 pub mod offline;
 pub mod coreml_encoder;
 pub mod proc;
