@@ -4945,6 +4945,9 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
   min-height: 0;
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(var(--mb-thumb, 130px), 1fr));
+  /* Each row is as tall as its tiles: the cards hide their overflow, so left to "auto" the rows
+     shrank to share the bin's fixed height, and a long library came out as thin cut-off strips. */
+  grid-auto-rows: max-content;
   align-content: start;
   gap: 8px;
   padding: 0 12px 10px;
