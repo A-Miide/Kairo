@@ -369,7 +369,9 @@ fn split_prose(text: &str) -> Vec<String> {
     out
 }
 
-/// Slides from paragraphs. A blank line ends a slide; a section label
+/// Slides from paragraphs. Each carries `own`: the document's lines behind it, as written (a long
+/// paragraph whole, though it is cut across slides), which the import dialog counts when asked
+/// for N lines to a slide. A blank line ends a slide; a section label
 /// ("Chorus") or a heading names the next. Without blank lines (most Word
 /// documents), short lines are grouped a few to a slide and each paragraph
 /// of prose is a slide of its own.
@@ -378,58 +380,75 @@ pub fn blocks_from(paras: &[Para]) -> Vec<Value> {
     let mut out: Vec<Value> = Vec::new();
     let mut pending: Option<String> = None;
     let mut cur: Vec<String> = Vec::new();
-    let flush = |cur: &mut Vec<String>, pending: &mut Option<String>, out: &mut Vec<Value>| {
+    // The document's own lines behind the block being built: what "N lines to a slide" counts.
+    let mut own: Vec<String> = Vec::new();
+    let flush = |cur: &mut Vec<String>, own: &mut Vec<String>, pending: &mut Option<String>, out: &mut Vec<Value>| {
         if cur.is_empty() {
             return;
         }
         let label = pending.take().unwrap_or_else(|| format!("Slide {}", out.len() + 1));
-        out.push(block(label, std::mem::take(cur)));
+        let mut b = block(label, std::mem::take(cur));
+        b["own"] = json!(std::mem::take(own));
+        out.push(b);
     };
     for p in paras {
         if p.blank() {
-            flush(&mut cur, &mut pending, &mut out);
+            flush(&mut cur, &mut own, &mut pending, &mut out);
             continue;
         }
         let lines: Vec<String> = p.lines.iter().map(|l| l.trim().to_string()).filter(|l| !l.is_empty()).collect();
         // A label on its own line, or a heading: names the slide that follows.
         if lines.len() == 1 && (SECTION.is_match(&lines[0]) || (p.heading && lines[0].split_whitespace().count() <= 8)) {
-            flush(&mut cur, &mut pending, &mut out);
+            flush(&mut cur, &mut own, &mut pending, &mut out);
             pending = Some(if SECTION.is_match(&lines[0]) { section_label(&lines[0]) } else { lines[0].clone() });
             continue;
         }
         if blank_separated {
+            own.extend(lines.iter().cloned());
             cur.extend(lines);
             continue;
         }
         if lines.len() == 1 && is_prose(&lines[0]) {
-            flush(&mut cur, &mut pending, &mut out);
+            flush(&mut cur, &mut own, &mut pending, &mut out);
+            own.push(lines[0].clone());
             for part in split_prose(&lines[0]) {
                 cur.push(part);
-                flush(&mut cur, &mut pending, &mut out);
+                flush(&mut cur, &mut own, &mut pending, &mut out);
             }
             continue;
         }
         // Lines broken inside one paragraph belong together; short lines group.
         if lines.len() > 1 {
-            flush(&mut cur, &mut pending, &mut out);
+            flush(&mut cur, &mut own, &mut pending, &mut out);
             for chunk in lines.chunks(LINES_PER_SLIDE) {
                 cur.extend(chunk.iter().cloned());
-                flush(&mut cur, &mut pending, &mut out);
+                own.extend(chunk.iter().cloned());
+                flush(&mut cur, &mut own, &mut pending, &mut out);
             }
             continue;
         }
+        own.extend(lines.iter().cloned());
         cur.extend(lines);
         if cur.len() >= LINES_PER_SLIDE {
-            flush(&mut cur, &mut pending, &mut out);
+            flush(&mut cur, &mut own, &mut pending, &mut out);
         }
     }
-    flush(&mut cur, &mut pending, &mut out);
+    flush(&mut cur, &mut own, &mut pending, &mut out);
     // A slide that opens with its own label ("Verse 2" then its lines).
     out.into_iter()
         .map(|b| {
             let lines: Vec<String> = b["lines"].as_array().unwrap().iter().filter_map(|l| l.as_str().map(str::to_string)).collect();
             match leading_label(&lines) {
-                Some((label, rest)) if b["label"].as_str().is_some_and(|l| l.starts_with("Slide ")) => block(label, rest),
+                Some((label, rest)) if b["label"].as_str().is_some_and(|l| l.starts_with("Slide ")) => {
+                    // The label line is the slide's name, not one of its lines.
+                    let mut nb = block(label, rest);
+                    let mut o = b["own"].as_array().cloned().unwrap_or_default();
+                    if o.first() == Some(&json!(lines[0])) {
+                        o.remove(0);
+                    }
+                    nb["own"] = json!(o);
+                    nb
+                }
                 _ => b,
             }
         })
@@ -1098,6 +1117,24 @@ mod tests {
         assert_eq!(b[1]["label"], "Chorus");
         assert_eq!(b[1]["lines"], json!(["My chains are gone, I've been set free"]));
         assert_eq!(b[2]["lines"].as_array().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn a_blocks_own_lines_are_the_documents_not_the_slides() {
+        let own = |b: &Value| -> Vec<String> { b["own"].as_array().unwrap().iter().map(|l| l.as_str().unwrap().to_string()).collect() };
+        // Two long paragraphs, no blank line: Paragraph mode cuts them at sentences, but a
+        // dialog asking for 2 lines to a slide must count each paragraph as one line.
+        let a = "In the beginning God created the heaven and the earth. And the earth was without form, and void; and darkness was upon the face of the deep. And the Spirit of God moved upon the face of the waters. And God said, Let there be light: and there was light.";
+        let b = "And God saw the light, that it was good: and God divided the light from the darkness. And God called the light Day, and the darkness he called Night. And the evening and the morning were the first day.";
+        let blocks = from_text(&format!("{a}\n{b}"));
+        assert!(blocks.len() > 2, "{blocks:?}");
+        let lines: Vec<String> = blocks.iter().flat_map(own).collect();
+        assert_eq!(lines, [a, b]);
+        // A label names its slide and is not one of its lines.
+        let blocks = from_text("Verse 1\nLine one here\nLine two here\n\nChorus\nSing it again\n\nVerse 3\nThe last one");
+        let lines: Vec<String> = blocks.iter().flat_map(own).collect();
+        assert_eq!(lines, ["Line one here", "Line two here", "Sing it again", "The last one"], "{blocks:?}");
+        assert_eq!(blocks[2]["label"], "Verse 3");
     }
 
     #[test]

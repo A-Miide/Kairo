@@ -4713,7 +4713,10 @@
           // lines: 2" didn't actually re-split anything.
           item.type = 'song';
           item.linesPerSlide = n;
-          const allLines = rawBlocks.filter(b => !b.image).flatMap(b => b.lines || []);
+          // A text import carries the document's own lines (`own`: a long Word
+          // paragraph is one line however many slides Paragraph mode cuts it into);
+          // "2 lines" is the first two of those.
+          const allLines = rawBlocks.filter(b => !b.image).flatMap(b => Array.isArray(b.own) ? b.own : (b.lines || []));
           // No real section name for this synthetic block — it's just the
           // deck's own title, which slidesFor() would otherwise repeat on
           // every single chunked slide (owner: "title in all slide is not
