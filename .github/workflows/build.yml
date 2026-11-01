@@ -172,8 +172,28 @@ jobs:
           path: src-tauri/bin/kairo-coreml-speech
           retention-days: 3
 
+  # ── The sermon-notes writer on Apple Silicon ────────────────────────────
+  # The Mac's own on-device model (src-tauri/notes-writer), a small program beside ffmpeg in the app:
+  # it downloads nothing, and every other machine gets the outline Kairo makes itself.
+  notes-writer:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the writer
+        run: FORCE=1 scripts/build-notes-writer.sh
+
+      - name: It starts and says whether this Mac can write notes
+        run: src-tauri/bin/kairo-notes-writer --check
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notes-writer
+          path: src-tauri/bin/kairo-notes-writer
+          retention-days: 3
+
   build:
-    needs: [test, bundle-data, ffmpeg, coreml-speech]
+    needs: [test, bundle-data, ffmpeg, coreml-speech, notes-writer]
     permissions:
       contents: write   # tauri-action creates the draft release on a tag
     strategy:
@@ -221,6 +241,16 @@ jobs:
       - name: Make the speech engine executable
         if: matrix.platform == 'macos-latest'
         run: chmod +x src-tauri/bin/kairo-coreml-speech
+
+      - uses: actions/download-artifact@v4
+        if: matrix.platform == 'macos-latest'
+        with:
+          name: notes-writer
+          path: src-tauri/bin
+
+      - name: Make the notes writer executable
+        if: matrix.platform == 'macos-latest'
+        run: chmod +x src-tauri/bin/kairo-notes-writer
 
       # The Tauri CLI comes from npm; the app itself has no Node at runtime.
       - name: Setup Node.js
@@ -277,7 +307,7 @@ jobs:
             pkg-config
 
       # Developer ID signing and notarization, once the secrets are set (docs/MAC_SIGNING.md):
-      # Tauri signs the app and Syphon.framework and notarizes; the two programs Kairo runs from
+      # Tauri signs the app and Syphon.framework and notarizes; the three programs Kairo runs from
       # Resources/bin are signed here first, with the hardened runtime notarization requires.
       # Without the secrets the build is ad-hoc signed, as before (right-click → Open).
       - name: Developer ID signing (when set up)
@@ -308,7 +338,8 @@ jobs:
           # ffmpeg opens cameras and capture cards itself, so it carries the same device entitlements.
           codesign --force --timestamp --options runtime --entitlements src-tauri/entitlements.plist --sign "$APPLE_SIGNING_IDENTITY" src-tauri/bin/ffmpeg
           codesign --force --timestamp --options runtime --sign "$APPLE_SIGNING_IDENTITY" src-tauri/bin/kairo-coreml-speech
-          codesign --verify --strict --verbose=2 src-tauri/bin/ffmpeg src-tauri/bin/kairo-coreml-speech
+          codesign --force --timestamp --options runtime --sign "$APPLE_SIGNING_IDENTITY" src-tauri/bin/kairo-notes-writer
+          codesign --verify --strict --verbose=2 src-tauri/bin/ffmpeg src-tauri/bin/kairo-coreml-speech src-tauri/bin/kairo-notes-writer
           {
             echo "APPLE_CERTIFICATE=$APPLE_CERTIFICATE"
             echo "APPLE_CERTIFICATE_PASSWORD=$APPLE_CERTIFICATE_PASSWORD"

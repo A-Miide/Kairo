@@ -6,8 +6,8 @@ developer" warning. Without them, CI builds the ad-hoc signed app as before
 (`.github/workflows/build.yml`, step "Developer ID signing (when set up)").
 
 What gets signed: Tauri signs `Kairo.app` and `Syphon.framework` and sends the app to Apple's
-notary service; the CI step signs the two programs Kairo runs from `Resources/bin` (`ffmpeg`,
-`kairo-coreml-speech`) first, with the hardened runtime notarization requires.
+notary service; the CI step signs the three programs Kairo runs from `Resources/bin` (`ffmpeg`,
+`kairo-coreml-speech`, `kairo-notes-writer`) first, with the hardened runtime notarization requires.
 
 ## One-time setup
 
