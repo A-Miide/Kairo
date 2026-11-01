@@ -209,9 +209,10 @@
         const fm = fontMetrics(leadFont);
         const natural = (fm.asc + fm.desc) * leadSize;
         const mult = p.lineMult || pr.lineMult || 1;
-        // An "exact" height far under the type's size was a minimum: RTF's \sl20 means "at least 1 pt",
-        // and earlier imports stored it as exact, which stacked every line of a slide on one another.
-        const exact = p.lineExact && p.lineExact >= 0.3 * (lead.size || base.size || 36) ? p.lineExact : 0;
+        // An "exact" height under the type's size was a minimum: RTF's \sl20 or \sl360 means "at
+        // least 1 pt / 18 pt", and imports before 4.4.10 stored it as exact, which stacked a slide's
+        // lines on one another. A real exact height that tight would overlap in ProPresenter too.
+        const exact = p.lineExact && p.lineExact >= 0.9 * (lead.size || base.size || 36) ? p.lineExact : 0;
         let lineH = exact ? exact * textScale * fit : natural * mult * PP_LINE_FACTOR;
         if (p.lineMin) lineH = Math.max(lineH, p.lineMin * textScale * fit);
         if (pr.maxLine > 0) lineH = Math.min(lineH, pr.maxLine * textScale * fit);

@@ -68,15 +68,21 @@ impl DerefMut for AsyncCommand {
 mod tests {
     use super::*;
 
+    // `echo` is a program everywhere but Windows, where it's built into cmd.
+    #[cfg(windows)]
+    const ECHO: (&str, &[&str]) = ("cmd", &["/C", "echo", "kairo"]);
+    #[cfg(not(windows))]
+    const ECHO: (&str, &[&str]) = ("echo", &["kairo"]);
+
     #[test]
     fn runs_programs_and_gives_their_output() {
-        let out = Command::new("echo").arg("kairo").output().unwrap();
+        let out = Command::new(ECHO.0).args(ECHO.1).output().unwrap();
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "kairo");
     }
 
     #[tokio::test]
     async fn runs_programs_asynchronously_too() {
-        let out = AsyncCommand::new("echo").arg("kairo").output().await.unwrap();
+        let out = AsyncCommand::new(ECHO.0).args(ECHO.1).output().await.unwrap();
         assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "kairo");
     }
 }

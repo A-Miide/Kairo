@@ -259,13 +259,16 @@ pub fn rtf_to_text(rtf: &str) -> String {
 /// The text of a whole RTF document (Word, WordPad, TextEdit), not a ProPresenter slide's: its
 /// font, color and style tables, document info and pictures are groups that hold no words.
 fn rtf_document_text(rtf: &str) -> String {
-    const SKIP: [&str; 10] = ["fonttbl", "colortbl", "stylesheet", "info", "pict", "header", "footer", "listtable", "listoverridetable", "generator"];
+    // Headers and footers come as \header, \headerl, \footerf and so on.
+    const SKIP: [&str; 8] = ["fonttbl", "colortbl", "stylesheet", "info", "pict", "listtable", "listoverridetable", "generator"];
     let chars: Vec<char> = rtf.chars().collect();
     let mut out = String::new();
     // Per open group: whether it holds no words, and how many characters a \uN stands in for.
     let mut groups: Vec<(bool, usize)> = vec![(false, 1)];
     let mut i = 0;
     let mut skip_fallback = 0;
+    // A character beyond the first 65536 (an emoji) is written as two \u halves.
+    let mut high: Option<u32> = None;
     while i < chars.len() {
         let c = chars[i];
         let (hidden, uc) = *groups.last().unwrap();
@@ -276,7 +279,7 @@ fn rtf_document_text(rtf: &str) -> String {
                 // A destination: {\*\anything} or one of the tables.
                 if chars.get(i) == Some(&'\\') {
                     let word: String = chars[i + 1..].iter().take_while(|c| c.is_ascii_alphabetic() || **c == '*').take(24).collect();
-                    if word.starts_with('*') || SKIP.contains(&word.as_str()) {
+                    if word.starts_with('*') || SKIP.contains(&word.as_str()) || word.starts_with("header") || word.starts_with("footer") {
                         groups.last_mut().unwrap().0 = true;
                     }
                 }
@@ -313,9 +316,16 @@ fn rtf_document_text(rtf: &str) -> String {
                         "uc" => groups.last_mut().unwrap().1 = num.unwrap_or(1).max(0) as usize,
                         "u" if !hidden => {
                             let code = num.unwrap_or(63);
-                            out.push(char::from_u32(if code < 0 { code + 65536 } else { code } as u32).unwrap_or('\u{FFFD}'));
+                            let code = (if code < 0 { code + 65536 } else { code }) as u32;
+                            match (high.take(), code) {
+                                (None, 0xD800..=0xDBFF) => high = Some(code),
+                                (Some(h), 0xDC00..=0xDFFF) => out.push(char::from_u32(0x10000 + ((h - 0xD800) << 10) + (code - 0xDC00)).unwrap_or('\u{FFFD}')),
+                                (_, code) => out.push(char::from_u32(code).unwrap_or('\u{FFFD}')),
+                            }
                             skip_fallback = uc;
                         }
+                        "cell" | "emspace" | "enspace" if !hidden => out.push(' '),
+                        "row" if !hidden => out.push('\n'),
                         "emdash" if !hidden => out.push('—'),
                         "endash" if !hidden => out.push('–'),
                         "lquote" if !hidden => out.push('‘'),
@@ -341,6 +351,7 @@ fn rtf_document_text(rtf: &str) -> String {
                         }
                         '\\' | '{' | '}' if !hidden => out.push(n),
                         '~' if !hidden => out.push(' '),
+                        '_' if !hidden => out.push('-'),
                         '\n' | '\r' if !hidden => out.push('\n'),
                         _ => {}
                     }
@@ -363,7 +374,7 @@ fn rtf_document_text(rtf: &str) -> String {
 }
 
 /// A text file's characters: UTF-8 or UTF-16 with or without a byte-order mark (Notepad writes
-/// one), or Windows-1252 when it isn't valid UTF-8. A binary file (an old .doc) is refused.
+/// one), or Windows-1252 (ANSI) when it isn't UTF-8. A binary file (an old .doc) is refused.
 fn decode_text(buf: &[u8], ext: &str) -> Result<String, ImportError> {
     let utf16 = |b: &[u8], le: bool| -> String {
         let units: Vec<u16> = b.chunks_exact(2).map(|c| if le { u16::from_le_bytes([c[0], c[1]]) } else { u16::from_be_bytes([c[0], c[1]]) }).collect();
@@ -375,12 +386,34 @@ fn decode_text(buf: &[u8], ext: &str) -> Result<String, ImportError> {
         utf16(b, false)
     } else {
         let b = buf.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(buf);
-        if b.starts_with(&[0xD0, 0xCF, 0x11, 0xE0]) || b.starts_with(b"PK\x03\x04") || b.contains(&0) {
+        // UTF-16 without a mark: one byte of each pair is zero all through ASCII text.
+        let head = &b[..b.len().min(512) & !1];
+        let zeros_at = |odd: usize| head.iter().skip(odd).step_by(2).filter(|&&x| x == 0).count();
+        let pairs = head.len() / 2;
+        let zeros = b.iter().filter(|&&x| x == 0).count();
+        if pairs >= 2 && zeros_at(1) * 10 >= pairs * 7 && zeros_at(0) * 20 <= pairs {
+            utf16(b, true)
+        } else if pairs >= 2 && zeros_at(0) * 10 >= pairs * 7 && zeros_at(1) * 20 <= pairs {
+            utf16(b, false)
+        } else if b.starts_with(&[0xD0, 0xCF, 0x11, 0xE0]) || b.starts_with(b"PK\x03\x04") || zeros * 10 > b.len() {
             return Err(ImportError(format!("That isn't a text file — .{ext} can't be read. Save it as .docx (Word) or .txt and import that."), Some("NOT_TEXT")));
-        }
-        match std::str::from_utf8(b) {
-            Ok(t) => t.to_string(),
-            Err(_) => b.iter().map(|&x| CP1252_HIGH.iter().find(|h| h.0 == x).map_or(x as char, |h| h.1)).collect(),
+        } else {
+            let b: Vec<u8> = b.iter().copied().filter(|&x| x != 0).collect();
+            match std::str::from_utf8(&b) {
+                Ok(t) => t.to_string(),
+                Err(_) => {
+                    // UTF-8 with a stray bad byte keeps its other characters; text with no real
+                    // UTF-8 characters in it is ANSI.
+                    let lossy = String::from_utf8_lossy(&b);
+                    let bad = lossy.matches('\u{FFFD}').count();
+                    let good = lossy.chars().filter(|&c| c as u32 >= 0x80 && c != '\u{FFFD}').count();
+                    if good > bad {
+                        lossy.into_owned()
+                    } else {
+                        b.iter().map(|&x| CP1252_HIGH.iter().find(|h| h.0 == x).map_or(x as char, |h| h.1)).collect()
+                    }
+                }
+            }
         }
     };
     Ok(text.trim_start_matches('\u{feff}').to_string())
@@ -991,11 +1024,7 @@ pub fn import_slides(filename: &str, buf: &[u8], assets: &pp::Assets) -> Result<
     let mut warnings = Vec::new();
     let blocks = |format, blocks| Ok(Imported::Blocks { format, blocks, note: None, warnings: Vec::new() });
     match ext.as_str() {
-        "txt" | "md" | "json" => blocks("text", from_text(&decode_text(buf, &ext)?)),
-        "rtf" => {
-            let text = decode_text(buf, &ext)?;
-            blocks("text", from_text(&if text.trim_start().starts_with("{\\rtf") { rtf_document_text(&text) } else { text }))
-        }
+        "txt" | "md" | "json" | "rtf" => blocks("text", from_text(&text_of(buf, &ext)?)),
         "docx" => blocks("docx", from_docx(buf)?),
         "pptx" => {
             let (b, note) = from_pptx(buf)?;
@@ -1014,8 +1043,14 @@ pub fn import_slides(filename: &str, buf: &[u8], assets: &pp::Assets) -> Result<
             Ok(Imported::Items { format: "proplaylist", items, warnings })
         }
         "pdf" => Err(ImportError("PDF import isn't supported yet".into(), Some("PDF_UNSUPPORTED"))),
-        _ => Ok(Imported::Blocks { format: "text", blocks: from_text(&decode_text(buf, &ext)?), note: Some(format!("treated .{ext} as plain text")), warnings }),
+        _ => Ok(Imported::Blocks { format: "text", blocks: from_text(&text_of(buf, &ext)?), note: Some(format!("treated .{ext} as plain text")), warnings }),
     }
+}
+
+/// A text file's words: an RTF document's (Word saves those as .doc too) or the text itself.
+fn text_of(buf: &[u8], ext: &str) -> Result<String, ImportError> {
+    let text = decode_text(buf, ext)?;
+    Ok(if text.trim_start().starts_with("{\\rtf") { rtf_document_text(&text) } else { text })
 }
 
 // ── Themes ──────────────────────────────────────────────────────────────────
@@ -1296,6 +1331,29 @@ mod tests {
         let doc = [&[0xD0, 0xCF, 0x11, 0xE0][..], b"\0\0binary"].concat();
         let e = import_slides("old.doc", &doc, &pp::Assets::new(&std::env::temp_dir())).err().unwrap();
         assert!(e.0.contains(".doc") && e.1 == Some("NOT_TEXT"), "{e:?}");
+    }
+
+    #[test]
+    fn text_files_that_are_almost_right() {
+        // UTF-8 with one stray byte keeps its other characters; one stray ANSI quote in plain
+        // ASCII reads as the quote.
+        assert_eq!(texts(&["Café “x” and".as_bytes(), &[0x92]].concat(), "a.txt")[0].1, ["Café “x” and\u{FFFD}"]);
+        assert_eq!(texts(b"Don\x92t stop", "a.txt")[0].1, ["Don’t stop"]);
+        // UTF-16 with no mark, either way round.
+        let le: Vec<u8> = "Psalm 1\nBlessed".encode_utf16().flat_map(u16::to_le_bytes).collect();
+        let be: Vec<u8> = "Psalm 1\nBlessed".encode_utf16().flat_map(u16::to_be_bytes).collect();
+        assert_eq!(texts(&le, "a.txt")[0].1, ["Psalm 1", "Blessed"]);
+        assert_eq!(texts(&be, "a.txt")[0].1, ["Psalm 1", "Blessed"]);
+        // A NUL or two at the end of a text file is dropped, not a reason to refuse it.
+        assert_eq!(texts(b"Psalm 1\nBlessed is the man who walks\0\0", "a.txt")[0].1, ["Psalm 1", "Blessed is the man who walks"]);
+    }
+
+    #[test]
+    fn rtf_tables_headers_and_emoji() {
+        let rtf = r"{\rtf1{\headerl Page header}{\footerf First footer}\trowd Verse 1\cell Amazing grace\cell\row Fire \u-10179?\u-8704? non\_stop\par}";
+        assert_eq!(rtf_document_text(rtf), "Verse 1 Amazing grace \nFire 😀 non-stop\n");
+        // Word saves RTF under .doc too.
+        assert_eq!(texts(rtf.as_bytes(), "notes.doc")[0].1, ["Verse 1 Amazing grace", "Fire 😀 non-stop"]);
     }
 
     #[test]
