@@ -507,6 +507,16 @@ fn is_prose(line: &str) -> bool {
     n > 12 || (n >= 8 && line.trim_end().ends_with(['.', '!', '?']))
 }
 
+/// Words a line of the document holds before "N lines to a slide" counts it as more than one.
+const LONG_LINE: usize = 60;
+
+/// A line of the document as "N lines to a slide" counts it: itself, or, past `LONG_LINE` words,
+/// its parts cut at sentence ends (two 250-word paragraphs on one slide can't be read; the
+/// operator joins parts back in the slide editor if they want).
+fn own_line(line: &str) -> Vec<String> {
+    if line.split_whitespace().count() > LONG_LINE { split_prose(line) } else { vec![line.to_string()] }
+}
+
 /// Prose split at sentence ends into slides of at most `WORDS_PER_SLIDE` words.
 fn split_prose(text: &str) -> Vec<String> {
     let mut out: Vec<String> = Vec::new();
@@ -533,8 +543,8 @@ fn split_prose(text: &str) -> Vec<String> {
 }
 
 /// Slides from paragraphs. Each carries `own`: the document's lines behind it, as written (a long
-/// paragraph whole, though it is cut across slides), which the import dialog counts when asked
-/// for N lines to a slide. A blank line ends a slide; a section label
+/// paragraph whole, though Paragraph mode cuts it across slides, unless it's past `LONG_LINE`),
+/// which the import dialog counts when asked for N lines to a slide. A blank line ends a slide; a section label
 /// ("Chorus") or a heading names the next. Without blank lines (most Word
 /// documents), short lines are grouped a few to a slide and each paragraph
 /// of prose is a slide of its own.
@@ -567,13 +577,13 @@ pub fn blocks_from(paras: &[Para]) -> Vec<Value> {
             continue;
         }
         if blank_separated {
-            own.extend(lines.iter().cloned());
+            own.extend(lines.iter().flat_map(|l| own_line(l)));
             cur.extend(lines);
             continue;
         }
         if lines.len() == 1 && is_prose(&lines[0]) {
             flush(&mut cur, &mut own, &mut pending, &mut out);
-            own.push(lines[0].clone());
+            own.extend(own_line(&lines[0]));
             for part in split_prose(&lines[0]) {
                 cur.push(part);
                 flush(&mut cur, &mut own, &mut pending, &mut out);
@@ -585,12 +595,12 @@ pub fn blocks_from(paras: &[Para]) -> Vec<Value> {
             flush(&mut cur, &mut own, &mut pending, &mut out);
             for chunk in lines.chunks(LINES_PER_SLIDE) {
                 cur.extend(chunk.iter().cloned());
-                own.extend(chunk.iter().cloned());
+                own.extend(chunk.iter().flat_map(|l| own_line(l)));
                 flush(&mut cur, &mut own, &mut pending, &mut out);
             }
             continue;
         }
-        own.extend(lines.iter().cloned());
+        own.extend(lines.iter().flat_map(|l| own_line(l)));
         cur.extend(lines);
         if cur.len() >= LINES_PER_SLIDE {
             flush(&mut cur, &mut own, &mut pending, &mut out);
@@ -1299,6 +1309,11 @@ mod tests {
         assert!(blocks.len() > 2, "{blocks:?}");
         let lines: Vec<String> = blocks.iter().flat_map(own).collect();
         assert_eq!(lines, [a, b]);
+        // A paragraph too long to read two to a slide counts as its sentence-cut parts.
+        let long = "This is a sentence of exactly ten words in it here. ".repeat(10);
+        let lines: Vec<String> = from_text(&format!("{a}\n{long}")).iter().flat_map(own).collect();
+        assert!(lines.len() > 2 && lines[0] == a && lines[1..].iter().all(|l| l.split_whitespace().count() <= LONG_LINE), "{lines:?}");
+        assert_eq!(lines[1..].join(" "), long.trim());
         // A label names its slide and is not one of its lines.
         let blocks = from_text("Verse 1\nLine one here\nLine two here\n\nChorus\nSing it again\n\nVerse 3\nThe last one");
         let lines: Vec<String> = blocks.iter().flat_map(own).collect();
