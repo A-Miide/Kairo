@@ -46,7 +46,7 @@ fn computer() -> String {
     };
     #[cfg(target_os = "windows")]
     let os = {
-        let v = std::process::Command::new("cmd").args(["/C", "ver"]).output().ok()
+        let v = crate::proc::Command::new("cmd").args(["/C", "ver"]).output().ok()
             .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default();
         if v.is_empty() { "Windows".to_string() } else { v }
     };

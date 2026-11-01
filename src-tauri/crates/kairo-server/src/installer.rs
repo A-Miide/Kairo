@@ -251,7 +251,7 @@ async fn install(app: &Shared, s: &Spec, progress: &Progress) -> Result<std::pat
     let _ = progress.send(json!({ "phase": "extract" }));
     let top = dir.join(s.top_dir);
     let _ = tokio::fs::remove_dir_all(&top).await;
-    let out = tokio::process::Command::new("tar").arg("xjf").arg(&archive).arg("-C").arg(&dir).output().await.map_err(|e| format!("tar extract failed: {e}"))?;
+    let out = crate::proc::AsyncCommand::new("tar").arg("xjf").arg(&archive).arg("-C").arg(&dir).output().await.map_err(|e| format!("tar extract failed: {e}"))?;
     if !out.status.success() {
         return Err(format!("tar extract failed: {}", String::from_utf8_lossy(&out.stderr)));
     }

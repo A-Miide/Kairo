@@ -7,7 +7,8 @@
 use std::collections::HashMap;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use crate::proc::Command;
+use std::process::Stdio;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use serde_json::{json, Value};

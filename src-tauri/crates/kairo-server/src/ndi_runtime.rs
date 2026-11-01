@@ -100,7 +100,7 @@ async fn install(app: &Shared) -> Result<(), String> {
 }
 
 async fn run(cmd: &str, args: &[&str]) -> Result<String, String> {
-    let o = tokio::process::Command::new(cmd).args(args).output().await.map_err(|e| format!("{cmd}: {e}"))?;
+    let o = crate::proc::AsyncCommand::new(cmd).args(args).output().await.map_err(|e| format!("{cmd}: {e}"))?;
     let text = format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr));
     if o.status.success() { Ok(text) } else { Err(format!("{cmd} failed: {}", text.trim())) }
 }

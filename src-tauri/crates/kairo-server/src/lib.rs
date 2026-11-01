@@ -32,6 +32,7 @@ mod api_bible;
 pub mod notes;
 pub mod offline;
 pub mod coreml_encoder;
+pub mod proc;
 // Mapped weights are only used where they can be locked in memory (macOS so far; offline::map_weights).
 #[cfg_attr(not(target_os = "macos"), allow(dead_code))]
 mod onnx_weights;
