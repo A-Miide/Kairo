@@ -878,6 +878,9 @@
                         ✓ This file's original design (fonts, layout, images) will be kept as-is — no theme needed.
                     </p>
                 </div>
+                <div class="setting-group hidden" id="ac-import-note">
+                    <p class="setting-hint" id="ac-import-note-text"></p>
+                </div>
                 <div class="setting-group" id="ac-theme-group">
                     <label class="setting-label">Theme</label>
                     <select id="ac-theme" class="setting-input"></select>
@@ -960,9 +963,9 @@
                     <label class="setting-label">Or import a file</label>
                     <div style="display:flex;gap:6px;flex-wrap:wrap;">
                         <button id="import-file-btn" class="modal-btn secondary">Choose file…</button>
-                        <span class="setting-hint" style="align-self:center;">.txt · .md · .docx · .pptx · ProPresenter .pro6/.pro7/.probundle/.proplaylist</span>
+                        <span class="setting-hint" style="align-self:center;">.txt · .md · .rtf · .docx · .pptx · ProPresenter .pro6/.pro7/.probundle/.proplaylist</span>
                     </div>
-                    <input type="file" id="import-file" accept=".txt,.md,.docx,.pptx,.pro6,.pro,.pro7,.probundle,.proplaylist,.json" style="display:none">
+                    <input type="file" id="import-file" accept=".txt,.md,.rtf,.docx,.pptx,.pro6,.pro,.pro7,.probundle,.proplaylist,.json" style="display:none">
                     <p class="setting-hint" id="import-status"></p>
                 </div>
             </div>
@@ -1026,7 +1029,7 @@
                     <button type="button" class="imp-row" data-kind="text">
                         <span class="imp-ico imp-ico-txt">T</span>
                         <span class="imp-text"><b>Text</b><small>Lyrics, notes, announcements; a blank line starts a new slide</small></span>
-                        <span class="imp-exts"><i>.txt</i><i>.md</i></span>
+                        <span class="imp-exts"><i>.txt</i><i>.md</i><i>.rtf</i></span>
                     </button>
                     <button type="button" class="imp-row" data-kind="clipboard">
                         <span class="imp-ico imp-ico-clip"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M16 5h2a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2"/></svg></span>
@@ -1657,7 +1660,7 @@
                             <div class="help-body">
                                 <p>Bring in existing material instead of rebuilding it by hand, from either <strong>File → Import</strong> or the <strong>+</strong> button on a playlist item:</p>
                                 <ul>
-                                    <li><strong>Import…</strong> opens the Import window, which lists every format Kairo reads: ProPresenter (<code>.pro</code>/<code>.pro6</code>/<code>.probundle</code>/<code>.proplaylist</code>, plus <code>.protheme</code> themes), PowerPoint (<code>.pptx</code>), Word (<code>.docx</code>) and text (<code>.txt</code>/<code>.md</code>). Pick a row, or drop a file on the window.</li>
+                                    <li><strong>Import…</strong> opens the Import window, which lists every format Kairo reads: ProPresenter (<code>.pro</code>/<code>.pro6</code>/<code>.probundle</code>/<code>.proplaylist</code>, plus <code>.protheme</code> themes), PowerPoint (<code>.pptx</code>), Word (<code>.docx</code>) and text (<code>.txt</code>/<code>.md</code>/<code>.rtf</code>). Pick a row, or drop a file on the window.</li>
                                     <li><strong>Paste from clipboard</strong> — pasted lyrics/text, split into slides automatically.</li>
                                 </ul>
                                 <p><strong>ProPresenter files are handled specially.</strong> Kairo auto-detects them and preserves the file's own design exactly as authored — fonts, colors, positions, images, layer structure — instead of reformatting it into a Kairo theme. The Add dialog shows a notice confirming this rather than asking you to pick a theme, since none is needed. A playlist file with several presentations imports all of them at once, each keeping its own original layout.</p>

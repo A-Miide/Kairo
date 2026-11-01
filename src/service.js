@@ -4543,6 +4543,13 @@
     // rather than showing two controls that quietly do nothing.
     const isSceneImport = !!(acDraft.rawBlocks && acDraft.rawBlocks.some(b => b.layers));
     document.getElementById('ac-scene-notice')?.classList.toggle('hidden', !isSceneImport);
+    // What the import left out or couldn't find (a hidden slide, media that isn't in the file).
+    const noteEl = document.getElementById('ac-import-note');
+    if (noteEl) {
+      const text = importNoteText(opts.note, opts.warnings);
+      noteEl.classList.toggle('hidden', !text);
+      document.getElementById('ac-import-note-text').textContent = text;
+    }
     document.getElementById('ac-theme-group')?.classList.toggle('hidden', isSceneImport);
 
     const titleInp = document.getElementById('ac-title');
@@ -6731,15 +6738,23 @@
   // plain-text default. A PowerPoint deck arrives the same way, a slide per slide
   // (a deck imported as 2-line slides lost its own). Freeform text/.docx has no such
   // boundaries to preserve, so it keeps defaulting to DEFAULT_LINES_PER_SLIDE.
+  // One line for the dialog: the importer's note, then its distinct warnings (a few, and a count).
+  function importNoteText(note, warnings) {
+    const distinct = [...new Set((warnings || []).map(String))];
+    const shown = distinct.slice(0, 3).join(' ');
+    const more = distinct.length > 3 ? ` (and ${distinct.length - 3} more)` : '';
+    return [note ? `${note}` : '', shown ? shown + more : ''].filter(Boolean).join(' ');
+  }
+
   function beginImportResult(d, fallbackTitle, opts = {}) {
     const destination = opts.destination || 'playlist';
     const keepAsIs = /^(pro|pptx$)/.test(d.format || '');
     if (d.items && d.items.length) {
       const [first, ...rest] = d.items;
       pendingExtraBlockItems = rest;
-      openAddConfirm(toBlocksItem(first.blocks, first.name || fallbackTitle), { showDelimiter: true, isImportBlocks: true, rawBlocks: first.blocks, defaultKeepAsIs: keepAsIs, destination });
+      openAddConfirm(toBlocksItem(first.blocks, first.name || fallbackTitle), { showDelimiter: true, isImportBlocks: true, rawBlocks: first.blocks, defaultKeepAsIs: keepAsIs, destination, note: d.note, warnings: d.warnings });
     } else {
-      openAddConfirm(toBlocksItem(d.blocks, fallbackTitle), { showDelimiter: true, isImportBlocks: true, rawBlocks: d.blocks, defaultKeepAsIs: keepAsIs, destination });
+      openAddConfirm(toBlocksItem(d.blocks, fallbackTitle), { showDelimiter: true, isImportBlocks: true, rawBlocks: d.blocks, defaultKeepAsIs: keepAsIs, destination, note: d.note, warnings: d.warnings });
     }
   }
 
@@ -7224,7 +7239,7 @@
       quickFileInput = document.createElement('input');
       quickFileInput.type = 'file';
       quickFileInput.id = 'quick-import-file';
-      quickFileInput.accept = '.txt,.md,.docx,.pptx,.pro6,.pro,.pro7,.probundle,.proplaylist,.json';
+      quickFileInput.accept = '.txt,.md,.rtf,.docx,.pptx,.pro6,.pro,.pro7,.probundle,.proplaylist,.json';
       quickFileInput.style.display = 'none';
       document.body.appendChild(quickFileInput);
     }

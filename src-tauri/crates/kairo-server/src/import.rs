@@ -256,6 +256,136 @@ pub fn rtf_to_text(rtf: &str) -> String {
     s.replace(['{', '}'], "").trim().to_string()
 }
 
+/// The text of a whole RTF document (Word, WordPad, TextEdit), not a ProPresenter slide's: its
+/// font, color and style tables, document info and pictures are groups that hold no words.
+fn rtf_document_text(rtf: &str) -> String {
+    const SKIP: [&str; 10] = ["fonttbl", "colortbl", "stylesheet", "info", "pict", "header", "footer", "listtable", "listoverridetable", "generator"];
+    let chars: Vec<char> = rtf.chars().collect();
+    let mut out = String::new();
+    // Per open group: whether it holds no words, and how many characters a \uN stands in for.
+    let mut groups: Vec<(bool, usize)> = vec![(false, 1)];
+    let mut i = 0;
+    let mut skip_fallback = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        let (hidden, uc) = *groups.last().unwrap();
+        match c {
+            '{' => {
+                groups.push((hidden, uc));
+                i += 1;
+                // A destination: {\*\anything} or one of the tables.
+                if chars.get(i) == Some(&'\\') {
+                    let word: String = chars[i + 1..].iter().take_while(|c| c.is_ascii_alphabetic() || **c == '*').take(24).collect();
+                    if word.starts_with('*') || SKIP.contains(&word.as_str()) {
+                        groups.last_mut().unwrap().0 = true;
+                    }
+                }
+            }
+            '}' => {
+                if groups.len() > 1 {
+                    groups.pop();
+                }
+                i += 1;
+            }
+            '\\' => {
+                i += 1;
+                let Some(&n) = chars.get(i) else { break };
+                if n.is_ascii_alphabetic() {
+                    let start = i;
+                    while i < chars.len() && chars[i].is_ascii_alphabetic() {
+                        i += 1;
+                    }
+                    let word: String = chars[start..i].iter().collect();
+                    let num_start = i;
+                    if chars.get(i) == Some(&'-') {
+                        i += 1;
+                    }
+                    while i < chars.len() && chars[i].is_ascii_digit() {
+                        i += 1;
+                    }
+                    let num: Option<i64> = chars[num_start..i].iter().collect::<String>().parse().ok();
+                    if chars.get(i) == Some(&' ') {
+                        i += 1;
+                    }
+                    match word.as_str() {
+                        "par" | "line" | "sect" | "page" if !hidden => out.push('\n'),
+                        "tab" if !hidden => out.push(' '),
+                        "uc" => groups.last_mut().unwrap().1 = num.unwrap_or(1).max(0) as usize,
+                        "u" if !hidden => {
+                            let code = num.unwrap_or(63);
+                            out.push(char::from_u32(if code < 0 { code + 65536 } else { code } as u32).unwrap_or('\u{FFFD}'));
+                            skip_fallback = uc;
+                        }
+                        "emdash" if !hidden => out.push('—'),
+                        "endash" if !hidden => out.push('–'),
+                        "lquote" if !hidden => out.push('‘'),
+                        "rquote" if !hidden => out.push('’'),
+                        "ldblquote" if !hidden => out.push('“'),
+                        "rdblquote" if !hidden => out.push('”'),
+                        "bullet" if !hidden => out.push('•'),
+                        _ => {}
+                    }
+                } else {
+                    i += 1;
+                    match n {
+                        '\'' => {
+                            let hex: String = chars[i..].iter().take(2).collect();
+                            i += hex.chars().count();
+                            if !hidden {
+                                if skip_fallback > 0 {
+                                    skip_fallback -= 1;
+                                } else if let Ok(b) = u8::from_str_radix(&hex, 16) {
+                                    out.push(CP1252_HIGH.iter().find(|x| x.0 == b).map_or(b as char, |x| x.1));
+                                }
+                            }
+                        }
+                        '\\' | '{' | '}' if !hidden => out.push(n),
+                        '~' if !hidden => out.push(' '),
+                        '\n' | '\r' if !hidden => out.push('\n'),
+                        _ => {}
+                    }
+                }
+            }
+            '\r' | '\n' => i += 1,
+            _ => {
+                if !hidden {
+                    if skip_fallback > 0 {
+                        skip_fallback -= 1;
+                    } else {
+                        out.push(c);
+                    }
+                }
+                i += 1;
+            }
+        }
+    }
+    out
+}
+
+/// A text file's characters: UTF-8 or UTF-16 with or without a byte-order mark (Notepad writes
+/// one), or Windows-1252 when it isn't valid UTF-8. A binary file (an old .doc) is refused.
+fn decode_text(buf: &[u8], ext: &str) -> Result<String, ImportError> {
+    let utf16 = |b: &[u8], le: bool| -> String {
+        let units: Vec<u16> = b.chunks_exact(2).map(|c| if le { u16::from_le_bytes([c[0], c[1]]) } else { u16::from_be_bytes([c[0], c[1]]) }).collect();
+        String::from_utf16_lossy(&units)
+    };
+    let text = if let Some(b) = buf.strip_prefix(&[0xFF, 0xFE]) {
+        utf16(b, true)
+    } else if let Some(b) = buf.strip_prefix(&[0xFE, 0xFF]) {
+        utf16(b, false)
+    } else {
+        let b = buf.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(buf);
+        if b.starts_with(&[0xD0, 0xCF, 0x11, 0xE0]) || b.starts_with(b"PK\x03\x04") || b.contains(&0) {
+            return Err(ImportError(format!("That isn't a text file — .{ext} can't be read. Save it as .docx (Word) or .txt and import that."), Some("NOT_TEXT")));
+        }
+        match std::str::from_utf8(b) {
+            Ok(t) => t.to_string(),
+            Err(_) => b.iter().map(|&x| CP1252_HIGH.iter().find(|h| h.0 == x).map_or(x as char, |h| h.1)).collect(),
+        }
+    };
+    Ok(text.trim_start_matches('\u{feff}').to_string())
+}
+
 pub fn first_rtf_color(rtf: &str) -> Option<String> {
     static TBL: LazyLock<Regex> = LazyLock::new(|| re(r"\{\\colortbl([^{}]*)\}"));
     static CF: LazyLock<Regex> = LazyLock::new(|| re(r"\\cf(\d+)"));
@@ -313,7 +443,7 @@ fn labelled(lines: Vec<String>, n: usize) -> Value {
 /// Unicode line separator, and may separate paragraphs with the paragraph
 /// separator; those keep their meaning.
 pub fn from_text(text: &str) -> Vec<Value> {
-    let text = text.replace("\r\n", "\n").replace(['\r', '\u{2029}'], "\n").replace(['\u{00A0}', '\t'], " ");
+    let text = text.trim_start_matches('\u{feff}').replace("\r\n", "\n").replace(['\r', '\u{2029}'], "\n").replace(['\u{00A0}', '\t'], " ");
     let paras: Vec<Para> = text
         .split('\n')
         .map(|p| Para { lines: p.split(['\u{000B}', '\u{2028}']).map(|l| l.trim().to_string()).collect(), heading: false })
@@ -861,7 +991,11 @@ pub fn import_slides(filename: &str, buf: &[u8], assets: &pp::Assets) -> Result<
     let mut warnings = Vec::new();
     let blocks = |format, blocks| Ok(Imported::Blocks { format, blocks, note: None, warnings: Vec::new() });
     match ext.as_str() {
-        "txt" | "md" | "json" => blocks("text", from_text(&String::from_utf8_lossy(buf))),
+        "txt" | "md" | "json" => blocks("text", from_text(&decode_text(buf, &ext)?)),
+        "rtf" => {
+            let text = decode_text(buf, &ext)?;
+            blocks("text", from_text(&if text.trim_start().starts_with("{\\rtf") { rtf_document_text(&text) } else { text }))
+        }
         "docx" => blocks("docx", from_docx(buf)?),
         "pptx" => {
             let (b, note) = from_pptx(buf)?;
@@ -880,7 +1014,7 @@ pub fn import_slides(filename: &str, buf: &[u8], assets: &pp::Assets) -> Result<
             Ok(Imported::Items { format: "proplaylist", items, warnings })
         }
         "pdf" => Err(ImportError("PDF import isn't supported yet".into(), Some("PDF_UNSUPPORTED"))),
-        _ => Ok(Imported::Blocks { format: "text", blocks: from_text(&String::from_utf8_lossy(buf)), note: Some(format!("treated .{ext} as plain text")), warnings }),
+        _ => Ok(Imported::Blocks { format: "text", blocks: from_text(&decode_text(buf, &ext)?), note: Some(format!("treated .{ext} as plain text")), warnings }),
     }
 }
 
@@ -1135,6 +1269,41 @@ mod tests {
         let lines: Vec<String> = blocks.iter().flat_map(own).collect();
         assert_eq!(lines, ["Line one here", "Line two here", "Sing it again", "The last one"], "{blocks:?}");
         assert_eq!(blocks[2]["label"], "Verse 3");
+    }
+
+    fn texts(buf: &[u8], name: &str) -> Vec<(String, Vec<String>)> {
+        match import_slides(name, buf, &pp::Assets::new(&std::env::temp_dir())).ok() {
+            Some(Imported::Blocks { blocks, .. }) => blocks.iter().map(|b| (b["label"].as_str().unwrap().to_string(), b["lines"].as_array().unwrap().iter().map(|l| l.as_str().unwrap().to_string()).collect())).collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    #[test]
+    fn text_files_in_the_encodings_windows_writes() {
+        let want = vec![("Verse 1".to_string(), vec!["Amazing grace".to_string()]), ("Slide 2".to_string(), vec!["Café “x”".to_string()])];
+        let plain = "Verse 1\r\nAmazing grace\r\n\r\nCafé “x”";
+        // Notepad's UTF-8 with a mark, UTF-16 either way round, and Windows-1252 (ANSI).
+        assert_eq!(texts(&[&[0xEF, 0xBB, 0xBF][..], plain.as_bytes()].concat(), "a.txt"), want);
+        let le: Vec<u8> = [0xFF, 0xFE].into_iter().chain(plain.encode_utf16().flat_map(u16::to_le_bytes)).collect();
+        let be: Vec<u8> = [0xFE, 0xFF].into_iter().chain(plain.encode_utf16().flat_map(u16::to_be_bytes)).collect();
+        assert_eq!(texts(&le, "a.txt"), want);
+        assert_eq!(texts(&be, "a.txt"), want);
+        let ansi = b"Verse 1\r\nAmazing grace\r\n\r\nCaf\xE9 \x93x\x94";
+        assert_eq!(texts(ansi, "a.txt"), want);
+        // Pasted text carries the mark too.
+        assert_eq!(from_text("\u{feff}Verse 1\nAmazing grace")[0]["label"], "Verse 1");
+        // A binary file is refused with a reason, not turned into a slide of noise.
+        let doc = [&[0xD0, 0xCF, 0x11, 0xE0][..], b"\0\0binary"].concat();
+        let e = import_slides("old.doc", &doc, &pp::Assets::new(&std::env::temp_dir())).err().unwrap();
+        assert!(e.0.contains(".doc") && e.1 == Some("NOT_TEXT"), "{e:?}");
+    }
+
+    #[test]
+    fn an_rtf_document_gives_its_words_only() {
+        let rtf = r"{\rtf1\ansi\deff0{\fonttbl{\f0\fnil Times New Roman;}}{\colortbl;\red0\green0\blue0;}{\stylesheet{\s1 Heading 1;}}{\info{\author Someone}}{\*\generator Word}\pard\plain Psalm 47\par O clap your hands\line all ye people\par\par Caf\'e9 \u8220?quoted\u8221? \{ok\}\par}";
+        let out = rtf_document_text(rtf);
+        assert_eq!(out, "Psalm 47\nO clap your hands\nall ye people\n\nCafé “quoted” {ok}\n");
+        assert_eq!(texts(rtf.as_bytes(), "x.rtf"), [("Slide 1".to_string(), vec!["Psalm 47".to_string(), "O clap your hands".to_string(), "all ye people".to_string()]), ("Slide 2".to_string(), vec!["Café “quoted” {ok}".to_string()])]);
     }
 
     #[test]

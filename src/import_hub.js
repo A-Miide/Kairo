@@ -10,7 +10,7 @@
     propresenter: ['pro', 'pro6', 'pro7', 'probundle', 'proplaylist'],
     pptx: ['pptx'],
     docx: ['docx'],
-    text: ['txt', 'md'],
+    text: ['txt', 'md', 'rtf'],
     theme: ['protheme', 'kairotheme', 'json'],
   };
   const CONTENT_EXTS = [...KINDS.propresenter, ...KINDS.pptx, ...KINDS.docx, ...KINDS.text];
