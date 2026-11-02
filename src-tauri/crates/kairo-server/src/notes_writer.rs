@@ -129,7 +129,7 @@ mod tests {
 
     #[test]
     fn the_input_carries_each_part_and_its_scriptures() {
-        let g = Segment { at: 0, end: 10, text: "hello there".into(), refs: vec!["Isaiah 58:6".into()] };
+        let g = Segment { at: 0, end: 10, text: "hello there".into(), refs: vec!["Isaiah 58:6".into()], point: None };
         let v = input(&[g.clone(), g]);
         assert_eq!(v["sections"][1]["id"], "s2");
         assert_eq!(v["sections"][0]["refs"][0], "Isaiah 58:6");

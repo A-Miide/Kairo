@@ -1105,6 +1105,8 @@ pub struct Segment {
     pub end: u64,
     pub text: String,
     pub refs: Vec<String>,
+    /// The preacher's own words for this part when it starts at a numbered point ("number two, …").
+    pub point: Option<String>,
 }
 
 /// The writer's words for each segment, in order ("s1", "s2", …), and for the sermon.
@@ -1118,18 +1120,21 @@ pub struct Written {
 /// Where the sermon changes subject, as indexes of the units that start a new part: the preacher's
 /// own numbered points when there are at least three, else equal parts of the sermon, each cut
 /// moved to the nearest place (within an eighth of a part) where the chapter on screen changes.
-fn cut_points(k: &Knowledge, units: &[Unit], shown: &[Shown], minutes: u64) -> Vec<usize> {
+/// Each cut carries the preacher's words for the point it starts, when it starts one; the second
+/// value is those words for point one when what came before it was only a greeting and so joins it.
+fn cut_points(k: &Knowledge, units: &[Unit], shown: &[Shown], minutes: u64) -> (Vec<(usize, Option<String>)>, Option<String>) {
     let total: usize = units.iter().map(|u| word_count(&u.text)).sum();
     let parts = (((minutes + 4) / 8) as usize).clamp(1, 10).min(total / 250).max(1);
     let index_of = |at: u64| units.iter().position(|u| u.at >= at).unwrap_or(units.len());
-    let mut cuts: Vec<usize> = Vec::new();
+    let mut cuts: Vec<(usize, Option<String>)> = Vec::new();
+    let mut lead: Option<String> = None;
     let points = detect_points(units);
     if points.len() >= 3 && points.len() <= 12 {
-        cuts = points.iter().map(|p| index_of(p.at)).filter(|i| *i > 0).collect();
+        cuts = points.iter().map(|p| (index_of(p.at), Some(clip(&tidy(&p.text), 16)))).filter(|(i, _)| *i > 0).collect();
         // What comes before point one is its own part only when it's more than a greeting.
-        let before: usize = units.iter().take(cuts.first().copied().unwrap_or(0)).map(|u| word_count(&u.text)).sum();
+        let before: usize = units.iter().take(cuts.first().map_or(0, |c| c.0)).map(|u| word_count(&u.text)).sum();
         if before < 150 && !cuts.is_empty() {
-            cuts.remove(0);
+            lead = cuts.remove(0).1;
         }
     } else if parts > 1 {
         let chapter_at = |i: usize| -> Option<(String, u32)> {
@@ -1152,22 +1157,22 @@ fn cut_points(k: &Knowledge, units: &[Unit], shown: &[Shown], minutes: u64) -> V
             let from = target.saturating_sub(reach).max(1);
             let to = (target + reach).min(units.len() - 1);
             let moved = (from..=to).filter(|i| chapter_at(*i).is_some() && chapter_at(*i) != chapter_at(*i - 1)).min_by_key(|i| i.abs_diff(target));
-            cuts.push(moved.unwrap_or(target));
+            cuts.push((moved.unwrap_or(target), None));
         }
     }
-    cuts.sort_unstable();
-    cuts.dedup();
+    cuts.sort_by_key(|c| c.0);
+    cuts.dedup_by_key(|c| c.0);
     // A part of under 200 words joins the one before it.
-    let mut kept: Vec<usize> = Vec::new();
+    let mut kept: Vec<(usize, Option<String>)> = Vec::new();
     let mut last = 0;
-    for c in cuts {
+    for (c, text) in cuts {
         let words: usize = units[last..c].iter().map(|u| word_count(&u.text)).sum();
         if c > last && words >= 200 {
-            kept.push(c);
+            kept.push((c, text));
             last = c;
         }
     }
-    kept
+    (kept, lead)
 }
 
 /// The sermon in parts, each with its words and the scriptures that came up in it.
@@ -1181,8 +1186,10 @@ pub fn segments(k: &Knowledge, session: &Session) -> Vec<Segment> {
     let minutes = first.zip(last).map(|(a, b)| b.saturating_sub(a) / 60_000).unwrap_or(0);
     let mut shown = session.shown.clone();
     shown.sort_by_key(|s| s.at);
+    let (cuts, lead) = cut_points(k, &units, &shown, minutes);
     let mut starts = vec![0usize];
-    starts.extend(cut_points(k, &units, &shown, minutes));
+    starts.extend(cuts.iter().map(|c| c.0));
+    let points: Vec<Option<String>> = std::iter::once(lead).chain(cuts.into_iter().map(|c| c.1)).collect();
     starts
         .iter()
         .enumerate()
@@ -1197,7 +1204,7 @@ pub fn segments(k: &Knowledge, session: &Session) -> Vec<Segment> {
                     refs.push(name);
                 }
             }
-            Segment { at, end, text: units[a..b].iter().map(|u| u.text.as_str()).collect::<Vec<_>>().join(" "), refs }
+            Segment { at, end, text: units[a..b].iter().map(|u| u.text.as_str()).collect::<Vec<_>>().join(" "), refs, point: points.get(i).cloned().flatten() }
         })
         .collect()
 }
@@ -1216,7 +1223,8 @@ pub fn outline(k: &Knowledge, session: &Session, meaning: Option<&dyn Meaning>) 
             let mut biggest: Vec<&Passage> = scriptures.iter().collect();
             biggest.sort_by_key(|p| std::cmp::Reverse(p.verses.len()));
             biggest.truncate(2);
-            let heading = compact(k, &biggest).join(", ");
+            // The preacher's own point when the part starts one, else the scripture it's about.
+            let heading = g.point.clone().filter(|p| !p.trim().is_empty()).unwrap_or_else(|| compact(k, &biggest).join(", "));
             // No quoted lines: from a noisy transcript they read as nonsense, and the scriptures are what is certain.
             Section { kind: Kind::Part, heading: if heading.is_empty() { format!("Part {}", i + 1) } else { heading }, at: g.at, quotes: Vec::new(), scriptures, bullets: Vec::new() }
         })
@@ -1531,10 +1539,20 @@ mod tests {
             texts.extend((0..4).map(|_| filler(50, "And then we see how it works in the life of a believer")));
         }
         let lines: Vec<Line> = texts.into_iter().enumerate().map(|(i, text)| Line { text, at: 1_000 + i as u64 * 20_000 }).collect();
-        let parts = segments(&K, &Session { lines, ..Default::default() });
+        let session = Session { lines, ..Default::default() };
+        let parts = segments(&K, &session);
         assert_eq!(parts.len(), 4, "the opening, then a part for each point");
         assert!(parts[1].text.starts_with("Number one"), "{}", &parts[1].text[..40]);
         assert!(parts[3].text.starts_with("Number three"));
+        // The opening is no point; each point part carries the preacher's words for it.
+        assert!(parts[0].point.is_none());
+        assert!(parts[1].point.as_deref().is_some_and(|p| p.starts_with("Trigger of favor is humility")), "{:?}", parts[1].point);
+        // The outline is headed by those words, not by a scripture; the opening has neither point nor
+        // scripture, so it keeps a plain name.
+        let (notes, _) = outline(&K, &session, None);
+        assert_eq!(notes.sections[0].heading, "Part 1");
+        assert!(notes.sections[1].heading.starts_with("Trigger of favor is humility"), "{}", notes.sections[1].heading);
+        assert!(notes.sections[3].heading.starts_with("Trigger of favor"), "{}", notes.sections[3].heading);
     }
 
     #[test]
