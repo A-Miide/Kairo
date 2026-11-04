@@ -1731,7 +1731,18 @@ function renderChapterChildren(card) {
     const n = document.createElement('span'); n.className = 'lvc-child-num'; n.textContent = v.verse;
     const t = document.createElement('span'); t.className = 'lvc-child-text'; t.textContent = cleanVerseText(v.text || '');
     row.append(n, t);
-    row.addEventListener('click', () => sendReferenceToScreen(v.reference));
+    row.addEventListener('click', () => {
+      // A verse of the passage being read goes up as the passage's own Send does, so its
+      // position ("N / total", Next) follows. A chapter card holds one card for many verses.
+      if (rangeRefs.has(v.reference)) {
+        const held = card._rangeVerses?.find(x => x.reference === v.reference) || v;
+        showInViewer([held], 'direct', 1.0);
+        sendVerseToServer(held, null, { direct: true });
+        syncRangeJumpIfNeeded(held);
+        return;
+      }
+      sendReferenceToScreen(v.reference);
+    });
     return row;
   }));
   // Scrolled inside the list only (not the page) to the verse on screen, else the card's verse.
