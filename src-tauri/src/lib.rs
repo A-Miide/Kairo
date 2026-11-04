@@ -793,6 +793,20 @@ fn push_frame(app: &AppHandle, id: &str, frame: Arc<capture::Frame>, fade: u32) 
 #[derive(Default)]
 struct VideoBgState(Mutex<std::collections::HashMap<String, video_bg::VideoBg>>);
 
+/// The newest request per video/camera key. Starting takes a moment (a lookup, ffmpeg's first
+/// frame); a start that finishes after a newer request (a "clear" pressed meanwhile, or another
+/// video) is dropped instead of putting back what the operator just took off.
+static VIDEO_REQUESTS: std::sync::LazyLock<Mutex<std::collections::HashMap<String, u64>>> = std::sync::LazyLock::new(Default::default);
+fn video_request(key: &str) -> u64 {
+    let mut m = VIDEO_REQUESTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let n = m.get(key).copied().unwrap_or(0) + 1;
+    m.insert(key.to_string(), n);
+    n
+}
+fn video_request_is_newest(key: &str, n: u64) -> bool {
+    VIDEO_REQUESTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).get(key) == Some(&n)
+}
+
 // A live camera under an NDI / Syphon / DeckLink output (camera.rs, video_bg.rs): the capture
 // window hands it over instead of drawing it, so it moves at the output's rate rather than only
 // when a snapshot is taken. GPU compositor only: an error keeps it in the page, as before. Kept
@@ -800,6 +814,7 @@ struct VideoBgState(Mutex<std::collections::HashMap<String, video_bg::VideoBg>>)
 #[tauri::command]
 async fn output_camera(app: AppHandle, id: String, label: Option<String>, fit: Option<String>, width: u32, height: u32) -> Result<(), String> {
     let key = format!("{id}#camera");
+    let req = video_request(&key);
     let Some(label) = label.filter(|l| !l.is_empty()) else {
         // Out of the map first, stopped after: not under the lock every capture takes.
         let old = app.state::<VideoBgState>().0.lock().map_err(|e| e.to_string())?.remove(&key);
@@ -808,7 +823,7 @@ async fn output_camera(app: AppHandle, id: String, label: Option<String>, fit: O
     };
     let fit = fit.unwrap_or_else(|| "cover".into());
     let same = std::path::PathBuf::from(format!("camera:{label}"));
-    if app.state::<VideoBgState>().0.lock().map_err(|e| e.to_string())?.get(&key).is_some_and(|v| v.file == same && v.fit == fit) {
+    if app.state::<VideoBgState>().0.lock().map_err(|e| e.to_string())?.get(&key).is_some_and(|v| v.file == same && v.fit == fit && v.camera_alive()) {
         return Ok(());
     }
     let (port, token) = { let c = app.state::<ServerConfig>(); (c.port, c.token.clone()) };
@@ -827,6 +842,10 @@ async fn output_camera(app: AppHandle, id: String, label: Option<String>, fit: O
     })
     .await
     .map_err(|e| e.to_string())??;
+    if !video_request_is_newest(&key, req) {
+        v.stop();
+        return Ok(());
+    }
     let old = app.state::<VideoBgState>().0.lock().map_err(|e| e.to_string())?.insert(key, v);
     if let Some(old) = old { old.stop(); }
     Ok(())
@@ -834,6 +853,7 @@ async fn output_camera(app: AppHandle, id: String, label: Option<String>, fit: O
 
 #[tauri::command]
 async fn output_video(app: AppHandle, id: String, url: Option<String>, fit: Option<String>, width: u32, height: u32) -> Result<(), String> {
+    let req = video_request(&id);
     let Some(url) = url.filter(|u| !u.is_empty()) else {
         let old = app.state::<VideoBgState>().0.lock().map_err(|e| e.to_string())?.remove(&id);
         if let Some(v) = old { v.stop(); }
@@ -872,6 +892,10 @@ async fn output_video(app: AppHandle, id: String, url: Option<String>, fit: Opti
     })
     .await
     .map_err(|e| e.to_string())??;
+    if !video_request_is_newest(&id, req) {
+        v.stop();
+        return Ok(());
+    }
     let prev = state.0.lock().map_err(|e| e.to_string())?.insert(id, v);
     if let Some(prev) = prev { prev.stop(); }
     Ok(())
@@ -1011,7 +1035,8 @@ fn decklink_list() -> serde_json::Value {
     decklink::list()
 }
 
-#[tauri::command]
+// Off the main thread: the card can take seconds to answer (start waits up to 10 s).
+#[tauri::command(async)]
 fn decklink_start(app: AppHandle, id: String, device: i32, mode: u32, keying: bool, fps: f64) -> Result<serde_json::Value, String> {
     let handle = app.state::<DeckLinkState>().handle_for(&id)?;
     if let Ok(mut h) = handle.lock() {
@@ -1021,7 +1046,8 @@ fn decklink_start(app: AppHandle, id: String, device: i32, mode: u32, keying: bo
     Ok(serde_json::json!({ "width": w, "height": h }))
 }
 
-#[tauri::command]
+// Off the main thread: the card can take seconds to answer (start waits up to 10 s).
+#[tauri::command(async)]
 fn decklink_stop(app: AppHandle, id: String) -> Result<(), String> {
     let handle = app.state::<DeckLinkState>().handle_for(&id)?;
     let mut h = handle.lock().map_err(|e| e.to_string())?;
@@ -1195,6 +1221,9 @@ pub fn run() {
             if let tauri::WindowEvent::Destroyed = event {
                 if let Some(id) = window.label().strip_prefix("kairo-cap-") {
                     let app = window.app_handle();
+                    // A video or camera still starting for it is dropped when it arrives.
+                    video_request(id);
+                    video_request(&format!("{id}#camera"));
                     // Its video background and its camera (kept under "<id>#camera"), taken out
                     // of the map first and stopped after, so the lock isn't held while they end.
                     let gone: Vec<_> = app.state::<VideoBgState>().0.lock().ok()

@@ -263,7 +263,7 @@ fn bare_citation(text: &str) -> Option<(u16, u16, u16)> {
             }
         }
         if chapter.value >= 1 && from.value >= 1 {
-            return Some((chapter.value as u16, from.value as u16, to as u16));
+            return Some((n16(chapter.value), n16(from.value), n16(to)));
         }
     }
     None
@@ -335,8 +335,8 @@ impl Engine {
             Verses::Span(a, b) => vec![(*a, *b)],
             Verses::Spans(s) => s.clone(),
         };
-        let ch = c.chapter.min(u16::MAX as u32) as u16;
-        spans.iter().flat_map(|&(a, b)| (a..=b.min(a.saturating_add(200))).filter_map(move |v| self.k.id(VerseRef::new(c.book, ch, v.min(u16::MAX as u32) as u16)))).collect()
+        let ch = n16(c.chapter);
+        spans.iter().flat_map(|&(a, b)| (a..=b.min(a.saturating_add(200))).filter_map(move |v| self.k.id(VerseRef::new(c.book, ch, n16(v))))).collect()
     }
 
     pub(crate) fn process_references(&mut self, text: &str, is_final: bool, now: u64) -> bool {
@@ -478,12 +478,12 @@ impl Engine {
 
         let cited_now: HashSet<VerseId> = refs
             .iter()
-            .filter_map(|r| first_verse(&r.c).and_then(|v| self.k.id(VerseRef::new(r.c.book, r.c.chapter as u16, v as u16))))
+            .filter_map(|r| first_verse(&r.c).and_then(|v| self.k.id(VerseRef::new(r.c.book, n16(r.c.chapter), n16(v)))))
             .collect();
         let count = refs.len();
         for (i, Cite { c, mut unresolved }) in refs.into_iter().enumerate() {
             let (book, chapter) = (c.book, c.chapter);
-            let ch = chapter as u16;
+            let ch = n16(chapter);
             // Even a chapter alone is context for what's said next — unless it's mentioned in passing
             // while another chapter is being read ("…Romans eight, you can read it later", then "now
             // verse twenty six" during Genesis 29 is Genesis 29:26).
@@ -514,7 +514,7 @@ impl Engine {
             // 30 was never named.
             let unfinished = self.chapter_pending.as_ref().is_some_and(|p| p.book == book && p.from == self.said_at(book, joined_text.as_deref().unwrap_or(text)));
             let passing = match (&self.chapter_pending, &c.verses) {
-                (Some(p), Verses::One(v)) if !unfinished && (p.book, p.chapter) != (book, ch) && !super::detour::READING_CUE.is_match(text) => Some((book, ch, *v as u16, now)),
+                (Some(p), Verses::One(v)) if !unfinished && (p.book, p.chapter) != (book, ch) && !super::detour::READING_CUE.is_match(text) => Some((book, ch, n16(*v), now)),
                 _ => None,
             };
             if passing.is_none() {
@@ -535,7 +535,7 @@ impl Engine {
                     }
                     // Else a book that sounds like it has that verse: offered only.
                     if verses.is_empty() {
-                        if let Some(id) = self.k.books.sound_alikes(book).into_iter().find_map(|b| self.k.id(VerseRef::new(b, ch, v as u16))) {
+                        if let Some(id) = self.k.books.sound_alikes(book).into_iter().find_map(|b| self.k.id(VerseRef::new(b, ch, n16(v)))) {
                             verses = vec![id];
                             unresolved = true;
                         }
@@ -661,7 +661,7 @@ impl Engine {
     /// ("Psalm sixty seven it" | "says let the people praise thee" | … | "thee then the earth shall
     /// yield" is 67:6).
     fn chapter_waiting(&self, c: &Citation) -> bool {
-        let ch = c.chapter as u16;
+        let ch = n16(c.chapter);
         matches!(c.verses, Verses::Chapter)
             && (self.chapter_pending.as_ref().is_some_and(|p| p.book == c.book && p.chapter == ch) || self.chapter_resolved_for == Some((c.book, ch)))
     }
@@ -697,7 +697,7 @@ impl Engine {
                 Verses::One(v) | Verses::Span(v, _) => v,
                 _ => continue,
             };
-            if self.k.id(VerseRef::new(sibling, r.c.chapter.min(u16::MAX as u32) as u16, first.min(u16::MAX as u32) as u16)).is_some() {
+            if self.k.id(VerseRef::new(sibling, n16(r.c.chapter), n16(first))).is_some() {
                 r.c.book = sibling;
             }
         }
@@ -829,7 +829,7 @@ impl Engine {
 
     /// "Book chapter N" with no verse: the words that follow choose the verse.
     fn chapter_named(&mut self, book: Book, chapter: u32, unresolved: bool, text: &str, is_final: bool, now: u64) {
-        let ch = chapter as u16;
+        let ch = n16(chapter);
         // Re-parsed after it was resolved a moment ago.
         if self.chapter_resolved_for == Some((book, ch)) {
             return;
@@ -904,7 +904,7 @@ impl Engine {
         if self.decide(candidate, now) != Target::Screen {
             return false;
         }
-        let ch = chapter as u16;
+        let ch = n16(chapter);
         self.chapter_resolved_for = Some((book, ch));
         self.chapter_pending = None;
         self.screen.last_citation_at = now;
@@ -955,6 +955,11 @@ impl Engine {
         let mut fits: Vec<Vec<VerseId>> = vec![Vec::new(); windows.len()];
         // …and the verses it comes close to: a window nearly as good for another verse is shared words.
         let mut near: Vec<Vec<VerseId>> = vec![Vec::new(); windows.len()];
+        // Each window's meaningful words and their weight, worked out once (this runs on every
+        // interim while a chapter waits for its verse, over every verse and wording of it).
+        let weighed: Vec<Vec<(String, f32)>> = windows.iter()
+            .map(|w| super::evidence::meaningful_words(&w.join(" ")).into_iter().map(|m| (m.to_lowercase(), self.k.lexicon.idf_of(&m))).collect())
+            .collect();
         for n in 1..=self.k.corpus.verse_count(book, chapter).unwrap_or(0) {
             let Some(id) = self.k.id(VerseRef::new(book, chapter, n)) else { continue };
             let wordings: Vec<Vec<String>> = self.verse_wordings(id).into_iter().map(super::evidence::plain_tokens).collect();
@@ -962,14 +967,26 @@ impl Engine {
                 // Two of the verse's own words at least, rare enough together: one word and
                 // everyday ones ("while you are turning remember that", NLT Romans 8:9) isn't a quote.
                 let rare = |verse: &Vec<String>| {
-                    let own: Vec<String> = super::evidence::meaningful_words(&w.join(" ")).into_iter().filter(|m| verse.contains(&m.to_lowercase())).collect();
-                    own.iter().filter(|m| self.k.lexicon.idf_of(m) >= QUOTE_WORD_MIN_IDF).count() >= 2 && own.iter().map(|m| self.k.lexicon.idf_of(m)).sum::<f32>() >= QUOTE_MIN_IDF
+                    let own = weighed[i].iter().filter(|(m, _)| verse.contains(m));
+                    let (strong, sum) = own.fold((0, 0.0f32), |(c, s), (_, idf)| (c + usize::from(*idf >= QUOTE_WORD_MIN_IDF), s + idf));
+                    strong >= 2 && sum >= QUOTE_MIN_IDF
                 };
-                // "the earth shall" is in 67:7 too, but not "yield": a rival shares the rare words.
-                if wordings.iter().any(|verse| in_order(w, verse) + 1 >= QUOTE_IN_ORDER && rare(verse)) {
+                // Quoted (in order) and close (one word short): "the earth shall" is in 67:7 too,
+                // but not "yield": a rival shares the rare words.
+                let (mut close, mut quotes) = (false, false);
+                for verse in &wordings {
+                    let k = in_order(w, verse);
+                    if k + 1 >= QUOTE_IN_ORDER && rare(verse) {
+                        close = true;
+                        quotes |= k >= QUOTE_IN_ORDER;
+                    }
+                    if close && quotes {
+                        break;
+                    }
+                }
+                if close {
                     near[i].push(id);
                 }
-                let quotes = wordings.iter().any(|verse| in_order(w, verse) >= QUOTE_IN_ORDER && rare(verse));
                 if quotes {
                     fits[i].push(id);
                 }
@@ -1000,7 +1017,7 @@ impl Engine {
             if n == chapter {
                 continue;
             }
-            if let Some(id) = self.k.id(VerseRef::new(book, chapter as u16, n as u16)) {
+            if let Some(id) = self.k.id(VerseRef::new(book, n16(chapter), n16(n))) {
                 return Some(id);
             }
         }
@@ -1032,8 +1049,8 @@ impl Engine {
         let said: HashMap<String, f32> = super::evidence::meaningful_words(&after).iter().map(|w| (super::evidence::stem_lite(w), self.k.lexicon.idf_of(w))).collect();
         // …and one the chapter's other verses don't share: "Pharisees" is in four verses of Luke 5,
         // "parables" in six of Matthew 13 (MacArthur, dev build).
-        let chapter_words: Vec<HashSet<String>> = (1..=self.k.corpus.verse_count(book, chapter as u16).unwrap_or(0))
-            .filter_map(|n| self.k.id(VerseRef::new(book, chapter as u16, n)))
+        let chapter_words: Vec<HashSet<String>> = (1..=self.k.corpus.verse_count(book, n16(chapter)).unwrap_or(0))
+            .filter_map(|n| self.k.id(VerseRef::new(book, n16(chapter), n)))
             .filter(|id| *id != v)
             .map(|id| super::evidence::meaningful_words(self.verse_text(id)).iter().map(|w| super::evidence::stem_lite(w)).collect())
             .collect();
@@ -1050,7 +1067,7 @@ impl Engine {
     /// The chapter's verse sharing clearly the most identifying words with `text`.
     pub(crate) fn pick_chapter_verse_by_idf(&self, book: Book, chapter: u32, text: &str) -> Option<VerseId> {
         use super::ranges::{CHAPTER_KEYWORD_MIN_IDF, CHAPTER_KEYWORD_MIN_MARGIN};
-        let rows = self.score_chapter_all(book, chapter as u16, text);
+        let rows = self.score_chapter_all(book, n16(chapter), text);
         // A verse worded exactly like the best one (Psalm 67:3 and 67:5) is the same answer, not a rival.
         let best = rows.first()?;
         let second = rows.iter().skip(1).find(|r| self.verse_text(r.0) != self.verse_text(best.0)).map_or(0.0, |r| r.1);
@@ -1107,7 +1124,7 @@ impl Engine {
             return c;
         }
         if let Some(v) = first_verse(&c) {
-            if self.k.id(VerseRef::new(active, c.chapter as u16, v as u16)).is_none() {
+            if self.k.id(VerseRef::new(active, n16(c.chapter), n16(v))).is_none() {
                 return c;
             }
         }
@@ -1308,7 +1325,7 @@ impl Engine {
         }
         self.screen.last_citation_at = now;
         let first = self.r(verses[0]).verse;
-        self.note_cited(chosen.book, Some(chosen.chapter as u16), Some(first), true, now);
+        self.note_cited(chosen.book, Some(n16(chosen.chapter)), Some(first), true, now);
         self.reading.update(chosen.book, Some(chosen.chapter), now);
         if verses.len() > 1 {
             self.set_range(verses.clone(), now);
@@ -1424,4 +1441,11 @@ pub(crate) fn in_order(a: &[String], b: &[String]) -> usize {
         }
     }
     row[b.len()]
+}
+
+/// A chapter or verse number as the corpus keys it. Out of range ("verse ninety thousand" from a
+/// misheard number) it clamps to one no book has, so it finds nothing, instead of wrapping round
+/// to a small verse that does exist (65,537 → 1).
+pub(crate) fn n16<T: TryInto<u16>>(n: T) -> u16 {
+    n.try_into().unwrap_or(u16::MAX)
 }

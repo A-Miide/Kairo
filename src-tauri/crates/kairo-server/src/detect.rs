@@ -424,7 +424,9 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
 fn range_state(bible: &Bible, hub: &Hub, range: &RangeMirror) {
     let remaining = range.all.len().saturating_sub(range.current + 1);
     let next = range.all.get(range.current + 1).map(|v| bible.verse_json(*v, 1.0, "direct"));
-    hub.broadcast(json!({ "type": "range-state", "remaining": remaining, "total": range.all.len(), "next": next }));
+    // `refs`: the passage's verses, so Next / Back can tell whether what is on screen is part of it.
+    let refs: Vec<String> = range.all.iter().map(|v| bible.reference(*v)).collect();
+    hub.broadcast(json!({ "type": "range-state", "remaining": remaining, "total": range.all.len(), "next": next, "refs": refs }));
 }
 
 #[cfg(test)]

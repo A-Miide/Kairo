@@ -2362,19 +2362,6 @@
         // theme assigned to each output now owns layout, canvas fill and
         // opacity, so there is nothing to sync here.)
 
-        // Audio Input mode — update hint text
-        (function() {
-            var group = document.getElementById('audio-mode-toggle');
-            var hint  = document.getElementById('audio-mode-hint');
-            if (!group || !hint) return;
-            var HINTS = {
-                'mic':     'Built-in or USB microphone with noise suppression',
-                'line-in': 'Line-level input from a mixing board or external interface',
-            };
-            group.addEventListener('toggle-change', function(e) {
-                hint.textContent = HINTS[e.detail.value] || '';
-            });
-        })();
 
         // Speech Engine — swap hint, hide/show Deepgram key field.
         // 'browser' is the UI label kept for backward compat — it actually maps

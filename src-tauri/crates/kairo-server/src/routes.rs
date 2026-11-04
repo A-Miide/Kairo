@@ -504,20 +504,24 @@ async fn learned_forget() -> Json<Value> {
 async fn verse_step(State(app): State<Shared>, Json(body): Json<Value>) -> Json<Value> {
     let Some((bible, d)) = app.ready() else { return Json(json!({ "ok": false, "reason": "still loading" })) };
     let forward = body["dir"].as_i64().unwrap_or(1) >= 0;
-    let (now, range) = {
+    let (now, range_refs) = {
         let l = crate::util::lock(&app.hub.live);
-        (l.screen_now.clone(), l.range_state.is_some())
+        let refs: Vec<String> = l.range_state.as_ref().and_then(|r| r["refs"].as_array()).map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default();
+        (l.screen_now.clone(), refs)
     };
     let verses = now.as_ref().and_then(|n| n["verses"].as_array().cloned()).unwrap_or_default();
-    let in_range = range;
-    if forward && in_range {
-        d.send(Event::RangeNext);
-        return Json(json!({ "ok": true }));
-    }
     let edge = verses.first();
     let Some((book, chapter, verse)) = edge.and_then(|v| Some((v["book"].as_str()?.to_string(), v["chapter"].as_u64()?, v["verse"].as_u64()?))) else {
         return Json(json!({ "ok": false, "reason": "no verse on screen" }));
     };
+    // The passage steps only while one of its verses is on screen. A verse put up by hand in the
+    // middle of it steps from that verse (owner, 2026-11-04: John 3:16 up during Luke 10:1-5 →
+    // Next is John 3:17); the passage resumes once one of its verses is up again.
+    let in_range = bible.find(&book, chapter, verse).is_some_and(|id| range_refs.contains(&bible.reference(id)));
+    if forward && in_range {
+        d.send(Event::RangeNext);
+        return Json(json!({ "ok": true }));
+    }
     let step = if forward {
         bible.find(&book, chapter, verse + 1).or_else(|| bible.find(&book, chapter + 1, 1))
     } else if verse > 1 {
@@ -530,7 +534,9 @@ async fn verse_step(State(app): State<Shared>, Json(body): Json<Value>) -> Json<
     let Some(v) = step else { return Json(json!({ "ok": false, "reason": if forward { "last verse of the book" } else { "first verse of the book" } })) };
     // Back inside a cited range: the window sends it as a range card's Send does (the range stays,
     // its position moves); anywhere else it's the operator citing that verse.
-    if in_range {
+    // (Only when the verse it lands on is in the passage too: Back from its first verse is an
+    // ordinary step, or the passage's position wouldn't move with it.)
+    if in_range && range_refs.contains(&bible.reference(v)) {
         let mut list = vec![bible.verse_json(v, 1.0, "direct")];
         present(&app, bible, &mut list);
         return Json(json!({ "ok": true, "inRange": true, "send": list.remove(0) }));
@@ -781,7 +787,6 @@ async fn output_back(State(app): State<Shared>) -> Json<Value> {
     let (prev, undone) = {
         let mut l = crate::util::lock(&app.hub.live);
         let Some(prev) = l.history.pop_back() else { return Json(json!({ "ok": false, "reason": "Nothing earlier to go back to" })) };
-        l.restoring = true;
         l.underneath = prev.underneath.clone();
         (prev, l.screen_now.clone())
     };
@@ -796,9 +801,7 @@ async fn output_back(State(app): State<Shared>) -> Json<Value> {
     }
     {
         let mut l = crate::util::lock(&app.hub.live);
-        l.screen_now = prev.slide.clone();
         l.bible_on_top = prev.bible_on_top;
-        l.restoring = false;
     }
     app.hub.layer_state();
     note_likely_wrong_send(&app, undone.as_ref(), prev.slide.as_ref());

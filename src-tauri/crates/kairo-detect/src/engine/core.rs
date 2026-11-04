@@ -318,6 +318,7 @@ impl Engine {
     /// What belongs to the utterance being heard, not the sermon.
     fn forget_utterance(&mut self) {
         self.t.interim.clear();
+        self.t.self_locked.clear();
         self.t.words.drop_live();
         self.t.interim_sent.clear();
         self.t.interim_seen.clear();
@@ -457,9 +458,12 @@ impl Engine {
     fn on_speech(&mut self, seg: Segment, now: u64) {
         let words: Vec<&str> = seg.text.split_whitespace().collect();
         let plain = |w: &str| w.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
-        let carries = self.t.self_locked.len() <= words.len()
-            && !self.t.self_locked.is_empty()
-            && self.t.self_locked.iter().zip(&words).all(|(a, b)| plain(a) == plain(b));
+        // The same stretch, its locked words already acted on: the recogniser may still revise a
+        // word or two in them, and those words aren't to be handled (and settled) a second time.
+        // A new stretch differs nearly everywhere.
+        let locked = self.t.self_locked.len();
+        let revised = self.t.self_locked.iter().zip(&words).filter(|(a, b)| plain(a) != plain(b)).count();
+        let carries = locked <= words.len() && locked > 0 && revised <= (locked / 10).max(2);
         if !carries {
             self.t.self_locked.clear();
         }

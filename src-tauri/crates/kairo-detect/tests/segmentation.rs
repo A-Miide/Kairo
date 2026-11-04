@@ -320,3 +320,31 @@ fn a_verse_heard_live_then_finished_as_a_range_follows_the_reading() {
     assert_eq!(s.first().map(String::as_str), Some("John 3:16"), "{s:?}");
     assert!(s.iter().any(|x| x.starts_with("John 3:17")), "{s:?}");
 }
+
+/// One long stretch from an engine that only ends it at a pause: the settled part is locked as it
+/// grows, and a word the recogniser revises inside the locked part doesn't make those words be
+/// handled (and settled) a second time.
+#[test]
+fn a_revised_word_in_the_locked_part_is_not_settled_twice() {
+    let base: Vec<String> = (0u8..60).map(|i| format!("w{}{}", (b'a' + i / 26) as char, (b'a' + i % 26) as char)).collect();
+    let mut e = Engine::new(K.clone(), Config { offline: true, ..Config::default() });
+    let mut t = 10_000;
+    let mut settled: Vec<String> = Vec::new();
+    for n in (2..=60).step_by(2) {
+        let mut words = base[..n].to_vec();
+        // From 50 words on, the recogniser revises word 3 (already locked by then).
+        if n >= 50 {
+            words[3] = "revised".into();
+        }
+        t += MS_PER_WORD * 2;
+        for eff in e.handle(Event::Speech(Segment { text: words.join(" "), is_final: false, speech_final: false, continues_live: false }), t).effects {
+            if let Effect::Settled { text } = eff {
+                settled.extend(text.split_whitespace().map(str::to_string));
+            }
+        }
+    }
+    let mut seen = std::collections::HashSet::new();
+    let twice: Vec<&String> = settled.iter().filter(|w| !seen.insert(w.as_str())).collect();
+    assert!(!settled.is_empty(), "a stretch past the lock threshold settles words");
+    assert!(twice.is_empty(), "settled twice: {twice:?}");
+}

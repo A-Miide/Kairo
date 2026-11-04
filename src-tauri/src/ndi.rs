@@ -297,10 +297,14 @@ pub fn start(source_name: &str, width: i32, height: i32, shared: Arc<Mutex<NdiHa
     let (tx, rx) = bounded::<NdiCmd>(64);
 
     let name = source_name.to_string();
+    // Whether the sender was made, so a failure is said to the operator instead of the output
+    // showing "on" while nothing is broadcast.
+    let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel::<Result<(), String>>(1);
     let handle = thread::spawn(move || {
         unsafe {
             if !(lib.initialize)() {
                 eprintln!("[NDI] NDIlib_initialize() returned false — aborting sender thread.");
+                let _ = ready_tx.send(Err("NDI couldn't start on this computer.".into()));
                 return;
             }
 
@@ -318,8 +322,10 @@ pub fn start(source_name: &str, width: i32, height: i32, shared: Arc<Mutex<NdiHa
             if sender.is_null() {
                 eprintln!("[NDI] send_create returned null — aborting.");
                 (lib.destroy)();
+                let _ = ready_tx.send(Err("NDI couldn't create the sender.".into()));
                 return;
             }
+            let _ = ready_tx.send(Ok(()));
             eprintln!("[NDI] Sender '{}' created — broadcasting {}x{} @ {}fps", name, frame_w, frame_h, SEND_FPS_N);
 
             // Persistent BGRA buffer we re-render into.
@@ -443,6 +449,11 @@ pub fn start(source_name: &str, width: i32, height: i32, shared: Arc<Mutex<NdiHa
             (lib.destroy)();
         }
     });
+    // Making the sender takes milliseconds; a slow one is let be and treated as started.
+    if let Ok(Err(e)) = ready_rx.recv_timeout(Duration::from_secs(5)) {
+        let _ = handle.join();
+        return Err(e);
+    }
 
     if let Ok(mut g) = shared.lock() {
         if g.starting {

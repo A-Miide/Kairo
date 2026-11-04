@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 
 use kairo_bible::{VerseId, VerseRef};
 
-use super::citations::{ends_on_growable_number, ends_on_tens_and_unit, interim_looks_incomplete, opens_with_number, tokens, DIRECT_PARTIAL_SCORE, PREV_FINAL_JOIN_WINDOW_MS};
+use super::citations::{n16, ends_on_growable_number, ends_on_tens_and_unit, interim_looks_incomplete, opens_with_number, tokens, DIRECT_PARTIAL_SCORE, PREV_FINAL_JOIN_WINDOW_MS};
 use super::core::{Candidate, ChapterPending, Engine};
 use super::evidence::{meaningful_words, stem_lite};
 use super::types::{Hold, Method, Target};
@@ -224,7 +224,7 @@ impl Engine {
         if interim_looks_incomplete(text, self.cfg.lang) && ends_on_growable_number(text, self.cfg.lang) && !ends_on_tens_and_unit(text) {
             return;
         }
-        let Some(v) = self.k.id(VerseRef::new(p.citation.book, p.citation.chapter as u16, verse as u16)) else { return };
+        let Some(v) = self.k.id(VerseRef::new(p.citation.book, n16(p.citation.chapter), n16(verse))) else { return };
         let candidate = Candidate::new(vec![v], self.partial_method(&p), DIRECT_PARTIAL_SCORE, Target::Screen);
         let sent = self.decide(if self.partial_may_send(&p, &[v], text) { candidate } else { candidate.held(Hold::StrayVerseNumber) }, now);
         // The range follows only a call that went up: one only offered mustn't make the verse look
@@ -330,7 +330,7 @@ impl Engine {
     /// to three" heard as "someone wants the rule, verse one to three" with Matthew 24 in play): then,
     /// as for a lapsed context, only the verse's own words in what was just said put it up.
     fn partial_may_send(&self, p: &Partial, verses: &[VerseId], text: &str) -> bool {
-        if p.chapter_given || self.sermon.iter().any(|c| c.named && c.book == p.citation.book && c.chapter == Some(p.citation.chapter as u16)) {
+        if p.chapter_given || self.sermon.iter().any(|c| c.named && c.book == p.citation.book && c.chapter == Some(n16(p.citation.chapter))) {
             return true;
         }
         // The chapter named without a verse, waiting for it: "go to Ezekiel twelve…", then "go from
@@ -340,7 +340,7 @@ impl Engine {
         }
         // The sermon's announced passage, however long ago: "Mark chapter four verses twenty one
         // to thirty four" at the start, "verse twenty four" eight minutes in (MacArthur, dev build).
-        if self.in_announced_passage(p.citation.book, p.citation.chapter as u16) {
+        if self.in_announced_passage(p.citation.book, n16(p.citation.chapter)) {
             return true;
         }
         // A verse of the chapter went up moments ago: the reading is still there ("…verse 12 and
@@ -378,16 +378,16 @@ impl Engine {
                 return p;
             }
         }
-        if p.chapter_given || self.in_announced_passage(p.citation.book, p.citation.chapter as u16) {
+        if p.chapter_given || self.in_announced_passage(p.citation.book, n16(p.citation.chapter)) {
             return p;
         }
         let spoken = format!("{} {text}", self.recent_speech_seconds(20).join(" "));
-        let here = self.k.id(VerseRef::new(p.citation.book, p.citation.chapter as u16, n as u16)).map_or(0.0, |h| self.shared_weight(h, &spoken).0);
+        let here = self.k.id(VerseRef::new(p.citation.book, n16(p.citation.chapter), n16(n))).map_or(0.0, |h| self.shared_weight(h, &spoken).0);
         let best = self
             .announced
             .iter()
             .filter(|(b, c, _)| self.in_announced_passage(*b, *c))
-            .filter_map(|(b, c, _)| self.k.id(VerseRef::new(*b, *c, n as u16)).map(|id| (*b, *c, self.shared_weight(id, &spoken).0)))
+            .filter_map(|(b, c, _)| self.k.id(VerseRef::new(*b, *c, n16(n))).map(|id| (*b, *c, self.shared_weight(id, &spoken).0)))
             .max_by(|x, y| x.2.total_cmp(&y.2));
         if let Some((book, chapter, w)) = best {
             if w >= here + super::ranges::CHAPTER_KEYWORD_MIN_MARGIN * 2.0 {

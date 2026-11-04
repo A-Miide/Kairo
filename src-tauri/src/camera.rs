@@ -20,6 +20,8 @@ use std::time::{Duration, Instant};
 /// How long a camera stays open after its last holder lets go (video_hub.js keeps 1.5 s).
 const LINGER: Duration = Duration::from_millis(1500);
 
+static NEXT_INSTANCE: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+
 /// The newest frame of a camera: NV12, tightly packed, `seq` counting frames.
 pub struct Latest {
     pub width: u32,
@@ -29,6 +31,8 @@ pub struct Latest {
 }
 
 struct Running {
+    /// Which opening of the camera this is: a hold only counts against the one it took.
+    instance: u64,
     latest: Arc<Mutex<Latest>>,
     stop: Arc<AtomicBool>,
     child: Arc<Mutex<Option<Child>>>,
@@ -57,13 +61,22 @@ pub struct Hub {
 pub struct Held {
     pub label: String,
     pub latest: Arc<Mutex<Latest>>,
+    instance: u64,
+    stop: Arc<AtomicBool>,
     hub: Arc<Hub>,
+}
+
+impl Held {
+    /// False once the camera went (unplugged, or ffmpeg ended): its frames have stopped.
+    pub fn alive(&self) -> bool {
+        !self.stop.load(Ordering::Relaxed)
+    }
 }
 
 impl Drop for Held {
     fn drop(&mut self) {
         if let Ok(mut map) = self.hub.running.lock() {
-            if let Some(r) = map.get_mut(&self.label) {
+            if let Some(r) = map.get_mut(&self.label).filter(|r| r.instance == self.instance) {
                 r.holders = r.holders.saturating_sub(1);
                 if r.holders == 0 {
                     r.released = Some(Instant::now());
@@ -81,28 +94,59 @@ impl Drop for Held {
 impl Hub {
     /// The camera named `label` (as the page names it), opened if it isn't already.
     pub fn hold(self: &Arc<Self>, ffmpeg: &Path, label: &str) -> Result<Held, String> {
+        if let Some(h) = self.join(label)? {
+            return Ok(h);
+        }
+        // Opened without the lock held (listing devices and waiting for the first frame can take
+        // seconds, and every output's camera release waits on this lock).
+        let opened = open(ffmpeg, label)?;
         let mut map = self.running.lock().map_err(|e| e.to_string())?;
+        // Another output opened it meanwhile: use that one.
         if let Some(r) = map.get_mut(label).filter(|r| !r.stop.load(Ordering::Relaxed)) {
+            opened.close();
             r.holders += 1;
             r.released = None;
-            return Ok(Held { label: label.into(), latest: r.latest.clone(), hub: self.clone() });
+            return Ok(self.held(label, r));
         }
-        let running = open(ffmpeg, label)?;
-        let latest = running.latest.clone();
+        // One that went (unplugged) is ended properly before it is replaced.
+        if let Some(gone) = map.remove(label) {
+            gone.close();
+        }
+        let mut running = opened;
+        running.instance = NEXT_INSTANCE.fetch_add(1, Ordering::Relaxed);
+        let h = self.held(label, &running);
         map.insert(label.into(), running);
-        Ok(Held { label: label.into(), latest, hub: self.clone() })
+        Ok(h)
+    }
+
+    /// A hold on the camera if it is open and still sending.
+    fn join(self: &Arc<Self>, label: &str) -> Result<Option<Held>, String> {
+        let mut map = self.running.lock().map_err(|e| e.to_string())?;
+        Ok(map.get_mut(label).filter(|r| !r.stop.load(Ordering::Relaxed)).map(|r| {
+            r.holders += 1;
+            r.released = None;
+            self.held(label, r)
+        }))
+    }
+
+    fn held(self: &Arc<Self>, label: &str, r: &Running) -> Held {
+        Held { label: label.into(), latest: r.latest.clone(), instance: r.instance, stop: r.stop.clone(), hub: self.clone() }
     }
 
     fn close_idle(&self) {
-        if let Ok(mut map) = self.running.lock() {
-            map.retain(|_, r| {
-                let idle = r.holders == 0 && r.released.is_some_and(|t| t.elapsed() >= LINGER);
-                let dead = r.stop.load(Ordering::Relaxed);
-                if idle || dead {
-                    r.close();
-                }
-                !(idle || dead)
-            });
+        // Taken out under the lock, ended after it (ending waits for ffmpeg to exit).
+        let done: Vec<Running> = match self.running.lock() {
+            Ok(mut map) => {
+                let keys: Vec<String> = map.iter()
+                    .filter(|(_, r)| (r.holders == 0 && r.released.is_some_and(|t| t.elapsed() >= LINGER)) || r.stop.load(Ordering::Relaxed))
+                    .map(|(k, _)| k.clone())
+                    .collect();
+                keys.iter().filter_map(|k| map.remove(k)).collect()
+            }
+            Err(_) => Vec::new(),
+        };
+        for r in done {
+            r.close();
         }
     }
 }
@@ -184,7 +228,7 @@ fn open(ffmpeg: &Path, label: &str) -> Result<Running, String> {
         });
     }
     eprintln!("[Camera] \"{label}\" open at {width}x{height}");
-    Ok(Running { latest, stop, child: Arc::new(Mutex::new(Some(child))), holders: 1, released: None })
+    Ok(Running { instance: 0, latest, stop, child: Arc::new(Mutex::new(Some(child))), holders: 1, released: None })
 }
 
 #[cfg(test)]

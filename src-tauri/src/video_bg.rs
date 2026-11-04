@@ -240,6 +240,12 @@ impl VideoBg {
         Ok(VideoBg { file: PathBuf::from(format!("camera:{label}")), fit: fit.to_string(), stop, overlay, child: Arc::new(Mutex::new(None)), _camera: Some(held) })
     }
 
+    /// False when this shows a camera that went away (its frames stopped): asking for the same
+    /// camera again then reopens it instead of keeping the frozen picture.
+    pub fn camera_alive(&self) -> bool {
+        self._camera.as_ref().is_none_or(|c| c.alive())
+    }
+
     /// A new snapshot of what sits on top (blended in over `fade_ms`).
     pub fn set_overlay(&self, frame: Arc<Frame>, fade_ms: u32) {
         if let Ok(mut o) = self.overlay.lock() {

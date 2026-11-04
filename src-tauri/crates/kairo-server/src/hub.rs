@@ -41,7 +41,6 @@ pub struct Live {
     /// The detection(viewer) message on screen, and what was before it.
     pub screen_now: Option<Value>,
     pub history: VecDeque<Earlier>,
-    pub restoring: bool,
     /// The output layout per display (for the multi-language theme).
     pub output_themes: Value,
 }
@@ -78,9 +77,9 @@ impl Hub {
             let ty = data["type"].as_str().unwrap_or("");
             let viewer = data["target"] == "viewer";
             if ty == "detection" && viewer && data["verses"].as_array().is_some_and(|v| !v.is_empty()) {
-                note_screen_change(&mut l, Some(&data));
+                note_screen_change(&mut l, Some(&data), data["restoredByBack"] == true);
             } else if ty == "clear-layer" && matches!(data["layer"].as_str(), Some("slide") | Some("all")) {
-                note_screen_change(&mut l, None);
+                note_screen_change(&mut l, None, data["restoredByBack"] == true);
             }
             match ty {
                 "detection" if viewer => l.slide = Some(data.clone()),
@@ -149,8 +148,15 @@ impl Hub {
     }
 }
 
-fn note_screen_change(l: &mut Live, next: Option<&Value>) {
-    if l.restoring || screen_key(next) == screen_key(l.screen_now.as_ref()) {
+/// `restored`: Back putting an earlier screen up again. It is what's on screen now, but not a new
+/// step in the history. (Read from the message itself: a shared flag let a detection that went up
+/// during Back be left out of the history.)
+fn note_screen_change(l: &mut Live, next: Option<&Value>, restored: bool) {
+    if restored {
+        l.screen_now = next.cloned();
+        return;
+    }
+    if screen_key(next) == screen_key(l.screen_now.as_ref()) {
         return;
     }
     let earlier = Earlier { slide: l.screen_now.take(), underneath: l.underneath.clone(), bible_on_top: l.bible_on_top };

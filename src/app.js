@@ -1851,12 +1851,14 @@ let screenSlide = null;    // { label } while a slide is on screen
 function renderVerseBar() {
   if (!rangeNavBar) return;
   // Always there under the monitor (owner, 2026-10-30): with nothing on screen, the buttons rest.
-  const slide = !screenVerseRef && !rangeOn && screenSlide;
+  // What is on screen leads (owner, 2026-11-04): a slide, or a verse put up by hand in the middle
+  // of a passage, steps itself; the passage's count shows while one of its verses is up.
+  const slide = screenIsSlide();
   const idle = !rangeOn && !screenVerseRef && !slide;
   rangeNavBar.style.display = 'flex';
   rangeNavBar.classList.toggle('is-idle', idle);
   for (const id of ['verse-prev-btn', 'range-next-btn']) { const b = document.getElementById(id); if (b) b.disabled = idle; }
-  const counted = !!rangeOn;
+  const counted = !!rangeOn && !slide && (!screenVerseRef || rangeRefs.has(screenVerseRef));
   if (rangeNavLabel) rangeNavLabel.textContent = idle ? 'Nothing on screen' : counted ? `Verse  ${rangeOn.current} / ${rangeOn.total}` : slide ? (screenSlide.label || 'Slide') : screenVerseRef.replace(/(\d)-(\d)/, '$1\u2013$2');
   if (rangeNavRef) rangeNavRef.textContent = counted ? (rangeOn.next ? `→ ${rangeOn.next.reference}` : 'Last verse') : '';
   const end = document.getElementById('range-clear-btn');
@@ -1864,12 +1866,18 @@ function renderVerseBar() {
   document.getElementById('verse-prev-btn')?.setAttribute('title', slide ? 'Previous slide' : 'Previous verse');
   document.getElementById('range-next-btn')?.setAttribute('title', slide ? 'Next slide' : 'Next verse');
 }
+function screenIsSlide() { return !screenVerseRef && !!screenSlide; }
+// Only the newest press acts on its answer: an earlier one answering late (a quick double Next)
+// must not send its verse over the later one's.
+let stepSeq = 0;
 async function stepVerse(dir) {
-  if (!screenVerseRef && !rangeOn && screenSlide) return window.KairoService?.advanceLiveSlide?.(dir, { direct: true });
+  if (screenIsSlide()) return window.KairoService?.advanceLiveSlide?.(dir, { direct: true });
   openChildrenOfScreen();
+  const seq = ++stepSeq;
   try {
     const r = await fetch(`${SERVER}/api/verse/step`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dir }) });
     const d = await r.json();
+    if (seq !== stepSeq) return;
     if (!d.ok) return toast(d.reason || 'Could not move', 'error');
     // Back inside a range: sent as the range card's Send does, so the range stays.
     if (d.inRange && d.send) {
@@ -3893,8 +3901,7 @@ clearTranscriptBtn?.addEventListener('click', () => {
 });
 
 // ── Audio device enumeration ───────────────────────────────────────────────
-// Same persistence pattern populateAudioOutputDevices (below) already uses
-// correctly for the media-output picker — this one had NONE: the dropdown
+// The chosen input is kept and restored. It used not to be: the dropdown
 // was rebuilt from scratch on every call with no restored selection, so it
 // silently fell back to whichever device enumerates first (typically the
 // built-in mic) on every app relaunch. A real, confirmed incident: an
@@ -3971,43 +3978,9 @@ audioSourceSettings?.addEventListener('change', () => {
 refreshDevicesBtn?.addEventListener('click', populateAudioDevices);
 
 // ── Media layer audio output device ─────────────────────────────────────
-// Applied in display.html via HTMLMediaElement.setSinkId() — this picker
-// just enumerates 'audiooutput' devices and tells the display which one to
-// use; the display falls back to the system default if setSinkId isn't
-// supported by its WebView (e.g. WebKit doesn't implement it as of writing).
-const mediaOutputSettings   = document.getElementById('media-output-settings');
-const refreshOutputDevicesBtn = document.getElementById('refresh-output-devices-settings');
+// Chosen under Settings → Outputs → Audio Output (app_outputs.js), kept under this key and
+// applied with HTMLMediaElement.setSinkId() (display.html, and applyMediaSink below).
 const MEDIA_OUTPUT_KEY = 'kairo-media-output-device';
-
-async function populateAudioOutputDevices() {
-  if (!mediaOutputSettings) return;
-  try {
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    const outputs = devices.filter(d => d.kind === 'audiooutput');
-    const saved = localStorage.getItem(MEDIA_OUTPUT_KEY) || '';
-    mediaOutputSettings.innerHTML = '';
-    const dflt = document.createElement('option');
-    dflt.value = ''; dflt.textContent = 'System default';
-    mediaOutputSettings.appendChild(dflt);
-    outputs.forEach(d => {
-      const o = document.createElement('option');
-      o.value = d.deviceId;
-      o.textContent = d.label || `Output ${d.deviceId.slice(0, 6)}`;
-      if (d.deviceId === saved) o.selected = true;
-      mediaOutputSettings.appendChild(o);
-    });
-  } catch {}
-}
-refreshOutputDevicesBtn?.addEventListener('click', populateAudioOutputDevices);
-mediaOutputSettings?.addEventListener('change', () => {
-  const deviceId = mediaOutputSettings.value || '';
-  localStorage.setItem(MEDIA_OUTPUT_KEY, deviceId);
-  fetch(`${SERVER}/api/service/audio-output`, {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ deviceId: deviceId || null }),
-  }).catch(() => {});
-});
-populateAudioOutputDevices();
 // Re-apply the saved device to a freshly (re)connected display window —
 // otherwise it only ever learns the choice from a change event, not on
 // its own (re)connect.
