@@ -307,7 +307,9 @@ fn cue(text: &str) -> Option<(usize, usize)> {
 struct Point {
     n: usize,
     text: String,
-    at: u64,
+    /// Which unit it starts in. (Not found from its time: the pieces of one split utterance
+    /// share a time, so the words before "number two" went into the wrong section.)
+    unit: usize,
 }
 
 /// The preacher's own enumeration: a list of two points at least, a lower
@@ -342,7 +344,7 @@ fn detect_points(units: &[Unit]) -> Vec<Point> {
                 continue;
             }
         }
-        points.push(Point { n, text, at: u.at });
+        points.push(Point { n, text, unit: i });
     }
     let mut lists: Vec<Vec<Point>> = Vec::new();
     for p in points {
@@ -938,7 +940,7 @@ pub fn build(k: &Knowledge, session: &Session, meaning: Option<&dyn Meaning>) ->
     let main = main_text(k, session, &passages);
     let verse_texts: Vec<String> = session.shown.iter().map(|s| k.corpus.kjv().text(s.verse).unwrap_or("").to_string()).collect();
 
-    let points: Vec<Section> = detect_points(&units).into_iter().map(|p| Section { kind: Kind::Point, heading: clip(&tidy(&p.text), 30), at: p.at, quotes: Vec::new(), scriptures: Vec::new(), bullets: Vec::new() }).collect();
+    let points: Vec<Section> = detect_points(&units).into_iter().map(|p| Section { kind: Kind::Point, heading: clip(&tidy(&p.text), 30), at: units[p.unit].at, quotes: Vec::new(), scriptures: Vec::new(), bullets: Vec::new() }).collect();
     let prayer_points = detect_prayer_points(&units, 12);
     let prayers: Vec<String> = prayer_points.iter().map(|p| norm(&p.text)).collect();
     let headings = word_sets(&points.iter().map(|p| p.heading.clone()).collect::<Vec<_>>());
@@ -1125,12 +1127,11 @@ pub struct Written {
 fn cut_points(k: &Knowledge, units: &[Unit], shown: &[Shown], minutes: u64) -> (Vec<(usize, Option<String>)>, Option<String>) {
     let total: usize = units.iter().map(|u| word_count(&u.text)).sum();
     let parts = (((minutes + 4) / 8) as usize).clamp(1, 10).min(total / 250).max(1);
-    let index_of = |at: u64| units.iter().position(|u| u.at >= at).unwrap_or(units.len());
     let mut cuts: Vec<(usize, Option<String>)> = Vec::new();
     let mut lead: Option<String> = None;
     let points = detect_points(units);
     if points.len() >= 3 && points.len() <= 12 {
-        cuts = points.iter().map(|p| (index_of(p.at), Some(clip(&tidy(&p.text), 16)))).filter(|(i, _)| *i > 0).collect();
+        cuts = points.iter().map(|p| (p.unit, Some(clip(&tidy(&p.text), 16)))).filter(|(i, _)| *i > 0).collect();
         // What comes before point one is its own part only when it's more than a greeting.
         let before: usize = units.iter().take(cuts.first().map_or(0, |c| c.0)).map(|u| word_count(&u.text)).sum();
         if before < 150 && !cuts.is_empty() {
