@@ -216,13 +216,8 @@ pub fn prepare_at_launch(app: Shared) {
     });
 }
 
-/// An English Core ML engine loaded and waiting for the next Start listening (keep_warm).
+/// A started speech engine and what it says.
 type Worker = (std::process::Child, std::sync::mpsc::Receiver<FromWorker>);
-static WARM: std::sync::Mutex<Option<Worker>> = std::sync::Mutex::new(None);
-/// The engine still loading for WARM (its process id, 0 when none): Kairo quitting ends it too. The
-/// first load after an update takes 30 s or more, and the updater's restart in that time left one
-/// running with no Kairo (live, 2026-10-30: a second, dimmed Kairo in the Dock).
-static LOADING: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 /// The Core ML engine's model on this Mac: "preparing" while it loads (after a macOS or Kairo update,
 /// macOS rebuilds it for the Neural Engine: minutes), "ready", "failed", or "" when not used. Shown in
@@ -255,33 +250,6 @@ fn set_engine_state(app: &Shared, state: &'static str, waiting: bool) {
     app.hub.broadcast(json!({ "type": "speech-engine", "state": state, "waiting": waiting }));
 }
 
-
-/// The waiting engine, if it is still running.
-fn take_warm() -> Option<Worker> {
-    let (mut child, from) = crate::util::lock(&WARM).take()?;
-    match child.try_wait() {
-        Ok(None) => Some((child, from)),
-        _ => None,
-    }
-}
-
-/// Ends the waiting engine, and one still loading (Kairo quitting).
-pub fn end_warm() {
-    if let Some((mut child, _)) = crate::util::lock(&WARM).take() {
-        let _ = child.kill();
-        let _ = child.wait();
-    }
-    // Only the Core ML engine (macOS) loads at launch.
-    #[cfg(target_os = "macos")]
-    {
-        let loading = LOADING.swap(0, std::sync::atomic::Ordering::SeqCst);
-        if loading != 0 {
-            // SAFETY: a signal to the engine this process started; it is still its child, so the id
-            // can't have gone to another process.
-            unsafe { libc::kill(loading as libc::pid_t, libc::SIGKILL) };
-        }
-    }
-}
 
 /// Waits for a started engine's model to load: the engine, or why it didn't.
 fn wait_ready((mut child, from): Worker, stopping: &AtomicBool) -> Result<Worker, String> {
@@ -404,6 +372,12 @@ pub(crate) fn map_weights(dir: &std::path::Path) -> String {
     match prepack(&encoder, &stamp) {
         Ok(()) => {
             let _ = std::fs::remove_file(dir.join("kairo-ort.cfg"));
+            return "cpu".into();
+        }
+        // Another start is preparing it: this one loads the model as it is, and leaves the files
+        // alone (the fallback below rewrites the model, which would race with that prepack).
+        Err(e) if e.contains(crate::onnx_weights::PREPACK_BUSY) => {
+            eprintln!("[Offline] {e}: loading it as it is this time");
             return "cpu".into();
         }
         Err(e) => eprintln!("[Offline] the model's weights couldn't be prepacked: {e}"),
@@ -767,7 +741,7 @@ pub async fn start(app: Shared) -> Result<Session, Value> {
         // why Start is waiting (owner, 2026-10-30); a usual load of a second says nothing.
         if engine_state() == "preparing" {
             set_engine_state(&app, "preparing", true);
-        } else if crate::util::lock(&WARM).is_none() && engine_state() != "ready" {
+        } else if engine_state() != "ready" {
             preparing_if_slow(&app, LOADS.load(Ordering::SeqCst), true);
         }
         let _ = tokio::task::spawn_blocking(|| drop(PREPARING.lock())).await;
@@ -1131,12 +1105,7 @@ fn supervise(
     loop {
         // Start (or restart) the engine and wait for its model to load. The
         // audio queue isn't read meanwhile: it holds what's said.
-        // The English Core ML engine kept waiting (keep_warm) starts at once.
-        let warm = if coreml.is_some() && language.is_none() && dir == model_dir(&app, "en") { take_warm() } else { None };
-        let ready = match warm {
-            Some(w) => Ok(w),
-            None => spawn_worker(&dir, &language, coreml.as_deref()).and_then(|w| wait_ready(w, &stopping)),
-        };
+        let ready = spawn_worker(&dir, &language, coreml.as_deref()).and_then(|w| wait_ready(w, &stopping));
         let (mut child, from) = match ready {
             Ok(w) => w,
             Err(e) => {

@@ -185,7 +185,6 @@ static RUNNING: OnceLock<Shared> = OnceLock::new();
 /// 2026-10-28): exit tore down the process's statics under the capture thread, which then
 /// aborted. Bounded, so a stuck input can't hold up quitting.
 pub fn shutdown() {
-    offline::end_warm();
     let Some(app) = RUNNING.get() else { return };
     let captures: Vec<native_audio::Capture> = [&app.capture, &app.capture_preview].into_iter().filter_map(|c| c.lock().unwrap_or_else(|p| p.into_inner()).take()).collect();
     if captures.is_empty() {

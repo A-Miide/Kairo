@@ -144,6 +144,13 @@ pub fn prepacked(model: &Path, stamp: &str) -> bool {
 pub fn prepack(model: &Path, stamp: &str) -> Result<(), String> {
     use ort::session::{builder::GraphOptimizationLevel, Session};
     let dir = model.parent().ok_or("model has no folder")?;
+    // One prepack at a time per model folder: two (a killed engine's still running, and the next
+    // Start's) swapped graphs over each other and deleted each other's weights, leaving a graph
+    // pointing at a file that was gone.
+    let _one = PrepackLock::take(dir)?;
+    if prepacked(model, stamp) {
+        return Ok(()); // done by the one that held the lock
+    }
     let name = prepacked_name(model, stamp).ok_or("model has no name")?;
     let stamp_file = stamp_path(model).ok_or("model has no name")?;
     let work = dir.join(format!(".prepack-{}", std::process::id()));
@@ -536,5 +543,35 @@ mod tests {
         let g = fields(fields(&out).unwrap()[0].payload).unwrap();
         let kept: Vec<&[u8]> = fields(g[0].payload).unwrap().iter().filter(|f| f.number == 13).map(|f| f.payload).collect();
         assert_eq!(kept, [&entry("location", "encoder.int8.1234.weights")[..]]);
+    }
+}
+
+/// What [`prepack`] answers while another prepack of the same model runs.
+pub const PREPACK_BUSY: &str = "the model is being prepared by another start";
+
+/// `.prepack.lock` in the model folder while a prepack runs. One left by a crash is taken over
+/// once it is older than any prepack takes.
+struct PrepackLock(PathBuf);
+
+impl PrepackLock {
+    const STALE: std::time::Duration = std::time::Duration::from_secs(15 * 60);
+
+    fn take(dir: &Path) -> Result<PrepackLock, String> {
+        let path = dir.join(".prepack.lock");
+        let stale = std::fs::metadata(&path).and_then(|m| m.modified()).ok()
+            .and_then(|t| t.elapsed().ok())
+            .is_some_and(|age| age > Self::STALE);
+        if stale {
+            let _ = std::fs::remove_file(&path);
+        }
+        std::fs::OpenOptions::new().write(true).create_new(true).open(&path)
+            .map(|_| PrepackLock(path))
+            .map_err(|_| PREPACK_BUSY.to_string())
+    }
+}
+
+impl Drop for PrepackLock {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.0);
     }
 }

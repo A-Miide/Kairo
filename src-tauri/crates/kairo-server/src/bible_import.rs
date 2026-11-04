@@ -628,14 +628,37 @@ fn refuse(lower_name: &str, bytes: &[u8]) -> Option<String> {
     None
 }
 
+/// A file in a zip that may hold Bible text, by its (lower-case) name.
+fn readable(lower_name: &str) -> bool {
+    [".usfm", ".sfm", ".usx", ".xml", ".osis", ".json", ".txt"].iter().any(|e| lower_name.ends_with(e))
+}
+
 pub fn parse(filename: &str, bytes: &[u8]) -> Result<Parsed, String> {
     let lower = filename.to_ascii_lowercase();
     if let Some(why) = refuse(&lower, bytes) {
         return Err(why);
     }
     if bytes.starts_with(b"PK") {
-        let members = crate::import::unzip(bytes, |n| !n.ends_with('/')).map_err(|e| format!("The zip couldn't be read: {}.", e.0))?;
-        // Anything in the zip that isn't Bible text refuses the whole zip, so nothing unexpected is carried in with it.
+        // Only the members Kairo reads are unzipped (a 120 MB upload could inflate to 1.5 GB when
+        // every picture and file in it was unzipped too); every member's name is still checked.
+        let names = std::cell::RefCell::new(Vec::<String>::new());
+        let members = crate::import::unzip(bytes, |n| {
+            names.borrow_mut().push(n.to_string());
+            !n.ends_with('/') && readable(&n.to_ascii_lowercase())
+        })
+        .map_err(|e| format!("The zip couldn't be read: {}.", e.0))?;
+        // Anything in the zip that isn't Bible text refuses the whole zip, so nothing unexpected is carried in with it:
+        // by name for every member, and by its first bytes for those read.
+        for name in names.into_inner().iter().filter(|n| !n.ends_with('/')) {
+            let l = name.to_ascii_lowercase();
+            let base = l.rsplit('/').next().unwrap_or("");
+            if l.contains("__macosx") || base.starts_with("._") || base == ".ds_store" {
+                continue;
+            }
+            if let Some(why) = refuse(&l, &[]) {
+                return Err(format!("The zip holds {name}: {why}"));
+            }
+        }
         for (name, data) in &members {
             let l = name.to_ascii_lowercase();
             let base = l.rsplit('/').next().unwrap_or("");
@@ -650,8 +673,7 @@ pub fn parse(filename: &str, bytes: &[u8]) -> Result<Parsed, String> {
             .into_iter()
             .filter(|(n, _)| {
                 let l = n.to_ascii_lowercase();
-                !l.contains("__macosx") && !l.rsplit('/').next().unwrap_or("").starts_with("._")
-                    && [".usfm", ".sfm", ".usx", ".xml", ".osis", ".json", ".txt"].iter().any(|e| l.ends_with(e))
+                !l.contains("__macosx") && !l.rsplit('/').next().unwrap_or("").starts_with("._") && readable(&l)
             })
             .collect();
         if files.is_empty() {
