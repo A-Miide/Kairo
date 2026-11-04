@@ -53,7 +53,7 @@ impl Bible {
     }
 
     pub fn range(&self, book: &str, chapter: u64, from: u64, to: u64) -> Vec<VerseId> {
-        (from..=to.min(from + 200)).filter_map(|v| self.find(book, chapter, v)).collect()
+        (from..=to.min(from.saturating_add(200))).filter_map(|v| self.find(book, chapter, v)).collect()
     }
 
     /// The verse as the UI knows it, in KJV text.

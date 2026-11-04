@@ -93,6 +93,12 @@ function displayOutputs() {
   return [{ id: PRIMARY_DISPLAY, name: settings.primaryDisplayName || 'External Display' }, ...extraDisplays()];
 }
 
+// The output windows' copies of looks, layers and modes. Themes with pictures can fill the
+// storage; a full one must not stop the rest (the server broadcast reaches the outputs too).
+function storeLocal(key, value) {
+  try { localStorage.setItem(key, value); } catch (e) { console.warn(`[KAIRO] ${key} not stored:`, e?.message || e); }
+}
+
 // Same id-generation shape the "+ Add another display" button already uses
 // (see add-display-btn's own handler) — app.js has no shared uid() helper
 // of its own (that's a service.js-internal one, a separate closure/script).
@@ -643,7 +649,13 @@ function autoResumeNativeOutputs() {
         id: o.id, sourceName: o.sourceName || 'KAIRO Scripture',
         width: o.width || 1920, height: o.height || 1080,
       })
-        .then(() => { window.KairoNativeOutputs?.pushToOne?.(kind, o.id); renderOutputsList(); if (selectedOutputId === o.id) renderOutputsDetail(); })
+        .then(() => {
+          // Sending now: drop an error saved by an earlier launch.
+          if (o.lastError) updateNativeOutput(kind, o.id, { lastError: null });
+          window.kairoProblemCleared?.(`native-${o.id}`);
+          window.KairoNativeOutputs?.pushToOne?.(kind, o.id);
+          renderOutputsList(); if (selectedOutputId === o.id) renderOutputsDetail();
+        })
         .catch(err => {
           // It stays switched on (it is tried again next launch), but it isn't sending: say so
           // on the output and in the problem strip, instead of looking on while vMix gets nothing.
@@ -823,6 +835,7 @@ function buildOutputRowToggle(o) {
           width: o.raw.width || 1920, height: o.raw.height || 1080,
         });
         updateNativeOutput(kind, o.id, { enabled: true, lastError: null });
+        window.kairoProblemCleared?.(`native-${o.id}`);
         window.KairoNativeOutputs?.pushToOne?.(kind, o.id);
       } catch (e) {
         input.checked = false;
@@ -2074,7 +2087,7 @@ function outputModeMap() {
 }
 async function applyOutputModes() {
   const map = outputModeMap();
-  localStorage.setItem('kairo-output-modes', JSON.stringify(map));
+  storeLocal('kairo-output-modes', JSON.stringify(map));
   refreshMonitorMessageBar();
   try {
     await fetch(`${SERVER}/api/look/apply`, {
@@ -2170,7 +2183,7 @@ function outputKeyingMap() {
 // this machine, and a look-update broadcast.
 async function applyOutputKeying() {
   const map = outputKeyingMap();
-  localStorage.setItem('kairo-output-keying', JSON.stringify(map));
+  storeLocal('kairo-output-keying', JSON.stringify(map));
   try {
     await fetch(`${SERVER}/api/look/apply`, {
       method: 'POST',
@@ -2207,7 +2220,7 @@ async function applyOutputFrames() {
     const look = looks.find(l => l.id === id);
     if (look) frames[key] = look;
   }
-  localStorage.setItem('kairo-output-frames', JSON.stringify(frames));
+  storeLocal('kairo-output-frames', JSON.stringify(frames));
   try {
     await fetch(`${SERVER}/api/look/apply`, {
       method: 'POST',
@@ -2229,7 +2242,7 @@ async function applyMonitorLooks() {
     const look = src[d.id] && looks.find(l => l.id === src[d.id] && l.groupId === 'grp-monitor');
     monitors[d.id] = look || null;
   }
-  localStorage.setItem('kairo-monitor-looks', JSON.stringify(monitors));
+  storeLocal('kairo-monitor-looks', JSON.stringify(monitors));
   try {
     await fetch(`${SERVER}/api/look/apply`, {
       method: 'POST',
@@ -2278,12 +2291,12 @@ async function applyOutputThemes() {
     if (look) themes[key] = look;
   }
   // Same-origin display windows pick this up via the storage event.
-  localStorage.setItem('kairo-output-themes', JSON.stringify(themes));
-  localStorage.setItem('kairo-active-look-ts', Date.now().toString());
+  storeLocal('kairo-output-themes', JSON.stringify(themes));
+  storeLocal('kairo-active-look-ts', Date.now().toString());
   // Keep the legacy single-look key in sync so any display window opened
   // without an ?output= tag still shows the primary screen's theme.
   const primary = themes[displayOutputs()[0]?.id] || themes.external;
-  if (primary) localStorage.setItem('kairo-active-look', JSON.stringify(primary));
+  if (primary) storeLocal('kairo-active-look', JSON.stringify(primary));
 
   await pushLook({ themes, look: primary || null }, 'per-output broadcast');
 
@@ -2425,8 +2438,8 @@ function buildOutputLayersHint(outputId, map) {
 // directly rather than through a broadcast round-trip).
 async function applyOutputLayers() {
   const map = outputLayerMap();
-  localStorage.setItem('kairo-output-layers', JSON.stringify(map));
-  localStorage.setItem('kairo-active-look-ts', Date.now().toString());
+  storeLocal('kairo-output-layers', JSON.stringify(map));
+  storeLocal('kairo-active-look-ts', Date.now().toString());
   await pushLook({ layers: map }, 'per-output layer broadcast');
 }
 

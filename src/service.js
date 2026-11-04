@@ -1292,7 +1292,7 @@
     el.innerHTML =
       `<span class="lfh-status ${on ? 'on' : ''}" title="${on ? 'Slides advance as they are sung or preached' : 'Start Listening to follow along'}">` +
         `<span class="lfh-dot ${state}"></span>${on ? 'Following' : 'Not listening'}</span>` +
-      (on ? `<span class="lfh-info">${posLabel}` +
+      (on ? `<span class="lfh-info">${escapeHtml(posLabel)}` +
         `<span class="lfh-bar"><i style="width:${pct}%"></i></span></span>` : '');
   }
 
@@ -1377,6 +1377,9 @@
     // must carry the real translation rather than sending blank and letting
     // a later re-render catch up. (The same content staging shows in Preview: slideSendBody.)
     const built = await slideSendBody(item, index);
+    // Another slide was sent while this one waited for its translation (or this one was
+    // deleted): the newer send owns the screen.
+    if (!built || liveSlideKey !== `${item.id}:${index}`) return false;
     const look = built.look;
     debugLog('send-slide', {
       itemId: item.id,

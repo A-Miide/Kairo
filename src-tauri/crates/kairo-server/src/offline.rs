@@ -31,6 +31,8 @@ const UTTERANCE_END_SECS: f32 = 1.2;
 /// install or update (macOS preparing it for the Neural Engine) took 34 s on
 /// an idle M1 and passed a minute on a busy one.
 const START_WAIT: Duration = Duration::from_secs(240);
+/// How long the Core ML engine may take to load the model in `prepare_coreml_now`.
+const PREPARE_WAIT: Duration = Duration::from_secs(600);
 
 /// Live speech stays live: audio still waiting to be decoded when it is older than this is
 /// dropped and recognition starts again at the newest audio, unless this computer is catching up
@@ -288,6 +290,8 @@ fn wait_ready((mut child, from): Worker, stopping: &AtomicBool) -> Result<Worker
         match from.recv_timeout(Duration::from_millis(100)) {
             Ok(FromWorker::Ready) => return Ok((child, from)),
             Ok(FromWorker::Gone) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                // Its output closed; make sure it's gone too (one hung on teardown would block here).
+                let _ = child.kill();
                 let _ = child.wait();
                 return Err("the offline model could not be loaded".to_string());
             }
@@ -343,15 +347,33 @@ fn prepare_coreml_now(app: &Shared, dir: &std::path::Path) -> Result<(), String>
         .stderr(std::process::Stdio::piped())
         .spawn()
         .map_err(|e| format!("couldn't start the speech engine: {e}"))?;
-    let ready = child.stdout.take().map(|o| std::io::BufReader::new(o).lines().map_while(Result::ok).any(|l| l == "K1 ready")).unwrap_or(false);
-    drop(child.stdin.take());
-    let mut err = String::new();
-    if let Some(mut e) = child.stderr.take() {
+    // Its stderr read alongside: an engine that writes a lot before "ready" would otherwise fill
+    // the pipe and stall, and Start (waiting on PREPARING) with it.
+    let err_reader = child.stderr.take().map(|mut e| std::thread::spawn(move || {
         use std::io::Read;
-        let _ = e.read_to_string(&mut err);
+        let mut s = String::new();
+        let _ = e.read_to_string(&mut s);
+        s
+    }));
+    let (tx, rx) = std::sync::mpsc::channel();
+    if let Some(o) = child.stdout.take() {
+        std::thread::spawn(move || {
+            let _ = tx.send(std::io::BufReader::new(o).lines().map_while(Result::ok).any(|l| l == "K1 ready"));
+        });
     }
+    // Generous (the first load after an install compiles the model) but not forever.
+    let ready = rx.recv_timeout(PREPARE_WAIT);
+    if ready.is_err() {
+        let _ = child.kill();
+    }
+    drop(child.stdin.take());
     let _ = child.wait();
-    if ready { Ok(()) } else { Err(format!("the offline model couldn't be loaded: {}", err.trim())) }
+    let err = err_reader.and_then(|h| h.join().ok()).unwrap_or_default();
+    match ready {
+        Ok(true) => Ok(()),
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err("the offline model didn't load in time".into()),
+        _ => Err(format!("the offline model couldn't be loaded: {}", err.trim())),
+    }
 }
 
 pub fn present(dir: &std::path::Path) -> bool {
@@ -1219,7 +1241,9 @@ fn supervise(
                 std::thread::sleep(Duration::from_millis(15));
             }
         }
-        // It died. Restart it — unless it keeps dying.
+        // It died. Restart it — unless it keeps dying. (Killed first: one that closed its output
+        // but hangs on teardown would block this wait, and the restart, for good.)
+        let _ = child.kill();
         let status = child.wait().map(|s| s.to_string()).unwrap_or_default();
         let now = Instant::now();
         deaths.push_back(now);

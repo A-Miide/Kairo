@@ -11,7 +11,7 @@ use super::evidence::{evidence_words, fits_first_at_least_as_well, preaching_com
 use super::scoring::SAME_BOOK_WINDOW_MS;
 use super::twins::TWIN_SPEECH_MARGIN;
 use super::types::{Hold, Method, Target};
-use crate::re::re;
+use crate::re::{re, re_kept};
 use crate::reference::numbers::{consume_number, spoken_to_number};
 use crate::reference::{book_mentions, Citation, Verses};
 
@@ -175,7 +175,7 @@ fn ends_mid_citation(text: &str) -> bool {
 pub(crate) fn text_after_book_mention(text: &str, book: Book, chapter: u32) -> String {
     let last = book.name().to_lowercase().split(' ').next_back().unwrap_or("").to_string();
     let stem = last.strip_suffix('s').unwrap_or(&last);
-    let after = |pattern: String| re(&pattern).find_iter(text).last().map(|m| m.end());
+    let after = |pattern: String| re_kept(&pattern).find_iter(text).last().map(|m| m.end());
     if let Some(end) = after(format!(r"(?i)\b{}s?\b", regex::escape(stem))) {
         return text[end..].to_string();
     }
@@ -336,7 +336,7 @@ impl Engine {
             Verses::Spans(s) => s.clone(),
         };
         let ch = c.chapter.min(u16::MAX as u32) as u16;
-        spans.iter().flat_map(|&(a, b)| (a..=b.min(a + 200)).filter_map(move |v| self.k.id(VerseRef::new(c.book, ch, v.min(u16::MAX as u32) as u16)))).collect()
+        spans.iter().flat_map(|&(a, b)| (a..=b.min(a.saturating_add(200))).filter_map(move |v| self.k.id(VerseRef::new(c.book, ch, v.min(u16::MAX as u32) as u16)))).collect()
     }
 
     pub(crate) fn process_references(&mut self, text: &str, is_final: bool, now: u64) -> bool {

@@ -801,7 +801,9 @@ struct VideoBgState(Mutex<std::collections::HashMap<String, video_bg::VideoBg>>)
 async fn output_camera(app: AppHandle, id: String, label: Option<String>, fit: Option<String>, width: u32, height: u32) -> Result<(), String> {
     let key = format!("{id}#camera");
     let Some(label) = label.filter(|l| !l.is_empty()) else {
-        if let Some(v) = app.state::<VideoBgState>().0.lock().map_err(|e| e.to_string())?.remove(&key) { v.stop(); }
+        // Out of the map first, stopped after: not under the lock every capture takes.
+        let old = app.state::<VideoBgState>().0.lock().map_err(|e| e.to_string())?.remove(&key);
+        if let Some(v) = old { v.stop(); }
         return Ok(());
     };
     let fit = fit.unwrap_or_else(|| "cover".into());
@@ -825,14 +827,16 @@ async fn output_camera(app: AppHandle, id: String, label: Option<String>, fit: O
     })
     .await
     .map_err(|e| e.to_string())??;
-    if let Some(old) = app.state::<VideoBgState>().0.lock().map_err(|e| e.to_string())?.insert(key, v) { old.stop(); }
+    let old = app.state::<VideoBgState>().0.lock().map_err(|e| e.to_string())?.insert(key, v);
+    if let Some(old) = old { old.stop(); }
     Ok(())
 }
 
 #[tauri::command]
 async fn output_video(app: AppHandle, id: String, url: Option<String>, fit: Option<String>, width: u32, height: u32) -> Result<(), String> {
     let Some(url) = url.filter(|u| !u.is_empty()) else {
-        if let Some(v) = app.state::<VideoBgState>().0.lock().map_err(|e| e.to_string())?.remove(&id) { v.stop(); }
+        let old = app.state::<VideoBgState>().0.lock().map_err(|e| e.to_string())?.remove(&id);
+        if let Some(v) = old { v.stop(); }
         return Ok(());
     };
     let fit = fit.unwrap_or_else(|| "contain".into());
@@ -848,16 +852,28 @@ async fn output_video(app: AppHandle, id: String, url: Option<String>, fit: Opti
         return Err(resolved["error"].as_str().unwrap_or("video not found").to_string());
     };
     let file = std::path::PathBuf::from(file);
+    // The map is only locked to look and to swap: every capture of every output takes this
+    // lock, and stopping the old video or starting ffmpeg (up to 3 s for the first frame)
+    // under it froze them all.
     let state = app.state::<VideoBgState>();
-    let mut map = state.0.lock().map_err(|e| e.to_string())?;
-    if map.get(&id).is_some_and(|v| v.file == file && v.fit == fit) {
-        return Ok(());
-    }
-    if let Some(old) = map.remove(&id) { old.stop(); }
+    let old = {
+        let mut map = state.0.lock().map_err(|e| e.to_string())?;
+        if map.get(&id).is_some_and(|v| v.file == file && v.fit == fit) {
+            return Ok(());
+        }
+        map.remove(&id)
+    };
+    if let Some(old) = old { old.stop(); }
     let (app2, id2) = (app.clone(), id.clone());
     let (w, h) = (width.clamp(16, 7680), height.clamp(16, 4320));
-    let v = video_bg::VideoBg::start(std::path::Path::new(ffmpeg), file, &fit, w, h, 30, move |frame| push_frame(&app2, &id2, frame, 0))?;
-    map.insert(id, v);
+    let ffmpeg = ffmpeg.to_string();
+    let v = tauri::async_runtime::spawn_blocking(move || {
+        video_bg::VideoBg::start(std::path::Path::new(&ffmpeg), file, &fit, w, h, 30, move |frame| push_frame(&app2, &id2, frame, 0))
+    })
+    .await
+    .map_err(|e| e.to_string())??;
+    let prev = state.0.lock().map_err(|e| e.to_string())?.insert(id, v);
+    if let Some(prev) = prev { prev.stop(); }
     Ok(())
 }
 
@@ -976,7 +992,12 @@ fn record_reveal(path: String) -> Result<(), String> {
     #[cfg(target_os = "macos")]
     let r = std::process::Command::new("open").arg("-R").arg(&p).spawn();
     #[cfg(target_os = "windows")]
-    let r = std::process::Command::new("explorer").arg(format!("/select,{}", p.display())).spawn();
+    let r = {
+        // Recording names have spaces: explorer only reads `/select,"<path>"` as written, not
+        // the whole argument quoted the way .arg() would.
+        use std::os::windows::process::CommandExt;
+        std::process::Command::new("explorer").raw_arg(format!("/select,\"{}\"", p.display())).spawn()
+    };
     #[cfg(not(any(target_os = "macos", target_os = "windows")))]
     let r = std::process::Command::new("xdg-open").arg(p.parent().unwrap_or(&p)).spawn();
     r.map(|_| ()).map_err(|e| e.to_string())
@@ -1173,9 +1194,16 @@ pub fn run() {
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::Destroyed = event {
                 if let Some(id) = window.label().strip_prefix("kairo-cap-") {
-                    if let Some(v) = window.app_handle().state::<VideoBgState>().0.lock().ok().and_then(|mut m| m.remove(id)) {
-                        v.stop();
-                    }
+                    let app = window.app_handle();
+                    // Its video background and its camera (kept under "<id>#camera"), taken out
+                    // of the map first and stopped after, so the lock isn't held while they end.
+                    let gone: Vec<_> = app.state::<VideoBgState>().0.lock().ok()
+                        .map(|mut m| [m.remove(id), m.remove(&format!("{id}#camera"))].into_iter().flatten().collect())
+                        .unwrap_or_default();
+                    for v in gone { v.stop(); }
+                    // A snapshot that was under way when the window went never finishes: don't
+                    // let it hold back the next window made for this output.
+                    if let Ok(mut b) = app.state::<CaptureState>().busy.lock() { b.remove(id); }
                 }
             }
         })

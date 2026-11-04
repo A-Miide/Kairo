@@ -428,12 +428,14 @@ pub fn start(source_name: &str, width: i32, height: i32, shared: Arc<Mutex<NdiHa
                     timestamp: 0,
                 };
                 if changed || last_sent.is_none_or(|t| t.elapsed() >= KEEPALIVE) {
+                    // clock_video: the send itself waits for this frame's slot, so a send is
+                    // the pacing; sleeping after it too halved fades and video to ~15 fps.
                     (lib.send_video)(sender, &frame);
                     last_sent = Some(std::time::Instant::now());
                     changed = false;
+                } else {
+                    thread::sleep(frame_period);
                 }
-
-                thread::sleep(frame_period);
             }
 
             eprintln!("[NDI] Stopping sender '{}'", name);

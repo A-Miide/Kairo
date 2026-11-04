@@ -208,8 +208,12 @@ pub fn is_syphon_available() -> bool {
 /// falls back to DEFAULT_FRAME_W/H).
 pub fn start(source_name: &str, width: u32, height: u32, shared: Arc<Mutex<SyphonHandle>>) -> Result<(), String> {
     let mut h = shared.lock().map_err(|e| e.to_string())?;
+    // Already sending: a second start (the launch auto-resume racing another
+    // caller, or the webview reloading while this process kept the server) is
+    // a success, as it is for NDI. Restarting with a new name or size goes
+    // through stop() first.
     if h.server.is_some() {
-        return Err("Syphon already running".into());
+        return Ok(());
     }
     h.frame_w = if width > 0 { width } else { DEFAULT_FRAME_W };
     h.frame_h = if height > 0 { height } else { DEFAULT_FRAME_H };
@@ -381,6 +385,11 @@ fn free_native_resources(h: &mut SyphonHandle) {
     h.latest_reference.clear();
     h.latest_media = None;
     h.latest_timer.clear();
+    // A restart (maybe at a new size) starts clean: no fade from the old frame, and a fade
+    // still running for it stops at its next step.
+    h.captured = false;
+    h.last_frame = None;
+    h.fade_gen += 1;
 }
 
 pub fn stop(shared: Arc<Mutex<SyphonHandle>>) -> Result<(), String> {

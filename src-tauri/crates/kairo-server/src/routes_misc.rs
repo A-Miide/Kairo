@@ -79,6 +79,9 @@ async fn service_import(State(app): State<Shared>, Json(b): Json<Value>) -> axum
         return crate::util::bad_request("Nothing to import");
     };
     let filename = b["filename"].as_str().unwrap_or("").to_string();
+    // The request's base64 copy (up to 500 MB) isn't needed once decoded: freed before the
+    // import unzips everything in it.
+    drop(b);
     let assets = crate::propresenter::Assets::new(&app.cfg.app_data_dir);
     let result = tokio::task::spawn_blocking(move || import_slides(&filename, &data, &assets)).await.unwrap_or_else(|_| Err(ImportError("import failed".into(), None)));
     match result {

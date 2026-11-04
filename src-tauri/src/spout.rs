@@ -88,8 +88,9 @@ pub fn is_spout_available() -> bool {
 /// falls back to DEFAULT_FRAME_W/H).
 pub fn start(source_name: &str, width: u32, height: u32, shared: Arc<Mutex<SpoutHandle>>) -> Result<(), String> {
     let mut h = shared.lock().map_err(|e| e.to_string())?;
+    // Already sending: a second start is a success (see syphon::start).
     if h.sender.is_some() {
-        return Err("Spout already running".into());
+        return Ok(());
     }
     h.frame_w = if width > 0 { width } else { DEFAULT_FRAME_W };
     h.frame_h = if height > 0 { height } else { DEFAULT_FRAME_H };

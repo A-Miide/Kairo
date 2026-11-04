@@ -27,6 +27,36 @@ const KEY: &str = "apiBibleKey";
 
 type Want = (String, usize, u16);
 static QUEUE: OnceLock<UnboundedSender<Want>> = OnceLock::new();
+/// Chapters asked for, until when they aren't asked for again: while queued or being fetched,
+/// and for a minute after a failed fetch. Without it every lookup of a missing chapter queued it
+/// again, so offline in a service the queue grew without end and, back online, fetched the same
+/// chapter over and over (spending the key's allowance).
+static ASKED: std::sync::LazyLock<std::sync::Mutex<HashMap<Want, std::time::Instant>>> = std::sync::LazyLock::new(Default::default);
+const RETRY_AFTER_FAILURE: Duration = Duration::from_secs(60);
+
+/// Queues a chapter for the worker, unless it is already asked for.
+fn ask(code: &str, book: usize, chapter: u16) {
+    let Some(q) = QUEUE.get() else { return };
+    let want = (code.to_string(), book, chapter);
+    let now = std::time::Instant::now();
+    let mut asked = crate::util::lock(&ASKED);
+    if asked.get(&want).is_some_and(|until| now < *until) {
+        return;
+    }
+    if q.send(want.clone()).is_ok() {
+        asked.insert(want, now + Duration::from_secs(24 * 3600)); // until the worker is done with it
+    }
+}
+
+/// The worker is done with a chapter: it may be asked for again (after a while if it failed).
+fn answered(want: &Want, ok: bool) {
+    let mut asked = crate::util::lock(&ASKED);
+    if ok {
+        asked.remove(want);
+    } else {
+        asked.insert(want.clone(), std::time::Instant::now() + RETRY_AFTER_FAILURE);
+    }
+}
 
 pub fn dir(app_data: &Path) -> PathBuf {
     app_data.join("api-bibles")
@@ -95,16 +125,12 @@ pub fn verse(app_data: &Path, code: &str, book: usize, chapter: u16, verse: u16)
     let path = chapter_file(app_data, code, book, chapter);
     let stale = std::fs::metadata(&path).and_then(|m| m.modified()).ok().is_none_or(|t| SystemTime::now().duration_since(t).unwrap_or_default() > REFRESH_AFTER);
     if stale {
-        if let Some(q) = QUEUE.get() {
-            let _ = q.send((code.to_string(), book, chapter));
-        }
+        ask(code, book, chapter);
     }
     let Some(raw) = std::fs::read(&path).ok().and_then(|b| open(app_data, &b)) else {
         // Saved before chapters were encrypted, or unreadable: fetch it again.
         if !stale && path.exists() {
-            if let Some(q) = QUEUE.get() {
-                let _ = q.send((code.to_string(), book, chapter));
-            }
+            ask(code, book, chapter);
         }
         return None;
     };
@@ -195,20 +221,18 @@ pub fn start(app: &Shared) {
     let outer = app.clone();
     let app = app.clone();
     tokio::spawn(async move {
-        let mut asked: std::collections::HashSet<Want> = Default::default();
         while let Some(want) = rx.recv().await {
-            if !asked.insert(want.clone()) {
-                continue;
-            }
             let (code, book, chapter) = want.clone();
-            let Some(info) = connected(&app.cfg.app_data_dir, &code) else { continue };
-            let (Some(id), Some(key)) = (info["id"].as_str().map(str::to_string), app.settings.str(KEY).await) else { continue };
+            let Some(info) = connected(&app.cfg.app_data_dir, &code) else { answered(&want, false); continue };
+            let (Some(id), Some(key)) = (info["id"].as_str().map(str::to_string), app.settings.str(KEY).await) else { answered(&want, false); continue };
             let osis = crate::bible_import::usfm_code(book);
             let url = format!("/bibles/{id}/chapters/{osis}.{chapter}?content-type=text&include-notes=false&include-titles=false&include-chapter-numbers=false&include-verse-numbers=true");
+            let mut ok = false;
             match get(&key, &url).await {
                 Ok(v) => {
                     let verses = split_verses(v["data"]["content"].as_str().unwrap_or(""));
-                    if !verses.is_empty() {
+                    ok = !verses.is_empty();
+                    if ok {
                         let path = chapter_file(&app.cfg.app_data_dir, &code, book, chapter);
                         if let Some(p) = path.parent() {
                             let _ = std::fs::create_dir_all(p);
@@ -224,8 +248,8 @@ pub fn start(app: &Shared) {
                 }
                 Err(e) => eprintln!("[ApiBible] {code} {} {chapter}: {e}", BOOK_NAMES[book]),
             }
-            // forgotten, so it can be asked for again after a failure or once it has gone stale
-            asked.remove(&want);
+            // It can be asked for again once it has gone stale, or a minute after a failure.
+            answered(&want, ok);
             tokio::time::sleep(Duration::from_millis(250)).await;
         }
     });
@@ -375,14 +399,14 @@ fn chapters(app: &Shared, code: &str) -> Vec<(usize, u16)> {
 /// service. About 1,200 API calls for a whole Bible, at four a second; again after 30 days.
 fn keep_offline(app: &Shared, code: &str) -> usize {
     let all = chapters(app, code);
-    if let Some(q) = QUEUE.get() {
+    if QUEUE.get().is_some() {
         for &(b, c) in &all {
             let file = chapter_file(&app.cfg.app_data_dir, code, b, c);
             let fresh = std::fs::metadata(&file).and_then(|m| m.modified()).ok()
                 .is_some_and(|t| SystemTime::now().duration_since(t).unwrap_or_default() < REFRESH_AFTER)
                 && std::fs::read(&file).is_ok_and(|b| b.starts_with(SEALED));
             if !fresh {
-                let _ = q.send((code.to_string(), b, c));
+                ask(code, b, c);
             }
         }
     }

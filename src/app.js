@@ -3728,9 +3728,13 @@ scriptureSearchClear?.addEventListener('click', () => {
   hideSuggest();
 });
 
+// Only the newest search acts: an earlier, slower lookup answering late must not put its
+// verse on screen over the one asked for after it.
+let searchSeq = 0;
 async function runSearch() {
   const raw = scriptureSearchInput?.value?.trim();
   if (!raw) return;
+  const seq = ++searchSeq;
 
   try {
     const r = await fetch(`${SERVER}/api/search`, {
@@ -3738,6 +3742,7 @@ async function runSearch() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ query: raw }),
     });
+    if (seq !== searchSeq) return;
 
     if (!r.ok) {
       // Server-side error (500, 400 etc.) — try text fallback
@@ -3748,6 +3753,7 @@ async function runSearch() {
     }
 
     const d = await r.json();
+    if (seq !== searchSeq) return;
     console.log('[Search] response:', d.method, d.result?.reference ?? (d.results?.length + ' text hits'));
 
     if (d.result) {
@@ -4661,6 +4667,9 @@ async function renderInlineTranslateUpsell(container, code) {
     container.className = 'osp osp-progress';
     container.innerHTML = _inlineMtTitle(container, 'pulse', `Downloading ${escapeHtml(name)}…`) +
       '<p class="osp-msg">Started elsewhere — installing in the background.</p>';
+    // Cleared again here: a second call that ran during the await above set its own already.
+    clearInterval(_inlineMtPollTimers.get(container));
+    if (!container.isConnected) return; // the popover closed: stop watching
     _inlineMtPollTimers.set(container, setInterval(() => renderInlineTranslateUpsell(container, code), 2000));
     return;
   }

@@ -170,9 +170,6 @@ impl Detector {
             if let (Some((code, heard)), Some(f)) = (heard, self.on_translation.get()) {
                 f(code, heard);
             }
-        } else if std::env::var_os("KAIRO_LOG_INTERIMS").is_some() {
-            // Live text too, so a test run can be replayed as it was heard (off unless asked for).
-            crate::routes::write_debug_global("server:interim", json!({ "text": text }));
         }
         self.send(Event::Speech(Segment { text: text.to_string(), is_final, speech_final, continues_live }));
     }

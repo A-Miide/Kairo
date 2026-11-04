@@ -229,7 +229,8 @@ impl Triggers {
         self.stop(id); // re-firing replaces the running one
         let fired = {
             let mut items = crate::util::lock(&self.items);
-            let t = items.iter_mut().find(|t| t["id"] == id).expect("found above");
+            // Deleted between the check above and here: nothing to fire.
+            let Some(t) = items.iter_mut().find(|t| t["id"] == id) else { return json!({ "error": "No such trigger" }) };
             t["lastFiredAt"] = json!(epoch_ms());
             let out = t.clone();
             save(&self.path, &items);

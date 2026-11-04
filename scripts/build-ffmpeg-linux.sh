@@ -32,7 +32,8 @@ if [[ "$TARGET" == windows ]]; then BIN="ffmpeg.exe"; else BIN="ffmpeg"; fi
 if [[ -f "$OUT/$BIN" && -z "${FORCE:-}" ]]; then echo "$OUT/$BIN already built (FORCE=1 to rebuild)"; exit 0; fi
 
 fetch() { # url sha256 file
-  [[ -f "$3" ]] || curl -fsSL "$1" -o "$3"
+  # ffmpeg.org drops connections now and then (4.4.12 needed three tag runs): retry.
+  [[ -f "$3" ]] || curl -fsSL --retry 6 --retry-all-errors --retry-delay 15 --connect-timeout 30 "$1" -o "$3"
   echo "$2  $3" | sha256sum -c - >/dev/null || { echo "checksum mismatch: $3" >&2; rm -f "$3"; exit 1; }
 }
 fetch "$FF_URL" "$FF_SHA256" "$WORK/ffmpeg.tar.xz"

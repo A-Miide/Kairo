@@ -1480,7 +1480,7 @@
     // What the multiview display mirrors.
     try {
       const pub = JSON.stringify({ programId: ps.id, mixed: ps.mixed, hasOutputs: ps.on.length > 0, previewId: D.previewId });
-      if (D.lastPub !== pub) { D.lastPub = pub; localStorage.setItem('kairo-video-director', pub); emitDirectorChange('program'); }
+      if (D.lastPub !== pub) { D.lastPub = pub; try { localStorage.setItem('kairo-video-director', pub); } catch {} emitDirectorChange('program'); }
     } catch {}
     D.grid.render();
     fitScreens();

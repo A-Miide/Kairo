@@ -25,7 +25,8 @@ fi
 
 mkdir -p "$WORK" "$OUT"
 TAR="$WORK/ffmpeg-${VERSION}.tar.xz"
-if [[ ! -f "$TAR" ]]; then curl -fsSL "$URL" -o "$TAR"; fi
+# ffmpeg.org drops connections now and then (4.4.12 needed three tag runs): retry.
+if [[ ! -f "$TAR" ]]; then curl -fsSL --retry 6 --retry-all-errors --retry-delay 15 --connect-timeout 30 "$URL" -o "$TAR"; fi
 echo "$SHA256  $TAR" | shasum -a 256 -c - >/dev/null || { echo "ffmpeg source checksum mismatch" >&2; rm -f "$TAR"; exit 1; }
 
 DEMUXERS="matroska,avi,asf,flv,mov,mpegts,mpegps,mpegvideo,ogg,mxf,h264,hevc,m4v,dv,wav,mp3,aac,flac,ac3,eac3"

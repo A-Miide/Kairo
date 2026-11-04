@@ -116,6 +116,12 @@ const PLAIN: &[(&str, Option<&str>)] = &[
     ("Luke four verse one two", Some("Luke 4:1-2")),
     // a two-digit verse the chapter doesn't have is not made up
     ("Jude one nine nine", Some("Jude 1:9")),
+    // a one-chapter book's chapter said before its verse, as it is written
+    ("Jude one nine", Some("Jude 1:9")),
+    ("Philemon 1 6", Some("Philemon 1:6")),
+    ("Second John one seven", Some("2 John 1:7")),
+    ("Jude twenty four", Some("Jude 1:24")),
+    ("Jude one", Some("Jude 1:1")),
     // ordinary speech
     ("we went to San Francisco and then to San Antonio", None),
     ("I John said that we should go", None),

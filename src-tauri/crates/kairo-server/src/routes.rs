@@ -226,9 +226,12 @@ async fn audio_preview(State(app): State<Shared>, Json(body): Json<Value>) -> Js
         return Json(json!({ "ok": true }));
     }
     let want = body["input"].as_str().unwrap_or("").to_string();
-    match crate::native_audio::start(app.clone(), &want, false) {
-        Ok(c) => { let device = c.device.clone(); *crate::util::lock(&app.capture_preview) = Some(c); Json(json!({ "ok": true, "device": device })) }
-        Err(e) => Json(json!({ "error": e })),
+    // Opening a device can wait seconds: off the async workers, as open_capture does.
+    let a = app.clone();
+    match tokio::task::spawn_blocking(move || crate::native_audio::start(a, &want, false)).await {
+        Ok(Ok(c)) => { let device = c.device.clone(); *crate::util::lock(&app.capture_preview) = Some(c); Json(json!({ "ok": true, "device": device })) }
+        Ok(Err(e)) => Json(json!({ "error": e })),
+        Err(_) => Json(json!({ "error": "the input couldn't be opened here" })),
     }
 }
 
@@ -280,11 +283,15 @@ async fn audio_inputs() -> Json<Value> {
 }
 
 async fn stop_listening(State(app): State<Shared>) -> Json<Value> {
+    // The listening lock first: start_listening holds it through the connect and opens the
+    // capture last, so a Stop pressed mid-connect waits for that capture instead of missing it.
+    let mut listening = app.listening.lock().await;
     let capture = crate::util::lock(&app.capture).take();
     if let Some(c) = capture {
         let _ = tokio::task::spawn_blocking(move || c.stop()).await;
     }
-    let session = app.listening.lock().await.take();
+    let session = listening.take();
+    drop(listening);
     match session {
         Some(crate::Listening::Deepgram(s)) => s.stop().await,
         Some(crate::Listening::Offline(s)) => {

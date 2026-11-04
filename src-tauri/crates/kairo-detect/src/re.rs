@@ -14,6 +14,14 @@ pub(crate) fn re(pattern: &str) -> regex::Regex {
     regex::Regex::new(pattern).unwrap_or_else(|e| panic!("bad pattern {pattern}: {e}"))
 }
 
+/// [`re`] for a pattern built at run time from a small set (a book's name, a chapter number)
+/// on the per-interim path: compiled once and kept, not again for every interim.
+pub(crate) fn re_kept(pattern: &str) -> regex::Regex {
+    static KEPT: std::sync::LazyLock<std::sync::Mutex<std::collections::HashMap<String, regex::Regex>>> = std::sync::LazyLock::new(Default::default);
+    let mut kept = KEPT.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    kept.entry(pattern.to_string()).or_insert_with(|| re(pattern)).clone()
+}
+
 pub(crate) fn fre(pattern: &str) -> fancy_regex::Regex {
     fancy_regex::Regex::new(pattern).unwrap_or_else(|e| panic!("bad pattern {pattern}: {e}"))
 }

@@ -13,7 +13,7 @@ use super::ranges::CHAPTER_KEYWORD_MIN_IDF;
 use super::state::CorrectedAway;
 use super::twins::TWIN_SPEECH_MARGIN;
 use super::types::{Method, Target};
-use crate::re::re;
+use crate::re::re_kept;
 
 const CHECK_WORDS: usize = 35;
 const CHECK_MS: u64 = 25_000;
@@ -146,7 +146,7 @@ impl Engine {
     fn speech_before_citation(&self, text: &str, book: Book, is_final: bool, now: u64) -> String {
         let last = book.name().to_lowercase().split(' ').next_back().unwrap_or("").to_string();
         let stem = last.strip_suffix('s').unwrap_or(&last).to_string();
-        let cut = re(&format!(r"(?i)\b{}s?\b", regex::escape(&stem))).find_iter(text).last().map_or(0, |m| m.start());
+        let cut = re_kept(&format!(r"(?i)\b{}s?\b", regex::escape(&stem))).find_iter(text).last().map_or(0, |m| m.start());
         let here = if cut > 0 { &text[..cut] } else { "" };
         let mut earlier: Vec<&str> = self.t.finals.iter().filter(|f| now.saturating_sub(f.at) < BEFORE_MS).map(|f| f.text.as_str()).collect();
         if is_final && earlier.last() == Some(&text) {

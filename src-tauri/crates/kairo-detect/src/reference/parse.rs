@@ -409,7 +409,7 @@ impl Parser<'_> {
         let mut r = spans.len();
         while r > 1 {
             r -= 1;
-            if spans[r].0 == spans[r - 1].1 + 1 {
+            if spans[r].0 == spans[r - 1].1.saturating_add(1) {
                 spans[r - 1].1 = spans[r - 1].1.max(spans[r].1);
                 spans.remove(r);
             }
@@ -469,7 +469,7 @@ impl Parser<'_> {
                 }
             }
         }
-        let (start, mut after) = match verse_at {
+        let (start, after) = match verse_at {
             Some(k) => {
                 let r = num(w, k + 1, None)?;
                 (n32(r.value), k + 1 + r.consumed)
@@ -489,6 +489,16 @@ impl Parser<'_> {
             }
             None => return None,
         };
+        // "Jude one nine", "Philemon 1 6": the "one" is the book's only chapter, said as people
+        // write it, and the verse follows it (it was read as verse 1 and the 9 dropped).
+        let (start, after) = match (verse_at, start) {
+            (None, 1) => match num(w, after, None) {
+                Some(v) if n32(v.value) >= 1 && self.shape.verses(book, 1).is_some_and(|n| n32(v.value) <= n) => (n32(v.value), after + v.consumed),
+                _ => (start, after),
+            },
+            _ => (start, after),
+        };
+        let mut after = after;
         let mut end = start;
         if matches!(get(w, after), "to" | "through") {
             after += 1;

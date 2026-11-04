@@ -598,7 +598,14 @@ registerActionHandler('clock-message', (msg) => window.KairoService?.onClockActi
   // list_monitors once the settings panel's initial render had already
   // happened. Polling here keeps both this status line and the dropdown's
   // option list genuinely live while Settings is open.
-  setInterval(refresh, 3000);
+  // One at a time: a slow display listing (Windows) must not stack up checks that open and
+  // close output windows over each other.
+  let refreshing = false;
+  setInterval(async () => {
+    if (refreshing) return;
+    refreshing = true;
+    try { await refresh(); } catch (e) { console.warn('[KAIRO] display check failed:', e?.message || e); } finally { refreshing = false; }
+  }, 3000);
 })();
 
 // ── Startup bootstrap ───────────────────────────────────────────────────────

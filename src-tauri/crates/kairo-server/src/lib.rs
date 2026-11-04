@@ -297,7 +297,20 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         // connection; shared state stays usable (locks recover from a
         // panic — `unwrap_or_else(PoisonError::into_inner)` throughout).
         .layer(tower_http::catch_panic::CatchPanicLayer::new())
-        .layer(tower_http::cors::CorsLayer::permissive())
+        // Kairo's own pages load from this server and call it at the same address, so nothing
+        // needs other sites' requests answered. Permissive CORS let any web page open in a
+        // browser read files the token doesn't cover (pictures in the media folders).
+        .layer(
+            tower_http::cors::CorsLayer::new()
+                .allow_origin(
+                    [format!("http://127.0.0.1:{}", cfg.port), format!("http://localhost:{}", cfg.port)]
+                        .into_iter()
+                        .filter_map(|o| o.parse::<axum::http::HeaderValue>().ok())
+                        .collect::<Vec<_>>(),
+                )
+                .allow_methods(tower_http::cors::Any)
+                .allow_headers(tower_http::cors::Any),
+        )
         .layer(axum::extract::DefaultBodyLimit::max(500 * 1024 * 1024))
         .with_state(app.clone());
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", cfg.port)).await?;
@@ -315,6 +328,11 @@ async fn follow_screen_in_obs(app: Shared) {
             Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
             Err(_) => return,
         };
+        // Only what goes on screen or comes off it matters here: skip transcripts and the meter
+        // (several a second) before parsing them.
+        if !m.contains("\"detection\"") && !m.contains("\"clear-layer\"") {
+            continue;
+        }
         if !app.obs.connected().await {
             continue;
         }

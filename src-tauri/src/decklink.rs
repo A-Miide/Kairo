@@ -59,6 +59,7 @@ pub struct DeckLinkHandle {
 }
 
 impl DeckLinkHandle {
+    #[cfg(test)]
     pub fn is_running(&self) -> bool {
         self.tx.is_some()
     }

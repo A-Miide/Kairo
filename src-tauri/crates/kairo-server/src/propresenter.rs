@@ -124,7 +124,13 @@ impl Assets {
         let file = format!("{hash}.{ext}");
         let path = self.dir.join(&file);
         if !path.is_file() {
-            std::fs::write(&path, bytes).ok()?;
+            // Written aside and renamed into place: a crash or full disk mid-write can't leave a
+            // cut-off picture that is then served (and never rewritten) under the finished name.
+            let part = self.dir.join(format!("{file}.part"));
+            if std::fs::write(&part, bytes).and_then(|_| std::fs::rename(&part, &path)).is_err() {
+                let _ = std::fs::remove_file(&part);
+                return None;
+            }
         }
         Some(format!("/api/pp-assets/{file}"))
     }

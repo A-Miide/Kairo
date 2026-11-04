@@ -1330,6 +1330,9 @@ fn supervise_tap(ffmpeg: PathBuf, shared: Arc<Shared>, on_status: OnStatus) {
 #[derive(Default)]
 pub struct StreamState {
     pipelines: Mutex<Vec<Pipeline>>,
+    /// Streams a Stop is still closing (FFmpeg gets up to 4 s to end each cleanly). A start
+    /// waits for them, or a quick Stop → Go live sends to the same stream keys twice at once.
+    closing: Mutex<Vec<thread::JoinHandle<()>>>,
     /// One start at a time: a second Go live (a double-click) waits for the first.
     starting: Mutex<()>,
     /// Bumped by every start and stop: a start that is no longer the newest when its wait for
@@ -1346,6 +1349,8 @@ impl StreamState {
         let old: Vec<Pipeline> = self.pipelines.lock().map_err(|e| e.to_string())?.drain(..).collect();
         for p in &old { p.stop(); }
         for p in old { p.join(Duration::from_secs(4)); }
+        let closing: Vec<_> = self.closing.lock().map(|mut c| c.drain(..).collect()).unwrap_or_default();
+        for h in closing { let _ = h.join(); }
         let mut p = self.pipelines.lock().map_err(|e| e.to_string())?;
         if self.generation.load(Ordering::SeqCst) != mine {
             return Err("Stopped before it went live.".into());
@@ -1365,7 +1370,11 @@ impl StreamState {
         self.generation.fetch_add(1, Ordering::SeqCst);
         let old: Vec<Pipeline> = self.pipelines.lock().map(|mut p| p.drain(..).collect()).unwrap_or_default();
         for p in &old { p.stop(); }
-        thread::spawn(move || { for p in old { p.join(Duration::from_secs(4)); } });
+        let h = thread::spawn(move || { for p in old { p.join(Duration::from_secs(4)); } });
+        if let Ok(mut c) = self.closing.lock() {
+            c.retain(|x| !x.is_finished());
+            c.push(h);
+        }
     }
 
     /// Kairo is quitting: end every FFmpeg now, so no stream outlives the app.
