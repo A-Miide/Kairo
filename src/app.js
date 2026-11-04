@@ -1726,7 +1726,7 @@ function renderChapterChildren(card) {
   box.replaceChildren(...all.map((v) => {
     const row = document.createElement('button');
     row.type = 'button';
-    row.className = 'lvc-child' + (here.includes(v.verse) ? ' on-screen' : '');
+    row.className = 'lvc-child' + (here.includes(v.verse) ? ' on-screen' : here.length && v.verse < here[0] ? ' is-past' : '');
     row.title = `Send ${v.reference}`;
     const n = document.createElement('span'); n.className = 'lvc-child-num'; n.textContent = v.verse;
     const t = document.createElement('span'); t.className = 'lvc-child-text'; t.textContent = cleanVerseText(v.text || '');
@@ -1750,14 +1750,14 @@ function chapterChildrenFollow(verses) {
   });
 }
 // The verse's chapter under its card, collapsible: a "Psalms 22" toggle under the text.
-function addChapterToggle(card, v) {
+function addChapterToggle(card, v, verseCount = 0) {
   if (!v.book || v.book === 'Service' || !(v.chapter > 0)) return;
   card.dataset.book = v.book;
   card.dataset.chapter = String(v.chapter);
   const toggle = document.createElement('button');
   toggle.type = 'button';
   toggle.className = 'lvc-children-toggle';
-  toggle.textContent = `${v.book} ${v.chapter}`;
+  toggle.textContent = verseCount ? `${v.book} ${v.chapter} · ${verseCount} verses` : `${v.book} ${v.chapter}`;
   toggle.title = 'Show the chapter';
   toggle.addEventListener('click', (e) => { e.stopPropagation(); toggleChapterChildren(card); });
   toggle.addEventListener('dblclick', (e) => e.stopPropagation());
@@ -1895,7 +1895,7 @@ function handleRangeState({ remaining, total, next }) {
     rangeOn = null;
     renderVerseBar();
     currentDisplayCard?.querySelectorAll('.range-verse-card').forEach(el => {
-      el.classList.remove('range-verse-card', 'range-active', 'range-queued');
+      el.classList.remove('range-verse-card', 'range-chapter-card', 'range-active', 'range-queued');
       // Strip the blue range badge tint so it looks like a normal history card
       el.querySelector('.range-book-badge')?.classList.remove('range-book-badge');
     });
@@ -1928,6 +1928,11 @@ function handleRangeVerses({ verses, activeRef }) {
     handleRangeActive(activeRef);
     return;
   }
+  const heldRange = currentDisplayCard.querySelector('.range-chapter-card')?._rangeVerses;
+  if (heldRange && heldRange.length === verses.length && heldRange.every((x, i) => x.reference === verses[i].reference)) {
+    handleRangeActive(activeRef);
+    return;
+  }
 
   // Mark all range refs so showInViewer dedup doesn't fight us
   rangeRefs = new Set(verses.map(v => v.reference));
@@ -1939,7 +1944,7 @@ function handleRangeVerses({ verses, activeRef }) {
   // A previous passage's cards stay, as ordinary history (as when a passage finishes): a new
   // passage called before it ended took them off the list (owner, 2026-10-30).
   currentDisplayCard.querySelectorAll('.range-verse-card').forEach(el => {
-    el.classList.remove('range-verse-card', 'range-active', 'range-queued');
+    el.classList.remove('range-verse-card', 'range-chapter-card', 'range-active', 'range-queued');
     el.querySelector('.range-book-badge')?.classList.remove('range-book-badge');
   });
 
@@ -1957,6 +1962,20 @@ function handleRangeVerses({ verses, activeRef }) {
   // this does NOT need reversing to land verse 1 first; reversing here was
   // what put whole-chapter searches on screen highest-verse-first.
   const fragment = document.createDocumentFragment();
+  if (isWholeChapter(verses)) {
+    // A chapter is one card, the verse on screen, with its chapter under it (the "John 1" toggle):
+    // a card for each of its verses filled the queue (owner, 2026-11-04).
+    const first = verses.find(v => v.reference === activeRef) || verses[0];
+    const card = buildRangeCard(first, true);
+    card.classList.add('range-chapter-card');
+    card._rangeVerses = verses;
+    addChapterToggle(card, first, verses.length);
+    currentDisplayCard.insertBefore(card, currentDisplayCard.firstChild);
+    toggleChapterChildren(card, true);   // the chapter was asked for: its verses are in view
+    dropSuggestionsCoveredByQueue();
+    renderPreviewScreen(cleanVerseText(first.text), first.reference, null, first.translatedText || '');
+    return;
+  }
   let lastChapter = '';
   for (const v of verses) {
     const card = buildRangeCard(v, v.reference === activeRef);
@@ -1972,8 +1991,39 @@ function handleRangeVerses({ verses, activeRef }) {
   if (active) renderPreviewScreen(cleanVerseText(active.text), active.reference, null, active.translatedText || '');
 }
 
+// A passage of one chapter that long is shown as one card (see handleRangeVerses).
+const CHAPTER_CARD_MIN_VERSES = 8;
+function isWholeChapter(verses) {
+  const a = verses[0];
+  return verses.length >= CHAPTER_CARD_MIN_VERSES && !!a.book && a.chapter > 0
+    && verses.every(v => v.book === a.book && v.chapter === a.chapter);
+}
+
+// The chapter's card shows the verse the reading has reached; its open chapter list moves along.
+function followChapterCard(card, activeRef) {
+  if (card.dataset.ref === activeRef) return;
+  const v = card._rangeVerses.find(x => x.reference === activeRef);
+  if (!v) return;
+  const next = buildRangeCard(v, true);
+  next.classList.add('range-chapter-card');
+  next._rangeVerses = card._rangeVerses;
+  addChapterToggle(next, v, card._rangeVerses.length);
+  const open = card.querySelector('.lvc-children');
+  if (open) { next.classList.add('children-open'); next.appendChild(open); }
+  next.classList.toggle('is-live', card.classList.contains('is-live'));
+  card.replaceWith(next);
+}
+
 function handleRangeActive(activeRef) {
   if (!currentDisplayCard || !activeRef) return;
+  const chapterCard = currentDisplayCard.querySelector('.range-chapter-card');
+  if (chapterCard) {
+    followChapterCard(chapterCard, activeRef);
+    const shown = currentDisplayCard.querySelector('.range-chapter-card');
+    const verse = shown._rangeVerses.find(x => x.reference === activeRef);
+    if (verse) renderPreviewScreen(cleanVerseText(verse.text), verse.reference, null, verse.translatedText || '');
+    return;
+  }
   currentDisplayCard.querySelectorAll('.range-verse-card').forEach(card => {
     const isActive = card.dataset.ref === activeRef;
     card.classList.toggle('range-active', isActive);
