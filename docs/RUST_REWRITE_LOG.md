@@ -14,7 +14,7 @@ with the reason and, where it applies, the measurement behind it.
   downloads). Detection includes the offline speech model (it keeps detection
   running when the internet or Deepgram credit drops).
 - KJV is the anchor of the merged verse index, paired with modern English.
-- No bolted-on code: Pewbeam's ideas become first-class parts of one design.
+- No bolted-on code: new ideas become first-class parts of one design.
 - Full autonomy to make anything significantly better.
 
 ### Reference parser (kairo-detect::reference) — decisions
@@ -48,8 +48,8 @@ with the reason and, where it applies, the measurement behind it.
 ### Executive decisions
 - **Work happens on branch `rust-rewrite`.** Nothing is pushed or merged
   without the owner.
-- **Nothing is copied from Pewbeam.** Its NLT and its verse vectors are
-  licensed or derived content; only ideas are taken.
+- **Nothing is copied from other software.** Licensed or derived content
+  (a translation's text, another app's verse vectors) is never taken.
 - **Parity is measured, not assumed.** `parity/record_golden.js` records what
   the Node engine decides on every fixture, twice, so the Rust engine can be
   checked against it (decisions that differ between two Node runs are marked

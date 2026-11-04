@@ -1,7 +1,7 @@
 //! Native Syphon sender for KAIRO (macOS only).
 //!
 //! Publishes verse text frames to the Syphon network so any compatible app
-//! (OBS Syphon plugin, ProPresenter, Resolume, MadMapper, etc.) can pick the
+//! (OBS Syphon plugin, Resolume, MadMapper, etc.) can pick the
 //! source up directly — no capture bridge, no hidden window.
 //!
 //! Mirrors the design of `ndi.rs`: a single Mutex-guarded handle owns the

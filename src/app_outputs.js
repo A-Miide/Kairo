@@ -3,7 +3,7 @@
 // app_theme_studio.js and sharing the same global scope.
 
 // ── Per-output themes ─────────────────────────────────────────────────────
-// Each destination renders with its own theme — the ProPresenter model where
+// Each destination renders with its own theme, so
 // stage and audience screens show different designs from the same source. The
 // assignment lives with the OUTPUT (in Settings), not with the theme.
 // One card per output. The primary external display keeps its own card (its
@@ -14,16 +14,14 @@
 // wireExternalDisplayStatus's IIFE runs at load.
 // NDI/Syphon are deliberately NOT here — Output Looks generalized them from
 // one fixed sender each into a LIST of independent named outputs (owner:
-// "you should be able to create multiple Syphon or NDI outputs", matching
-// ProPresenter's own Screen Configuration list). See ndiOutputs()/
+// "you should be able to create multiple Syphon or NDI outputs": one
+// list of every output). See ndiOutputs()/
 // syphonOutputs()/renderNdiOutputs()/renderSyphonOutputs() below — same
 // list-of-named-instances shape as extraDisplays(), just with their own
 // settings arrays since an NDI/Syphon output also carries a network source
 // name extraDisplays() has no equivalent of.
-// ProPresenter's own integration is gone entirely (owner: "I don't think
-// anyone who owns ProPresenter will rather let us use messages to send to
-// their ProPresenter than just send themselves") — it picks Kairo up as a
-// normal NDI/Syphon input instead. OBS keeps its single fixed WebSocket
+// Presentation apps take Kairo as a normal NDI/Syphon input; there is no
+// message push to them. OBS keeps its single fixed WebSocket
 // connection (not addable/multi-instance the way Displays/NDI/Syphon are).
 const OUTPUT_DEFS = [
   { key: PRIMARY_DISPLAY, label: 'External Display' },
@@ -66,8 +64,7 @@ function switchOffDisplay(id) {
 }
 
 // An output on the screen the app itself is on covers the app. Which outputs those are is published for
-// the output windows (display.html), so each can show a Close button, and Esc, while it covers the app
-// (as ProPresenter does). An output on another screen never shows them.
+// the output windows (display.html), so each can show a Close button, and Esc, while it covers the app. An output on another screen never shows them.
 function publishOutputsCoveringApp() {
   let ids = [];
   try {
@@ -150,7 +147,7 @@ function allOutputKeys() {
 // display rows — NOT the broadcast-only outputs like NDI/Syphon) has been
 // deliberately pointed at, keyed by output id. Populated from the Window
 // Management API (see refreshDisplayStatus) and chosen explicitly per
-// output, the same way ProPresenter's Hardware tab has the operator pick a
+// output: the operator picks a
 // device/resolution per screen rather than guessing from whatever's first
 // in the OS's list. Used both to open a display window on the right
 // physical screen (openDisplayOutput) and to shape the Live preview panel
@@ -555,8 +552,7 @@ document.getElementById('bible-language')?.addEventListener('change', (e) => {
 window.renderLangPills = renderLangPills;
 
 // ── Outputs master-detail ────────────────────────────────────────────────
-// Owner: "I like how ProPresenter does it better" (referencing its Screen
-// Configuration panel — one list of every output, a detail panel for
+// One screen configuration panel (owner) — one list of every output, a detail panel for
 // whichever's selected) — replaces the old per-type stacked cards
 // entirely. One flat list (owner confirmed: no Audience/Stage-style
 // grouping needed) of every configured output — External Display + extra
@@ -2047,8 +2043,7 @@ async function verifyDisplayWindowOpened(label) {
 
 // ── Monitor outputs, and Text only ─────────────────────────────────────────
 // A Monitor is its own output, added from the Outputs list (owner, 2026-10-01:
-// "a confidence monitor ... Caters to the minister up front. just like
-// propresenter stage output" — "stage should be an output option, in output",
+// "a confidence monitor ... Caters to the minister up front" — "stage should be an output option, in output",
 // "call it Monitor, not stage"): a screen showing what's on screen now with
 // the next slide right under it, the time, the segment countdown and messages
 // from Monitor message under the preview — words only (display.html's
@@ -2310,7 +2305,7 @@ async function applyOutputThemes() {
 
 // ── Output Looks — per-output Bible/Slide/Media/Timer visibility ───────────
 // "a user can send only media content to a specific screen or only timer"
-// (owner, referencing ProPresenter's own Edit Looks panel). Mirrors
+// (owner). Mirrors
 // outputThemeMap/applyOutputThemes/renderOutputThemePickers exactly — same
 // settings-object shape family, same localStorage+storage-event delivery to
 // display.html, same /api/look/apply broadcast, same per-card UI injection.
@@ -2533,9 +2528,8 @@ function appendOutputLayersSection(host, outputId, map) {
 }
 
 // "create a new subsection called output control, this will have a
-// vertical list of all things that can be sent to the display" (owner,
-// referencing ProPresenter's own Looks matrix — layers as rows, outputs as
-// columns). Same outputLayerMap()/setOutputLayer data every per-output
+// vertical list of all things that can be sent to the display" (owner:
+// a matrix, layers as rows, outputs as columns). Same outputLayerMap()/setOutputLayer data every per-output
 // detail panel already edits — this is just every output's layers laid
 // out together instead of one at a time. OBS excluded (see
 // buildLayerChecksRow's own comment — no per-layer config, single fixed

@@ -167,7 +167,7 @@
     try { window.kairoProblem?.(`This Layout has no area for ${names[kind] || kind}. Pick another Layout or add one in Theme Studio.`, 'vd-layout'); } catch {}
     setTimeout(() => { try { window.kairoProblemCleared?.('vd-layout'); } catch {} }, 6000);
   }
-  // Clicking something turns its layer on (owner, 2026-10-19, as in ProPresenter): a Layout with that layer off
+  // Clicking something turns its layer on (owner, 2026-10-19): a Layout with that layer off
   // gets it on for this Preview, and the Send puts it on the Output too. A kind the Layout has no area for
   // stays blocked (layoutAllows): that is the Layout's rule, not an off switch.
   const effLayers = (look) => ({ ...(look.layers || {}), ...(D.layerOn || {}) });

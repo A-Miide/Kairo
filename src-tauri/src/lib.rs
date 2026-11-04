@@ -391,7 +391,7 @@ fn generate_auth_token() -> String {
 
 // Output Looks: multiple independent named NDI/Syphon outputs (e.g. "Atem"
 // AND "NDI Output" as separate senders at once) rather than one fixed
-// sender each — mirrors ProPresenter's own Screen Configuration list, and
+// sender each — one list of every output, like
 // Kairo's own pre-existing extraDisplays() pattern for External Display.
 // Keyed by an id the frontend generates (settings.ndiOutputs/syphonOutputs,
 // src/app.js) — each id gets its own independent handle/sender thread the

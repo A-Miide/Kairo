@@ -903,7 +903,7 @@ fetchServerSettings().then(s => {
 let previewRenderGen = 0;
 
 // Which output the Live preview panel (right sidebar) is currently
-// monitoring — matches ProPresenter's Preview Window, which has its own
+// monitoring — a preview with its own
 // screen-selector dropdown independent of what's being edited. Defaults to
 // the primary/External Display output.
 // The Monitor's own preview is Main: the composite — every layer in order
@@ -1053,7 +1053,7 @@ async function openMonitorWindow() {
 }
 document.getElementById('monitor-popout-btn')?.addEventListener('click', openMonitorWindow);
 
-// ProPresenter-style song section annotation — mirrors slide_import.js's
+// Song section annotation — mirrors slide_import.js's
 // own SECTION_LABEL_RE (server-side, applied at import time) so a block's
 // label ("Verse 1", "Chorus", "Bridge · 2" when split across multiple
 // slides) maps onto the same CSS color classes here. Kept as a separate,
@@ -1125,7 +1125,7 @@ function renderPreviewScreen(text, reference, look, translatedText = '', image =
   // and rebuilds the themed layers (and restarts any text animation), which
   // reads as a flicker on a verse that is already on screen. This happens on
   // every duplicate broadcast for the same send (interim + final, range
-  // established then activated, ProPresenter ack). Returns BEFORE bumping
+  // established then activated, acknowledged). Returns BEFORE bumping
   // previewRenderGen so an in-flight transition of the same content isn't
   // cancelled. lastPreviewKey is reset to ' ' by the clear path, so a
   // clear-then-resend of the same verse still repaints.
@@ -1652,10 +1652,9 @@ function buildCandidateCard(v, method, isSent = false) {
     sendVerseToServer(v);
   };
   sendBtn?.addEventListener('click', sendThis);
-  // Promote used to mean "send to viewer only, skip ProPresenter" — a
-  // meaningless distinction now that the ProPresenter message-push
-  // integration is gone entirely (ProPresenter picks Kairo up as an NDI/
-  // Syphon source instead, see Settings → Outputs). Send to Air is the
+  // Promote used to mean "send to the viewer only" — a meaningless
+  // distinction now that every output takes Kairo's picture (NDI/Syphon
+  // and the rest, see Settings → Outputs). Send to Air is the
   // only real action left.
   // Double-click anywhere on the card → same action as "Send to Air", so
   // Candidates matches the Live Queue/range-card shortcut instead of being
@@ -1793,7 +1792,7 @@ function buildQueueRow(v, method, correctedFrom = null) {
     </div>
   `;
   addChapterToggle(card, v);
-  // Send button → update viewer + ProPresenter
+  // Send button → update viewer and outputs
   const sendBtn = card.querySelector('.lvc-send-btn');
   sendBtn?.addEventListener('click', (e) => {
     e.stopPropagation();
@@ -1835,7 +1834,6 @@ function updateSuggestionCount() {
   if (badge) badge.textContent = count;
 }
 
-// ── ProPresenter UI ────────────────────────────────────────────────────────
 // ── Range navigation bar (docked below live screen) ────────────────────────
 const rangeNavBar   = document.getElementById('range-nav-bar');
 const rangeNavLabel = document.getElementById('range-nav-label');
@@ -2012,7 +2010,7 @@ function buildRangeCard(v, isActive) {
       <div class="lvc-text">${escapeHtml(cleanVerseText(v.text || v.kjv_text || ''))}</div>
     </div>
     <div class="lvc-actions">
-      <button class="lvc-send-btn" title="Send to ProPresenter">Send</button>
+      <button class="lvc-send-btn" title="Send to screen">Send</button>
     </div>
   `;
 
@@ -2039,19 +2037,18 @@ function buildRangeCard(v, isActive) {
 // Despite the name, this is the shared "push this verse everywhere" call
 // for every manual send in the app (Candidates, Live Queue, range cards,
 // direct search hits — 6 call sites). It used to hit ONLY
-// /api/propresenter/send, which — true to its name — only ever pushes to
-// ProPresenter. Nothing about a manual send ever reached KAIRO's own
+// an old send endpoint that only ever pushed to one outside app. Nothing about a manual send ever reached KAIRO's own
 // external display window (display.html), which only updates via the
 // server's 'detection' WS broadcast — the exact thing this endpoint never
 // sent. Real incident: double-clicking a verse (or clicking Send) updated
-// the operator's own local preview and ProPresenter, but the actual output
+// the operator's own local preview, but the actual output
 // screen just sat on whatever the last automatic detection or Next/
 // Previous range-advance had put there, because those are the only paths
 // that were ever wired to /api/service/send's broadcast.
 //
 // /api/service/send does the full job (broadcasts 'detection' with
-// method:'service' AND calls sendToOutputs, which covers ProPresenter +
-// OBS together) — same endpoint the Playlist/Send-slide flow already used
+// method:'service' AND calls sendToOutputs, which covers
+// OBS too) — same endpoint the Playlist/Send-slide flow already used
 // correctly. method:'service' is deliberate: showInViewer() skips its
 // Live-Queue-list bookkeeping for that method, since the caller here
 // already did that update directly and locally before this call — the
@@ -3074,7 +3071,7 @@ function readToggleGroup(groupId, dataKey) {
 // Generic thumbnail/preview boxes (Stack/Grid cards, Media library cards,
 // Full-scale edit's slide list — see var(--kairo-output-aspect, 16/9) in
 // styles.css) always render at a fixed 16:9 (1920x1080) design default now,
-// the same way ProPresenter's document canvas defaults to 1920x1080
+// the usual 1920x1080 document canvas
 // regardless of what's connected — they used to mirror whatever screen
 // KAIRO's own UI happened to be running on, which made them misleading the
 // moment a real projector or an odd-aspect LED wall was actually plugged in.
@@ -3765,7 +3762,7 @@ async function runSearch() {
     console.log('[Search] response:', d.method, d.result?.reference ?? (d.results?.length + ' text hits'));
 
     if (d.result) {
-      // Reference hit — send to viewer + ProPresenter immediately
+      // Reference hit — send to viewer and outputs immediately
       const allVerses = d.range?.length > 1 ? d.range : [d.result];
       if (allVerses.length > 1) {
         // Range — let the WS broadcast handle the range-verses event,
@@ -3812,7 +3809,6 @@ clearLockedBtn?.addEventListener('click', async () => {
   rangeRefs = new Set();
   finishedRangeRefs = new Set();
   renderPreviewScreen('Nothing on display', '', null);
-  await fetch(`${SERVER}/api/propresenter/clear`, { method: 'POST' }).catch(err => console.warn('[KAIRO] propresenter/clear request failed:', err.message));
 });
 
 clearSuggestionsBtn?.addEventListener('click', () => {
@@ -3822,7 +3818,7 @@ clearSuggestionsBtn?.addEventListener('click', () => {
 
 // ── Per-layer output clear ──────────────────────────────────────────────
 // The output composites two independent layers (see display.html); each
-// clears on its own without touching the other or the ProPresenter/NDI/
+// clears on its own without touching the other or the NDI/
 // Syphon outputs, which have their own clear via the Live Queue's button.
 // A genuine clear, not "nothing sent yet" — renderPreviewScreen(text, ref,
 // null) falls back to the output's own assigned theme (primaryOutputLook()),

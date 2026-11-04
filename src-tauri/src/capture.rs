@@ -1,5 +1,5 @@
 //! The pixels of an output's hidden display window — the same page, theme,
-//! ProPresenter layout and media the screens show — for the outputs that
+//! imported slide layout and media the screens show — for the outputs that
 //! aren't screens: NDI, Syphon and DeckLink.
 //!
 //! The window (`kairo-cap-<id>`, display.html?capture=1) tells us when what it

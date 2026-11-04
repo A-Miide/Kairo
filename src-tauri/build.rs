@@ -65,7 +65,7 @@ fn main() {
     .expect("tauri_build failed");
 
     // ── macOS-only: link & bundle Syphon.framework ───────────────────────
-    // Syphon is the standard macOS shared-texture protocol used by ProPresenter,
+    // Syphon is the standard macOS shared-texture protocol used by
     // OBS (via plugin), Resolume, MadMapper, etc. We bundle the framework into
     // the .app's Contents/Frameworks dir (Tauri does that via tauri.conf.json's
     // bundle.macOS.frameworks) and tell rustc to link against it at build time.

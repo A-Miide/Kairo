@@ -54,7 +54,7 @@
       strip.appendChild(row);
     });
   }
-  // Owner, 2026-10-17: operators don't see pop-up messages (ProPresenter has none); what is wrong
+  // Owner, 2026-10-17: operators don't see pop-up messages; what is wrong
   // shows where it happens (the Broadcasting / No audio indicator, a tile that says Unavailable,
   // an empty panel). Every message still goes to the debug log. The one exception is a failure to
   // keep what the operator set — settings, playlists or themes that can't be saved or read —

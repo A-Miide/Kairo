@@ -1286,7 +1286,7 @@ let looks = (function loadLooks() {
   return [...DEFAULT_LOOKS, ...custom];
 })();
 
-// The canvas is the artboard: its size, nothing else (owner, 2026-10-19, as ProPresenter). Its colour, gradient or
+// The canvas is the artboard: its size, nothing else (owner, 2026-10-19). Its colour, gradient or
 // picture is a full-size shape layer named Background just above it (role 'backdrop'), which can be moved,
 // hidden or deleted like any shape; the canvas itself paints nothing ('none'), or is see-through for keying
 // ('transparent'). The renderers still draw an older canvas fill (a deck pinned to an earlier theme version).
@@ -1740,8 +1740,8 @@ async function deleteLook(look) {
 // ── Sync layout + animation + name row ───────────────────────────────────
 // A theme's canvas size is purely a preview-shape hint (see renderPreview) —
 // layer positions stay percentages of the fixed KAIRO_DESIGN_W/H, so this
-// never affects how an existing theme lays out. Defaults to 1920x1080, same
-// as ProPresenter's document default, until someone deliberately picks a
+// never affects how an existing theme lays out. Defaults to 1920x1080, the
+// usual document size, until someone deliberately picks a
 // configured output to design against instead.
 function themeCanvasSize(look) {
   return (look && look.canvasSize && look.canvasSize.w && look.canvasSize.h)
@@ -4355,7 +4355,7 @@ function shapeKindPicker(current, onChange) {
 // makeWeightSelect/makeFontSelect, generalized. Chips read fine for a
 // handful of options with room to spare (Fit Mode, alignment), but for
 // something like text Case, a dropdown reads as the more standard control
-// (matches Canva/ProPresenter's own text panels) and takes less width.
+// (as in common design tools' text panels) and takes less width.
 function makeSelect(options, current, onChange) {
   const sel = document.createElement('select');
   sel.className = 'ts-select';

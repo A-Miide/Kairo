@@ -8,7 +8,7 @@ trouble. GPU errors are logged, never fatal.
 ## Why
 
 Today every picture Kairo puts out is `display.html` drawn by WebKit. That keeps themes, fonts
-and ProPresenter layouts identical everywhere, but WebKit gives no GPU surface back, so:
+and imported slide layouts identical everywhere, but WebKit gives no GPU surface back, so:
 
 1. **Each output window opens the camera again** at full size (`display_video.js`); the operator
    window shares one capture (`video_hub.js`), separate windows can't.

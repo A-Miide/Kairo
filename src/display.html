@@ -1489,8 +1489,8 @@
     };
 
     // ── Which output is this window? ───────────────────────────────────────
-    // Each destination can be assigned its own theme in Settings (the
-    // ProPresenter stage-vs-audience model). A display window declares which
+    // Each destination can be assigned its own theme in Settings (stage and
+    // audience screens can differ). A display window declares which
     // output it represents via ?output=…; the default is the external display.
     const OUTPUT_KEY = (new URLSearchParams(location.search).get('output') || 'external').toLowerCase();
 
@@ -2361,8 +2361,8 @@
     // layer permanently hides any image/video sent there — clearing never
     // actually looked cleared once media was in the picture. Dropping the
     // slide layer's content entirely when there's nothing to show lets the
-    // media layer show through, the same way a cleared front layer in
-    // ProPresenter reveals whatever's behind it.
+    // media layer show through, as a cleared front layer
+    // reveals whatever's behind it.
     function clearDisplay() {
         slideLayer.classList.remove('is-bible'); try { layoutContentBox(); } catch {}
         currentImageSlide = null;
@@ -2749,8 +2749,8 @@
     }
 
     // ── Monitor view: the confidence monitor ───────────────────────────────
-    // A Monitor output (owner, 2026-10-01: "Caters to the minister up front.
-    // just like propresenter stage output" — "call it Monitor, not stage"):
+    // A Monitor output (owner, 2026-10-01: "Caters to the minister up front" —
+    // "call it Monitor, not stage"):
     // what's on screen now with the next slide right under it, the time, the
     // segment's countdown, and a message from the booth. Words only. A single
     // scripture called out shows just that verse. Fed by the same broadcasts
@@ -3190,10 +3190,10 @@
 
     // ── Close button, while this output covers the app ──────────────────────
     // An output on the screen the app itself is on hides the app, with no way back to it (owner,
-    // 2026-10-19: "like ProPresenter"). While the mouse is moving over such an output a Close output
+    // 2026-10-19). While the mouse is moving over such an output a Close output
     // button shows in a corner, and Esc does the same; the app (app_outputs.js) says which outputs
     // cover it, and switches this one off. Outputs on another screen never show it.
-    // Since 2026-10-30: a big × bottom left, as ProPresenter's (the small top-right "Close output" went
+    // Since 2026-10-30: a big × bottom left (the small top-right "Close output" went
     // unseen), shown when the app says this output covers it, or opened it so (here=1, app_outputs.js
     // openDisplayOutput); the close goes through the server too, should the windows not share storage.
     if (!PREVIEW && !MONITOR && !CAPTURE) {

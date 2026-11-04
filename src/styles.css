@@ -506,7 +506,7 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
 .tb-icon-btn:hover { background: var(--bg-hover); color: var(--text); }
 .tb-icon-btn.active { color: var(--brand); background: var(--brand-dim); }
 
-/* Theme Studio button — icon + label pill like Pewbeam's Content Studio */
+/* Theme Studio button — icon + label pill */
 .tb-studio-btn {
   display: inline-flex;
   align-items: center;
@@ -1272,7 +1272,7 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
 /* Song section annotation (Verse/Chorus/Bridge/etc.) — top-left, mirroring
    the LIVE badge's own top-right corner placement. Color-coded by section
    type so an operator can tell Chorus from Verse at a glance during a
-   service, the same way ProPresenter's own stage display does. A real
+   service, as a stage display does. A real
    button (click to cycle the type — see cycleSectionLabel in app.js), not
    just a label, so a wrong auto-detected type from import is a one-click
    fix rather than a trip back into the song editor. */
@@ -1702,8 +1702,7 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
 }
 
 /* ── Outputs master-detail ─────────────────────────────────────────────
-   Owner: "I like how ProPresenter does it better" (its own Screen
-   Configuration panel — a list of every output, detail for whichever's
+   One screen configuration panel (owner) — a list of every output, detail for whichever's
    selected) — replaces the old per-type stacked cards. "+ Add Output"
    lives in its own full-width header row (own grid row, above both
    columns) rather than inside the list column — the list/detail borders
@@ -3199,7 +3198,7 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
 /* State classes JS applies to .bs-dot (updatePPStatus, and now every
    output's header indicator) — .active already existed and covers the
    "connected/on" case, but .connected/.error never had rules of their own,
-   so the ProPresenter dot in particular never actually changed color
+   so the output dots never actually changed color
    regardless of real connection state. */
 .bs-dot.connected { background: var(--green); box-shadow: 0 0 6px rgba(34,197,94,0.4); }
 .bs-dot.error      { background: var(--red); }
@@ -3207,8 +3206,7 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
 
 /* Compact header-row status (dot + short text) for the plain output cards
    (External Display, OBS, Syphon, NDI) — sits between the card name and
-   the theme badge/chevron, same row, no wrapper box (unlike ProPresenter's
-   pp-header-sync, this has no toggle to lay out around). */
+   the theme badge/chevron, same row, no wrapper box (no toggle to lay out around). */
 .output-header-status {
   display: flex;
   align-items: center;
@@ -3230,16 +3228,6 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
   flex: 1;
   min-width: 0;
 }
-
-/* ProPresenter's header sync row — toggle + dot + status, inline with the
-   theme badge instead of its own row below (see index.html for why). */
-.pp-header-sync {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
-}
-.pp-header-sync .rs-pp-status { font-family: var(--mono); }
 
 .output-card.expanded .output-card-chevron { transform: rotate(180deg); }
 
@@ -4532,38 +4520,7 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
   gap: 8px;
 }
 
-/* ProPresenter sync bar — card */
-.rs-pp-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  flex-shrink: 0;
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-md);
-  background: var(--bg-panel);
-  box-shadow: var(--shadow-sm);
-}
-
-.rs-pp-label {
-  font-family: var(--font-head);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  color: var(--text-2);
-  flex: 1;
-}
-
-.rs-pp-status {
-  font-size: 10px;
-  font-weight: 400;
-  color: var(--text-3);
-  font-family: var(--mono);
-}
-
-/* Per-layer output clear — deliberately placed at the bottom of the
-   ProPresenter Sync card rather than replacing it; both are "what's
-   currently live" controls and read naturally as one group. */
+/* Per-layer output clear — a "what's currently live" control. */
 .rs-layer-clear-bar {
   display: flex;
   gap: 6px;
@@ -4884,7 +4841,7 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
 }
 
 /* ══════════════════════════════════════
-   MEDIA BIN — ProPresenter-style always-reachable background shelf,
+   MEDIA BIN — always-reachable background shelf,
    shown under Bible/Slides/Timer (see showCenterView's toggle in
    service.js). Sits at the bottom of .center-stage as its own flex
    child, so it grows in exactly like a Live Queue or Timer grid would —
@@ -6110,8 +6067,8 @@ body.ts-dragging-guide-h, body.ts-dragging-guide-h * { cursor: row-resize !impor
 }
 .ts-theme-group-header .ts-theme-del { display: none; }
 .ts-theme-group-header:hover .ts-theme-del { display: flex; }
-/* Tree-style nesting (Finder/Xcode-navigator convention, closer to how
-   ProPresenter itself shows a Theme's Slides indented under it) — a
+/* Tree-style nesting (Finder/Xcode-navigator convention: a Theme's Slides
+   indented under it) — a
    continuous vertical guide down the group with a small branch tick into
    each row, instead of plain indentation with nothing tying the rows
    together visually. */

@@ -8,7 +8,7 @@ Branch: `rust-rewrite`. Owner decisions recorded 2026-10-11.
    process. One native binary, no bundled Node runtime.
 2. Rewrite every detection path cleanly while keeping every behaviour the
    current code learned from real services (see "Parity" below).
-3. Add what Pewbeam does that Kairo doesn't (see "Pewbeam gains").
+3. Add what Kairo doesn't do yet (see "Planned gains").
 4. Smaller app, while bundling everything scripture detection depends on.
 
 ## Non-goals and fixed constraints
@@ -68,7 +68,7 @@ crates/
                                 streams), sherpa-onnx, web speech, replay;
                                 shared vocabulary provider
   kairo-server/                 axum: the 70 routes + WebSocket, same port/token
-  kairo-integrations/           ProPresenter, OBS, triggers, segments, songs,
+  kairo-integrations/           OBS, triggers, segments, songs,
                                 media, slide/theme import, export, translation
 ```
 
@@ -91,9 +91,9 @@ to the ledger; only the scorer decides what reaches the screen. That is what
 makes replays exact and lets new paths be added without conflicting with
 existing ones.
 
-## Pewbeam gains
+## Planned gains
 
-| Pewbeam behaviour | Kairo today | Plan |
+| Behaviour | Kairo today | Plan |
 |---|---|---|
 | Tauri + native backend, no bundled runtime | Tauri + Node sidecar | This rewrite |
 | Fast path on interim transcripts | Yes | Port |
@@ -194,7 +194,7 @@ listed in `docs/RUST_REWRITE_DIFFS.md` as an intended change.
 | 0 | Golden recorder + contract capture | Golden logs and API/WS recordings committed |
 | 1 | Workspace, `kairo-bible`, `kairo-semantic` (incl. fused int8 index) | Semantic search matches Node top-K; paraphrase bench ≥ today |
 | 2 | `kairo-detect`: reference parser, lexical layers, scoring | Parser and scoring tests ported and passing |
-| 3 | `kairo-detect`: context, ranges, chapter resolver, paraphrase, voting + Pewbeam gains | Golden replay parity |
+| 3 | `kairo-detect`: context, ranges, chapter resolver, paraphrase, voting + planned gains | Golden replay parity |
 | 4 | `kairo-stt`: Deepgram (+ ensemble), sherpa-onnx, shared vocabulary | Live and offline runs through one funnel |
 | 5 | `kairo-server` + `kairo-integrations` | UI runs unchanged against Rust; contract tests pass |
 | 6 | Packaging: drop Node, bundle models, update-size handling | Installers built on macOS/Windows/Linux in CI |

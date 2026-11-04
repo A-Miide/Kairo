@@ -513,7 +513,7 @@
                 </div>
             </div>
 
-                        <!-- Media Bin — ProPresenter-style always-reachable media shelf.
+                        <!-- Media Bin — always-reachable media shelf.
                  Shown only under Bible/Slides/Timer (see showCenterView's
                  media-bin toggle), so it's reachable without leaving those
                  views for the Media tab — but picking an item here calls
@@ -556,9 +556,7 @@
         <!-- ─── RIGHT SIDEBAR: PP sync + Preview + Candidates ─── -->
         <aside class="right-sidebar">
 
-            <!-- ProPresenter sync toggle + status now live in Settings →
-                 Outputs → ProPresenter, merged with its own connection
-                 config instead of a separate always-visible strip here. -->
+            <!-- Output status lives in Settings → Outputs. -->
 
             <!-- Per-layer output clear — the output composites an
                  independent media layer (image/video) and a timer/clock
@@ -648,7 +646,7 @@
                         <div class="live-screen-text" id="preview-verse-text">Nothing on display</div>
                         <div class="live-screen-ref" id="preview-verse-ref"></div>
                     </div>
-                    <!-- ProPresenter-style song section annotation (Verse/
+                    <!-- Song section annotation (Verse/
                          Chorus/Bridge/etc.) — shown only for a 'song' item's
                          slide, which carries its own block.label separately
                          from the song title already in preview-verse-ref.
@@ -1498,7 +1496,7 @@
                      accelerators (see src-tauri/src/lib.rs) — those are
                      the OS-level defaults and don't change; this is a
                      separate, customizable in-app layer for the same
-                     actions, same idea as ProPresenter's Key Mappings
+                     actions, like a key-mapping panel
                      panel. -->
                 <div class="settings-section">
                     <div class="settings-section-label">Shortcuts</div>
@@ -1686,10 +1684,9 @@
                                 <p><strong>Settings → Outputs</strong> lists every destination on the left; click one to see and edit its settings on the right. Use <strong>+ Add Output</strong> (top right) to add a Display/Projector, an NDI output, or a Syphon output — each new one can be renamed and given its own theme. The switch in each output's header (list row or detail panel) turns that destination on or off; a dot next to it shows whether it's actually connected/broadcasting.</p>
                                 <ul>
                                     <li><strong>External Display</strong> — a real window sent to a projector/screen/monitor. Enable at least one; it's what most services actually need. If it doesn't come back after restarting the app, reselect it here — this should happen automatically on launch, but a manual reselect always forces it.</li>
-                                    <li><strong>NDI</strong> — broadcasts over the network to any NDI-aware app (OBS, vMix, ProPresenter, etc.), on any platform. Requires the free <strong>NDI Tools</strong> runtime installed on this machine first (ndi.video/tools) — Kairo doesn't bundle it. If the toggle won't turn on, the output's status line will say why (usually "NDI runtime not found").</li>
-                                    <li><strong>Syphon (macOS) / Spout (Windows)</strong> — same idea as NDI but same-machine only, and bundled with Kairo (nothing extra to install). Any Syphon- or Spout-aware app on the same computer (OBS, ProPresenter, Resolume, etc.) can pick it up directly. The Add Output menu only offers the one that matches the computer Kairo is running on.</li>
+                                    <li><strong>NDI</strong> — broadcasts over the network to any NDI-aware app (OBS, vMix, etc.), on any platform. Requires the free <strong>NDI Tools</strong> runtime installed on this machine first (ndi.video/tools) — Kairo doesn't bundle it. If the toggle won't turn on, the output's status line will say why (usually "NDI runtime not found").</li>
+                                    <li><strong>Syphon (macOS) / Spout (Windows)</strong> — same idea as NDI but same-machine only, and bundled with Kairo (nothing extra to install). Any Syphon- or Spout-aware app on the same computer (OBS, Resolume, etc.) can pick it up directly. The Add Output menu only offers the one that matches the computer Kairo is running on.</li>
                                     <li><strong>OBS</strong> — a lightweight built-in text push into a single OBS Text Source, for a quick lower-third without adding an NDI/Syphon source in OBS. For full parity (images, video, timer, not just verse text), add an NDI or Syphon source inside OBS pointed at Kairo instead — that's the recommended setup.</li>
-                                    <li><strong>ProPresenter</strong> — there's no separate Kairo-side integration for it. Add Kairo as an NDI or Syphon source directly inside ProPresenter, the same way you would in OBS.</li>
                                 </ul>
                                 <p>The <strong>Monitor</strong> (right side, under Clear Bible) shows exactly what each output is showing right now. Pick <strong>Main</strong> or any output that's on from its list, or use the grid button to see them all side by side — click a tile to watch just that one. The arrow button opens the monitor in its own window, about the size of Settings: resize or move it as you like; it stays above Kairo while you keep working.</p>
                                 <p>Each NDI/Syphon output also has its own configurable resolution and network/source name, editable any time under its detail panel.</p>
@@ -1967,18 +1964,12 @@
 
             <section class="settings-pane" data-pane="outputs">
                 <!-- ── OUTPUTS ────────────────────────────────────────────
-                     Master-detail, mirroring ProPresenter's own Screen
-                     Configuration panel (owner: "I like how ProPresenter
-                     does it better") — one flat list of every configured
+                     Master-detail — one flat list of every configured
                      output (External Display + extra displays, NDI, Syphon,
                      OBS) on the left; the selected one's full settings
                      (theme, Output Looks layers, source name, resolution,
-                     screen assignment, …) on the right. ProPresenter's own
-                     message-push integration is gone entirely (owner: "I
-                     don't think anyone who owns ProPresenter will rather
-                     let us use messages to send to their ProPresenter than
-                     just send themselves") — it picks Kairo up as a normal
-                     NDI/Syphon input instead, same as any other source.
+                     screen assignment, …) on the right. Presentation apps take
+                     Kairo as a normal NDI/Syphon input, like any other source.
                      Everything below is built by renderOutputsPane() and
                      friends (src/app.js) — no static per-type markup here
                      beyond this shell + the add-type popover. -->
@@ -2000,9 +1991,8 @@
 
                 <!-- Output Control — owner: "create a new subsection called
                      output control, this will have a vertical list of all
-                     things that can be sent to the display" (referencing
-                     ProPresenter's own Looks matrix — layers as rows,
-                     destinations as columns). Every output's own detail
+                     things that can be sent to the display": layers as rows,
+                     destinations as columns. Every output's own detail
                      panel above already has its own Bible/Slide/Media/Timer
                      checkboxes (buildLayerChecksRow) for editing one output
                      at a time; this is the same outputLayerMap() data, just
@@ -2053,7 +2043,7 @@
          onboarding must never block someone who already knows the app). -->
     <!-- First-run tour (2026-10-12 redesign): four short, full-window steps
          in the brand colours — what Kairo does (a six-second live demo), how
-         it listens (the one real setup step), what's inside (ProPresenter,
+         it listens (the one real setup step), what's inside (slide
          import, languages), and a spotlight on the real microphone and Start
          Listening. No video: it would weigh megabytes and go stale with the
          UI; these are CSS animations, and they stop for reduced motion.
@@ -2325,10 +2315,7 @@
 
             header.addEventListener('click', function (e) {
                 // If user clicked the toggle switch itself, let the checkbox change fire first.
-                // Also skip ProPresenter's header sync row (auto-send toggle + connection dot) —
-                // it manages its own state on click, not the accordion's.
                 if (e.target === toggle || e.target.classList.contains('output-toggle-track')) return;
-                if (e.target.closest('.pp-header-sync')) return;
                 card.classList.toggle('expanded');
             });
 

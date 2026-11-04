@@ -661,7 +661,7 @@
     return { ...base, layers: base.layers.map(l => (l === canvas ? fill : l)) };
   }
 
-  // ── Theme versions (ProPresenter-style safety, with a way forward) ──────
+  // ── Theme versions (safety, with a way forward) ──────
   // Editing a theme never changes a deck that already uses it: the first
   // time a theme changes, every deck using it keeps the version it had
   // (item.themePins[themeId] = that version's hash; the version itself is
@@ -1429,7 +1429,7 @@
   }
 
   // Cycle the CURRENTLY LIVE song slide's section label through the
-  // standard ProPresenter-style set — a one-click fix for a wrong or
+  // standard section set — a one-click fix for a wrong or
   // missing auto-detected type (see slide_import.js's own SECTION_LABEL_RE,
   // applied at import time), right where the operator is already looking,
   // rather than a trip back into the song editor. Entry point for app.js's
@@ -1959,7 +1959,7 @@
     updateMediaBinVisibility();
   }
 
-  // ── Media Bin — ProPresenter-style always-reachable background shelf ───
+  // ── Media Bin — always-reachable background shelf ───
   // Only meaningful under Bible/Slides/Timer (per the operator's own
   // scoping: "an option in bible, slides, timer") — Songs/Media browsing
   // has no "currently live" thing to set a background on. Independent of
@@ -2590,8 +2590,8 @@
     // Show the real section label (Verse/Chorus/Bridge/etc — from import
     // detection or the operator's own click-to-cycle edit) when this slide
     // has one, instead of always just the bare index. Real gap: this grid
-    // is where an operator actually browses a song's slides (matching
-    // ProPresenter's own slide-library convention of labeling each slide),
+    // is where an operator actually browses a song's slides (the usual
+    // slide-library convention of labeling each slide),
     // but the label was previously only ever surfaced on the LIVE preview
     // badge for whichever slide happens to be on air — nowhere in the
     // browsing view itself. `b.label` falls back to a generic `Slide N`
@@ -6811,7 +6811,7 @@
       if (!text || !text.trim()) throw new Error('Clipboard is empty');
       const d = await importTextViaServer(text);
       // Routed through the same beginImportResult every other import path
-      // uses (not a direct openAddConfirm call) — keeps ProPresenter-style
+      // uses (not a direct openAddConfirm call) — keeps imported files'
       // "keep as-is" defaulting and multi-item (.proplaylist) handling
       // consistent regardless of which of the three entry points (quick
       // file, quick clipboard, or the paste-dialog fallback) was used.
