@@ -474,7 +474,7 @@ fn publish_bgra(h: &mut SyphonHandle, bgra: &[u8]) -> Result<(), String> {
             textureTarget: 0x0DE1u32, // GL_TEXTURE_2D
             imageRegion: region,
             textureDimensions: size,
-            flipped: false,
+            flipped: true, // rows are top-down; GL reads row 0 as the bottom
         ];
     }
     Ok(())
@@ -518,9 +518,9 @@ fn render_and_publish(h: &mut SyphonHandle) -> Result<(), String> {
         );
         gl::Flush();
 
-        // Hand the texture to Syphon. Region == full texture; flipped=NO
-        // because tiny-skia draws origin-top-left and that's what GL wants
-        // when imageRegion matches textureDimensions exactly.
+        // Hand the texture to Syphon. Region == full texture. tiny-skia's
+        // first row is the top of the picture, but GL treats a texture's
+        // first row as its bottom, so the frame is published flipped.
         let server = h.server.as_ref().unwrap();
         let region = NSRect {
             origin: NSPoint { x: 0.0, y: 0.0 },
@@ -533,7 +533,7 @@ fn render_and_publish(h: &mut SyphonHandle) -> Result<(), String> {
             textureTarget: 0x0DE1u32, // GL_TEXTURE_2D
             imageRegion: region,
             textureDimensions: size,
-            flipped: false,
+            flipped: true, // rows are top-down; GL reads row 0 as the bottom
         ];
     }
     Ok(())
