@@ -837,8 +837,9 @@ async fn look_apply(State(app): State<Shared>, Json(b): Json<Value>) -> Response
         return Json(json!({ "ok": true, "outputs": count(modes) })).into_response();
     }
     if themes.is_object() {
-        crate::util::lock(&app.hub.live).output_themes = themes.clone();
-        app.hub.broadcast(json!({ "type": "look-update", "themes": themes, "look": look, "layers": layers_out }));
+        let msg = json!({ "type": "look-update", "themes": themes, "look": look, "layers": layers_out });
+        crate::util::lock(&app.hub.live).looks = msg.clone();
+        app.hub.broadcast(msg);
         return Json(json!({ "ok": true, "outputs": count(themes) })).into_response();
     }
     if layers.is_object() && look.is_null() {

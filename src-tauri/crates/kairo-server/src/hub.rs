@@ -41,8 +41,9 @@ pub struct Live {
     /// The detection(viewer) message on screen, and what was before it.
     pub screen_now: Option<Value>,
     pub history: VecDeque<Earlier>,
-    /// The output layout per display (for the multi-language theme).
-    pub output_themes: Value,
+    /// The last per-output themes sent ("look-update" with themes, look and layers): a window
+    /// that connects later gets it with the rest of what's on screen.
+    pub looks: Value,
 }
 
 pub struct Hub {
@@ -63,7 +64,7 @@ impl Default for Hub {
 impl Hub {
     pub fn new() -> Hub {
         let (tx, _) = broadcast::channel(1024);
-        Hub { tx, live: Mutex::new(Live { connection_state: "disconnected".into(), output_themes: json!({}), ..Default::default() }) }
+        Hub { tx, live: Mutex::new(Live { connection_state: "disconnected".into(), ..Default::default() }) }
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<String> {
@@ -120,6 +121,10 @@ impl Hub {
             json!({ "type": "layer-state", "bibleOnTop": l.bible_on_top, "slideUnderneath": l.underneath.is_some() }),
             json!({ "type": "output-transition", "animation": animation, "speed": speed }),
         ];
+        // Before the slide, so it is drawn in its output's theme.
+        if !l.looks.is_null() {
+            out.push(l.looks.clone());
+        }
         out.extend([&l.slide, &l.media, &l.timer, &l.range_state].into_iter().flatten().cloned());
         if !l.monitor_message.is_empty() {
             out.push(json!({ "type": "monitor-message", "text": l.monitor_message, "to": if l.monitor_message_to.is_empty() { "monitors" } else { l.monitor_message_to.as_str() } }));

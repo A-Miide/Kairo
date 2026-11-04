@@ -592,12 +592,18 @@ fn decode(bytes: &[u8]) -> String {
 }
 
 /// The readers, each with a cheap look at the text to say whether it could be that format.
+/// `needle` (lower-case ASCII) in `t`, ignoring ASCII case, without a lower-case copy of `t` (a
+/// whole Bible: each check used to copy it).
+fn has_ci(t: &str, needle: &str) -> bool {
+    t.as_bytes().windows(needle.len()).any(|w| w.eq_ignore_ascii_case(needle.as_bytes()))
+}
+
 const READERS: [(&str, fn(&str) -> bool, fn(&str) -> Parsed); 6] = [
     ("USFM", |t| t.contains("\\id ") || t.contains("\\c "), usfm),
-    ("OSIS", |t| t.contains('<') && t.to_ascii_lowercase().contains("osisid"), osis),
-    ("Zefania", |t| t.contains('<') && t.to_ascii_lowercase().contains("<vers"), zefania),
-    ("USX", |t| t.contains('<') && t.to_ascii_lowercase().contains("<usx"), usx),
-    ("XML", |t| t.contains('<') && t.to_ascii_lowercase().contains("<verse"), plain_xml),
+    ("OSIS", |t| t.contains('<') && has_ci(t, "osisid"), osis),
+    ("Zefania", |t| t.contains('<') && has_ci(t, "<vers"), zefania),
+    ("USX", |t| t.contains('<') && has_ci(t, "<usx"), usx),
+    ("XML", |t| t.contains('<') && has_ci(t, "<verse"), plain_xml),
     ("XML", |t| t.contains('<'), loose_xml),
 ];
 
@@ -797,8 +803,10 @@ pub async fn import(State(app): State<Shared>, Query(q): Query<HashMap<String, S
     // A short name asked for is checked now; without one, it is made from the Bible's own name once read.
     let asked = q.get("code").filter(|c| !c.trim().is_empty()).cloned();
     if let Some(c) = &asked {
-        if clean_code(c).is_none() {
-            return fail(code_error(c));
+        let Some(code) = clean_code(c) else { return fail(code_error(c)) };
+        // One already added under that name isn't replaced without a word.
+        if bible.user_translations_dir().join(format!("{code}.json")).exists() {
+            return fail(format!("You already added a Bible called {code}. Choose another short name, or remove that one first."));
         }
     }
     if body.is_empty() {

@@ -173,8 +173,17 @@ final class Transcriber {
 final class Inbox: @unchecked Sendable {
     private var items: [(Date, [Float])?] = []
     private let cond = NSCondition()
-    var singing = false
-    var gone = false
+    // Set by the reader thread, read by the decode loop: under the same lock as the queue.
+    private var _singing = false
+    private var _gone = false
+    var singing: Bool {
+        get { cond.lock(); defer { cond.unlock() }; return _singing }
+        set { cond.lock(); _singing = newValue; cond.unlock() }
+    }
+    var gone: Bool {
+        get { cond.lock(); defer { cond.unlock() }; return _gone }
+        set { cond.lock(); _gone = newValue; cond.unlock() }
+    }
 
     func put(_ item: (Date, [Float])?) {
         cond.lock(); items.append(item); cond.signal(); cond.unlock()
