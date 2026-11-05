@@ -8345,6 +8345,7 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
   font-size: 12px; font-weight: 800; color: #fff; background: var(--bg-hover);
 }
 .imp-ico-pp { background: #3a3a40; font-size: 11px; letter-spacing: -0.02em; }
+.imp-ico-ew { background: #2b5f9e; font-size: 11px; letter-spacing: -0.02em; }
 .imp-ico-ppt { background: #c4472b; }
 .imp-ico-doc { background: #2b5797; }
 .imp-ico-txt { background: #4b4b52; }

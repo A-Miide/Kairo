@@ -4814,7 +4814,7 @@
         // into the library too, same as the playlist-destination case below.
         for (const extra of extras) {
           await addLibrarySong({
-            title: extra.name || 'Imported song', author: '', year: null, themeId: item.themeId, category: record.category,
+            title: extra.name || 'Imported song', author: extra.author || '', year: null, themeId: item.themeId, category: record.category,
             blocks: toLibraryBlocks(extra.blocks),
           });
         }
@@ -6808,16 +6808,21 @@
     return d;
   }
 
-  async function importArrayBufferAsFile(file) {
-    const buf = await file.arrayBuffer();
-    const bytes = new Uint8Array(buf);
+  async function fileBase64(file) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
     let bin = '';
     for (let i = 0; i < bytes.length; i += 0x8000) {
       bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 0x8000));
     }
+    return btoa(bin);
+  }
+
+  // `companions`: other files picked with it (an EasyWorship song library is two files).
+  async function importArrayBufferAsFile(file, companions = []) {
+    const extra = await Promise.all(companions.map(async f => ({ filename: f.name, dataBase64: await fileBase64(f) })));
     const r = await fetchWithTimeout(`${SERVER}/api/service/import`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ filename: file.name, dataBase64: btoa(bin) }),
+      body: JSON.stringify({ filename: file.name, dataBase64: await fileBase64(file), ...(extra.length ? { companions: extra } : {}) }),
     }, MEDIA_UPLOAD_TIMEOUT_MS);
     const d = await r.json();
     if (!r.ok || d.error) throw new Error(d.error || 'import failed');
@@ -6858,7 +6863,10 @@
     if (d.items && d.items.length) {
       const [first, ...rest] = d.items;
       pendingExtraBlockItems = rest;
-      openAddConfirm(toBlocksItem(first.blocks, first.name || fallbackTitle), { showDelimiter: true, isImportBlocks: true, rawBlocks: first.blocks, defaultKeepAsIs: keepAsIs, destination, note: d.note, warnings: d.warnings });
+      // Songs carry their author (EasyWorship); it goes into the Song Library with them.
+      const firstItem = toBlocksItem(first.blocks, first.name || fallbackTitle);
+      if (first.author) firstItem.author = first.author;
+      openAddConfirm(firstItem, { showDelimiter: true, isImportBlocks: true, rawBlocks: first.blocks, defaultKeepAsIs: keepAsIs, destination, note: d.note, warnings: d.warnings });
     } else {
       openAddConfirm(toBlocksItem(d.blocks, fallbackTitle), { showDelimiter: true, isImportBlocks: true, rawBlocks: d.blocks, defaultKeepAsIs: keepAsIs, destination, note: d.note, warnings: d.warnings });
     }
@@ -6869,9 +6877,9 @@
   // step, since a folder should be quick to fill. `destination` ('playlist'
   // or 'library') is the one thing that varies between the Slides add-menu
   // and the Songs tab's own "+ Import Song" — see openSongImportPopover.
-  async function quickImportFile(file, destination = 'playlist') {
+  async function quickImportFile(file, destination = 'playlist', companions = []) {
     try {
-      const d = await importArrayBufferAsFile(file);
+      const d = await importArrayBufferAsFile(file, companions);
       beginImportResult(d, file.name.replace(/\.[^.]+$/, ''), { destination });
     } catch (err) {
       // toast() is a deliberate no-op in this app (see its own comment in

@@ -8,12 +8,14 @@
 
   const KINDS = {
     propresenter: ['pro', 'pro6', 'pro7', 'probundle', 'proplaylist'],
+    // A schedule on its own, or a song library's two files picked together (easyworship.rs).
+    easyworship: ['ewsx', 'ews', 'db', 'mb'],
     pptx: ['pptx'],
     docx: ['docx'],
     text: ['txt', 'md', 'rtf'],
     theme: ['protheme', 'kairotheme', 'json'],
   };
-  const CONTENT_EXTS = [...KINDS.propresenter, ...KINDS.pptx, ...KINDS.docx, ...KINDS.text];
+  const CONTENT_EXTS = [...KINDS.propresenter, ...KINDS.easyworship, ...KINDS.pptx, ...KINDS.docx, ...KINDS.text];
   const THEME_EXTS = ['protheme', 'kairotheme'];
   const extOf = (name) => (name.toLowerCase().match(/\.([a-z0-9]+)$/) || [])[1] || '';
 
@@ -49,6 +51,21 @@
     input.dispatchEvent(new Event('change'));
   }
 
+  // Several files picked or dropped at once: an EasyWorship library's two go in together
+  // (Songs.db / Songs.DB first, the other as its companion); anything else, the first.
+  function routeAll(files, kind) {
+    const list = [...(files || [])];
+    if (!list.length) return;
+    const ew = list.filter(f => KINDS.easyworship.includes(extOf(f.name)));
+    if (ew.length > 1 && ew.length === list.length) {
+      const main = ew.find(f => /^songs\.db$/i.test(f.name)) || ew[0];
+      close();
+      window.KairoService?.quickImportFile?.(main, destination, ew.filter(f => f !== main));
+      return;
+    }
+    route(list[0], kind);
+  }
+
   // `kind` is the row the operator picked; a .json is only a theme when it
   // came from the Theme row (plain-text .json content imports as slides).
   function route(file, kind) {
@@ -69,13 +86,14 @@
     pickerKind = kind;
     const exts = kind ? KINDS[kind] : [...CONTENT_EXTS, ...THEME_EXTS];
     picker.accept = exts.map(e => '.' + e).join(',');
+    picker.multiple = kind === 'easyworship' || !kind;
     picker.value = '';
     picker.click();
   }
   picker.addEventListener('change', () => {
-    const f = picker.files?.[0];
+    const files = [...(picker.files || [])];
     picker.value = '';
-    if (f) route(f, pickerKind);
+    routeAll(files, pickerKind);
   });
 
   modal.querySelectorAll('.imp-row').forEach(row => row.addEventListener('click', () => {
@@ -98,8 +116,7 @@
   content?.addEventListener('drop', (e) => {
     e.preventDefault();
     drop?.classList.remove('over');
-    const f = e.dataTransfer?.files?.[0];
-    if (f) route(f, null);
+    routeAll(e.dataTransfer?.files, null);
   });
 
   document.getElementById('close-import-options')?.addEventListener('click', close);

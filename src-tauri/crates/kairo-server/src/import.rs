@@ -1029,6 +1029,20 @@ pub enum Imported {
     Items { format: &'static str, items: Vec<Value>, warnings: Vec<String> },
 }
 
+/// [`import_slides`], plus EasyWorship's files: a schedule (.ews, .ewsx) on its own, or a song
+/// library's two files picked together (`companions` are the others picked with `filename`).
+pub fn import_files(filename: &str, buf: &[u8], companions: &[(String, Vec<u8>)], assets: &pp::Assets) -> Result<Imported, ImportError> {
+    let ext = filename.to_lowercase().rsplit('.').next().unwrap_or("").to_string();
+    if matches!(ext.as_str(), "ews" | "ewsx" | "db" | "mb") {
+        let items = crate::easyworship::items(crate::easyworship::read(filename, buf, companions)?);
+        if items.is_empty() {
+            return Err(ImportError("No songs with words were found in that EasyWorship file.".into(), None));
+        }
+        return Ok(Imported::Items { format: "easyworship", items, warnings: Vec::new() });
+    }
+    import_slides(filename, buf, assets)
+}
+
 pub fn import_slides(filename: &str, buf: &[u8], assets: &pp::Assets) -> Result<Imported, ImportError> {
     let ext = filename.to_lowercase().rsplit('.').next().unwrap_or("").to_string();
     let mut warnings = Vec::new();

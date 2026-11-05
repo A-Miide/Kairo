@@ -71,7 +71,7 @@ use crate::util::{decode_b64, safe_file_name};
 
 async fn service_import(State(app): State<Shared>, Json(b): Json<Value>) -> axum::response::Response {
     use axum::response::IntoResponse;
-    use crate::import::{dedupe_image_layers, from_text, import_slides, ImportError, Imported};
+    use crate::import::{dedupe_image_layers, from_text, import_files, ImportError, Imported};
     if let Some(t) = b["text"].as_str().filter(|t| !t.trim().is_empty()) {
         return Json(json!({ "ok": true, "format": "text", "blocks": from_text(t) })).into_response();
     }
@@ -79,11 +79,15 @@ async fn service_import(State(app): State<Shared>, Json(b): Json<Value>) -> axum
         return crate::util::bad_request("Nothing to import");
     };
     let filename = b["filename"].as_str().unwrap_or("").to_string();
+    // Files picked with it (an EasyWorship library is two): `companions: [{ filename, dataBase64 }]`.
+    let companions: Vec<(String, Vec<u8>)> = b["companions"].as_array().into_iter().flatten()
+        .filter_map(|c| Some((c["filename"].as_str()?.to_string(), c["dataBase64"].as_str().and_then(decode_b64)?)))
+        .collect();
     // The request's base64 copy (up to 500 MB) isn't needed once decoded: freed before the
     // import unzips everything in it.
     drop(b);
     let assets = crate::propresenter::Assets::new(&app.cfg.app_data_dir);
-    let result = tokio::task::spawn_blocking(move || import_slides(&filename, &data, &assets)).await.unwrap_or_else(|_| Err(ImportError("import failed".into(), None)));
+    let result = tokio::task::spawn_blocking(move || import_files(&filename, &data, &companions, &assets)).await.unwrap_or_else(|_| Err(ImportError("import failed".into(), None)));
     match result {
         Ok(Imported::Items { format, mut items, warnings }) => {
             if items.is_empty() {

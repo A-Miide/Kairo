@@ -41,6 +41,7 @@ mod mt;
 mod native_audio;
 mod obs;
 mod pdf;
+pub mod easyworship;
 pub mod propresenter;
 mod pdf_metrics;
 mod qr;

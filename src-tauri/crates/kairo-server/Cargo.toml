@@ -28,6 +28,8 @@ sha2 = "0.10"
 ring = "0.17"
 memmap2 = "0.9"
 flate2 = "1.1.10"
+# EasyWorship 6/7 song libraries and schedules are SQLite (easyworship.rs); SQLite is built in.
+rusqlite = { version = "0.32", features = ["bundled"] }
 regex = "1.13.1"
 sherpa-onnx = "1.13.8"
 cpal = "0.15"
