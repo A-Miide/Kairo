@@ -54,6 +54,9 @@ struct Data {
     to: &'static [&'static str],
     and: &'static [&'static str],
     verse_articles: &'static [&'static str],
+    /// The small words between a chapter or verse number and the book it belongs to, when the
+    /// number comes first ("capítulo 8 de la carta a los Romanos"); empty where it never does.
+    between_number_and_book: &'static [&'static str],
     triggers: &'static [(&'static str, &'static [&'static str])],
     units: &'static [&'static str],
     tens: &'static [(&'static str, u32)],
@@ -85,6 +88,7 @@ const ES: Data = Data {
     to: &["hasta el", "hasta", "al", "a"],
     and: &["y"],
     verse_articles: &["del", "de"],
+    between_number_and_book: &["de", "del", "la", "el", "los", "las", "carta", "epistola", "libro", "a", "al"],
     triggers: &[("next verse", &["siguiente versiculo", "proximo versiculo", "versiculo siguiente"]), ("previous verse", &["versiculo anterior"])],
     units: &[
         "cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "once", "doce", "trece", "catorce", "quince",
@@ -117,6 +121,7 @@ const PT: Data = Data {
     to: &["ate o", "ate", "ao", "a"],
     and: &["e"],
     verse_articles: &["do", "de"],
+    between_number_and_book: &["de", "do", "da", "dos", "das", "o", "a", "os", "as", "carta", "epistola", "livro", "aos", "ao"],
     triggers: &[("next verse", &["proximo versiculo", "versiculo seguinte"]), ("previous verse", &["versiculo anterior"])],
     units: &[
         "zero", "um", "dois", "tres", "quatro", "cinco", "seis", "sete", "oito", "nove", "dez", "onze", "doze", "treze", "catorze", "quinze",
@@ -148,6 +153,7 @@ const FR: Data = Data {
     to: &["jusqu au", "jusqu a", "au", "a"],
     and: &["et"],
     verse_articles: &["du", "de"],
+    between_number_and_book: &["de", "du", "des", "la", "le", "les", "l", "lettre", "epitre", "livre", "aux", "au", "a"],
     triggers: &[("next verse", &["verset suivant", "prochain verset"]), ("previous verse", &["verset precedent"])],
     units: &[
         "zero", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix", "onze", "douze", "treize", "quatorze", "quinze",
@@ -186,6 +192,7 @@ const DE: Data = Data {
     to: &["bis zu", "bis"],
     and: &["und"],
     verse_articles: &["von"],
+    between_number_and_book: &[],
     triggers: &[
         ("next verse", &["nachste vers", "nachster vers", "nachsten vers", "folgende vers", "folgenden vers"]),
         ("previous verse", &["vorherige vers", "vorherigen vers"]),
@@ -220,6 +227,10 @@ struct Compiled {
     article: regex::Regex,
     to: regex::Regex,
     and: regex::Regex,
+    /// "capítulo 8 de Romanos" → "romans chapter 8" (languages that name the chapter first).
+    chapter_first: Option<regex::Regex>,
+    /// "versículos 5 al 11 de Romanos 8" → "romans 8 verse 5 to 11".
+    verse_first: Option<regex::Regex>,
 }
 
 fn data(lang: Lang) -> Option<&'static Data> {
@@ -262,6 +273,12 @@ fn compile(lang: Lang) -> Compiled {
                     add(format!("{o} {f} {name}"), format!("{n} {target}"));
                 }
             }
+            // The ordinal as a figure, as transcripts write it ("2º de Timoteo", "1er aux Corinthiens").
+            for n in 1..=3 {
+                for f in d.ordinal_fillers {
+                    add(format!("{n} {f} {name}"), format!("{n} {target}"));
+                }
+            }
         }
     }
     if lang == Lang::De {
@@ -300,12 +317,21 @@ fn compile(lang: Lang) -> Compiled {
         nums.insert(w.to_string(), *n);
     }
     let articles = alternation(d.verse_articles);
+    // A book in English tokens, with its 1/2/3 when it takes one.
+    let mut targets: Vec<String> = d.books.iter().map(|(en, _)| en.to_lowercase()).collect();
+    targets.sort_by_key(|t| std::cmp::Reverse(t.len()));
+    let book = format!("((?:[123] )?(?:{}))", targets.iter().map(|t| regex::escape(t)).collect::<Vec<_>>().join("|"));
+    // Between the number and the book: "de", "de la carta a los", "aux", "do livro de".
+    let fillers = format!("(?:(?:{}) ){{0,5}}", alternation(d.between_number_and_book));
     Compiled {
         data: d,
         lang,
         phrases,
         book_stems,
         nums,
+        chapter_first: (!d.between_number_and_book.is_empty()).then(|| re(&format!(r"(?-u:\b)chapter ([0-9]+) {fillers}{book}(?-u:\b)"))),
+        verse_first: (!d.between_number_and_book.is_empty())
+            .then(|| re(&format!(r"(?-u:\b)(verse [0-9]+(?: (?:to|and) [0-9]+)*) {fillers}{book} ([0-9]+)(?-u:\b)"))),
         article: re(&format!(r"(?-u:\b)(chapter|verse) (?:{articles}) ([0-9])")),
         to: re(&format!(r"([0-9]) (?:{}) (?:(?:verse|{articles}) )?([0-9])", alternation(d.to))),
         and: re(&format!(r"([0-9]) (?:{}) (?:verse )?([0-9])", alternation(d.and))),
@@ -321,7 +347,12 @@ pub fn localize(text: &str, lang: Lang) -> String {
     let Some(c) = COMPILED.get(&lang) else { return text.to_string() };
     static DE_ORDINAL_DOT: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?-u:\b)([1-5])\.\s"));
     static NUM_SEP: LazyLock<regex::Regex> = LazyLock::new(|| re(r"([0-9])\s*[:.]\s*([0-9])"));
+    // An ordinal written as a figure: "1º", "2ª", "1er", "2e", "3eme".
+    static ORDINAL_MARK: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?-u:\b)([123])\s?(?:[ºª°]|er|re|ere|e|eme|nd)(?-u:\b)|(?-u:\b)([123])[ºª°]"));
     let mut t = fold(text).replace('ß', "ss");
+    if lang != Lang::De {
+        t = ORDINAL_MARK.replace_all(&t, "$1$2").into_owned();
+    }
     if lang == Lang::De {
         t = DE_ORDINAL_DOT.replace_all(&t, "$1 ").into_owned();
     }
@@ -332,7 +363,14 @@ pub fn localize(text: &str, lang: Lang) -> String {
     let t = numbers_to_digits(&t.split(' ').collect::<Vec<_>>(), c).join(" ");
     let t = c.article.replace_all(&t, "$1 $2");
     let t = c.to.replace_all(&t, "$1 to $2");
-    c.and.replace_all(&t, "$1 and $2").into_owned()
+    let mut t = c.and.replace_all(&t, "$1 and $2").into_owned();
+    if let Some(r) = &c.verse_first {
+        t = r.replace_all(&t, "$2 $3 $1").into_owned();
+    }
+    if let Some(r) = &c.chapter_first {
+        t = r.replace_all(&t, "$2 chapter $1").into_owned();
+    }
+    t
 }
 
 fn is_word_char(c: char) -> bool {

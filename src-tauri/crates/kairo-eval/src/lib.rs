@@ -43,7 +43,10 @@ fn modern(corpus: &Corpus, bsb: Translation) -> Vec<Translation> {
 pub fn knowledge() -> Knowledge {
     let (corpus, bsb) = translations();
     let also = modern(&corpus, bsb);
-    Knowledge::build(corpus, Wordings { own: None, also })
+    // The service language's Bible, matched first, as a non-English service would
+    // (`KAIRO_EVAL_OWN=databases/bibles/packs/es.json`).
+    let own = std::env::var_os("KAIRO_EVAL_OWN").map(|p| corpus.load_flat("OWN", Path::new(&p)).expect("the service language's Bible"));
+    Knowledge::build(corpus, Wordings { own, also })
 }
 
 fn bench_config(name: &str) -> PathBuf {

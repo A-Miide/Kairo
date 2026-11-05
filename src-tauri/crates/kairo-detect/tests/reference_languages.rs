@@ -61,6 +61,33 @@ fn citations_in_four_languages() {
     assert!(failed.is_empty(), "\n{}", failed.join("\n"));
 }
 
+/// The way preachers really say them, from the recorded Spanish sermons (eval/fixtures/es-*.json).
+#[test]
+fn citations_as_spanish_sermons_say_them() {
+    let cases = [
+        // The chapter before the book.
+        ("Y el capítulo 8 de romanos, que vamos a continuar estudiando", "Romans 8:"),
+        ("los versículos 5 al 11 de romanos 8, que vamos a considerar", "Romans 8:5-11"),
+        ("el versículo 5 de romanos 8", "Romans 8:5"),
+        ("en el capítulo 5 de la carta a los Romanos", "Romans 5:"),
+        // An ordinal written as a figure: 1º, 2º.
+        ("Pablo dice en 1º a los Corintios, capítulo 2, versículo 14, que el hombre natural", "1 Corinthians 2:14"),
+        ("Pablo dice en 1º los Corintios, capítulo 6, versículo 19", "1 Corinthians 6:19"),
+        ("en 2º de Timoteo capítulo 3", "2 Timothy 3:"),
+        // Already understood: kept so they stay that way.
+        ("en Juan capítulo 3, dice", "John 3:"),
+        ("¿Qué dice Pablo en Efesios capítulo 2?", "Ephesians 2:"),
+    ];
+    let mut failed = Vec::new();
+    for (text, want) in cases {
+        let got = refs(text, Lang::Es);
+        if got != [want] {
+            failed.push(format!("{text:?} → {got:?}, want {want}"));
+        }
+    }
+    assert!(failed.is_empty(), "\n{}", failed.join("\n"));
+}
+
 #[test]
 fn ordinary_sentences_are_not_citations() {
     assert_eq!(refs("había un hombre que tenía dos hijos", Lang::Es), Vec::<String>::new());
