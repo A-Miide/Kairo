@@ -3406,9 +3406,10 @@ function renderOnboardingProgress() {
   });
 }
 
-// The Bibles step's two pickers are Settings' own (Bible language: settings.bibleLanguage; the second
-// language beside the verse: settings.bibleTranslateTo): same choices, and choosing here is choosing there.
-const ONBOARDING_MIRRORS = [['first-run-bible-language', 'bible-language'], ['first-run-second-lang', 'bible-translate-to-select']];
+// The Welcome step's three pickers are Settings → Language's own (the preacher's language, the Bible
+// version, slide translation): same choices, and choosing here is choosing there. One choice can move
+// another (a Spanish preacher picks Reina-Valera), so all three are redrawn after each.
+const ONBOARDING_MIRRORS = [['first-run-language', 'stt-language'], ['first-run-bible-version', 'lang-bible-version'], ['first-run-second-lang', 'bible-translate-to-select']];
 function syncOnboardingBiblePickers() {
   ONBOARDING_MIRRORS.forEach(([mine, theirs]) => {
     const pick = document.getElementById(mine);
@@ -3424,6 +3425,7 @@ ONBOARDING_MIRRORS.forEach(([mine, theirs]) => document.getElementById(mine)?.ad
   source.value = e.target.value;
   source.dispatchEvent(new Event('change'));
   window.renderLangPills?.();
+  setTimeout(syncOnboardingBiblePickers, 50);
 }));
 
 // The input picker on the listening step mirrors Settings → Audio's own list (the
@@ -3450,6 +3452,8 @@ function goToOnboardingStep(n) {
   });
   renderOnboardingProgress();
   const isLast = onboardingStep === ONBOARDING_STEP_COUNT - 1;
+  // The first step sets the language, which everything after depends on: it can't be skipped.
+  document.getElementById('first-run-skip')?.classList.toggle('is-off', onboardingStep === 0);
   document.getElementById('onboarding-back')?.classList.toggle('hidden', onboardingStep === 0);
   const next = document.getElementById('onboarding-next');
   if (next) {
@@ -3621,7 +3625,7 @@ document.getElementById('first-run-skip')?.addEventListener('click', closeFirstR
 document.addEventListener('keydown', (e) => {
   const modal = document.getElementById('first-run-modal');
   if (!modal || modal.classList.contains('hidden')) return;
-  if (e.key === 'Escape') closeFirstRunModal();
+  if (e.key === 'Escape' && onboardingStep > 0) closeFirstRunModal();
   // Enter with nothing in particular focused: the step's main button.
   if (e.key === 'Enter' && (document.activeElement === document.body || !modal.contains(document.activeElement))) {
     e.preventDefault();

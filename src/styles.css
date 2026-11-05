@@ -7917,6 +7917,7 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .ob-foot .modal-btn { min-width: 120px; padding: 10px 22px; font-size: 13px; }
 .ob-skip-link { margin-right: auto; background: none; border: none; color: var(--text-3); font-size: 12px; cursor: pointer; padding: 6px 0; }
 .ob-skip-link:hover { color: var(--text); }
+.ob-skip-link.is-off { visibility: hidden; } /* keeps its place, so Next doesn't move */
 .ob-label { display: block; margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--text-2); }
 .ob-link { display: inline-block; margin-top: 10px; font-size: 12px; font-weight: 600; color: var(--brand); text-decoration: none; }
 .ob-setup { margin-top: 22px; max-width: 520px; }
@@ -8957,3 +8958,7 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 .au-engine-body .set-row-text { flex: 1 1 180px; }
 .au-free { border: 0; padding: 4px 0 0; }
 .lang-mismatch { color: var(--text); }
+/* Tour, step 1: the service's language, Bible and slide translation, side by side under the lede. */
+.ob-service { display: grid; grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr) minmax(0, 0.8fr); gap: 12px; margin-top: 24px; max-width: 680px; }
+.ob-service .ob-label { white-space: nowrap; }
+@media (max-width: 900px) { .ob-service { grid-template-columns: 1fr; } }

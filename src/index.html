@@ -2062,6 +2062,23 @@
                         <p class="ob-hellos" data-welcome-cycle><span class="obw-sr">Welcome to Kairo</span></p>
                         <h2 class="ob-title">Scripture on screen the moment it&rsquo;s spoken.</h2>
                         <p class="ob-lede">Kairo listens to the sermon and puts up the verse &mdash; in your theme, on every screen, online or off.</p>
+                        <!-- Required before anything else: the language sets what Kairo listens for, the
+                             model it needs and the Bible it matches (owner, 2026-11-05). The same choices as
+                             Settings → Language (ONBOARDING_MIRRORS, app.js). -->
+                        <div class="ob-service">
+                            <div class="ob-field">
+                                <label for="first-run-language" class="ob-label">The preacher speaks</label>
+                                <select id="first-run-language" class="setting-input"></select>
+                            </div>
+                            <div class="ob-field">
+                                <label for="first-run-bible-version" class="ob-label">Bible version</label>
+                                <select id="first-run-bible-version" class="setting-input"></select>
+                            </div>
+                            <div class="ob-field">
+                                <label for="first-run-second-lang" class="ob-label">Slide translation <span class="ob-optional">optional</span></label>
+                                <select id="first-run-second-lang" class="setting-input"></select>
+                            </div>
+                        </div>
                     </div>
                     <!-- The feature reel: six short chapters, one idea each, played in
                          turn (onboarding_reel.js; styles.css "ob-reel"). Each chapter's
@@ -2184,14 +2201,9 @@
                         <h2 class="ob-title">Every Bible your church reads.</h2>
                         <p class="ob-lede">Ten are built in, in nine languages. Add the NIV, NLT and more free through API.Bible; they keep working offline.</p>
                         <div class="ob-setup">
-                            <label for="first-run-bible-language" class="ob-label">Verses shown in</label>
-                            <select id="first-run-bible-language" class="setting-input"></select>
-                            <label for="first-run-api-bible-key" class="ob-label ob-gap">API.Bible key <span class="ob-optional">optional</span></label>
+                            <label for="first-run-api-bible-key" class="ob-label">API.Bible key <span class="ob-optional">optional</span></label>
                             <input id="first-run-api-bible-key" type="password" class="setting-input" autocomplete="off" spellcheck="false" placeholder="Paste your API.Bible key" />
                             <a href="https://api.bible/sign-up" target="_blank" rel="noopener" class="ob-link">Get a free key &rarr;</a>
-                            <label for="first-run-second-lang" class="ob-label ob-gap">Second language beside the verse <span class="ob-optional">optional</span></label>
-                            <select id="first-run-second-lang" class="setting-input"></select>
-                            <p class="ob-hint">Shows on the Multi-Language theme.</p>
                         </div>
                     </div>
                     <div class="ob-visual">
