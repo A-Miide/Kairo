@@ -1518,8 +1518,9 @@ function buildLookRow(look, indented) {
   if (!isBuiltInLook(look)) {
     const del = document.createElement('button');
     del.className = 'ts-theme-del';
-    del.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;
+    del.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/></svg>`;
     del.title = 'Delete theme';
+    del.setAttribute('aria-label', `Delete theme ${look.name}`);
     del.addEventListener('click', (e) => {
       e.stopPropagation();
       deleteLook(look);
@@ -1721,7 +1722,12 @@ async function deleteLook(look) {
   // so "start from a built-in" always has somewhere safe to land back on.
   if (isBuiltInLook(look)) { toast("Default themes can't be deleted — duplicate it to make an editable copy.", 'error'); return; }
   if (looks.length <= 1) { toast('Cannot delete the last theme', 'error'); return; }
-  const ok = await confirmDialog(`Delete the theme "${look.name}"? This can't be undone.`, { title: 'Delete theme', confirmLabel: 'Delete', danger: true });
+  // Outputs showing it move to the first remaining theme: said before, not found out on screen.
+  const usedBy = typeof allConfiguredOutputs === 'function' && typeof outputThemeMap === 'function'
+    ? allConfiguredOutputs().filter(o => outputThemeMap()[o.id] === look.id).map(o => o.name) : [];
+  const next = looks.find(l => l.id !== look.id);
+  const onAir = usedBy.length && next ? ` ${usedBy.join(', ')} ${usedBy.length > 1 ? 'use' : 'uses'} it and will switch to "${next.name}".` : '';
+  const ok = await confirmDialog(`Delete the theme "${look.name}"?${onAir} This can't be undone.`, { title: 'Delete theme', confirmLabel: 'Delete', danger: true });
   if (!ok) return;
   looks = looks.filter(l => l.id !== look.id);
   if (activeLook?.id === look.id) {

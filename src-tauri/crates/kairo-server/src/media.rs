@@ -45,6 +45,12 @@ pub struct Media {
 
 pub struct MediaError(pub &'static str, pub String);
 
+/// A linked folder's file: on this computer, or being downloaded from iCloud.
+pub enum FolderFile {
+    Here(PathBuf),
+    Downloading,
+}
+
 fn mtime_ms(p: &Path) -> u64 {
     std::fs::metadata(p).and_then(|m| m.modified()).ok().and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map_or(0, |d| d.as_millis() as u64)
 }
@@ -57,21 +63,40 @@ fn inside(root: &Path, name: &str) -> Option<PathBuf> {
     (real.starts_with(&real_root) && real != real_root).then_some(real)
 }
 
-fn items_in(dir: &Path, url: impl Fn(&str) -> String) -> (Vec<Value>, bool) {
-    let mut media: Vec<(String, &'static str)> = std::fs::read_dir(dir)
-        .map(|rd| rd.flatten().filter_map(|e| e.file_name().into_string().ok()).filter_map(|n| kind_for(&n).map(|k| (n, k))).collect())
-        .unwrap_or_default();
+/// An iCloud Drive file not downloaded to this Mac is a placeholder named ".<name>.icloud": the
+/// name it stands for.
+fn icloud_placeholder(file: &str) -> Option<&str> {
+    file.strip_prefix('.')?.strip_suffix(".icloud").filter(|n| !n.is_empty())
+}
+
+/// The media in `dir`, newest first, and whether there were more than are listed. A file still
+/// in iCloud (only its placeholder here) is listed with `"cloud": true`; asking for it starts
+/// the download (see [`Media::folder_file`]). Err when the folder can't be read at all (a cloud
+/// folder whose app isn't running, a drive unplugged): said, not shown as an empty folder.
+fn items_in(dir: &Path, url: impl Fn(&str) -> String) -> Result<(Vec<Value>, bool), String> {
+    let names: Vec<String> = std::fs::read_dir(dir).map_err(|e| e.to_string())?
+        .flatten().filter_map(|e| e.file_name().into_string().ok()).collect();
+    let here: std::collections::HashSet<&str> = names.iter().map(String::as_str).collect();
+    let mut media: Vec<(String, &'static str, bool)> = names.iter().filter_map(|n| match icloud_placeholder(n) {
+        Some(real) if !here.contains(real) => kind_for(real).map(|k| (real.to_string(), k, true)),
+        Some(_) => None,
+        None => kind_for(n).map(|k| (n.clone(), k, false)),
+    }).collect();
     let truncated = media.len() > MAX_FOLDER_ITEMS;
     media.truncate(MAX_FOLDER_ITEMS);
     let mut items: Vec<(u64, Value)> = media
         .into_iter()
-        .map(|(name, kind)| {
-            let m = mtime_ms(&dir.join(&name));
-            (m, json!({ "name": name, "kind": kind, "mtimeMs": m, "url": url(&name) }))
+        .map(|(name, kind, cloud)| {
+            let m = mtime_ms(&dir.join(if cloud { format!(".{name}.icloud") } else { name.clone() }));
+            let mut v = json!({ "name": name, "kind": kind, "mtimeMs": m, "url": url(&name) });
+            if cloud {
+                v["cloud"] = json!(true);
+            }
+            (m, v)
         })
         .collect();
     items.sort_by(|a, b| b.0.cmp(&a.0));
-    (items.into_iter().map(|(_, v)| v).collect(), truncated)
+    Ok((items.into_iter().map(|(_, v)| v).collect(), truncated))
 }
 
 fn urlencode(s: &str) -> String {
@@ -138,7 +163,7 @@ impl Media {
     }
 
     pub fn bin_items(&self) -> Vec<Value> {
-        items_in(&self.bin, |n| format!("/api/media/bin/file/{}", urlencode(n))).0
+        items_in(&self.bin, |n| format!("/api/media/bin/file/{}", urlencode(n))).map(|r| r.0).unwrap_or_default()
     }
 
     pub fn bin_file(&self, name: &str) -> Option<PathBuf> {
@@ -242,14 +267,23 @@ impl Media {
         Ok(removed)
     }
 
-    pub fn folder_items(&self, id: &str) -> Option<(Vec<Value>, bool)> {
+    /// None for no such folder; Some(Err) when it can't be read right now.
+    pub fn folder_items(&self, id: &str) -> Option<Result<(Vec<Value>, bool), String>> {
         let f = crate::util::lock(&self.folders).iter().find(|f| f.id == id).cloned()?;
         Some(items_in(&f.dir, |n| format!("/api/media/folders/{}/file/{}", f.id, urlencode(n))))
     }
 
-    pub fn folder_file(&self, id: &str, name: &str) -> Option<PathBuf> {
+    pub fn folder_file(&self, id: &str, name: &str) -> Option<FolderFile> {
         let f = crate::util::lock(&self.folders).iter().find(|f| f.id == id).cloned()?;
-        inside(&f.dir, name)
+        if let Some(p) = inside(&f.dir, name) {
+            return Some(FolderFile::Here(p));
+        }
+        // Still in iCloud: macOS is asked to download it, and it is listed normally once it's here.
+        let placeholder = inside(&f.dir, &format!(".{name}.icloud"))?;
+        #[cfg(target_os = "macos")]
+        let _ = std::process::Command::new("/usr/bin/brctl").arg("download").arg(&placeholder).spawn();
+        let _ = placeholder;
+        Some(FolderFile::Downloading)
     }
 
     pub fn write_into_folder(&self, id: &str, filename: &str, data: &[u8]) -> Result<(), MediaError> {
@@ -260,5 +294,28 @@ impl Media {
         }
         let dest = f.dir.join(&safe);
         crate::util::write_clean(&dest, data).map_err(|e| MediaError("WRITE_FAILED", e.to_string()))
+    }
+}
+
+#[cfg(test)]
+mod cloud_tests {
+    use super::items_in;
+
+    #[test]
+    fn a_folder_that_cannot_be_read_says_so_and_icloud_placeholders_are_listed() {
+        let missing = std::env::temp_dir().join(format!("kairo-no-such-{}", std::process::id()));
+        assert!(items_in(&missing, |n| n.to_string()).is_err(), "an unreadable folder is an error, not an empty one");
+
+        let d = std::env::temp_dir().join(format!("kairo-cloud-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        for f in ["here.jpg", ".away.mp4.icloud", ".here.jpg.icloud", ".notes.txt.icloud", "readme.txt"] {
+            std::fs::write(d.join(f), b"x").unwrap();
+        }
+        let (items, _) = items_in(&d, |n| format!("/f/{n}")).unwrap();
+        let mut got: Vec<(String, bool)> = items.iter().map(|v| (v["name"].as_str().unwrap().to_string(), v["cloud"] == true)).collect();
+        got.sort();
+        assert_eq!(got, vec![("away.mp4".to_string(), true), ("here.jpg".to_string(), false)]);
+        let _ = std::fs::remove_dir_all(&d);
     }
 }

@@ -2017,6 +2017,7 @@
   // a separate copy per this file's own fetch helpers/no cross-file import.
   async function fetchAllMediaItemsForBin() {
     const items = [];
+    const unreachable = [];
     // The bin itself failing to load looked like an empty bin (files "gone"): it is said.
     const binP = fetchWithTimeout(`${SERVER}/api/media/bin`).then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json(); })
       .then(bin => { (bin.items || []).forEach(it => items.push({ ...it, binSource: 'bin' })); window.kairoProblemCleared?.('media-bin'); })
@@ -2027,13 +2028,25 @@
     const foldersP = fetchWithTimeout(`${SERVER}/api/media/folders`).then(r => r.json())
       .then(foldersRes => Promise.all((foldersRes.folders || []).map(folder =>
         fetchWithTimeout(`${SERVER}/api/media/folders/${folder.id}/items`).then(r => r.json())
-          .then(res => (res.items || []).forEach(it => items.push({ ...it, binSource: folder.id, binSourceName: folder.name })))
-          .catch(() => {})
+          .then(res => {
+            if (res.ok === false && res.unreachable) unreachable.push(folder.name);
+            (res.items || []).forEach(it => items.push({ ...it, binSource: folder.id, binSourceName: folder.name }));
+          })
+          .catch(() => unreachable.push(folder.name))
       )))
       .catch(() => {});
     await Promise.all([binP, foldersP]);
+    mediaBinUnreachable = unreachable;
     return items;
   }
+
+  // Said where a linked folder couldn't be opened.
+  const unreachableNote = (names) => {
+    const note = document.createElement('div');
+    note.className = 'svc-empty media-unreachable';
+    note.textContent = `Can't open ${names.map(n => `"${n}"`).join(', ')} right now. If it's a cloud folder (iCloud, OneDrive, Dropbox, Google Drive), check its app is running and signed in.`;
+    return note;
+  };
 
   // Drag-and-drop mime for a Media Bin card → a slide grid drop. Custom
   // type (not a bare string on 'text/plain') so a drop target can tell
@@ -2119,12 +2132,52 @@
       }]];
       openContextMenu(e.clientX, e.clientY, sections);
     });
+    addMediaDelete(card, item);
     return card;
   }
 
   // A file the bin stored as "<time>-<random>-crimson.jpg" (so two uploads
   // of one name never collide) is shown by the name it was added with.
   const mediaLabel = (item) => String(item.name || '').replace(/^\d{10,}-[0-9a-f]{8}-/, '');
+
+  // Delete, from a card's trash button (on hover), after a confirmation. Kairo's own Media Bin
+  // files only: a linked folder's files are the church's own, on its disk, and stay there.
+  const isBinFile = (item) => String(item.url || '').startsWith('/api/media/bin/file/');
+  function addMediaDelete(card, item) {
+    if (!isBinFile(item)) return;
+    card.classList.add('has-del');
+    const del = document.createElement('span');
+    del.className = 'media-card-del';
+    del.setAttribute('role', 'button');
+    del.tabIndex = 0;
+    del.title = 'Delete from the Media Bin';
+    del.setAttribute('aria-label', `Delete ${mediaLabel(item)}`);
+    del.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M5 7l1 12a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2l1-12M9 7V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v3"/></svg>';
+    const remove = async (e) => {
+      e.preventDefault();
+      e.stopPropagation(); // not a send: the card underneath sends on click
+      const name = mediaLabel(item);
+      const live = item.url === liveMediaSrc ? ' It is on screen now and stays there until the media layer is cleared.' : '';
+      const ok = await confirmDialog(`Delete "${name}" from the Media Bin?${live} Slides that use it will lose it. This can't be undone.`, { title: 'Delete media', confirmLabel: 'Delete', danger: true });
+      if (!ok) return;
+      try {
+        const r = await fetchWithTimeout(`${SERVER}/api/media/bin/${encodeURIComponent(item.name)}`, { method: 'DELETE' });
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok) throw new Error(d.error || (r.ok ? 'not found' : `HTTP ${r.status}`));
+        window.kairoProblemCleared?.('media-delete');
+      } catch (err) {
+        window.kairoProblem?.(`"${name}" couldn't be deleted (${err.message}).`, 'media-delete');
+        return;
+      }
+      mediaBinItems = mediaBinItems.filter(x => x.url !== item.url);
+      paintMediaBin();
+      renderMediaGrid();
+    };
+    del.addEventListener('click', remove);
+    del.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') remove(e); });
+    del.addEventListener('mousedown', (e) => e.stopPropagation()); // no drag from the trash
+    card.appendChild(del);
+  }
 
   // What's on the media layer now — its card in the bin is outlined, so the
   // operator can see what's on air (2026-10-12). Set from the same 'media'
@@ -2170,6 +2223,9 @@
   const MEDIA_BIN_FOLDER_KEY = 'kairo-media-bin-folder';
   const MEDIA_BIN_THUMB_KEY = 'kairo-media-bin-thumb';
   let mediaBinItems = [];
+  // Linked folders that couldn't be opened on the last load (a cloud folder whose app isn't
+  // running, a drive unplugged), by name: said in the bin, not shown as empty.
+  let mediaBinUnreachable = [];
   const readPref = (k) => { try { return localStorage.getItem(k); } catch { return null; } };
   const writePref = (k, v) => { try { localStorage.setItem(k, v); } catch {} };
 
@@ -2194,13 +2250,15 @@
     const source = folderSel?.value || 'all';
     const shown = source === 'all' ? mediaBinItems : mediaBinItems.filter(it => it.binSource === source);
     strip.innerHTML = '';
-    if (!shown.length) {
+    const away = source === 'all' ? mediaBinUnreachable : mediaBinUnreachable.filter(n => folderSel?.selectedOptions?.[0]?.textContent === n);
+    if (!shown.length && !away.length) {
       strip.innerHTML = mediaBinItems.length
         ? '<div class="svc-empty">Nothing in this folder yet.</div>'
         : '<div class="svc-empty">No media yet — add some from the Media tab.</div>';
       return;
     }
     shown.forEach(item => strip.appendChild(buildMediaBinCard(item)));
+    if (away.length) strip.appendChild(unreachableNote(away));
   }
 
   async function renderMediaBinStrip() {
@@ -5362,6 +5420,7 @@
       const d = await r.json();
       const items = d.items || [];
       items.truncated = !!d.truncated;
+      items.unreachable = d.ok === false && !!d.unreachable;
       return items;
     } catch (err) {
       // Same reasoning as loadMediaFolders — an unreachable server used to
@@ -5398,6 +5457,13 @@
   // buildMediaBinCard below) — was two near-identical copies that could
   // silently drift.
   function buildMediaThumb(item) {
+    // Still in iCloud: a placeholder, not the file (loading it here would download every one).
+    if (item.cloud) {
+      const ph = document.createElement('div');
+      ph.className = 'media-cloud-thumb';
+      ph.innerHTML = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18a4.5 4.5 0 0 1-.6-8.96A6 6 0 0 1 18 10a4 4 0 0 1 0 8H7z"/></svg><span>In iCloud · click to download</span>';
+      return ph;
+    }
     if (item.kind === 'video') {
       const v = document.createElement('video');
       // preload:'metadata' (not 'none') + lazy src, and deliberately never
@@ -5483,6 +5549,7 @@
       }]];
       openContextMenu(e.clientX, e.clientY, sections);
     });
+    if (!isRecent) addMediaDelete(card, item); // a recent pick is a remembered copy, not the file
     return card;
   }
 
@@ -5528,6 +5595,11 @@
       });
     }
 
+    if (items.unreachable) {
+      const folder = mediaFolders.find(f => f.id === activeMediaFolderId);
+      grid.appendChild(unreachableNote([folder?.name || 'this folder']));
+      return;
+    }
     if (!items.length) {
       grid.insertAdjacentHTML('beforeend', '<div class="svc-empty">Nothing here yet.<br>Drop an image or video, or use "+ Upload".</div>');
       return;
@@ -5563,7 +5635,38 @@
     return { src, kind: item.kind, fit: resolvedFit };
   }
 
+  // A file still in iCloud: asking for it has macOS download it; the folder is checked until it's
+  // here (up to 3 minutes), then the bin and Media tab show it like any other.
+  const cloudFetching = new Set();
+  async function downloadFromCloud(item) {
+    if (cloudFetching.has(item.url)) return false;
+    cloudFetching.add(item.url);
+    document.querySelectorAll(`.media-card[data-url="${CSS.escape(item.url)}"] .media-cloud-thumb span`).forEach(el => { el.textContent = 'Downloading from iCloud…'; });
+    try {
+      await fetchWithTimeout(item.url);
+      const folderUrl = item.url.replace(/\/file\/[^/]*$/, '/items');
+      for (let i = 0; i < 60; i++) {
+        await new Promise(r => setTimeout(r, 3000));
+        const d = await fetchWithTimeout(folderUrl).then(r => r.json()).catch(() => null);
+        const now = d?.items?.find(x => x.url === item.url);
+        if (now && !now.cloud) {
+          window.kairoProblemCleared?.('media-cloud');
+          await renderMediaBinStrip();
+          renderMediaGrid();
+          return true;
+        }
+      }
+      window.kairoProblem?.(`"${mediaLabel(item)}" is still downloading from iCloud. It appears in the bin once it's on this Mac.`, 'media-cloud');
+    } catch (err) {
+      window.kairoProblem?.(`"${mediaLabel(item)}" couldn't be downloaded from iCloud (${err.message}).`, 'media-cloud');
+    } finally {
+      cloudFetching.delete(item.url);
+    }
+    return false;
+  }
+
   async function sendMediaItem(item, fit, direct = false) {
+    if (item.cloud) return downloadFromCloud(item); // not on this Mac yet: nothing to send
     // Video director mode: a click stages it in Preview; Send to screen puts it on the Output.
     if (!direct && window.KairoVideoDirector?.stageMedia?.(item, fit, () => prepareMedia(item, fit))) return;
     const prepared = await prepareMedia(item, fit);

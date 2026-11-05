@@ -4827,6 +4827,45 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* Delete (service.js addMediaDelete): top right, shown on hover or keyboard focus; the VIDEO
+   badge it covers steps aside meanwhile. */
+.media-card-del {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: rgba(0,0,0,0.65);
+  color: #fff;
+  opacity: 0;
+  transition: opacity var(--trans), background var(--trans);
+}
+.media-card:hover .media-card-del,
+.media-card:focus-within .media-card-del,
+.media-card-del:focus-visible { opacity: 1; }
+.media-card-del:hover { background: var(--red, #e5484d); }
+.media-card-del:focus-visible { outline: 2px solid var(--blue); outline-offset: 1px; }
+.media-card.has-del:hover .media-card-badge,
+.media-card.has-del:focus-within .media-card-badge { opacity: 0; }
+/* A file still in iCloud (service.js buildMediaThumb): a placeholder the size of a thumbnail. */
+.media-cloud-thumb {
+  width: 100%;
+  aspect-ratio: var(--kairo-output-aspect, 16 / 9);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  background: var(--bg-hover);
+  color: var(--text-3);
+  font-size: 10px;
+  text-align: center;
+  padding: 0 6px;
+}
 .media-card-badge {
   position: absolute;
   top: 6px;
@@ -6219,7 +6258,7 @@ body.ts-dragging-guide-h, body.ts-dragging-guide-h * { cursor: row-resize !impor
    × buttons — it's a rare action, not a primary one per row. */
 .ts-theme-del {
   flex: none;
-  width: 16px; height: 16px;
+  width: 22px; height: 22px;
   display: none;
   align-items: center;
   justify-content: center;

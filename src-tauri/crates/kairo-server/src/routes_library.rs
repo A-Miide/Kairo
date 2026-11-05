@@ -107,7 +107,11 @@ fn media_path(app: &Shared, url: &str) -> Option<std::path::PathBuf> {
     }
     let rest = path.strip_prefix("/api/media/folders/")?;
     let (id, name) = rest.split_once("/file/")?;
-    app.media.folder_file(id, &dec(name))
+    // A file still in iCloud has no path yet (asking starts its download).
+    match app.media.folder_file(id, &dec(name))? {
+        crate::media::FolderFile::Here(p) => Some(p),
+        crate::media::FolderFile::Downloading => None,
+    }
 }
 
 /// `{ url }` in → `{ path, ffmpeg }`: the file behind a media address the
@@ -340,7 +344,8 @@ async fn remove_folder(State(app): State<Shared>, Path(id): Path<String>) -> Res
 async fn folder_items(State(app): State<Shared>, Path(id): Path<String>) -> Response {
     let m = app.media.clone();
     match tokio::task::spawn_blocking(move || m.folder_items(&id)).await.ok().flatten() {
-        Some((items, truncated)) => Json(json!({ "ok": true, "items": items, "truncated": truncated })).into_response(),
+        Some(Ok((items, truncated))) => Json(json!({ "ok": true, "items": items, "truncated": truncated })).into_response(),
+        Some(Err(e)) => Json(json!({ "ok": false, "unreachable": true, "error": e })).into_response(),
         None => not_found("No such folder"),
     }
 }
@@ -354,8 +359,10 @@ async fn folder_upload(State(app): State<Shared>, Path(id): Path<String>, b: Opt
     }
 }
 async fn folder_file(State(app): State<Shared>, Path((id, name)): Path<(String, String)>, req: Request) -> Response {
-    match app.media.folder_file(&id, &name) {
-        Some(p) => send_file(p, req).await,
+    let m = app.media.clone();
+    match tokio::task::spawn_blocking(move || m.folder_file(&id, &name)).await.ok().flatten() {
+        Some(crate::media::FolderFile::Here(p)) => send_file(p, req).await,
+        Some(crate::media::FolderFile::Downloading) => (StatusCode::ACCEPTED, Json(json!({ "ok": true, "downloading": true }))).into_response(),
         None => StatusCode::NOT_FOUND.into_response(),
     }
 }
