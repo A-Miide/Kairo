@@ -52,6 +52,11 @@ actually reached the screen.
   with the previous final's last 6 words when the pause fell inside it. The
   verse and range on screen are shown again in it; matching follows at a quiet
   moment (no speech for 4 s, no citation for 6 s).
+- **Translation read** (`engine/read_in.rs`): two verses in a row of one
+  chapter each read word for word in the same wording (a run of 6+ words, 3+
+  ahead of every other wording) → `ReadIn`, and the server switches to it as
+  if it had been asked for, back to the church's at the next passage. Never on
+  one verse, on verses read apart, or on a verse put up on its meaning.
 
 ## Reading mode
 

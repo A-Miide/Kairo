@@ -4,6 +4,7 @@
 //!  speech (finals and interims)
 //!     │
 //!     ├─ citations.rs  "Romans 8:28", "Matthew chapter six", "chapter 7 verse 22" (no book)
+//!     ├─ back_to.rs    "go back to Romans 10": the verse called there earlier
 //!     ├─ triggers.rs   "verse 14", "next verse", "go back to verse 3", corrections
 //!     ├─ paths.rs      word-for-word quotes, stream alignment, fingerprints
 //!     ├─ meaning.rs    a verse in the preacher's own words (meaning model)
@@ -34,6 +35,7 @@
 //! shouldn't go up alone. The replay trace (`replay --trace a..b`) prints each decision with its
 //! score and hold.
 
+mod back_to;
 mod check;
 mod citations;
 mod core;
