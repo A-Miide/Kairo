@@ -830,6 +830,9 @@ impl Engine {
     /// "Book chapter N" with no verse: the words that follow choose the verse.
     fn chapter_named(&mut self, book: Book, chapter: u32, unresolved: bool, text: &str, is_final: bool, now: u64) {
         let ch = n16(chapter);
+        if !unresolved && self.back_to_chapter(book, ch, text, is_final, now) {
+            return;
+        }
         // Re-parsed after it was resolved a moment ago.
         if self.chapter_resolved_for == Some((book, ch)) {
             return;
@@ -884,7 +887,7 @@ impl Engine {
 
     /// Where in the word buffer `text` (the newest words) names `book`: its last mention, else
     /// where `text` begins.
-    fn said_at(&self, book: Book, text: &str) -> u64 {
+    pub(crate) fn said_at(&self, book: Book, text: &str) -> u64 {
         let w = &self.t.words;
         let n = text.split_whitespace().count() as u64;
         let begins = w.end().saturating_sub(n).max(w.start());
@@ -936,6 +939,7 @@ impl Engine {
         self.chapter_resolved_for = Some((book, chapter));
         self.chapter_pending = None;
         self.screen.last_citation_at = now;
+        self.note_called(last);
         // The chapter was cited, not the verse: a verse quoted isn't one named, which would make it
         // win over its twin read next (1 John 5:7 kept over 5:8, Oyedepo replay).
         self.note_cited(book, Some(chapter), None, true, now);

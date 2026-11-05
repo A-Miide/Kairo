@@ -168,6 +168,7 @@ pub struct Engine {
     pub(crate) check: Option<CitationCheck>,
     pub(crate) meaning: MeaningState,
     pub(crate) read_in: super::read_in::ReadIn,
+    pub(crate) back_to: super::back_to::BackTo,
     next_id: u32,
     /// The time of the event being handled.
     pub(crate) last_now: u64,
@@ -220,6 +221,7 @@ impl Engine {
             check: None,
             meaning: MeaningState::default(),
             read_in: Default::default(),
+            back_to: Default::default(),
             next_id: 0,
             last_now: 0,
             out: Output::default(),
@@ -397,6 +399,11 @@ impl Engine {
     /// Records a passage as in play: named (a citation) or read (a strong text match).
     pub(crate) fn note_cited(&mut self, book: Book, chapter: Option<u16>, verse: Option<u16>, named: bool, now: u64) {
         let entry = Cited { book, chapter, verse, at: now, named };
+        if let (true, Some(c), Some(v)) = (named, chapter, verse) {
+            if let Some(id) = self.k.id(VerseRef::new(book, c, v)) {
+                self.note_called(id);
+            }
+        }
         if let Some(i) = self.sermon.iter().position(|c| c.book == book && c.chapter == chapter && c.verse == verse) {
             // A reading of a named passage leaves the citation as it was.
             if !named && self.sermon[i].named {

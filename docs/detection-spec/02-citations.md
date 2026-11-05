@@ -49,6 +49,10 @@ number: alone, the second chapter is the one meant.
 ## When a citation has no verse
 
 - Bare "Book chapter N":
+  - after a return cue ("go back to", "back to", "return to") and the chapter
+    called earlier in the service → the verse called there then goes up
+    (a range: its first verse), even if the reading went on past it; a verse
+    named after it takes over (`engine/back_to.rs`);
   - the chapter of the verse on screen named again → the preacher is pointing
     at what's up; nothing happens;
   - interim → a strict number callout only ("…Matthew 11, say, come to me.

@@ -10,6 +10,7 @@ use super::core::Engine;
 use super::event::Effect;
 use super::evidence::plain_tokens;
 use super::ranges::read_run;
+use super::types::Method;
 
 /// What was said this recently is the reading of the verse up.
 const READ_IN_SPEECH_MS: u64 = 20_000;
@@ -27,10 +28,15 @@ pub struct ReadIn {
 
 impl Engine {
     /// On each final: the verse up, read clearly in one wording, and the verse before it read in the
-    /// same one in the same chapter, tell the server which translation the passage is being read in.
+    /// same one, tell the server which translation the passage is being read in.
     pub(crate) fn note_read_in(&mut self, now: u64) {
         let Some((v, _)) = self.screen.up else { return };
         if self.read_in.last.as_ref().is_some_and(|(l, _)| *l == v) {
+            return;
+        }
+        // Put up on its meaning: the preacher's own words, which can sit nearer a modern wording
+        // without being read from it.
+        if self.screen.last_detected.is_some_and(|(d, _, m)| d == v && matches!(m, Method::Semantic | Method::Paraphrase)) {
             return;
         }
         let said = plain_tokens(&self.t.words.recent(now, READ_IN_SPEECH_MS));
@@ -48,7 +54,8 @@ impl Engine {
         let code = code.to_string();
         let r = self.r(v);
         let before = self.read_in.last.replace((v, code.clone()));
-        let same_passage = before.is_some_and(|(p, c)| c == code && self.r(p).book == r.book && self.r(p).chapter == r.chapter);
+        // The verse just before it, so two verses read in a row: not two quotes from the chapter.
+        let same_passage = before.is_some_and(|(p, c)| c == code && self.r(p).book == r.book && self.r(p).chapter == r.chapter && self.r(p).verse + 1 == r.verse);
         if !same_passage || self.read_in.told.as_ref().is_some_and(|(b, ch, c)| *b == r.book && *ch == r.chapter && *c == code) {
             return;
         }

@@ -86,6 +86,8 @@ struct Score {
     missed_list: Vec<String>,
     /// Method → (found, wrong).
     by_method: std::collections::BTreeMap<String, (usize, usize)>,
+    /// (method, score shown in whole percent) → (screen sends, of them wrong).
+    by_score: std::collections::BTreeMap<(String, u32), (usize, usize)>,
     /// Method → (suggestions offered, of them the verse being cited or read then).
     offered_by: std::collections::BTreeMap<String, (usize, usize)>,
     /// Suggestions that are the verse being cited or read around then.
@@ -159,7 +161,11 @@ fn score(k: &Knowledge, gt: &[GroundTruth], decisions: &[Decision], last_ms: i64
     };
     s.sent = screen.len();
     for (i, d) in screen.iter().enumerate() {
-        if !used.contains(&i) && !all_keys.contains(&d.verses[0]) && !in_bare(d) {
+        let wrong = !used.contains(&i) && !all_keys.contains(&d.verses[0]) && !in_bare(d);
+        let e = s.by_score.entry((d.method.clone(), (d.score * 100.0).round() as u32)).or_default();
+        e.0 += 1;
+        e.1 += wrong as usize;
+        if wrong {
             s.wrong += 1;
             s.by_method.entry(d.method.clone()).or_default().1 += 1;
             s.wrong_list.push(format!("{:>6.1}m {} ({}{})", d.at_ms as f64 / 60_000.0, label(k, d.verses[0]), d.method, if d.corrected { ", corrected" } else { "" }));
@@ -521,6 +527,11 @@ fn main() {
                         e.0 += f;
                         e.1 += w;
                     }
+                    for (k, (n, w)) in s.by_score {
+                        let e = t.by_score.entry(k).or_default();
+                        e.0 += n;
+                        e.1 += w;
+                    }
                 }
             }
             None => {
@@ -608,6 +619,13 @@ fn main() {
             s.shown.2,
             s.shown.2 as f64 / s.hours.max(1e-9)
         );
+    }
+    // `--by-score`: how often a screen send at each score shown was right (not a wrong send).
+    if args.iter().any(|a| a == "--by-score") {
+        println!("Rust screen sends by method and score shown: method, score, sends, right, wrong, accuracy");
+        for ((m, pc), (n, w)) in &rust_total.by_score {
+            println!("  {m:<16} {pc:>3}% {n:>5} {:>5} {w:>5} {:>5.1}%", n - w, pct(n - w, *n));
+        }
     }
     if parity {
         println!("Parity: {}/{} of Node's stable decisions reproduced ({:.1}%), {} extra", parity_totals.0, parity_totals.1, pct(parity_totals.0, parity_totals.1), parity_totals.2);
