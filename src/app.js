@@ -3464,6 +3464,7 @@ function goToOnboardingStep(n) {
   if (onboardingStep === ONBOARDING_LISTEN_STEP) {
     syncOnboardingMicList();
     checkOnboardingSpeechSetup();
+    window.refreshDownloads?.();
     setTimeout(() => document.getElementById('first-run-deepgram-key')?.focus(), 60);
   }
 }
@@ -3484,7 +3485,9 @@ async function checkOnboardingSpeechSetup() {
   if (engine === 'browser') {
     let installed = false;
     try {
-      const r = await fetch(`${SERVER}/api/offline/status`);
+      // The model the language picked on the first step needs (English only, or Multilingual).
+      const spoken = String(settings.sttLanguage || 'en-US').toLowerCase();
+      const r = await fetch(`${SERVER}/api/offline/status?model=${spoken.startsWith('en') ? 'en' : 'multi'}`);
       installed = !!(await r.json())?.installed;
     } catch { /* treat as not installed — same fail-safe the reactive check uses */ }
     warning.classList.toggle('hidden', installed);
@@ -4443,19 +4446,6 @@ function wireOfflineModelInstaller(ids) {
     }
   });
 }
-// First-run setup offers the model this computer's language needs — never English by default
-// for a French Mac (the other-languages model covers French).
-(function () {
-  const multi = !defaultServiceLanguage().startsWith('en');
-  const btn = document.getElementById('first-run-offline-install-btn');
-  if (btn && multi) btn.textContent = 'Download offline model for other languages';
-  wireOfflineModelInstaller({
-    model: multi ? 'multi' : 'en', name: multi ? 'Offline model for other languages' : 'Offline model',
-    group: 'first-run-offline-group', statusLine: 'first-run-offline-status-line', installBtn: 'first-run-offline-install-btn',
-    progressWrap: 'first-run-offline-progress-wrap', progressBar: 'first-run-offline-progress-bar', progressText: 'first-run-offline-progress-text',
-    engineToggle: 'first-run-engine-toggle', alwaysEnglish: true,
-  });
-})();
 
 // Settings → Audio: the two offline models are rows (settings_language.js); this adds only what the
 // Neural Engine copy of the English model is doing on this Mac (server offline.rs ENGINE_STATE).

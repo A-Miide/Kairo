@@ -2153,40 +2153,30 @@
                         <p class="ob-eyebrow">Listening <span class="ob-need">Needed to start</span></p>
                         <h2 class="ob-title">Kairo listens to the sermon.</h2>
                         <p class="ob-lede">It catches a verse when it&rsquo;s cited, read aloud or quoted, and puts it on screen in your theme. Press <strong>Start Listening</strong> at the top when the service begins.</p>
-                        <!-- What Kairo hears first, then how it turns that into words. -->
-                        <div class="ob-input">
-                            <label for="first-run-mic" class="ob-label">Microphone or audio input</label>
-                            <select id="first-run-mic" class="setting-input"><option value="">Finding inputs&hellip;</option></select>
-                        </div>
-                        <div class="toggle-group ob-choices" id="first-run-engine-toggle">
-                            <button class="toggle-btn ob-choice active" data-engine="deepgram">
-                                <span class="ob-choice-badge">Most accurate</span>
-                                <span class="ob-choice-name">Deepgram</span>
-                                <span class="ob-choice-desc">Needs internet and a free key.</span>
-                            </button>
-                            <button class="toggle-btn ob-choice" data-engine="browser">
-                                <span class="ob-choice-badge">No internet</span>
-                                <span class="ob-choice-name">Offline</span>
-                                <span class="ob-choice-desc">Runs on this computer. One download, no account.</span>
-                            </button>
-                        </div>
-                        <div class="ob-setup">
-                            <div id="first-run-deepgram-group">
-                                <label for="first-run-deepgram-key" class="ob-label">Deepgram key</label>
-                                <input id="first-run-deepgram-key" type="password" class="setting-input" autocomplete="off" spellcheck="false" placeholder="Paste your Deepgram key" />
-                                <a href="https://console.deepgram.com/signup" target="_blank" rel="noopener" class="ob-link">Get a free key &rarr;</a>
+                        <!-- Everything this step asks for, in one panel like step 1's (owner, 2026-11-05):
+                             what Kairo hears first, then how it turns that into words. -->
+                        <div class="ob-service" role="group" aria-labelledby="ob-listen-title">
+                            <p class="ob-service-title" id="ob-listen-title">How Kairo hears <span>Needed to start</span></p>
+                            <div class="ob-field">
+                                <label for="first-run-mic" class="ob-label">Input</label>
+                                <select id="first-run-mic" class="setting-input"><option value="">Finding inputs&hellip;</option></select>
                             </div>
-                            <div id="first-run-offline-group" style="display:none;">
-                                <label class="ob-label">Offline speech</label>
-                                <div id="first-run-offline-status-line" class="ob-status">Checking&hellip;</div>
-                                <button id="first-run-offline-install-btn" class="setting-input btn-brand ob-install" style="display:none;">Download offline speech</button>
-                                <div id="first-run-offline-progress-wrap" style="display:none;" class="ob-progress-wrap">
-                                    <div class="ob-bar"><div id="first-run-offline-progress-bar" class="ob-bar-fill"></div></div>
-                                    <div id="first-run-offline-progress-text" class="ob-status">Starting&hellip;</div>
+                            <div class="ob-field">
+                                <span class="ob-label">Speech</span>
+                                <div class="toggle-group ob-seg" id="first-run-engine-toggle" role="group" aria-label="Speech engine">
+                                    <button class="toggle-btn active" data-engine="deepgram">Deepgram<small>Most accurate</small></button>
+                                    <button class="toggle-btn" data-engine="browser">Offline<small>No internet</small></button>
                                 </div>
-                                <p class="ob-hint">Runs entirely on this computer: no internet, no key. Less accurate than Deepgram.</p>
                             </div>
-                            <p id="onboarding-speech-warning" class="ob-warning hidden">No Deepgram key or offline speech yet. You can finish this any time in Settings &rarr; Audio before the service.</p>
+                            <div class="ob-field" id="first-run-deepgram-group">
+                                <label for="first-run-deepgram-key" class="ob-label">Deepgram key<a href="https://console.deepgram.com/signup" target="_blank" rel="noopener" class="ob-link">Get a free key &rarr;</a></label>
+                                <input id="first-run-deepgram-key" type="password" class="setting-input" autocomplete="off" spellcheck="false" placeholder="Paste your Deepgram key" />
+                            </div>
+                            <div class="ob-field" id="first-run-offline-group" hidden>
+                                <span class="ob-label">Offline model</span>
+                                <div class="set-rows" id="first-run-model"></div>
+                            </div>
+                            <p id="onboarding-speech-warning" class="ob-service-note hidden">No Deepgram key or offline model yet. You can finish this any time in Settings &rarr; Audio before the service.</p>
                         </div>
                     </div>
                     <div class="ob-visual ob-listen">
@@ -2201,10 +2191,12 @@
                         <p class="ob-eyebrow">Bibles and languages <span class="ob-need">Optional</span></p>
                         <h2 class="ob-title">Every Bible your church reads.</h2>
                         <p class="ob-lede">Ten are built in, in nine languages. Add the NIV, NLT and more free through API.Bible; they keep working offline.</p>
-                        <div class="ob-setup">
-                            <label for="first-run-api-bible-key" class="ob-label">API.Bible key <span class="ob-optional">optional</span></label>
-                            <input id="first-run-api-bible-key" type="password" class="setting-input" autocomplete="off" spellcheck="false" placeholder="Paste your API.Bible key" />
-                            <a href="https://api.bible/sign-up" target="_blank" rel="noopener" class="ob-link">Get a free key &rarr;</a>
+                        <div class="ob-service" role="group" aria-labelledby="ob-bibles-title">
+                            <p class="ob-service-title" id="ob-bibles-title">More versions <span class="is-quiet">Optional</span></p>
+                            <div class="ob-field">
+                                <label for="first-run-api-bible-key" class="ob-label">API.Bible key<a href="https://api.bible/sign-up" target="_blank" rel="noopener" class="ob-link">Get a free key &rarr;</a></label>
+                                <input id="first-run-api-bible-key" type="password" class="setting-input" autocomplete="off" spellcheck="false" placeholder="Paste your API.Bible key" />
+                            </div>
                         </div>
                     </div>
                     <div class="ob-visual">
@@ -2375,7 +2367,9 @@
             var keyGrp = document.getElementById('first-run-deepgram-group');
             if (!group) return;
             function apply(value) {
-                if (keyGrp) keyGrp.style.display = value === 'browser' ? 'none' : '';
+                if (keyGrp) keyGrp.hidden = value === 'browser';
+                var offGrp = document.getElementById('first-run-offline-group');
+                if (offGrp) offGrp.hidden = value !== 'browser';
             }
             group.addEventListener('toggle-change', function(e) { apply(e.detail.value); });
             var active = group.querySelector('.toggle-btn.active');

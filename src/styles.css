@@ -8967,3 +8967,17 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 .ob-service .ob-label { margin: 0; }
 .ob-service .ob-optional { display: block; margin: 2px 0 0; }
 @media (max-width: 900px) { .ob-field { grid-template-columns: 1fr; gap: 6px; } }
+.ob-service-title span.is-quiet { color: var(--text-3); }
+.ob-service .ob-link { display: block; margin-top: 3px; font-size: 11.5px; }
+.ob-service input.setting-input { width: 100%; }
+.ob-service-note { margin: 2px 0 0; font-size: 12px; line-height: 1.5; color: var(--text-2); }
+.ob-service-note.hidden { display: none; }
+.ob-service .set-rows { background: rgba(0, 0, 0, 0.18); }
+.ob-service .set-row { min-height: 0; padding: 8px 10px; }
+/* Deepgram or Offline, as one two-part switch. */
+.toggle-group.ob-seg { display: grid; grid-template-columns: 1fr 1fr; width: 100%; max-width: none; justify-self: stretch; gap: 4px; padding: 3px; border: 1px solid var(--border-md); border-radius: 9px; background: rgba(0, 0, 0, 0.18); }
+.ob-field[hidden] { display: none; }
+.ob-seg .toggle-btn { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; min-width: 0; padding: 6px 8px; border: 0; border-radius: 6px; background: none; color: var(--text-2); font-size: 13px; font-weight: 600; cursor: pointer; }
+.ob-seg .toggle-btn small { font-size: 11px; font-weight: 500; color: var(--text-3); }
+.ob-seg .toggle-btn.active { background: var(--brand); color: #fff; }
+.ob-seg .toggle-btn.active small { color: rgba(255, 255, 255, 0.8); }

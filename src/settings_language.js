@@ -146,6 +146,16 @@
     host.replaceChildren(...rows);
   }
 
+  // ── Tour, Listening step: the one model the language picked on the first step needs ──
+  function renderTourModel(en, multi) {
+    const host = $('first-run-model');
+    if (!host) return;
+    const need = neededModel();
+    const st = need === 'en' ? en : multi;
+    host.replaceChildren(row({ title: MODELS[need].name, sub: `For ${serviceName()}. ${st?.installed ? '' : size(st)}`, right: modelSide(need, st, true) }));
+    if (st?.installed) window.checkOnboardingSpeechSetup?.();
+  }
+
   // ── Audio: both offline models ──
   function renderAudioModels(en, multi) {
     const host = $('offline-models');
@@ -262,6 +272,7 @@
     const [en, multi] = await Promise.all([offlineStatus('en'), offlineStatus('multi')]);
     renderLangEngine(en, multi);
     renderAudioModels(en, multi);
+    renderTourModel(en, multi);
     await renderDownloads(en, multi);
     renderBibleVersions();
     if (typeof renderSecondLangModel === 'function') renderSecondLangModel();
@@ -271,6 +282,7 @@
 
   $('speech-engine-toggle')?.addEventListener('click', () => setTimeout(refresh, 0));
   $('speech-engine-toggle')?.addEventListener('toggle-change', refresh);
+  $('first-run-engine-toggle')?.addEventListener('click', () => setTimeout(refresh, 0));
   $('stt-language')?.addEventListener('change', () => setTimeout(refresh, 0));
   $('bible-language')?.addEventListener('change', renderBibleVersions);
   $('deepgram-key')?.addEventListener('input', refresh);
