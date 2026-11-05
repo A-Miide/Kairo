@@ -1789,7 +1789,7 @@ function renderChapterChildren(card) {
   const at = box.querySelector('.lvc-child.on-screen') || box.children[Math.max(0, centre - 1)];
   if (at) box.scrollTop = at.offsetTop - box.offsetTop - box.clientHeight / 2 + at.offsetHeight / 2;
 }
-// Scrolled by hand: the list grows to about ten lines and Kairo leaves its scroll alone for a few
+// Scrolled by hand: the list grows to about seven lines (owner, 2026-11-05: ten hid what was above) and Kairo leaves its scroll alone for a few
 // seconds; ten seconds untouched, it is four lines again, back on the verse (owner, 2026-11-04).
 const LIST_HAND_PAUSE_MS = 4000, LIST_WIDE_MS = 10000;
 function listScrolledByHand(box) {

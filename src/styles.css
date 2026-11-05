@@ -8903,7 +8903,7 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 .lvc-children-toggle:hover { background: rgba(255,255,255,0.14); }
 /* A window about four rows tall (26px row + 1px gap, plus the 6px top padding) on the verse up; about ten while scrolled by hand (app.js listScrolledByHand). */
 .lvc-children { flex-basis: 100%; display: flex; flex-direction: column; gap: 1px; max-height: min(calc(4 * 27px + 6px), var(--lvc-fit, 100vh)); overflow-y: auto; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); cursor: default; }
-.lvc-children.is-wide { max-height: min(calc(10 * 27px + 6px), var(--lvc-fit, 100vh)); }
+.lvc-children.is-wide { max-height: min(calc(7 * 27px + 6px), var(--lvc-fit, 100vh)); }
 .lvc-child { display: flex; flex: 0 0 auto; gap: 8px; align-items: baseline; width: 100%; padding: 5px 6px; border: 0; border-radius: var(--radius); background: none; font: inherit; font-size: 12px; line-height: 16px; text-align: left; cursor: pointer; }
 .lvc-child:hover { background: var(--bg-hover); color: var(--text); }
 .lvc-child { color: var(--text); }
