@@ -4806,17 +4806,20 @@
         themeId: item.themeId, category: folderSel?.value || null, blocks: toLibraryBlocks(item.blocks),
       };
       const extras = pendingExtraBlockItems; pendingExtraBlockItems = [];
+      // "Custom lines" re-flows every song of the import, not just the first.
+      const reflow = isImportBlocks && item.linesPerSlide > 0;
       closeAddConfirm();
       (async () => {
         if (libraryId) await updateLibrarySong(libraryId, record);
-        else await addLibrarySong(record);
+        else if (!inLibraryAlready(record)) await addLibrarySong(record);
         // A multi-item playlist import's remaining presentations ride along
         // into the library too, same as the playlist-destination case below.
         for (const extra of extras) {
-          await addLibrarySong({
-            title: extra.name || 'Imported song', author: extra.author || '', year: null, themeId: item.themeId, category: record.category,
-            blocks: toLibraryBlocks(extra.blocks),
-          });
+          const blocks = reflow
+            ? [{ label: '', lines: (extra.blocks || []).filter(b => !b.image).flatMap(b => Array.isArray(b.own) ? b.own : (b.lines || [])) }]
+            : toLibraryBlocks(extra.blocks);
+          const song = { title: extra.name || 'Imported song', author: extra.author || '', year: null, themeId: item.themeId, category: record.category, blocks };
+          if (!inLibraryAlready(song)) await addLibrarySong(song);
         }
         renderHymnList(hymnListQuery);
       })();
@@ -5112,6 +5115,14 @@
       librarySongs = r.songs || [];
       syncLibraryIntoHymnBank();
     } catch { librarySongs = []; }
+  }
+
+  // The same song imported twice (same title and words) isn't added again.
+  function inLibraryAlready(record) {
+    const words = (s) => (s.blocks || []).map(b => (b.lines || []).join('\n') || b.text || '').join('\n\n').trim();
+    const title = String(record.title || '').trim().toLowerCase();
+    const text = words(record);
+    return librarySongs.some(s => String(s.title || '').trim().toLowerCase() === title && words(s) === text);
   }
 
   async function addLibrarySong(record) {
