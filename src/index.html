@@ -1424,11 +1424,13 @@
                 <div class="bi-api-card" id="api-bible">
                     <div id="api-bible-signin">
                         <div class="bi-invite-title">Get Bibles free from API.Bible</div>
-                        <p class="setting-hint">A free API.Bible account gives your church 3 Bibles of its choice, like the NIV, NLT or the Message, plus dozens of free ones. Kairo downloads them so they work without internet.</p>
-                        <ol class="bi-steps">
-                            <li><a href="https://api.bible/sign-up" target="_blank" rel="noopener">Create a free account</a> and choose your Bibles there.</li>
-                            <li>Copy your API key and paste it here.</li>
-                        </ol>
+                        <!-- Spotlit like Deepgram's free credit in Audio (owner, 2026-11-05). -->
+                        <div class="au-free">
+                            <b>Free: 3 Bibles of your choice, plus dozens more</b>
+                            <span>Like the NIV, NLT or the Message. Kairo downloads them so they work without internet.</span>
+                            <ol><li>Create a free account and choose your Bibles</li><li>Copy your API key</li><li>Paste it below</li></ol>
+                            <a class="modal-btn primary" href="https://api.bible/sign-up" target="_blank" rel="noopener">Get my free key</a>
+                        </div>
                         <div class="bi-row">
                             <input type="password" id="api-bible-key" class="setting-input bi-field" placeholder="Paste your API key" autocomplete="off" spellcheck="false" aria-label="API.Bible key">
                             <button type="button" id="api-bible-connect" class="setting-input btn-brand bi-btn">Connect</button>

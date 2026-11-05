@@ -8791,8 +8791,6 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 .bi-row[hidden] { display: none; }
 .bi-api-card .setting-hint { margin: 0; }
 .bi-invite-title { font-size: 15px; font-weight: 700; color: var(--text); }
-.bi-steps { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; color: var(--text-2); }
-.bi-steps a { color: var(--brand); font-weight: 600; }
 .bi-fine { font-size: 11px; }
 .bi-row .bi-field, .bi-row .bi-combo { flex: 1; min-width: 0; max-width: 440px; }
 .bi-account { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text); flex-wrap: wrap; }
