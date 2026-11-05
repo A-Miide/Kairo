@@ -6859,7 +6859,8 @@
 
   function beginImportResult(d, fallbackTitle, opts = {}) {
     const destination = opts.destination || 'playlist';
-    const keepAsIs = /^(pro|pptx$)/.test(d.format || '');
+    // Slides someone already laid out (ProPresenter, PowerPoint, EasyWorship) keep their breaks.
+    const keepAsIs = /^(pro|pptx$|easyworship$)/.test(d.format || '');
     if (d.items && d.items.length) {
       const [first, ...rest] = d.items;
       pendingExtraBlockItems = rest;

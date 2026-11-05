@@ -258,7 +258,7 @@ pub fn rtf_to_text(rtf: &str) -> String {
 
 /// The text of a whole RTF document (Word, WordPad, TextEdit), not a ProPresenter slide's: its
 /// font, color and style tables, document info and pictures are groups that hold no words.
-fn rtf_document_text(rtf: &str) -> String {
+pub(crate) fn rtf_document_text(rtf: &str) -> String {
     // Headers and footers come as \header, \headerl, \footerf and so on.
     const SKIP: [&str; 8] = ["fonttbl", "colortbl", "stylesheet", "info", "pict", "listtable", "listoverridetable", "generator"];
     let chars: Vec<char> = rtf.chars().collect();
@@ -438,7 +438,7 @@ pub fn first_rtf_color(rtf: &str) -> Option<String> {
 // ── Text, Word, PowerPoint ──────────────────────────────────────────────────
 
 static SECTION: LazyLock<Regex> =
-    LazyLock::new(|| re(r"(?i)^\[?\s*(verse\s*\d*|chorus|pre-?chorus|bridge|tag|outro|ending|intro|interlude|refrain|solo|vamp|breakdown)\s*\]?\s*:?\s*$"));
+    LazyLock::new(|| re(r"(?i)^\[?\s*((verse|chorus|pre-?chorus|bridge|tag|outro|ending|intro|interlude|refrain|solo|vamp|breakdown)\s*\d*)\s*\]?\s*:?\s*$"));
 
 fn section_label(line: &str) -> String {
     let s: String = line.chars().filter(|c| !"[]:".contains(*c)).collect();

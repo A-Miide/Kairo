@@ -14,7 +14,7 @@
 
 use serde_json::{json, Value};
 
-use crate::import::{from_text, rtf_to_text, ImportError};
+use crate::import::{from_text, rtf_document_text, ImportError};
 
 /// One song as EasyWorship stored it.
 #[derive(Debug, Default, PartialEq)]
@@ -51,7 +51,8 @@ pub fn items(songs: Vec<Song>) -> Vec<Value> {
 fn lyrics_text(rtf: &str) -> String {
     // EasyWorship 6/7 marks a new slide with its own control word; plain RTF readers drop it.
     let rtf = rtf.replace("\\sdslidemarker", "\\par\\par ");
-    let text = rtf_to_text(&rtf);
+    // Older libraries can hold stray control characters (a NUL before a slide's label).
+    let text: String = rtf_document_text(&rtf).chars().filter(|c| !c.is_control() || *c == '\n').collect();
     // Lines that are only spaces count as blank, so slides split where EasyWorship split them.
     text.lines().map(str::trim_end).collect::<Vec<_>>().join("\n")
 }
@@ -404,6 +405,7 @@ mod tests {
         let blocks = it[0]["blocks"].as_array().unwrap();
         assert!(blocks.len() >= 2, "verse and chorus are separate: {blocks:?}");
         assert!(it[0]["blocks"].to_string().contains("Amazing grace how sweet the sound"));
+        assert!(!it[0]["blocks"].to_string().contains("Arial"), "the font table isn't lyrics: {blocks:?}");
     }
 
     #[test]
@@ -508,5 +510,47 @@ mod tests {
         assert_eq!(got.len(), 1);
         assert_eq!((got[0].title.as_str(), got[0].author.as_str(), got[0].ccli.as_str()), ("Amazing Grace", "John Newton", "22025"));
         assert!(items(got)[0]["blocks"].to_string().contains("I once was lost"));
+    }
+
+    /// Real files saved by EasyWorship, kept outside the repo (their licences differ from Kairo's):
+    /// `KAIRO_EW_SAMPLES=<folder> cargo test -p kairo-server real_easyworship -- --ignored --nocapture`.
+    /// The folder holds any of: `*.ews`, `*.ewsx`, `Songs.DB` + `Songs.MB`, `Songs.db` + `SongWords.db`
+    /// (each library pair in a folder of its own).
+    #[test]
+    #[ignore]
+    fn real_easyworship_files_import() {
+        let Ok(root) = std::env::var("KAIRO_EW_SAMPLES") else { return };
+        let mut dirs = vec![std::path::PathBuf::from(root)];
+        let mut checked = 0;
+        while let Some(dir) = dirs.pop() {
+            let mut files = Vec::new();
+            for e in std::fs::read_dir(&dir).unwrap().flatten() {
+                let p = e.path();
+                if p.is_dir() { dirs.push(p) } else { files.push(p) }
+            }
+            let name = |p: &std::path::PathBuf| p.file_name().unwrap().to_string_lossy().to_string();
+            let mut runs: Vec<(String, Vec<u8>, Vec<(String, Vec<u8>)>)> = Vec::new();
+            let lib: Vec<_> = files.iter().filter(|p| matches!(p.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref(), Some("db" | "mb"))).collect();
+            if let Some((first, rest)) = lib.split_first() {
+                runs.push((name(first), std::fs::read(first).unwrap(), rest.iter().map(|p| (name(p), std::fs::read(p).unwrap())).collect()));
+            }
+            for p in files.iter().filter(|p| matches!(p.extension().and_then(|e| e.to_str()).map(str::to_ascii_lowercase).as_deref(), Some("ews" | "ewsx"))) {
+                runs.push((name(p), std::fs::read(p).unwrap(), Vec::new()));
+            }
+            for (file, buf, companions) in runs {
+                let songs = read(&file, &buf, &companions).unwrap_or_else(|e| panic!("{}: {}", dir.join(&file).display(), e.0));
+                let n = songs.len();
+                let it = items(songs);
+                println!("{} — {n} songs, {} with lyrics", dir.join(&file).display(), it.len());
+                for s in &it {
+                    let blocks = s["blocks"].as_array().unwrap();
+                    let first = blocks.first().map(|b| b.to_string()).unwrap_or_default();
+                    println!("  {:?} by {:?} ({}) — {} slides; first: {}", s["title"].as_str().unwrap(), s["author"].as_str().unwrap(), s["copyright"].as_str().unwrap(), blocks.len(), first.chars().take(140).collect::<String>());
+                }
+                assert!(!it.is_empty(), "{file}: no songs with lyrics");
+                checked += 1;
+            }
+        }
+        assert!(checked > 0, "no EasyWorship files found");
     }
 }
