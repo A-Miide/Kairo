@@ -2737,7 +2737,7 @@ async function startListeningInner() {
         settingsModal?.classList.remove('hidden');
         showSettingsPane(missingModel ? 'language' : 'audio');
         if (missingModel) window.renderLangCapability?.();
-        const field = document.getElementById(missingKey ? 'deepgram-key' : 'lang-capability');
+        const field = document.getElementById(missingKey ? 'deepgram-key' : 'lang-engine');
         field?.scrollIntoView({ block: 'center' });
         field?.focus?.();
       } else {
@@ -3228,6 +3228,16 @@ function buildCustomSelect(nativeSelect) {
   // Watch for programmatic changes to native select
   const observer = new MutationObserver(buildOptions);
   observer.observe(nativeSelect, { childList: true, attributes: true, subtree: true });
+  // A value set from code (loading saved settings, one picker following another) changes no
+  // attribute, so the shown label stayed on the old choice: redraw on those too.
+  for (const prop of ['value', 'selectedIndex']) {
+    const native = Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype, prop);
+    Object.defineProperty(nativeSelect, prop, {
+      configurable: true,
+      get() { return native.get.call(this); },
+      set(v) { native.set.call(this, v); buildOptions(); },
+    });
+  }
 }
 
 function initCustomSelects() {
@@ -3323,9 +3333,6 @@ async function loadSettings() {
       if (guess !== 'en-US') { settings.sttLanguage = guess; saveSettingsPatch({ sttLanguage: guess }); }
     }
     if (sttLang) sttLang.value = settings.sttLanguage || 'en-US';
-    const vocab = document.getElementById('custom-keyterms');
-    if (vocab) vocab.value = settings.customKeyterms || '';
-    renderLearnedTerms();
     const bibleLang = document.getElementById('bible-language');
     if (bibleLang) bibleLang.value = settings.bibleLanguage || 'en';
     window.renderLangPills?.();
@@ -4432,17 +4439,6 @@ function wireOfflineModelInstaller(ids) {
     }
   });
 }
-wireOfflineModelInstaller({
-  group: 'offline-installer-group', statusLine: 'offline-status-line', installBtn: 'offline-install-btn',
-  progressWrap: 'offline-progress-wrap', progressBar: 'offline-progress-bar', progressText: 'offline-progress-text',
-  engineToggle: 'speech-engine-toggle', hideWhenInstalled: true,
-});
-wireOfflineModelInstaller({
-  model: 'multi', name: 'Offline model for other languages',
-  group: 'offline-multi-installer-group', statusLine: 'offline-multi-status-line', installBtn: 'offline-multi-install-btn',
-  progressWrap: 'offline-multi-progress-wrap', progressBar: 'offline-multi-progress-bar', progressText: 'offline-multi-progress-text',
-  engineToggle: 'speech-engine-toggle', hideWhenInstalled: true,
-});
 // First-run setup offers the model this computer's language needs — never English by default
 // for a French Mac (the other-languages model covers French).
 (function () {
@@ -4457,59 +4453,26 @@ wireOfflineModelInstaller({
   });
 })();
 
-// Settings → Audio no longer downloads models: it says what's installed and where to get the
-// one the service language needs (Settings → Language).
+// Settings → Audio: the two offline models are rows (settings_language.js); this adds only what the
+// Neural Engine copy of the English model is doing on this Mac (server offline.rs ENGINE_STATE).
 let speechEngineState = '';
 async function renderOfflineSummary() {
-  const group = document.getElementById('offline-summary-group');
   const box = document.getElementById('offline-summary');
-  if (!group || !box) return;
-  // Shown whichever engine is chosen: the Offline card always says what it has (2026-10-29).
-  group.style.display = '';
-  const spoken = String(settings.sttLanguage || 'en-US').toLowerCase();
-  const need = spoken.startsWith('en') ? 'en' : 'multi';
-  const get = async (m) => { try { return await (await fetch(`${SERVER}/api/offline/status?model=${m}`)).json(); } catch (_) { return null; } };
-  const [en, multi] = await Promise.all([get('en'), get('multi')]);
-  box.innerHTML = '';
-  const row = (ok, text, link) => {
+  if (!box) return;
+  let en = null;
+  try { en = await (await fetch(`${SERVER}/api/offline/status?model=en`)).json(); } catch (_) { en = null; }
+  const engine = speechEngineState || en?.engine || '';
+  box.replaceChildren();
+  const line = (cls, mark, text) => {
     const r = document.createElement('div');
-    r.className = 'lang-cap-row ' + (ok ? 'ok' : 'missing');
-    const m = document.createElement('span'); m.className = 'lang-cap-mark'; m.setAttribute('aria-hidden', 'true'); m.textContent = ok ? '\u2713' : '!';
+    r.className = `lang-cap-row ${cls}`;
+    const m = document.createElement('span'); m.className = 'lang-cap-mark'; m.setAttribute('aria-hidden', 'true'); m.textContent = mark;
     const t = document.createElement('span'); t.textContent = text;
     r.append(m, t);
-    if (link) {
-      const a = document.createElement('button'); a.type = 'button'; a.className = 'lang-link'; a.textContent = 'Download in Language';
-      a.addEventListener('click', () => { showSettingsPane('language'); window.renderLangCapability?.(); });
-      r.append(document.createTextNode(' '), a);
-    }
     box.appendChild(r);
   };
-  // What each installed model lets the service be in, from the Language list itself — not the
-  // model's name (2026-10-27: "English model installed" read as a claim about what's downloaded).
-  const langs = [...(document.getElementById('stt-language')?.options || [])];
-  const english = langs.filter(o => o.value.startsWith('en')).map(o => o.textContent.replace(/^English \((.*)\)$/, '$1'));
-  const others = langs.filter(o => !o.value.startsWith('en') && o.value !== 'multi').map(o => o.textContent);
-  if (en?.installed) row(true, `Offline: English${english.length ? ` (${english.join(', ')})` : ''}`);
-  // This Mac's Neural Engine copy of the English model (server offline.rs ENGINE_STATE).
-  const engine = speechEngineState || en?.engine || '';
-  if (engine === 'preparing') {
-    const r = document.createElement('div');
-    r.className = 'lang-cap-row preparing';
-    const m = document.createElement('span'); m.className = 'lang-cap-mark'; m.setAttribute('aria-hidden', 'true'); m.textContent = '\u2026';
-    const t = document.createElement('span');
-    t.textContent = 'Preparing the speech engine for this Mac. After a macOS or Kairo update this can take a few minutes; listening starts by itself when it\u2019s ready. Keep Kairo open meanwhile.';
-    r.append(m, t);
-    box.appendChild(r);
-  } else if (en?.installed && engine === 'failed') {
-    row(false, 'The speech engine couldn\u2019t be prepared. Quit and reopen Kairo, or use Deepgram for now.');
-  }
-  if (multi?.installed) row(true, `Offline: ${others.join(', ')}${langs.some(o => o.value === 'multi') ? ', and Auto-detect' : ''}`);
-  const needed = need === 'en' ? en : multi;
-  // What's missing and how big it is, not "English needs the offline model" (read as something wrong
-  // with English; owner, 4.2.1).
-  const size = needed?.approxMB ? ` (${needed.approxMB} MB)` : '';
-  const which = need === 'en' ? '' : ` for ${document.getElementById('stt-language')?.selectedOptions?.[0]?.textContent || 'this language'}`;
-  if (!needed?.installed) row(false, `The offline model${which} isn't downloaded yet${size}`, true);
+  if (engine === 'preparing') line('preparing', '\u2026', 'Preparing the speech engine for this Mac. After a macOS or Kairo update this can take a few minutes; listening starts by itself when it\u2019s ready. Keep Kairo open meanwhile.');
+  else if (en?.installed && engine === 'failed') line('missing', '!', 'The speech engine couldn\u2019t be prepared. Quit and reopen Kairo, or use Deepgram for now.');
 }
 document.getElementById('speech-engine-toggle')?.addEventListener('click', () => setTimeout(renderOfflineSummary, 0));
 document.getElementById('speech-engine-toggle')?.addEventListener('toggle-change', () => renderOfflineSummary());
@@ -4556,64 +4519,65 @@ if (bibleTranslateToSelect) {
   });
 }
 
-// Under the Second language picker: whether that language's slide model is on
-// this computer, with the Download right there instead of only in the list
-// below. Hidden while the picker is Off.
+// Under Slide translation: verses come from that language's Bible, ready at once; songs and slides
+// need its translator (English to that language), downloaded here (settings_language.js draws the
+// same rows in Settings → Downloads). Hidden while the picker is Off.
 var _secondLangTimer = null;
 async function renderSecondLangModel() {
   const host = document.getElementById('second-lang-model');
+  const hint = document.getElementById('second-lang-hint');
   if (!host) return;
   clearTimeout(_secondLangTimer);
   const code = bibleTranslateToSelect?.value;
-  if (!code) { host.hidden = true; host.innerHTML = ''; return; }
-  const name = (MT_LANGUAGES.find(l => l.code === code) || {}).name || code;
-  let s;
-  try {
-    s = await fetch(`${SERVER}/api/translate-model/status?lang=${code}`).then(r => r.json());
-  } catch { host.hidden = true; return; }
-  if (bibleTranslateToSelect.value !== code) return;
-  host.hidden = false;
-  const size = s.approxMB ? ` (${s.approxMB} MB)` : '';
-  const row = document.createElement('div');
-  row.className = 'dl-row';
-  const sub = document.createElement('span');
-  sub.className = 'dl-sub';
-  row.appendChild(sub);
-  if (s.installed) {
-    sub.textContent = `${name} slide translation is ready`;
-    sub.classList.add('is-ready');
-  } else if (s.installing) {
-    sub.textContent = `Downloading ${name}…`;
-    _secondLangTimer = setTimeout(renderSecondLangModel, 2000);
-  } else if (window._secondLangPicked) {
-    // Just picked: fetch its slide translator now, no extra click.
-    window._secondLangPicked = false;
-    sub.textContent = `Downloading ${name} translator\u2026`;
-    host.innerHTML = ''; host.appendChild(row);
-    await streamMtInstall(code, {
-      onProgress: (pct) => { sub.textContent = `Downloading ${name} translator\u2026 ${pct}%`; },
-      onComplete: () => { renderSecondLangModel(); renderMtModelList(); },
-      onError: (msg) => { sub.textContent = `Failed: ${msg}`; },
-    });
+  if (!code) {
+    host.hidden = true; host.replaceChildren();
+    if (hint) hint.textContent = 'Pick a language to show the service in two languages at once.';
     return;
+  }
+  const name = (MT_LANGUAGES.find(l => l.code === code) || {}).name || code;
+  const spokenSel = document.getElementById('stt-language');
+  const spokenBase = String(spokenSel?.value || 'en').toLowerCase().split('-')[0];
+  const spoken = spokenSel?.selectedOptions?.[0]?.textContent || 'English';
+  let s = null;
+  try { s = await fetch(`${SERVER}/api/translate-model/status?lang=${code}`).then(r => r.json()); } catch { s = null; }
+  if (bibleTranslateToSelect.value !== code) return;
+  const mk = (title, side) => {
+    const row = document.createElement('div'); row.className = 'set-row';
+    const t = document.createElement('div'); t.className = 'set-row-text';
+    const tt = document.createElement('span'); tt.className = 'set-row-title'; tt.textContent = title; t.append(tt);
+    const sd = document.createElement('div'); sd.className = 'set-row-side'; sd.append(...side);
+    row.append(t, sd); return row;
+  };
+  const span = (cls, text) => { const e = document.createElement('span'); e.className = cls; e.textContent = text; return e; };
+  const rows = [mk('Verses', [span('set-ok', '\u2713 Ready')])];
+  let note = '';
+  if (spokenBase !== 'en' && spokenBase !== 'multi') {
+    rows.push(mk('Songs and slides', [span('set-row-sub', `No ${spoken} to ${name} translator yet`)]));
+    note = `Verses show in both languages. Songs and slides stay in ${spoken}.`;
+  } else if (s?.installed) {
+    rows.push(mk('Songs and slides', [span('set-ok', '\u2713 Ready')]));
+  } else if (s?.installing) {
+    rows.push(mk('Songs and slides', [span('set-row-sub', `Downloading\u2026`)]));
+    _secondLangTimer = setTimeout(renderSecondLangModel, 2000);
+    note = 'Until the download finishes, songs and slides show in English only.';
   } else {
-    sub.textContent = `${name} slide text needs a download${size}`;
     const btn = document.createElement('button');
-    btn.className = 'modal-btn primary dl-btn';
-    btn.textContent = 'Download';
-    btn.addEventListener('click', async () => {
-      btn.style.display = 'none';
-      sub.textContent = 'Connecting…';
-      await streamMtInstall(code, {
-        onProgress: (pct) => { sub.textContent = `Downloading ${name}… ${pct}%`; },
-        onComplete: () => { renderSecondLangModel(); renderMtModelList(); },
-        onError: (msg) => { sub.textContent = `Failed: ${msg}`; btn.style.display = ''; },
+    btn.type = 'button'; btn.className = 'modal-btn primary set-btn'; btn.textContent = 'Download';
+    btn.addEventListener('click', () => {
+      btn.disabled = true; btn.textContent = 'Starting\u2026';
+      streamMtInstall(code, {
+        onProgress: (pct) => { btn.textContent = `${pct}%`; },
+        onComplete: () => { renderSecondLangModel(); window.refreshDownloads?.(); },
+        onError: (msg) => { toast(`The download stopped: ${msg}`, 'error'); renderSecondLangModel(); },
       });
     });
-    row.appendChild(btn);
+    rows.push(mk('Songs and slides', [span('set-row-sub', s?.approxMB ? `${s.approxMB} MB` : ''), btn]));
+    note = 'Until the download finishes, songs and slides show in English only.';
   }
-  host.innerHTML = '';
-  host.appendChild(row);
+  host.hidden = false;
+  host.replaceChildren(...rows);
+  if (hint) hint.textContent = note;
+  if (hint) hint.hidden = !note;
 }
 renderSecondLangModel();
 
@@ -4631,54 +4595,9 @@ translationSelect?.addEventListener('change', () => {
   saveSettingsPatch({ translation: settings.translation });
 });
 
-// One compact row per language: what it is, its size and state, one action
-// — Download (the brand's primary action), or Ready with Remove to free the
-// space (2026-10-12: the old cards were twice the height for the same).
-// Manage downloads: only what's actually been downloaded to this computer — the offline speech
-// models and any slide translators — each with its size, translators with Remove. Bibles all come
-// with Kairo, and downloading a translator happens where it's chosen (Second language), so
-// nothing here offers a download.
-async function renderMtModelList() {
-  const host = document.getElementById('mt-model-list');
-  if (!host) return;
-  const get = async (url) => { try { return await (await fetch(url)).json(); } catch (_) { return null; } };
-  const [en, multi, ...mt] = await Promise.all([
-    get(`${SERVER}/api/offline/status?model=en`),
-    get(`${SERVER}/api/offline/status?model=multi`),
-    ...MT_LANGUAGES.map(l => get(`${SERVER}/api/translate-model/status?lang=${l.code}`)),
-  ]);
-  const rows = [];
-  if (en?.installed) rows.push({ name: 'Offline speech model', what: 'English', mb: en.approxMB });
-  if (multi?.installed) rows.push({ name: 'Offline speech model', what: 'Other languages', mb: multi.approxMB });
-  MT_LANGUAGES.forEach((l, i) => {
-    if (mt[i]?.installed) rows.push({ name: `${l.name} slide translator`, what: 'Second language', mb: mt[i].approxMB, code: l.code });
-  });
-  host.innerHTML = '';
-  if (!rows.length) {
-    const empty = document.createElement('div');
-    empty.className = 'dl-row';
-    empty.innerHTML = '<span class="dl-sub">Nothing downloaded yet.</span>';
-    host.appendChild(empty);
-  }
-  rows.forEach((r) => {
-    const row = document.createElement('div');
-    row.className = 'dl-row';
-    const name = document.createElement('span'); name.className = 'dl-name'; name.textContent = r.name;
-    const what = document.createElement('span'); what.className = 'dl-sub dl-what'; what.textContent = r.what;
-    const mb = document.createElement('span'); mb.className = 'dl-sub'; mb.textContent = r.mb ? `${r.mb} MB` : '';
-    row.append(name, what, mb);
-    if (r.code) {
-      const btn = document.createElement('button');
-      btn.id = `mt-btn-${r.code}`;
-      btn.className = 'modal-btn secondary dl-btn';
-      btn.textContent = 'Remove';
-      btn.addEventListener('click', () => removeMtModel(r.code));
-      row.appendChild(btn);
-    }
-    host.appendChild(row);
-  });
-  const summary = document.querySelector('#mt-model-group > summary');
-  if (summary) summary.textContent = rows.length ? `Manage downloads (${rows.length})` : 'Manage downloads';
+// Settings → Downloads lists every model and translator (settings_language.js).
+function renderMtModelList() {
+  window.refreshDownloads?.();
 }
 
 async function removeMtModel(code) {
@@ -5090,36 +5009,3 @@ if (document.documentElement.classList.contains('platform-darwin')) {
 // ── Boot ───────────────────────────────────────────────────────────────────
 populateAudioDevices();
 
-// Names learned from past services (server vocabulary.rs): shown under
-// Church vocabulary so the operator sees what Deepgram is being told, and
-// can drop one that's wrong.
-async function renderLearnedTerms(terms) {
-  const box = document.getElementById('learned-keyterms');
-  const list = document.getElementById('learned-keyterms-list');
-  if (!box || !list) return;
-  if (!terms) {
-    try { terms = (await (await fetch(`${SERVER}/api/vocabulary/learned`)).json()).terms || []; }
-    catch { return; }
-  }
-  list.innerHTML = '';
-  terms.forEach(t => {
-    const chip = document.createElement('span');
-    chip.className = 'learned-term' + (t.inUse ? ' in-use' : '');
-    chip.title = `Heard ${t.count} times in ${t.services} services${t.inUse ? ' — passed to transcription' : ''}`;
-    chip.textContent = t.term;
-    const x = document.createElement('button');
-    x.type = 'button';
-    x.className = 'learned-term-remove';
-    x.setAttribute('aria-label', `Forget ${t.term}`);
-    x.textContent = '×';
-    x.addEventListener('click', async () => {
-      try {
-        const r = await fetch(`${SERVER}/api/vocabulary/forget`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ term: t.term }) });
-        renderLearnedTerms((await r.json()).terms || []);
-      } catch {}
-    });
-    chip.appendChild(x);
-    list.appendChild(chip);
-  });
-  box.hidden = terms.length === 0;
-}

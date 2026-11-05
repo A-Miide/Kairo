@@ -1275,6 +1275,10 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8"/></svg>
                     <span>Shortcuts</span>
                 </button>
+                <button class="settings-nav-item" data-pane="downloads">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span>Downloads</span>
+                </button>
                 <button class="settings-nav-item" data-pane="help">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 2-3 4"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                     <span>Help</span>
@@ -1319,7 +1323,7 @@
                 </div>
 
                 <div class="settings-section">
-                    <div class="settings-section-label lang-step">Speech engine</div>
+                    <div class="settings-section-head"><div class="settings-section-label lang-step">Speech engine</div><span class="au-service-lang">Service language: <b id="au-service-lang-name">English</b> <button type="button" class="lang-link" id="au-service-lang-change">Change</button></span></div>
                     <!-- Each engine's card holds everything it needs (the key, the model), shown
                          whether or not it is the one chosen; choosing is the card's own header. -->
                     <div class="toggle-group au-engines" id="speech-engine-toggle">
@@ -1330,17 +1334,22 @@
                             </button>
                             <div class="au-engine-body" id="deepgram-key-group">
                                 <input type="password" id="deepgram-key" class="setting-input bi-field" placeholder="Paste your Deepgram key" aria-label="Deepgram key">
-                                <p class="setting-hint">No key yet? <a href="https://console.deepgram.com/signup" target="_blank" rel="noopener">Get a free key</a>, with $200 of free credit to start.</p>
+                                <div class="au-free" id="deepgram-free">
+                                    <b>Free to start: $200 of credit, about 350 hours</b>
+                                    <ol><li>Sign up at Deepgram</li><li>Create an API key</li><li>Paste it above</li></ol>
+                                    <a class="modal-btn primary" href="https://console.deepgram.com/signup" target="_blank" rel="noopener">Get my free key</a>
+                                </div>
                             </div>
                         </div>
                         <div class="au-engine">
                             <button class="toggle-btn" data-engine="browser">
                                 <span class="au-engine-title"><span class="au-dot" aria-hidden="true"></span>Offline</span>
-                                <span class="au-engine-sub">Works without internet or a key. A little less accurate.</span>
+                                <span class="au-engine-sub">Runs on this computer: no internet, no key.</span>
                             </button>
-                            <!-- The offline model is chosen by the language the preacher speaks, so it is
-                                 downloaded in Settings → Language; here, what's installed (app.js renderOfflineSummary). -->
+                            <!-- Both offline models, the one the service language needs marked, each downloadable
+                                 here (settings_language.js), the same rows as Language and Downloads. -->
                             <div class="au-engine-body" id="offline-summary-group">
+                                <div class="set-rows" id="offline-models"></div>
                                 <div id="offline-summary" class="lang-capability"></div>
                             </div>
                         </div>
@@ -1853,17 +1862,15 @@
 
             <section class="settings-pane" data-pane="language">
             <!-- ── LANGUAGE ───────────────────────────────────────
-                 Two places to set up, then one optional extra:
-                 1 Listening: what the preacher speaks, and the one speech model it needs
-                   (downloaded here, beside the choice; never in Audio);
-                 2 Bible language: which Bible verses come from (all bundled);
-                 Second language: verses and slides in two languages at once (its slide
-                 translator downloads when picked). app_outputs.js renderLangCapability. -->
+                 One chain, each choice following from the one above (owner, 2026-11-05):
+                 1 what the preacher speaks; 2 how Kairo hears it (the Audio choice, with the
+                 offline model this language needs); 3 the Bible version shown and matched;
+                 4 slide translation, optional. settings_language.js; what it gives on the right. -->
+            <div class="lang-layout">
+            <div class="lang-chain">
             <div class="settings-section">
-                <div class="settings-section-label lang-step">Listening</div>
-                <div class="setting-row-2col">
-                    <div class="setting-group">
-                    <label class="setting-label" for="stt-language">Preacher speaks</label>
+                <div class="settings-section-label" data-n="1">The preacher speaks</div>
+                <div class="setting-group">
                     <select id="stt-language" class="setting-input">
                         <optgroup label="Citations and readings detected">
                                 <option value="en-US">English (US)</option>
@@ -1890,81 +1897,68 @@
                                 <option value="multi">Auto-detect (multilingual)</option>
                         </optgroup>
                             </select>
-                    <div class="lang-capability" id="lang-capability" aria-live="polite"></div>
-                    <!-- Offline model installer — shown only when "Offline" engine is selected.
-                         The startup bootstrap normally fetches this before the operator ever
-                         sees Settings; this panel is the manual fallback. -->
-                    <div class="setting-group" id="offline-installer-group" style="display:none;">
-                        
-                        <div id="offline-status-line" class="setting-status" style="font-size:12px;color:var(--text-3);margin-bottom:8px;">Checking…</div>
-                        <button id="offline-install-btn" class="setting-input btn-brand" style="cursor:pointer;display:none;">Download offline model for English (~465MB)</button>
-                        <div id="offline-progress-wrap" style="display:none;margin-top:6px;">
-                            <div style="background:var(--surface-2);height:6px;border-radius:3px;overflow:hidden;">
-                                <div id="offline-progress-bar" style="background:var(--accent);height:100%;width:0%;transition:width .2s;"></div>
-                            </div>
-                            <div id="offline-progress-text" style="font-size:11px;color:var(--text-3);margin-top:4px;">Starting…</div>
-                        </div>
-                    </div>
-
-                    <!-- Other spoken languages run on their own offline model
-                         (sherpa_installer.js MODELS.multi) — a second download,
-                         needed only when the Spoken language isn't English. -->
-                    <div class="setting-group" id="offline-multi-installer-group" style="display:none;">
-                        
-                        <div id="offline-multi-status-line" class="setting-status" style="font-size:12px;color:var(--text-3);margin-bottom:8px;">Checking…</div>
-                        <button id="offline-multi-install-btn" class="setting-input btn-brand" style="cursor:pointer;display:none;">Download offline model for other languages (~475MB)</button>
-                        <div id="offline-multi-progress-wrap" style="display:none;margin-top:6px;">
-                            <div style="background:var(--surface-2);height:6px;border-radius:3px;overflow:hidden;">
-                                <div id="offline-multi-progress-bar" style="background:var(--accent);height:100%;width:0%;transition:width .2s;"></div>
-                            </div>
-                            <div id="offline-multi-progress-text" style="font-size:11px;color:var(--text-3);margin-top:4px;">Starting…</div>
-                        </div>
-                        
-                    </div>
-
-                    </div>
-                <div class="setting-group">
-                    <label class="setting-label" for="custom-keyterms">Church vocabulary</label>
-                    <textarea id="custom-keyterms" class="setting-input" rows="3" placeholder="Pastor Mensah&#10;Grace Chapel&#10;Shiloh"></textarea>
-                        <p class="setting-hint">Names transcription may miss — your pastor, your church, local places. One per line, up to 40. Applies from the next Start Listening.</p>
-                    <!-- Names Kairo picked up from past services (vocabulary.rs):
-                         heard in 2+ services; the top 20 are passed to Deepgram
-                         as hints with the list above. app.js renderLearnedTerms. -->
-                    <div id="learned-keyterms" class="learned-terms" hidden>
-                        <span class="learned-terms-label">Learned from your services</span>
-                        <div class="learned-terms-list" id="learned-keyterms-list"></div>
-                    </div>
+                    <p class="setting-hint">What Kairo listens for, and how it reads a reference like &ldquo;Romans 8, verse 5&rdquo;.</p>
                 </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-label" data-n="2">Kairo hears it with</div>
+                <div class="setting-group">
+                    <div class="set-rows" id="lang-engine"></div>
+                    <p class="setting-hint">The same setting as Audio &rarr; Speech engine. If this language needs another offline model, it downloads here.</p>
                 </div>
             </div>
 
             <div class="settings-section" id="lang-screen-section">
-                <div class="settings-section-label lang-step">Bible language</div>
-                <select id="bible-language" hidden></select>
+                <div class="settings-section-label" data-n="3">Bible version</div>
                 <div class="setting-group">
-                    <label class="setting-label">Verses come from</label>
-                    <div class="lang-pills" id="lang-screen-pills"></div>
+                    <select id="lang-bible-version" class="setting-input" aria-label="Bible version"></select>
+                    <select id="bible-language" hidden></select>
+                    <p class="setting-hint">Shown on screen, and used to recognise verses read aloud. <button type="button" class="lang-link" id="lang-more-versions">Add more versions</button></p>
+                    <p class="setting-hint lang-mismatch" id="lang-bible-mismatch" hidden></p>
                     <details class="lang-sources"><summary>Bible sources</summary><p class="setting-hint scripture-credits" id="scripture-credits"></p></details>
                 </div>
             </div>
 
             <div class="settings-section">
-                <div class="settings-section-label">Second language <span class="lang-step-hint">Verses and slides in two languages at once.</span></div>
-                <select id="bible-translate-to-select" hidden><option value="">Off</option></select>
+                <div class="settings-section-label" data-n="4">Slide translation
+                    <span class="info-tip" tabindex="0" aria-describedby="slide-translation-tip">i<span class="info-tip-body" role="tooltip" id="slide-translation-tip"><b>Slide translation</b>Shows the service in a second language beside the first, on two-language themes such as Multi-Language. Verses come from a Bible in that language. Songs and slides are translated on this computer, after a one-time download.</span></span>
+                    <span class="lang-step-hint">Optional</span></div>
                 <div class="setting-group">
-                    <div class="lang-pills" id="lang-second-pills"></div>
-                    <div class="dl-list" id="second-lang-model" hidden></div>
+                    <select id="bible-translate-to-select" class="setting-input" aria-label="Slide translation language"><option value="">Off</option></select>
+                    <div class="set-rows" id="second-lang-model" hidden></div>
+                    <p class="setting-hint" id="second-lang-hint">Pick a language to show the service in two languages at once.</p>
                     <div class="lang-theme-tip" id="lang-theme-tip" hidden>
                         <span>Shows on screen with the Multi-Language theme.</span>
                         <button type="button" class="lang-link" id="lang-theme-tip-btn">Use Multi-Language theme</button>
                     </div>
                 </div>
             </div>
+            </div>
 
-            <details class="lang-sources lang-downloads" id="mt-model-group">
-                <summary>Manage downloads</summary>
-                <div id="mt-model-list" class="dl-list"></div>
-            </details>
+            <aside class="settings-section lang-preview" data-unnumbered>
+                <div class="settings-section-label">What this gives you</div>
+                <div class="lang-capability" id="lang-capability" aria-live="polite"></div>
+            </aside>
+            </div>
+            </section>
+
+            <section class="settings-pane" data-pane="downloads" data-unnumbered>
+            <!-- ── DOWNLOADS ── everything Kairo can download, per language, in one list
+                 (owner, 2026-11-05). Each is also offered where it's needed. settings_language.js. -->
+            <div class="dl-top"><p class="setting-hint">Everything Kairo can download. Each works offline once it&rsquo;s here.</p><span class="setting-hint" id="dl-space"></span></div>
+            <div class="settings-section">
+                <div class="settings-section-label">Listening <span class="lang-step-hint">Hears the preacher without internet. Not needed with Deepgram.</span></div>
+                <div class="setting-group"><div class="set-rows" id="dl-listening"></div></div>
+            </div>
+            <div class="settings-section">
+                <div class="settings-section-label">Slide translation <span class="lang-step-hint">One download per language, picked in Language &rarr; Slide translation. Verses don&rsquo;t need it.</span></div>
+                <div class="setting-group"><div class="set-rows" id="dl-translation"></div></div>
+            </div>
+            <div class="settings-section">
+                <div class="settings-section-label">Bibles <span class="lang-step-hint">Nine languages come with the app. Nothing to download.</span></div>
+                <div class="setting-group"><div class="set-rows" id="dl-bibles"></div></div>
+            </div>
             </section>
 
             <section class="settings-pane" data-pane="outputs">
@@ -2606,6 +2600,7 @@
     <script src="global_search.js"></script>
     <script src="onboarding_reel.js"></script>
     <script src="bible_import.js"></script>
+    <script src="settings_language.js"></script>
     <script src="dev_reload.js"></script>
 </body>
 </html>

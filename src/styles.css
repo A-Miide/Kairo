@@ -8382,21 +8382,6 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
   border: 1px dashed var(--border-md);
 }
 
-/* Settings → Church vocabulary: names learned from past services. */
-.learned-terms { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; }
-.learned-terms[hidden] { display: none; }
-.learned-terms-label { font-size: 11px; color: var(--text-3); }
-.learned-terms-list { display: flex; flex-wrap: wrap; gap: 6px; }
-.learned-term {
-  display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px 2px 9px;
-  border: 1px solid var(--border-md); border-radius: 999px; font-size: 12px; color: var(--text-2);
-}
-.learned-term.in-use { color: var(--text); border-color: var(--text-3); }
-.learned-term-remove {
-  background: none; border: none; color: var(--text-3); cursor: pointer; font-size: 13px; line-height: 1;
-  width: 18px; height: 18px; border-radius: 50%;
-}
-.learned-term-remove:hover { color: var(--text); background: var(--bg-hover); }
 
 /* Settings → Shortcuts → Remote control (OSC). */
 .setting-group.osc-port-row { display: flex; flex-direction: row; align-items: center; justify-content: flex-start; gap: 12px; flex-wrap: wrap; text-align: left; }
@@ -8553,11 +8538,6 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .ov-launch { justify-content: space-between; }
 @media (max-width: 760px) { .ov-body { grid-template-columns: 1fr; } .ov-right { position: static; order: -1; } }
 
-/* Languages: pills instead of dropdowns */
-.lang-pills { display: flex; flex-wrap: wrap; gap: 6px; }
-.lang-pill { padding: 5px 14px; border: 1px solid var(--border); border-radius: 14px; background: transparent; color: var(--text-2); font-size: 12px; cursor: pointer; }
-.lang-pill:hover { border-color: var(--border-md); color: var(--text); }
-.lang-pill.active { border-color: var(--brand); background: var(--brand-dim); color: var(--text); }
 .lang-link { border: none; background: transparent; padding: 0; color: var(--brand); text-decoration: underline; cursor: pointer; font-size: 12px; }
 .lang-sources { margin-top: 6px; font-size: 12px; color: var(--text-3); }
 .lang-sources summary { cursor: pointer; }
@@ -8927,3 +8907,53 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 .rs-transition-inline .rs-anim-btn.active { background: var(--bg-hover); color: var(--text); border-color: transparent; box-shadow: 0 1px 2px rgba(0,0,0,.35); }
 .rs-duration-float { position: absolute; top: calc(100% + 6px); left: 50%; translate: -50% 0; z-index: 60; margin: 0; padding: 4px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-panel); box-shadow: 0 8px 24px rgba(0,0,0,0.45); animation: fade-up 140ms ease-out; }
 .rs-duration-float.hidden { display: none; }
+
+/* ── Settings → Language, Audio's offline models, Downloads (settings_language.js) ──
+   One kind of row for every download: what it is, its size, and its state or button.
+   Brand for headings and the one primary action, white text, green only for done. */
+.lang-layout { display: grid; grid-template-columns: minmax(0, 1fr) 250px; gap: 18px; align-items: start; }
+@container (max-width: 760px) { .lang-layout { grid-template-columns: 1fr; } }
+.lang-chain { display: grid; gap: 16px; min-width: 0; }
+.lang-chain .settings-section + .settings-section, .settings-pane .settings-section + .settings-section.lang-preview { margin-top: 0; }
+.lang-preview .lang-capability { margin: 0 0 14px; gap: 8px; }
+.set-rows { border: 1px solid var(--border); border-radius: 8px; }
+.set-rows:empty { display: none; }
+.set-row { display: flex; align-items: center; gap: 14px; padding: 10px 12px; min-height: 48px; }
+.set-row + .set-row { border-top: 1px solid var(--border); }
+.set-row-text { display: grid; gap: 2px; flex: 1; min-width: 0; }
+.set-row-title { font-size: 13px; color: var(--text); }
+.set-row-sub { font-size: 11.5px; color: var(--text-3); line-height: 1.45; }
+.set-row-side { display: flex; align-items: center; gap: 12px; flex: none; white-space: nowrap; }
+.set-row-side .set-row-sub { white-space: nowrap; }
+.set-ok { font-size: 12px; font-weight: 600; color: var(--green); }
+.set-btn { padding: 5px 14px; font-size: var(--fs-xs); }
+.set-progress { display: inline-flex; align-items: center; gap: 10px; font-size: 12px; color: var(--text-2); }
+.set-bar { width: 90px; height: 4px; border-radius: 2px; background: rgba(255,255,255,0.1); overflow: hidden; }
+.set-bar i { display: block; height: 100%; background: var(--brand); transition: width 0.3s ease; }
+#lang-engine .lang-link, .au-service-lang .lang-link { text-decoration: none; font-weight: 600; }
+.lang-chain .setting-group > .setting-input { max-width: 340px; }
+.lang-chain .setting-hint { margin-top: 8px; }
+/* A small (i) whose note opens on hover or keyboard focus. */
+.info-tip { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 6px; border: 1px solid var(--text-2); border-radius: 50%; font-size: 9.5px; font-weight: 700; font-style: italic; color: var(--text); letter-spacing: 0; text-transform: none; cursor: help; vertical-align: 1px; }
+.info-tip:focus-visible { outline: 2px solid var(--selected-border); outline-offset: 2px; }
+.info-tip-body { display: none; position: absolute; left: -12px; bottom: 24px; z-index: 20; width: 300px; padding: 12px 14px; border: 1px solid var(--border-md); border-radius: 10px; background: #232327; box-shadow: 0 12px 32px rgba(0,0,0,0.5); font-size: 12.5px; font-weight: 400; font-style: normal; line-height: 1.5; color: var(--text-2); text-align: left; white-space: normal; }
+.info-tip-body b { display: block; margin-bottom: 4px; font-weight: 700; color: var(--text); }
+.info-tip:hover .info-tip-body, .info-tip:focus .info-tip-body { display: block; }
+/* Audio: the service language beside Speech engine, and Deepgram's free credit while there's no key. */
+.au-service-lang { font-size: 12px; color: var(--text-2); }
+.au-service-lang b { color: var(--text); font-weight: 600; }
+.au-free { display: grid; gap: 6px; justify-items: start; padding: 12px; border: 1px solid var(--border); border-radius: 10px; font-size: 12px; color: var(--text-2); line-height: 1.5; }
+.au-free[hidden] { display: none; }
+.au-free b { color: var(--text); font-size: 13px; }
+.au-free ol { margin: 0; padding-left: 18px; }
+.au-free .modal-btn { margin-top: 4px; padding: 6px 14px; font-size: var(--fs-xs); text-decoration: none; }
+.au-engine-body .set-rows { cursor: auto; }
+.dl-top { display: flex; justify-content: space-between; align-items: baseline; gap: 16px; margin-bottom: 16px; }
+.dl-top .setting-hint { margin: 0; }
+/* Inside an engine card the rows and the free-credit note sit flat: a box in a box in a box
+   squeezed the text (owner, 2026-11-05). Narrow cards put the size and button under the text. */
+.au-engine-body .set-rows { border: 0; border-top: 1px solid var(--border); border-radius: 0; }
+.au-engine-body .set-row { padding: 10px 0; flex-wrap: wrap; }
+.au-engine-body .set-row-text { flex: 1 1 180px; }
+.au-free { border: 0; padding: 4px 0 0; }
+.lang-mismatch { color: var(--text); }

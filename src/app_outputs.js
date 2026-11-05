@@ -389,55 +389,10 @@ function renderLangPacks() {
   if (typeof renderMtModelList === 'function') renderMtModelList(); // now that every language is known
 }
 
-// The two language choices as pills: one clear row each, driving the hidden
-// selects the saving code already listens to.
+// Settings → Language's Bible version picker (settings_language.js) and the theme tip.
 function renderLangPills() {
-  const bibleSel = document.getElementById('bible-language');
-  const secondSel = document.getElementById('bible-translate-to-select');
-  const screen = document.getElementById('lang-screen-pills');
-  const second = document.getElementById('lang-second-pills');
-  if (!bibleSel || !screen) return;
-  const pill = (label, active, title, onClick) => {
-    const b = document.createElement('button');
-    b.type = 'button'; b.className = 'lang-pill' + (active ? ' active' : ''); b.textContent = label;
-    if (title) b.title = title;
-    b.addEventListener('click', onClick);
-    return b;
-  };
-  const current = bibleSel.value || settings.bibleLanguage || 'en';
-  screen.innerHTML = '';
-  LANG_PACKS.forEach((p) => {
-    const missing = typeof bibleAvailability !== 'undefined' && bibleAvailability[p.code] === false;
-    const el = pill((missing ? '\u2193 ' : '') + p.name, p.code === current, missing ? `${p.translations}. Downloads when you pick it.` : p.translations, async () => {
-      if (missing) {
-        el.textContent = `${p.name}: starting\u2026`;
-        let ok = true;
-        await streamBibleInstall(p.code, { onProgress: (n) => { el.textContent = `${p.name}: ${n}%`; }, onStep: () => { el.textContent = `${p.name}: checking\u2026`; }, onComplete: (success) => { ok = success; } });
-        if (!ok) { el.textContent = `${p.name}: failed, try again`; return; }
-        bibleAvailability[p.code] = true;
-        renderMtModelList();
-      }
-      bibleSel.value = p.code;
-      bibleSel.dispatchEvent(new Event('change'));
-      renderLangPills();
-    });
-    screen.appendChild(el);
-  });
-
-  if (second && secondSel) {
-    const cur = secondSel.value || '';
-    second.innerHTML = '';
-    second.appendChild(pill('Off', cur === '', '', () => { secondSel.value = ''; secondSel.dispatchEvent(new Event('change')); renderLangPills(); }));
-    Array.from(secondSel.options).filter(o => o.value).forEach((o) => {
-      second.appendChild(pill(o.textContent, cur === o.value, '', () => {
-        // Picking a language fetches its slide translator straight away (renderSecondLangModel).
-        window._secondLangPicked = true;
-        secondSel.value = o.value; secondSel.dispatchEvent(new Event('change')); renderLangPills();
-      }));
-    });
-  }
+  window.renderBibleVersions?.();
   renderThemeTip();
-
 }
 
 // ── Service language: what Kairo listens for, and what that language gets ──
@@ -453,17 +408,14 @@ function spokenName() {
   return sel?.selectedOptions?.[0]?.textContent || 'English';
 }
 
-// Picking the service language picks the Bible too, when that language has one here (Spanish
-// service → Reina-Valera) — but only while scripture was following the service language: a
-// deliberate choice under More (an English service shown in Yoruba) stays.
-function matchScriptureToService(previous) {
+// Picking the service language picks its Bible too (Spanish service → Reina-Valera, English →
+// the English version last used): the two work together (owner, 2026-11-05). A Bible in another
+// language can still be chosen after, and the page says what that means.
+function matchScriptureToService() {
   const base = spokenCode().split('-')[0];
-  const before = String(previous || 'en').toLowerCase().split('-')[0];
   const bibleSel = document.getElementById('bible-language');
   const target = LANG_PACKS.find(p => p.code === base) ? base : (base === 'multi' ? null : 'en');
   if (!bibleSel || !target || bibleSel.value === target) return;
-  const following = bibleSel.value === before || bibleSel.value === 'en';
-  if (!following) return;
   bibleSel.value = target;
   bibleSel.dispatchEvent(new Event('change'));
 }
@@ -485,8 +437,8 @@ async function renderLangCapability() {
   const rows = [];
   if (!offline) rows.push([true, 'Heard by Deepgram']);
   else if (model?.installed) rows.push([true, 'Heard offline']);
-  else if (model?.installing) rows.push([false, `Downloading the offline model${typeof model.progress === 'number' ? ` \u2026 ${model.progress}%` : '\u2026'}`]);
-  else rows.push([false, base === 'en' ? 'Needs the offline model for English' : 'Needs the offline model for other languages']);
+  else if (model?.installing) rows.push([false, `Downloading the ${base === 'en' ? 'English only' : 'Multilingual'} model${typeof model.progress === 'number' ? ` \u2026 ${model.progress}%` : '\u2026'}`]);
+  else rows.push([false, `Can\u2019t listen offline yet: needs the ${base === 'en' ? 'English only' : 'Multilingual'} model`]);
   if (base === 'multi') rows.push([null, 'Finds verses in English, Spanish, Portuguese, French, German']);
   else if (DETECTS_IN[base]) rows.push([true, `Finds verses in ${DETECTS_IN[base]}`]);
   else rows.push([null, `${name} is transcribed; finds verses in English`]);
@@ -494,6 +446,8 @@ async function renderLangCapability() {
   const pack = LANG_PACKS.find(p => p.code === bibleCode);
   const bibleName = bibleCode === 'en' ? `English, ${settings.translation || 'KJV'}` : `${pack?.name || bibleCode}, ${(pack?.translations || '').replace(/\s*\(.*\)$/, '')}`;
   rows.push([true, `Shows ${bibleName}`]);
+  const second = document.getElementById('bible-translate-to-select')?.selectedOptions?.[0];
+  if (second?.value) rows.push([true, `Verses also in ${second.textContent}`]);
   box.innerHTML = '';
   rows.forEach(([ok, text]) => {
     const row = document.createElement('div');
@@ -530,20 +484,16 @@ document.getElementById('lang-theme-tip-btn')?.addEventListener('click', () => {
 });
 
 document.getElementById('stt-language')?.addEventListener('change', (e) => {
-  const previous = settings.sttLanguage;
   settings.sttLanguage = e.target.value;
   saveSettingsPatch({ sttLanguage: e.target.value });
-  matchScriptureToService(previous);
+  matchScriptureToService();
   renderLangPills();
   renderLangCapability();
 });
 document.getElementById('speech-engine-toggle')?.addEventListener('click', () => setTimeout(renderLangCapability, 0));
 document.getElementById('speech-engine-toggle')?.addEventListener('toggle-change', () => renderLangCapability());
 document.getElementById('translation-select-settings')?.addEventListener('change', () => setTimeout(renderLangCapability, 0));
-document.getElementById('custom-keyterms')?.addEventListener('change', (e) => {
-  settings.customKeyterms = e.target.value;
-  saveSettingsPatch({ customKeyterms: e.target.value });
-});
+document.getElementById('bible-translate-to-select')?.addEventListener('change', () => { renderThemeTip(); renderLangCapability(); });
 document.getElementById('bible-language')?.addEventListener('change', (e) => {
   settings.bibleLanguage = e.target.value;
   saveSettingsPatch({ bibleLanguage: e.target.value });
