@@ -8132,7 +8132,9 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 
 /* "Welcome" in every Bible language, large, each word rolling up out of view as the next rolls in
    (onboarding_reel.js fills [data-welcome-cycle] and marks the word leaving with is-out). */
-.ob-hellos { position: relative; height: 1.15em; margin: 0 0 18px; overflow: hidden; font-size: clamp(48px, 5.6vw, 76px); font-weight: 800; line-height: 1.15; letter-spacing: -0.02em; color: var(--brand); }
+/* Sized so the longest ("Barka da zuwa") fits the column, and tall enough for marks above and below
+   (Ẹ kú àbọ̀, Nnọ̀ọ). */
+.ob-hellos { position: relative; height: 1.4em; margin: 0 0 14px; overflow: hidden; font-size: clamp(36px, 4.3vw, 60px); font-weight: 800; line-height: 1.4; letter-spacing: -0.02em; color: var(--brand); }
 .obw { position: absolute; left: 0; top: 0; white-space: nowrap; transform: translateY(105%); opacity: 0; transition: transform 0.55s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.4s ease; }
 .obw.is-on { transform: none; opacity: 1; }
 .obw.is-out { transform: translateY(-105%); opacity: 0; }
