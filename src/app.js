@@ -1472,8 +1472,9 @@ function showInViewerNow(verses, method, topScore, correctedFrom = null, look = 
 
   verseCount++;
   if (verseCountEl) verseCountEl.textContent = verseCount;
-  if (v.similarity) {
-    confidenceSum += v.similarity;
+  // Measured accuracy of the kind of match (server accuracy.rs); a verse put up by hand has none.
+  if (v.accuracy) {
+    confidenceSum += v.accuracy;
     confidenceCount++;
     const avg = confidenceSum / confidenceCount;
     if (avgConfidenceEl) avgConfidenceEl.textContent = (avg * 100).toFixed(0) + '%';
@@ -1644,7 +1645,10 @@ function wireDoubleClickSend(el, handler, single) {
 // passive by-product of the transcript rather than something explicitly
 // searched for.
 function buildCandidateCard(v, method, isSent = false) {
-  const pct  = v.similarity != null ? Math.round(v.similarity * 100) : null;
+  // The percentage is how often this kind of match was right (server accuracy.rs), not the
+  // engine's score, which only decides what is shown (SUGGESTION_DISPLAY_MIN above). A search hit
+  // or a verse put up by hand isn't a detection and has no measured accuracy: no percentage.
+  const pct  = v.accuracy != null ? Math.round(v.accuracy * 100) : null;
   const conf = pct != null ? pct + '%' : '';
   const tier = pct == null ? '' : pct >= 90 ? 'conf-high' : pct >= 80 ? 'conf-good' : pct >= 60 ? 'conf-mid' : 'conf-low';
   const isSearchHit = method === 'text' || method === 'search';

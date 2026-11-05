@@ -13,6 +13,7 @@ macro_rules! kairo_download {
     };
 }
 
+pub mod accuracy;
 pub mod audio_stats;
 pub mod bible;
 pub mod config;

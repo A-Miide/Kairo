@@ -88,6 +88,8 @@ struct Score {
     by_method: std::collections::BTreeMap<String, (usize, usize)>,
     /// (method, score shown in whole percent) → (screen sends, of them wrong).
     by_score: std::collections::BTreeMap<(String, u32), (usize, usize)>,
+    /// Possible Matches the operator sees: (method, score in whole percent) → (shown, the verse cited).
+    offers_by_score: std::collections::BTreeMap<(String, u32), (usize, usize)>,
     /// Method → (suggestions offered, of them the verse being cited or read then).
     offered_by: std::collections::BTreeMap<String, (usize, usize)>,
     /// Suggestions that are the verse being cited or read around then.
@@ -195,6 +197,9 @@ fn score(k: &Knowledge, gt: &[GroundTruth], decisions: &[Decision], last_ms: i64
         let shown = d.score >= if d.method == "paraphrase" { PARAPHRASE_DISPLAY_MIN } else { DISPLAY_MIN };
         if shown {
             s.shown.0 += 1;
+            let o = s.offers_by_score.entry((d.method.clone(), (d.score * 100.0).round() as u32)).or_default();
+            o.0 += 1;
+            o.1 += right as usize;
         }
         if right {
             e.1 += 1;
@@ -532,6 +537,11 @@ fn main() {
                         e.0 += n;
                         e.1 += w;
                     }
+                    for (k, (n, r)) in s.offers_by_score {
+                        let e = t.offers_by_score.entry(k).or_default();
+                        e.0 += n;
+                        e.1 += r;
+                    }
                 }
             }
             None => {
@@ -625,6 +635,10 @@ fn main() {
         println!("Rust screen sends by method and score shown: method, score, sends, right, wrong, accuracy");
         for ((m, pc), (n, w)) in &rust_total.by_score {
             println!("  {m:<16} {pc:>3}% {n:>5} {:>5} {w:>5} {:>5.1}%", n - w, pct(n - w, *n));
+        }
+        println!("Rust Possible Matches shown by method and score: method, score, shown, the verse cited, accuracy");
+        for ((m, pc), (n, r)) in &rust_total.offers_by_score {
+            println!("  {m:<16} {pc:>3}% {n:>5} {r:>5} {:>5.1}%", pct(*r, *n));
         }
     }
     if parity {
