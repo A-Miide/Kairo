@@ -1640,7 +1640,7 @@ function wireDoubleClickSend(el, handler, single) {
 // method 'text' = a phrase/keyword search hit — the engine found the closest
 // match(es) but isn't confident enough to call it a direct reference, so it
 // lands here as a suggestion rather than auto-sending. Marked distinctly
-// (amber) so it reads as "pick one of these", not "here's what's live" —
+// (a white edge) so it reads as "pick one of these", not "here's what's live" —
 // visually different from fingerprint/context candidates, which are a
 // passive by-product of the transcript rather than something explicitly
 // searched for.

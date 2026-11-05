@@ -2,7 +2,7 @@
 .vsrc-root { display: flex; flex-direction: column; gap: 22px; }
 .vsrc-add-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .vsrc-add-row .setting-input { flex: 1 1 220px; min-width: 0; }
-.vsrc-error { color: var(--orange); }
+.vsrc-error { color: var(--notice); }
 .vsrc-split { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(240px, 1.2fr); gap: 16px; align-items: start; }
 @media (max-width: 760px) { .vsrc-split { grid-template-columns: 1fr; } }
 .vsrc-list { display: flex; flex-direction: column; gap: 6px; }
@@ -45,7 +45,7 @@
 
 /* The top-bar switch. */
 #video-director-btn.active { color: var(--text); background: var(--selected-dim); }
-#video-director-btn.vd-armed { color: var(--orange); }
+#video-director-btn.vd-armed { color: var(--notice); }
 
 /* ── Director mode screen. Every rule is under body.video-director. ───────── */
 /* Possible Matches and Message sit in the Scripture column (see the end of this file); the rest of the basic screen's side panels are not here. */

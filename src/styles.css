@@ -81,7 +81,7 @@
   --blue:        #8f8f97;
   --blue-dim:    rgba(255,255,255,0.08);
   --blue-slide:  #57575f;
-  --orange:      #f59e0b;
+  --notice:      #ffffff;   /* attention that isn't an error: white, never yellow (owner, 2026-11-05) */
   --purple:      #8b5cf6;
 
   /* Neutral "this control is currently active/selected" indicator — tabs,
@@ -901,7 +901,7 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
 .conf-badge      { display: inline-block; font-size: 10px; font-weight: 800; border-radius: 4px; padding: 1px 5px; margin-left: 4px; line-height: 1.4; letter-spacing: 0.04em; }
 .conf-high       { background: #3d080a; color: #fca5a5; }  /* ≥ 90% — red    */
 .conf-good       { background: #2a2a2e; color: var(--blue); }  /* 80–89% */
-.conf-mid        { background: #3b2f08; color: #fde68a; }  /* 60–79% — amber */
+.conf-mid        { background: #2a2a2e; color: #ffffff; }  /* 60–79% */
 .conf-low        { background: #3b0f0f; color: #fca5a5; }  /* < 60%  — red   */
 
 /* Locked verse card (JS compat) — base background/border-radius/padding/
@@ -1012,7 +1012,7 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
 }
 .conf-high  { background: rgba(61,8,10,0.8);   color: #fca5a5; border: 1px solid rgba(237,28,36,0.25); }
 .conf-good  { background: rgba(42,42,46,0.8);  color: var(--blue); border: 1px solid rgba(255,255,255,0.28); }
-.conf-mid   { background: rgba(59,47,8,0.8);   color: #fde68a; border: 1px solid rgba(253,230,138,0.2);  }
+.conf-mid   { background: rgba(42,42,46,0.8);  color: #ffffff; border: 1px solid rgba(255,255,255,0.2);  }
 .conf-low   { background: rgba(59,15,15,0.8);  color: #fca5a5; border: 1px solid rgba(252,165,165,0.2);  }
 /* Pulse — a verse sent again (auto-send re-detecting one further down the
    queue, which brings it back to the top, or a double-click): a flash of the
@@ -1296,7 +1296,7 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
 }
 .live-screen-section-badge:hover { filter: brightness(1.15); }
 .live-screen-section-badge.sec-verse       { background: #57575f; }
-.live-screen-section-badge.sec-chorus      { background: #d97706; }
+.live-screen-section-badge.sec-chorus      { background: var(--accent); }
 .live-screen-section-badge.sec-refrain     { background: #f43f5e; }
 .live-screen-section-badge.sec-solo        { background: #0ea5e9; }
 .live-screen-section-badge.sec-prechorus   { background: #0d9488; }
@@ -2335,7 +2335,7 @@ body > .lyric-follow-hud { position: fixed; left: 14px; bottom: 14px; z-index: 4
   border-top: 1px solid rgba(255,255,255,0.12);
 }
 .svc-slide-label.sec-verse      { background: rgba(77,182,172,0.55);  color: #d3f0ec; border-top-color: rgba(77,182,172,0.5); }
-.svc-slide-label.sec-chorus     { background: rgba(245,158,11,0.45);  color: #fde9b8; border-top-color: rgba(245,158,11,0.5); }
+.svc-slide-label.sec-chorus     { background: rgba(255,145,48,0.45);  color: #ffe2c7; border-top-color: rgba(255,145,48,0.5); }
 .svc-slide-label.sec-refrain    { background: rgba(244,63,94,0.4);    color: #fbd0da; border-top-color: rgba(244,63,94,0.5); }
 .svc-slide-label.sec-solo       { background: rgba(14,165,233,0.4);   color: #cbeafd; border-top-color: rgba(14,165,233,0.5); }
 .svc-slide-label.sec-prechorus  { background: rgba(16,185,129,0.4);   color: #c1f2e0; border-top-color: rgba(16,185,129,0.5); }
@@ -3786,8 +3786,8 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
    watches for "Broadcasting"/"Idle", just flipped to a third, impossible-
    to-miss state instead of a popup (toast() stays a deliberate no-op in
    this app — see feedback_no_toasts). */
-.ls-bcast-dot.warning { background: var(--orange); animation: dot-pulse 1s ease-in-out infinite; }
-.ls-bcast-label.warning { color: var(--orange); }
+.ls-bcast-dot.warning { background: var(--notice); animation: dot-pulse 1s ease-in-out infinite; }
+.ls-bcast-label.warning { color: var(--notice); }
 /* Listening stopped for a reason retrying can't fix (out of credit, key
    rejected, no key) — showListeningProblem, app.js. */
 /* Monitor message under the preview (app_outputs.js wireMonitorMessageBar). */
@@ -3835,7 +3835,7 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
   justify-content: center;
 }
 /* Switching a display on with no external screen to open on (app_outputs.js). */
-.outputs-detail-notice { color: var(--orange); margin: 2px 0 10px; }
+.outputs-detail-notice { color: var(--notice); margin: 2px 0 10px; }
 .ls-bcast-dot.error { background: var(--red); }
 .ls-bcast-label.error { color: var(--red); cursor: help; }
 .transcript-problem {
@@ -5366,11 +5366,11 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
 .cand-card:hover { border-color: rgba(255,255,255,0.35); }
 /* Phrase/keyword search hit — the engine found the closest match(es) but
    isn't confident enough to call it a direct reference, so it's a pick-one
-   suggestion rather than something already live. Amber to read as distinct
+   suggestion rather than something already live. A white edge to read as distinct
    from ordinary fingerprint/context candidates below. */
 .cand-search {
-  border-left: 2px solid rgba(245,158,11,0.6);
-  background: rgba(245,158,11,0.04);
+  border-left: 2px solid rgba(255,255,255,0.6);
+  background: rgba(255,255,255,0.04);
 }
 /* Already sent to air — same brand accent as the Live Queue/range-active
    cards, not the old --red-literal leftover. */
@@ -6438,10 +6438,10 @@ body.ts-dragging-guide-h, body.ts-dragging-guide-h * { cursor: row-resize !impor
 
 /* ── Alignment/breakpoint guides — shown only while dragging/resizing a
    layer, marking canvas breakpoints (edges/quarters/center) or another
-   layer's edge that the current drag just snapped onto. Yellow, same as
-   Photoshop/Illustrator's smart guides — reads clearly against the blue
-   selection outline and handles without being confused for either. ── */
-.ts-guide { position: absolute; background: #ffd60a; pointer-events: none; z-index: 40; }
+   layer's edge that the current drag just snapped onto. Brand orange: reads
+   clearly against the blue selection outline and handles without being
+   confused for either. ── */
+.ts-guide { position: absolute; background: var(--accent); pointer-events: none; z-index: 40; }
 .ts-guide-v { top: 0; bottom: 0; width: 1px; }
 .ts-guide-h { left: 0; right: 0; height: 1px; }
 
@@ -7242,9 +7242,9 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
   align-items: center;
   gap: 10px;
   padding: 10px 16px;
-  background: rgba(234,179,8,0.12);
-  border-bottom: 1px solid rgba(234,179,8,0.25);
-  color: #fbbf24;
+  background: rgba(255,255,255,0.06);
+  border-bottom: 1px solid rgba(255,255,255,0.14);
+  color: #ffffff;
   font-size: 13px;
   font-weight: 500;
   position: relative;
@@ -7253,9 +7253,9 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 #first-run-banner svg { flex-shrink: 0; opacity: 0.9; }
 #first-run-banner span { flex: 1; }
 .frb-btn {
-  background: rgba(234,179,8,0.2);
-  border: 1px solid rgba(234,179,8,0.4);
-  color: #fbbf24;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.3);
+  color: #ffffff;
   padding: 4px 12px;
   border-radius: 4px;
   font-size: 12px;
@@ -7263,17 +7263,17 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
   cursor: pointer;
   white-space: nowrap;
 }
-.frb-btn:hover { background: rgba(234,179,8,0.3); }
+.frb-btn:hover { background: rgba(255,255,255,0.18); }
 .frb-close {
   background: none;
   border: none;
-  color: rgba(251,191,36,0.6);
+  color: rgba(255,255,255,0.6);
   font-size: 14px;
   cursor: pointer;
   padding: 2px 4px;
   line-height: 1;
 }
-.frb-close:hover { color: #fbbf24; }
+.frb-close:hover { color: #ffffff; }
 
 /* ── Auto-update banner ── */
 /* The update modal sits over everything, the welcome tour included (a fresh install showed it behind). */
@@ -7390,8 +7390,8 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
    fixed for earlier. "Connected/ok" IS a success state; use the real one. */
 .osp-ok       { border-color: rgba(34,197,94,0.35); }
 .osp-ok       .osp-dot { background: var(--green); box-shadow: 0 0 8px rgba(34,197,94,0.55); }
-.osp-warn     { border-color: rgba(245, 158, 11, 0.35); }
-.osp-warn     .osp-dot { background: var(--orange); box-shadow: 0 0 8px rgba(245,158,11,0.5); }
+.osp-warn     { border-color: rgba(255,255,255,0.35); }
+.osp-warn     .osp-dot { background: var(--notice); box-shadow: 0 0 8px rgba(255,255,255,0.4); }
 .osp-err      { border-color: rgba(237,28,36, 0.35); }
 .osp-err      .osp-dot { background: var(--red); box-shadow: 0 0 8px rgba(237,28,36,0.5); }
 .osp-progress { border-color: rgba(255,255,255,0.4); background: rgba(255,255,255,0.04); }
@@ -7582,7 +7582,7 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
   overflow: hidden;
 }
 .input-level-meter i { display: block; height: 100%; width: 0%; background: var(--green); transition: width 90ms linear; }
-.input-level[data-state="quiet"] .input-level-meter i { background: var(--orange); }
+.input-level[data-state="quiet"] .input-level-meter i { background: var(--notice); }
 .input-level[data-state="hot"] .input-level-meter i { background: var(--red); }
 .input-level[data-state="silent"] .input-level-meter i,
 .input-level[data-state="idle"] .input-level-meter i { background: var(--text-3); }
@@ -7602,9 +7602,9 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
   color: var(--text-3);
   white-space: nowrap;
 }
-.input-level[data-state="quiet"] .input-level-status { color: var(--orange); }
+.input-level[data-state="quiet"] .input-level-status { color: var(--notice); }
 .input-level[data-state="hot"] .input-level-status { color: var(--red); }
-.input-missing { color: var(--orange); }
+.input-missing { color: var(--notice); }
 
 /* ── Transcript: which words sent which verse ───────────────────────────── */
 /* Click a chip to send that verse to the screen again. */
@@ -8567,7 +8567,7 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 @media (prefers-reduced-motion: reduce) { .lang-cap-row.preparing .lang-cap-mark { animation: none; } }
 .lang-cap-row.missing { color: var(--text); }
 .lang-cap-row .lang-link { white-space: nowrap; }
-.lang-cap-row.missing .lang-cap-mark { color: var(--warning, #d29922); }
+.lang-cap-row.missing .lang-cap-mark { color: var(--notice); }
 .lang-more > summary { cursor: pointer; list-style: revert; }
 /* Language page: the two numbered setup places, then the optional second language */
 .lang-step { display: flex; align-items: center; gap: 8px; }
@@ -8744,7 +8744,7 @@ body.video-director #ts-add-videozone-btn, body.video-director #ts-add-contentzo
 .ts-qr-check { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-2); text-transform: none; letter-spacing: 0; cursor: pointer; }
 .ts-qr-logo { display: flex; gap: 6px; }
 .ts-qr-logo .modal-btn { padding: 6px 12px; }
-.ts-qr-warn { margin: 0; color: var(--warning, #f5a524); }
+.ts-qr-warn { margin: 0; color: var(--notice); }
 .ts-qr-warn:empty { display: none; }
 
 /* Settings → Bible → Your Bibles */
@@ -8870,7 +8870,7 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 .toggle-btn.active .au-dot { background: #3fb950; border-color: #3fb950; }
 /* A missing item gets a proper warning sign, not a bare "!" (Language and Audio capability lines) */
 .lang-cap-row.missing { align-items: center; }
-.lang-cap-row.missing .lang-cap-mark { font-size: 0; width: 15px; height: 15px; background: var(--warning, #d29922); -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%272.2%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M10.29%203.86%201.82%2018a2%202%200%200%200%201.71%203h16.94a2%202%200%200%200%201.71-3L13.71%203.86a2%202%200%200%200-3.42%200z%27/%3E%3Cline%20x1%3D%2712%27%20y1%3D%279%27%20x2%3D%2712%27%20y2%3D%2713%27/%3E%3Cline%20x1%3D%2712%27%20y1%3D%2717%27%20x2%3D%2712.01%27%20y2%3D%2717%27/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%272.2%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M10.29%203.86%201.82%2018a2%202%200%200%200%201.71%203h16.94a2%202%200%200%200%201.71-3L13.71%203.86a2%202%200%200%200-3.42%200z%27/%3E%3Cline%20x1%3D%2712%27%20y1%3D%279%27%20x2%3D%2712%27%20y2%3D%2713%27/%3E%3Cline%20x1%3D%2712%27%20y1%3D%2717%27%20x2%3D%2712.01%27%20y2%3D%2717%27/%3E%3C/svg%3E") center / contain no-repeat; }
+.lang-cap-row.missing .lang-cap-mark { font-size: 0; width: 15px; height: 15px; background: var(--notice); -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%272.2%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M10.29%203.86%201.82%2018a2%202%200%200%200%201.71%203h16.94a2%202%200%200%200%201.71-3L13.71%203.86a2%202%200%200%200-3.42%200z%27/%3E%3Cline%20x1%3D%2712%27%20y1%3D%279%27%20x2%3D%2712%27%20y2%3D%2713%27/%3E%3Cline%20x1%3D%2712%27%20y1%3D%2717%27%20x2%3D%2712.01%27%20y2%3D%2717%27/%3E%3C/svg%3E") center / contain no-repeat; mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A//www.w3.org/2000/svg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27none%27%20stroke%3D%27black%27%20stroke-width%3D%272.2%27%20stroke-linecap%3D%27round%27%20stroke-linejoin%3D%27round%27%3E%3Cpath%20d%3D%27M10.29%203.86%201.82%2018a2%202%200%200%200%201.71%203h16.94a2%202%200%200%200%201.71-3L13.71%203.86a2%202%200%200%200-3.42%200z%27/%3E%3Cline%20x1%3D%2712%27%20y1%3D%279%27%20x2%3D%2712%27%20y2%3D%2713%27/%3E%3Cline%20x1%3D%2712%27%20y1%3D%2717%27%20x2%3D%2712.01%27%20y2%3D%2717%27/%3E%3C/svg%3E") center / contain no-repeat; }
 /* Settings section numbers: settings_layout.js sets data-n on each page with more than one section. */
 .settings-section-label[data-n] { display: flex; align-items: center; gap: 8px; }
 .settings-section-label[data-n]::before {
