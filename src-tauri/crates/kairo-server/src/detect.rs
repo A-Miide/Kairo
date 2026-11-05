@@ -320,6 +320,8 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
                     continue;
                 }
                 let mut list: Vec<Value> = verses.iter().map(|v| bible.verse_json(*v, score, method.wire())).collect();
+                // The operator sees how often this kind of match is right; `similarity` stays the score.
+                crate::accuracy::mark(&mut list, method.wire(), target == Target::Screen);
                 // A verse for the screen goes there only with Auto-send on. With it off it waits in
                 // Possible Matches for the operator (or, in Director mode, staged in Preview).
                 let screen = target == Target::Screen;
