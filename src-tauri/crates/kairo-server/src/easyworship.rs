@@ -512,13 +512,64 @@ mod tests {
         assert!(items(got)[0]["blocks"].to_string().contains("I once was lost"));
     }
 
-    /// Real files saved by EasyWorship, kept outside the repo (their licences differ from Kairo's):
-    /// `KAIRO_EW_SAMPLES=<folder> cargo test -p kairo-server real_easyworship -- --ignored --nocapture`.
+    /// Real files saved by EasyWorship (`tests/fixtures/easyworship`, credited in its README): every
+    /// format gives the same songs, labels and slides, with nothing of the RTF's tables in the words.
+    #[test]
+    fn real_easyworship_files_import() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/easyworship");
+        let file = |p: &str| (p.rsplit('/').next().unwrap().to_string(), std::fs::read(dir.join(p)).unwrap());
+        let import = |main: &str, other: &[&str]| {
+            let (name, buf) = file(main);
+            let companions: Vec<_> = other.iter().map(|p| file(p)).collect();
+            items(read(&name, &buf, &companions).unwrap_or_else(|e| panic!("{main}: {}", e.0)))
+        };
+        let summary = |it: &[Value]| -> Vec<(String, String, Vec<String>)> {
+            it.iter()
+                .map(|s| {
+                    let labels = s["blocks"].as_array().unwrap().iter().map(|b| b["label"].as_str().unwrap_or("").to_string()).collect();
+                    (s["title"].as_str().unwrap().to_string(), s["author"].as_str().unwrap().to_string(), labels)
+                })
+                .collect()
+        };
+        let labels = |l: &[&str]| l.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let hymn = ("Vi pløjed og vi så'de".to_string(), "Matthias Claudius".to_string(), labels(&["Verse 1", "Chorus", "Verse 2", "Chorus", "Verse 3", "Chorus"]));
+        let library = vec![
+            ("Amazing Grace".to_string(), "John Newton".to_string(), labels(&["Verse 1", "Verse 2", "Verse 3", "Verse 4"])),
+            ("Beautiful Garden Of Prayer".to_string(), "Eleanor Allen Schroll James H. Fillmore".to_string(), labels(&["Chorus 1", "Verse 1", "Verse 2", "Verse 3"])),
+            hymn.clone(),
+        ];
+        let all = [
+            ("test1.ewsx", import("test1.ewsx", &[])),
+            ("test1.ews", import("test1.ews", &[])),
+            ("ew6", import("ew6/SongWords.db", &["ew6/Songs.db"])),
+            ("ew2009", import("ew2009/Songs.MB", &["ew2009/Songs.DB"])),
+            ("lorem.ews", import("ews-lithium/lorem.ews", &[])),
+            ("file1.ews", import("ews-lithium/file1.ews", &[])),
+        ];
+        assert_eq!(summary(&all[0].1), vec![hymn.clone()]);
+        assert_eq!(summary(&all[1].1), vec![hymn]);
+        // The 6/7 library's fourth song has no words in it; it's left out.
+        assert_eq!(summary(&all[2].1), library);
+        assert_eq!(summary(&all[3].1), library);
+        assert_eq!(summary(&all[4].1).iter().map(|s| s.0.as_str()).collect::<Vec<_>>(), ["Lorem 1", "Lorem 2", "Lorem 3"]);
+        assert_eq!(summary(&all[5].1).iter().map(|s| s.0.as_str()).collect::<Vec<_>>(), ["Leeg", "Psalm 001"]);
+        // The same verse, word for word, from a schedule and from a library.
+        assert_eq!(all[0].1[0]["blocks"][0]["lines"], all[3].1[2]["blocks"][0]["lines"]);
+        for (name, it) in &all {
+            let text = it.iter().map(|s| s["blocks"].to_string()).collect::<String>();
+            for junk in ["Tahoma", "Arial", "\\u0000", "\\\\"] {
+                assert!(!text.contains(junk), "{name}: {junk:?} in the words");
+            }
+        }
+    }
+
+    /// A church's own EasyWorship files, outside the repo:
+    /// `KAIRO_EW_SAMPLES=<folder> cargo test -p kairo-server any_easyworship_folder -- --ignored --nocapture`.
     /// The folder holds any of: `*.ews`, `*.ewsx`, `Songs.DB` + `Songs.MB`, `Songs.db` + `SongWords.db`
     /// (each library pair in a folder of its own).
     #[test]
     #[ignore]
-    fn real_easyworship_files_import() {
+    fn any_easyworship_folder_imports() {
         let Ok(root) = std::env::var("KAIRO_EW_SAMPLES") else { return };
         let mut dirs = vec![std::path::PathBuf::from(root)];
         let mut checked = 0;
