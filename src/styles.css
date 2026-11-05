@@ -7895,9 +7895,9 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .ob-shell {
   position: relative;
   width: min(1120px, calc(100vw - 48px));
-  max-height: calc(100vh - 40px);
+  /* One fixed height for every step, so the header and the Back/Next row never move under the cursor. */
+  height: min(780px, calc(100vh - 40px));
   display: flex; flex-direction: column; gap: 26px;
-  overflow: auto;
 }
 .ob-top { display: flex; align-items: center; gap: 20px; }
 .ob-brand svg { height: 24px; width: auto; display: block; }
@@ -7906,14 +7906,14 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .ob-seg { width: 96px; padding-top: 9px; border-top: 3px solid rgba(255, 255, 255, 0.12); font-size: 11px; font-weight: 600; color: var(--text-3); white-space: nowrap; transition: border-color 0.3s ease, color 0.3s ease; }
 .ob-seg.is-done { border-top-color: var(--brand); color: var(--text-2); }
 .ob-seg.is-on { border-top-color: var(--brand); color: #fff; }
-.ob-body { min-height: 380px; }
+.ob-body { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; justify-content: center; }
 .ob-step { animation: ob-in 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
 @keyframes ob-in { from { opacity: 0; transform: translateY(14px); } }
 .ob-eyebrow { margin: 0 0 12px; font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--brand); }
 .ob-title { margin: 0 0 14px; max-width: 15em; font-size: clamp(28px, 4.2vw, 46px); line-height: 1.08; font-weight: 700; letter-spacing: -0.02em; color: #fff; }
 .ob-lede { margin: 0; max-width: 34em; font-size: 16px; line-height: 1.55; color: var(--text-2); }
 .ob-foot { display: flex; align-items: center; gap: 10px; }
-.ob-foot .modal-btn { min-width: 110px; padding: 10px 22px; font-size: 13px; }
+.ob-foot .modal-btn { min-width: 120px; padding: 10px 22px; font-size: 13px; }
 .ob-skip-link { margin-right: auto; background: none; border: none; color: var(--text-3); font-size: 12px; cursor: pointer; padding: 6px 0; }
 .ob-skip-link:hover { color: var(--text); }
 .ob-label { display: block; margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--text-2); }
