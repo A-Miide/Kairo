@@ -62,3 +62,19 @@ test('a queued verse keeps its look-alikes out of Possible Matches for the windo
   assert.ok(!Q.coveredByQueue('1 Corinthians 4:16', old, now));  // window passed
   assert.ok(Q.coveredByQueue('2 Corinthians 4:16', old, now));   // the exact verse: while it's queued
 });
+
+test('only a whole chapter called is one card; a long range is still a card per verse', () => {
+  const chapter = (n, from = 1, to = n) => Array.from({ length: to - from + 1 }, (_, i) => ({ book: 'Romans', chapter: 8, verse: from + i }));
+  assert.ok(Q.isWholeChapter(chapter(39), 39));
+  assert.ok(!Q.isWholeChapter(chapter(39, 1, 12), 39));   // Romans 8:1-12: twelve cards
+  assert.ok(!Q.isWholeChapter(chapter(39, 2, 39), 39));
+  assert.ok(!Q.isWholeChapter(chapter(39), 0));            // length not known yet
+});
+
+test('the next verse is the reading moving on; any other verse is a new call', () => {
+  const up = { book: 'John', chapter: 3, verse: 16 };
+  assert.ok(Q.isNextVerse(up, { book: 'John', chapter: 3, verse: 17 }));
+  assert.ok(!Q.isNextVerse(up, { book: 'John', chapter: 3, verse: 18 }));
+  assert.ok(!Q.isNextVerse(up, { book: 'John', chapter: 4, verse: 17 }));
+  assert.ok(!Q.isNextVerse(null, { book: 'John', chapter: 3, verse: 17 }));
+});
