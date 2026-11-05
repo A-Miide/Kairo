@@ -1,0 +1,21 @@
+{
+ "videoId": "scn-fmt-through",
+ "title": "Scenario: fmt-through",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "first Corinthians thirteen four through seven"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "1 Corinthians",
+   "chapter": 13,
+   "kind": "citation",
+   "startMs": 0,
+   "verseStart": 4,
+   "verseEnd": 7
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

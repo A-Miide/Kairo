@@ -1,0 +1,27 @@
+{
+ "source": "scn-cross-forsake-uncited",
+ "kind": "scenario",
+ "lang": "en",
+ "songLive": false,
+ "cues": [
+  {
+   "text": "he will not fail thee, nor forsake thee",
+   "audioMs": 0
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "he will not fail",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "he will not fail thee, nor forsake thee",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

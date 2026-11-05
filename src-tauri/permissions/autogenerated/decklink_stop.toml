@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-decklink-stop"
+description = "Enables the decklink_stop command without any pre-configured scope."
+commands.allow = ["decklink_stop"]
+
+[[permission]]
+identifier = "deny-decklink-stop"
+description = "Denies the decklink_stop command without any pre-configured scope."
+commands.deny = ["decklink_stop"]

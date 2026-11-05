@@ -1,0 +1,51 @@
+{
+ "source": "scn-same-proverbs14-cited",
+ "kind": "scenario",
+ "lang": "en",
+ "songLive": false,
+ "cues": [
+  {
+   "text": "Proverbs fourteen twelve",
+   "audioMs": 0
+  },
+  {
+   "text": "there is a way which seemeth right unto a man, but the end thereof are the ways of death",
+   "audioMs": 2100
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "Proverbs fourteen twelve",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "there is a way",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "there is a way which seemeth right unto",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "there is a way which seemeth right unto a man, but the",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "there is a way which seemeth right unto a man, but the end thereof are the",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "there is a way which seemeth right unto a man, but the end thereof are the ways of death",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

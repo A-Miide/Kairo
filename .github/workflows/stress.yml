@@ -1,0 +1,119 @@
+name: Stress (Windows, 3 hours)
+
+# A 3-hour service on a Windows computer, before and after the latest change: GitHub's runner
+# stands in for a church PC (owner, 2026-10-30). Run by hand on a branch whose last commit is the
+# change (Actions → Stress → Run workflow, or a push to a stress-* branch); "before" is the
+# commit ahead of it. Never part of a release.
+#
+# No sermon audio goes in the repository: Windows' own voice reads a sermon-shaped script
+# (stress/script.py: the KJV and lines written for it), and stress/feed.py plays it into the
+# real server at live pace with offline listening on, then reports per half hour how far speech
+# fell behind, audio dropped, CPU and memory, and what was detected.
+on:
+  push:
+    branches: ['stress-*']
+  workflow_dispatch:
+    inputs:
+      minutes:
+        description: Minutes of audio
+        default: '180'
+
+jobs:
+  windows:
+    strategy:
+      fail-fast: false
+      matrix:
+        version: [before, after]
+    runs-on: windows-latest
+    timeout-minutes: 330
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: The code before the change
+        if: matrix.version == 'before'
+        shell: bash
+        run: git checkout HEAD~1 -- src-tauri databases && git log -1 --format='%h %s' HEAD~1
+
+      - name: The computer
+        shell: pwsh
+        run: |
+          Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors | Format-List
+          "{0:N1} GB memory" -f ((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-directories: src-tauri/target/sherpa-onnx-prebuilt
+          key: stress
+
+      - name: Speech engine libraries present
+        shell: bash
+        run: |
+          if ! find src-tauri/target/sherpa-onnx-prebuilt -name '*sherpa-onnx-c-api*' 2>/dev/null | grep -q .; then
+            rm -rf src-tauri/target/sherpa-onnx-prebuilt
+            find src-tauri/target -type d -path '*/build/sherpa-onnx-sys-*' -prune -exec rm -rf {} + 2>/dev/null || true
+            find src-tauri/target \( -name 'libsherpa_onnx_sys-*' -o -name 'sherpa_onnx_sys-*' \) -delete 2>/dev/null || true
+          fi
+
+      - name: FFmpeg and Python
+        run: |
+          choco install ffmpeg -y --no-progress
+          python -m pip install websockets psutil
+
+      - name: The offline model (as the app downloads it)
+        shell: bash
+        run: |
+          curl -sSfL -o model.tar.bz2 https://github.com/A-Miide/Kairo/releases/download/offline-model-v1/sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25.tar.bz2
+          mkdir model
+          tar -xjf model.tar.bz2 -C model --strip-components=1
+
+      - name: Build
+        working-directory: src-tauri
+        run: |
+          cargo run --release -p kairo-eval --bin bundle-data
+          cargo build --release -p kairo-server
+
+      - name: A sermon, read by Windows
+        shell: pwsh
+        run: |
+          python .github/stress/script.py databases/bibles/kjv.json script.txt 34000
+          Add-Type -AssemblyName System.Speech
+          $voice = New-Object System.Speech.Synthesis.SpeechSynthesizer
+          $voice.SetOutputToWaveFile("$PWD\sermon.wav")
+          $voice.Speak((Get-Content -Raw script.txt))
+          $voice.Dispose()
+          ffmpeg -v error -i sermon.wav -t ([int]"${{ inputs.minutes || '180' }}" * 60) -ar 16000 -ac 1 -f s16le sermon.raw
+          "{0:N0} min of audio" -f ((Get-Item sermon.raw).Length / 32000 / 60)
+
+      - name: Play it live
+        shell: pwsh
+        env:
+          KAIRO_OFFLINE_MODEL: ${{ github.workspace }}\model
+          KAIRO_SERVER_PORT: '7790'
+          KAIRO_APP_DATA_DIR: ${{ github.workspace }}\appdata
+        run: |
+          New-Item -ItemType Directory appdata | Out-Null
+          $server = Start-Process src-tauri\target\release\kairo-server.exe -PassThru -RedirectStandardError server.err -RedirectStandardOutput server.out
+          $ready = $false
+          foreach ($i in 1..180) {
+            if ((Get-Content server.err -Raw -ErrorAction SilentlyContinue) -match 'Meaning-based detection ready') { $ready = $true; break }
+            Start-Sleep 5
+          }
+          Get-Content server.err
+          if (-not $ready) { throw 'meaning search never became ready' }
+          python .github/stress/feed.py sermon.raw 7790 appdata
+          $code = $LASTEXITCODE
+          Stop-Process -Id $server.Id -Force
+          exit $code
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: stress-${{ matrix.version }}
+          path: |
+            appdata/debug.log*
+            server.err
+            script.txt

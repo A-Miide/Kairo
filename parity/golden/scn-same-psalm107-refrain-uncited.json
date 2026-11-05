@@ -1,0 +1,47 @@
+{
+ "source": "scn-same-psalm107-refrain-uncited",
+ "kind": "scenario",
+ "lang": "en",
+ "songLive": false,
+ "cues": [
+  {
+   "text": "church, oh that men would praise the Lord for his goodness, and for his wonderful works to the children of men",
+   "audioMs": 0
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "church, oh that men",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "church, oh that men would praise the Lord",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "church, oh that men would praise the Lord for his goodness, and",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "church, oh that men would praise the Lord for his goodness, and for his wonderful works",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "church, oh that men would praise the Lord for his goodness, and for his wonderful works to the children of",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "church, oh that men would praise the Lord for his goodness, and for his wonderful works to the children of men",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

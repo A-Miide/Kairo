@@ -1,0 +1,12 @@
+{
+ "videoId": "scn-same-psalm107-refrain-uncited",
+ "title": "Scenario: same-psalm107-refrain-uncited",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "church, oh that men would praise the Lord for his goodness, and for his wonderful works to the children of men"
+  }
+ ],
+ "groundTruth": [],
+ "note": "eval/scenarios/make_scenarios.py"
+}

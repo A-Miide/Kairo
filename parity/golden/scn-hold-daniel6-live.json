@@ -1,0 +1,235 @@
+{
+ "source": "scn-hold-daniel6-live",
+ "kind": "scenario",
+ "lang": "en",
+ "songLive": false,
+ "cues": [
+  {
+   "text": "Help me, help me. Daniel",
+   "audioMs": 0
+  },
+  {
+   "text": "chapter what? Chapter",
+   "audioMs": 2900
+  },
+  {
+   "text": "six from verse three. I want you to",
+   "audioMs": 5000
+  },
+  {
+   "text": "see what happened there",
+   "audioMs": 9100
+  },
+  {
+   "text": "Then this Daniel",
+   "audioMs": 11600
+  },
+  {
+   "text": "was preferred above",
+   "audioMs": 13700
+  },
+  {
+   "text": "the presidents and",
+   "audioMs": 15800
+  },
+  {
+   "text": "princes because an excellent",
+   "audioMs": 17900
+  },
+  {
+   "text": "spirit was in",
+   "audioMs": 20400
+  },
+  {
+   "text": "him and the",
+   "audioMs": 22500
+  },
+  {
+   "text": "king thought to set",
+   "audioMs": 24600
+  },
+  {
+   "text": "him over the old realm.",
+   "audioMs": 27100
+  },
+  {
+   "text": "Look at what",
+   "audioMs": 30000
+  },
+  {
+   "text": "happened then they what",
+   "audioMs": 32100
+  },
+  {
+   "text": "president and the princes",
+   "audioMs": 34600
+  },
+  {
+   "text": "sought to find",
+   "audioMs": 37100
+  },
+  {
+   "text": "what occasion against",
+   "audioMs": 39200
+  },
+  {
+   "text": "Daniel concerning the kingdom",
+   "audioMs": 41300
+  },
+  {
+   "text": "but they could",
+   "audioMs": 43800
+  },
+  {
+   "text": "not find none occasion",
+   "audioMs": 45900
+  },
+  {
+   "text": "of all for",
+   "audioMs": 48400
+  },
+  {
+   "text": "as much it",
+   "audioMs": 50500
+  },
+  {
+   "text": "was faithful. I",
+   "audioMs": 52600
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "Help me, help me.",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "Help me, help me. Daniel",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "chapter what? Chapter",
+   "isFinal": true
+  },
+  {
+   "cue": 2,
+   "text": "six from verse three.",
+   "isFinal": false
+  },
+  {
+   "cue": 2,
+   "text": "six from verse three. I want you to",
+   "isFinal": true
+  },
+  {
+   "cue": 3,
+   "text": "see what happened there",
+   "isFinal": true
+  },
+  {
+   "cue": 4,
+   "text": "Then this Daniel",
+   "isFinal": true
+  },
+  {
+   "cue": 5,
+   "text": "was preferred above",
+   "isFinal": true
+  },
+  {
+   "cue": 6,
+   "text": "the presidents and",
+   "isFinal": true
+  },
+  {
+   "cue": 7,
+   "text": "princes because an excellent",
+   "isFinal": true
+  },
+  {
+   "cue": 8,
+   "text": "spirit was in",
+   "isFinal": true
+  },
+  {
+   "cue": 9,
+   "text": "him and the",
+   "isFinal": true
+  },
+  {
+   "cue": 10,
+   "text": "king thought to set",
+   "isFinal": true
+  },
+  {
+   "cue": 11,
+   "text": "him over the old",
+   "isFinal": false
+  },
+  {
+   "cue": 11,
+   "text": "him over the old realm.",
+   "isFinal": true
+  },
+  {
+   "cue": 12,
+   "text": "Look at what",
+   "isFinal": true
+  },
+  {
+   "cue": 13,
+   "text": "happened then they what",
+   "isFinal": true
+  },
+  {
+   "cue": 14,
+   "text": "president and the princes",
+   "isFinal": true
+  },
+  {
+   "cue": 15,
+   "text": "sought to find",
+   "isFinal": true
+  },
+  {
+   "cue": 16,
+   "text": "what occasion against",
+   "isFinal": true
+  },
+  {
+   "cue": 17,
+   "text": "Daniel concerning the kingdom",
+   "isFinal": true
+  },
+  {
+   "cue": 18,
+   "text": "but they could",
+   "isFinal": true
+  },
+  {
+   "cue": 19,
+   "text": "not find none occasion",
+   "isFinal": true
+  },
+  {
+   "cue": 20,
+   "text": "of all for",
+   "isFinal": true
+  },
+  {
+   "cue": 21,
+   "text": "as much it",
+   "isFinal": true
+  },
+  {
+   "cue": 22,
+   "text": "was faithful. I",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

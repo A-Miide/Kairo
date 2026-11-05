@@ -1,0 +1,420 @@
+name: Build KAIRO
+
+on:
+  push:
+    tags:
+      - 'v*'          # a version tag builds every platform into a draft release
+  workflow_dispatch:  # a manual run builds every platform and keeps the installers as run artifacts
+
+jobs:
+  # ── The app's own tests, before anything is built ────────────────────────
+  # The JS tests take seconds; a failure stops the release before ~30 minutes
+  # of platform builds. (The Rust tests need the full engine build: run them
+  # locally; see the README.)
+  test:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: JS tests
+        run: node --test src/*.test.js
+      # Every model and file the app downloads is really there (scripts/check-downloads.sh).
+      - name: Downloads the app needs
+        run: scripts/check-downloads.sh
+
+  # ── What the app bundles but git doesn't hold ────────────────────────────
+  # The meaning models (pinned, checksum-verified) and the verse index built
+  # from them — once, shared by every platform, cached until the Bible text
+  # or the index code changes. See src-tauri/crates/kairo-eval/src/bin/bundle-data.rs.
+  bundle-data:
+    # 24.04, not 22.04: the prebuilt ONNX Runtime the engine links needs
+    # glibc 2.38 / GCC 13's libstdc++ (first CI run, 2026-10-13).
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cached bundle data
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            databases/bibles/model
+            databases/bibles/reranker_model
+            databases/bibles/verse_index.bge-small.kvx
+          # Only what changes the data: the Bible text, the builder (which
+          # pins the models and the prebuilt index by checksum) and the
+          # model's settings. Not every source file of the meaning engine —
+          # a tidy-up there used to throw the cache away and spend ~10
+          # minutes compiling, only to download the same prebuilt index.
+          key: bundle-data-${{ hashFiles('databases/bibles/kjv.json', 'src-tauri/crates/kairo-eval/src/bin/bundle-data.rs', 'src-tauri/crates/kairo-semantic/bench/bge-small.json') }}
+
+      - name: Setup Rust
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        if: steps.cache.outputs.cache-hit != 'true'
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+          # sherpa-onnx's build script downloads its libraries here; the
+          # cache keeps the script's output, so it must keep these too
+          # (otherwise a warm cache links against a folder that's gone).
+          cache-directories: src-tauri/target/sherpa-onnx-prebuilt
+          key: with-sherpa-libs
+
+      # A partial cache match can bring back sherpa-onnx's build-script output
+      # without the libraries it points at (v4.1.2's macOS build: "could not find
+      # native static library sherpa-onnx-c-api"). Then forget that output, so
+      # the build script runs again and downloads them.
+      - name: Speech engine libraries present
+        shell: bash
+        run: |
+          if ! find src-tauri/target/sherpa-onnx-prebuilt -name '*sherpa-onnx-c-api*' 2>/dev/null | grep -q .; then
+            echo "sherpa-onnx libraries missing: rebuilding sherpa-onnx-sys"
+            # Its build script downloads only when the lib folder is absent, and
+            # the cache can bring the folder back empty.
+            rm -rf src-tauri/target/sherpa-onnx-prebuilt
+            find src-tauri/target -type d -path '*/build/sherpa-onnx-sys-*' -prune -exec rm -rf {} + 2>/dev/null || true
+            find src-tauri/target \( -name 'libsherpa_onnx_sys-*' -o -name 'sherpa_onnx_sys-*' \) -delete 2>/dev/null || true
+          fi
+
+      - name: Build dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: sudo apt-get update && sudo apt-get install -y libssl-dev pkg-config libasound2-dev
+
+      - name: Fetch the models and build the verse index
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: cargo run --release --manifest-path src-tauri/Cargo.toml -p kairo-eval --bin bundle-data
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: bundle-data
+          path: |
+            databases/bibles/model
+            databases/bibles/reranker_model
+            databases/bibles/verse_index.bge-small.kvx
+          retention-days: 3
+
+  # ── The ffmpeg that ships in the app ─────────────────────────────────────
+  # A small LGPL ffmpeg per OS, built from the official source (scripts/
+  # build-ffmpeg-*.sh) and cached until those scripts change. Kairo runs it to
+  # convert a video its web view can't play, and to play a video background
+  # under an NDI / Syphon / DeckLink output (src-tauri video_bg.rs). See docs/THIRD_PARTY.md.
+  ffmpeg:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macos
+            runs-on: macos-latest
+            script: scripts/build-ffmpeg-macos.sh
+          - name: linux
+            runs-on: ubuntu-24.04
+            script: scripts/build-ffmpeg-linux.sh linux
+          # Windows is cross-built from Linux with mingw-w64.
+          - name: windows
+            runs-on: ubuntu-24.04
+            script: scripts/build-ffmpeg-linux.sh windows
+    runs-on: ${{ matrix.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cached ffmpeg
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/bin/ffmpeg*
+          key: ffmpeg-${{ matrix.name }}-${{ hashFiles('scripts/build-ffmpeg-macos.sh', 'scripts/build-ffmpeg-linux.sh') }}
+
+      - name: Build tools
+        if: steps.cache.outputs.cache-hit != 'true' && matrix.runs-on == 'ubuntu-24.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential nasm pkg-config zlib1g-dev
+          # zlib for the mingw-w64 cross-compiler: ffmpeg is configured with --enable-zlib.
+          if [ "${{ matrix.name }}" = "windows" ]; then sudo apt-get install -y mingw-w64 libz-mingw-w64-dev; fi
+
+      - name: Build ffmpeg
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: ${{ matrix.script }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-${{ matrix.name }}
+          path: src-tauri/bin/ffmpeg*
+          retention-days: 3
+
+  # ── The offline speech engine on Apple Silicon ──────────────────────────
+  # Nemotron as Core ML on the Neural Engine (src-tauri/coreml-speech, FluidAudio), a program of
+  # its own beside ffmpeg in the app; Intel Macs use the ONNX engine inside kairo-server.
+  coreml-speech:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cached engine
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/bin/kairo-coreml-speech
+          key: coreml-speech-${{ hashFiles('src-tauri/coreml-speech/Package.swift', 'src-tauri/coreml-speech/Package.resolved', 'src-tauri/coreml-speech/Sources/**', 'scripts/build-coreml-speech.sh') }}
+
+      - name: Build the engine
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: FORCE=1 scripts/build-coreml-speech.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: coreml-speech
+          path: src-tauri/bin/kairo-coreml-speech
+          retention-days: 3
+
+  # ── The sermon-notes writer on Apple Silicon ────────────────────────────
+  # The Mac's own on-device model (src-tauri/notes-writer), a small program beside ffmpeg in the app:
+  # it downloads nothing, and every other machine gets the outline Kairo makes itself.
+  notes-writer:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build the writer
+        run: FORCE=1 scripts/build-notes-writer.sh
+
+      - name: It starts and says whether this Mac can write notes
+        run: src-tauri/bin/kairo-notes-writer --check
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: notes-writer
+          path: src-tauri/bin/kairo-notes-writer
+          retention-days: 3
+
+  build:
+    needs: [test, bundle-data, ffmpeg, coreml-speech, notes-writer]
+    permissions:
+      contents: write   # tauri-action creates the draft release on a tag
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Every build adds the release config: the signed update packages
+          # and latest.json the in-app updater reads (local builds skip them,
+          # so they don't need the signing key).
+          - platform: macos-latest   # universal: native on Intel and Apple Silicon
+            args: '--target universal-apple-darwin --config src-tauri/tauri.release.conf.json'
+          - platform: windows-latest
+            args: '--config src-tauri/tauri.release.conf.json'
+          # 24.04 for the same reason as bundle-data: the Linux app needs
+          # glibc 2.38+ (Ubuntu 24.04, Fedora 39, Debian 13 or newer).
+          - platform: ubuntu-24.04
+            # .deb and .rpm only — no AppImage.
+            args: '--bundles deb,rpm --config src-tauri/tauri.release.conf.json'
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: bundle-data
+          path: databases/bibles
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: ffmpeg-${{ matrix.platform == 'macos-latest' && 'macos' || matrix.platform == 'windows-latest' && 'windows' || 'linux' }}
+          path: src-tauri/bin
+
+      - name: Make ffmpeg executable
+        if: matrix.platform != 'windows-latest'
+        run: chmod +x src-tauri/bin/ffmpeg
+
+      - uses: actions/download-artifact@v4
+        if: matrix.platform == 'macos-latest'
+        with:
+          name: coreml-speech
+          path: src-tauri/bin
+
+      - name: Make the speech engine executable
+        if: matrix.platform == 'macos-latest'
+        run: chmod +x src-tauri/bin/kairo-coreml-speech
+
+      - uses: actions/download-artifact@v4
+        if: matrix.platform == 'macos-latest'
+        with:
+          name: notes-writer
+          path: src-tauri/bin
+
+      - name: Make the notes writer executable
+        if: matrix.platform == 'macos-latest'
+        run: chmod +x src-tauri/bin/kairo-notes-writer
+
+      # The Tauri CLI comes from npm; the app itself has no Node at runtime.
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install the Tauri CLI
+        run: npm install --no-audit --no-fund
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          # macOS universal needs both targets so Tauri can lipo them into a fat binary
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: './src-tauri -> target'
+          # sherpa-onnx's build script downloads its libraries here; the
+          # cache keeps the script's output, so it must keep these too
+          # (otherwise a warm cache links against a folder that's gone).
+          cache-directories: src-tauri/target/sherpa-onnx-prebuilt
+          key: with-sherpa-libs
+
+      # A partial cache match can bring back sherpa-onnx's build-script output
+      # without the libraries it points at (v4.1.2's macOS build: "could not find
+      # native static library sherpa-onnx-c-api"). Then forget that output, so
+      # the build script runs again and downloads them.
+      - name: Speech engine libraries present
+        shell: bash
+        run: |
+          if ! find src-tauri/target/sherpa-onnx-prebuilt -name '*sherpa-onnx-c-api*' 2>/dev/null | grep -q .; then
+            echo "sherpa-onnx libraries missing: rebuilding sherpa-onnx-sys"
+            # Its build script downloads only when the lib folder is absent, and
+            # the cache can bring the folder back empty.
+            rm -rf src-tauri/target/sherpa-onnx-prebuilt
+            find src-tauri/target -type d -path '*/build/sherpa-onnx-sys-*' -prune -exec rm -rf {} + 2>/dev/null || true
+            find src-tauri/target \( -name 'libsherpa_onnx_sys-*' -o -name 'sherpa_onnx_sys-*' \) -delete 2>/dev/null || true
+          fi
+
+      - name: Install Linux deps
+        if: matrix.platform == 'ubuntu-24.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            libssl-dev \
+            libasound2-dev \
+            pkg-config
+
+      # Developer ID signing and notarization, once the secrets are set (docs/MAC_SIGNING.md):
+      # Tauri signs the app and Syphon.framework and notarizes; the three programs Kairo runs from
+      # Resources/bin are signed here first, with the hardened runtime notarization requires.
+      # Without the secrets the build is ad-hoc signed, as before (right-click → Open).
+      - name: Developer ID signing (when set up)
+        if: matrix.platform == 'macos-latest'
+        env:
+          APPLE_CERTIFICATE:          ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY:     ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID:                   ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD:             ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID:              ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$APPLE_CERTIFICATE" ] || [ -z "$APPLE_SIGNING_IDENTITY" ]; then
+            echo "No Developer ID secrets: ad-hoc signing."
+            echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+            exit 0
+          fi
+          KEYCHAIN="$RUNNER_TEMP/kairo-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 16)"
+          echo "$APPLE_CERTIFICATE" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$RUNNER_TEMP/cert.p12" -P "$APPLE_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
+          rm "$RUNNER_TEMP/cert.p12"
+          # ffmpeg opens cameras and capture cards itself, so it carries the same device entitlements.
+          codesign --force --timestamp --options runtime --entitlements src-tauri/entitlements.plist --sign "$APPLE_SIGNING_IDENTITY" src-tauri/bin/ffmpeg
+          codesign --force --timestamp --options runtime --sign "$APPLE_SIGNING_IDENTITY" src-tauri/bin/kairo-coreml-speech
+          codesign --force --timestamp --options runtime --sign "$APPLE_SIGNING_IDENTITY" src-tauri/bin/kairo-notes-writer
+          codesign --verify --strict --verbose=2 src-tauri/bin/ffmpeg src-tauri/bin/kairo-coreml-speech src-tauri/bin/kairo-notes-writer
+          {
+            echo "APPLE_CERTIFICATE=$APPLE_CERTIFICATE"
+            echo "APPLE_CERTIFICATE_PASSWORD=$APPLE_CERTIFICATE_PASSWORD"
+            echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY"
+            echo "APPLE_ID=$APPLE_ID"
+            echo "APPLE_PASSWORD=$APPLE_PASSWORD"
+            echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
+          } >> "$GITHUB_ENV"
+
+      - name: Build KAIRO
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY:          ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          NO_STRIP: 'true'
+        with:
+          # A tag makes a draft release; a manual run only builds.
+          tagName:     ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+          releaseName: 'KAIRO ${{ github.ref_name }}'
+          releaseBody: |
+            ## KAIRO ${{ github.ref_name }}
+
+            **Live scripture detection for church services — rebuilt in Rust.**
+
+            ### What's new
+            - **A new engine, inside the app.** The detection server is now part of KAIRO itself — no Node runtime, a smaller download (~400 MB on disk, from ~650 MB), faster start.
+            - **Possible Matches you can trust.** Less than half the suggestions of 3.x with half the noise, and the same verses found; quotes with distinctive wording are offered even when the preacher doesn't cite them.
+            - **Better at what preachers actually say.** "John four verse four" read with 1 John's words becomes 1 John 4:4; a citation whose book wasn't heard ("17 verse seven to eight") is placed by the quote that follows; "someone 25" is Psalm 125.
+            - **The KJV, correctly numbered.** The bundled KJV was missing six verses and split four — in Matthew 2, 22, 26 and Mark 4, 7, 8 every later verse showed the wrong text. Fixed.
+            - **Offline engine level with Deepgram** on the test sermons, and translating slides to French, Spanish and Portuguese works again, on your machine.
+            - **Sermon notes** rebuilt: the main text, every scripture marked read, cited or alluded to, themes and the people of the Bible named.
+            - **Word documents and pasted text** import the way they're written — headings start slides, line breaks stay, one paragraph per slide.
+            - New default Bible theme: Full — Background on Crimson.
+
+            ### Install
+            - **macOS**: download the `.dmg`, drag KAIRO to Applications, and open it.
+            - **Windows**: run the `.msi`. If SmartScreen warns about an unrecognized publisher: **More info** → **Run anyway**.
+            - **Linux**: `.deb` (Ubuntu 24.04+, Debian 13+) or `.rpm` (Fedora 39+).
+          releaseDraft: true
+          prerelease: false
+          args: ${{ matrix.args }}
+
+      - name: Keep the installers (manual runs)
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: kairo-${{ matrix.platform }}
+          path: |
+            src-tauri/target/release/bundle/
+            src-tauri/target/universal-apple-darwin/release/bundle/
+          retention-days: 7
+
+  # ── Landing page (docs/index.html) to GitHub Pages ───────────────────────
+  # Only the page itself — the engineering docs beside it stay in the repo.
+  # Only manual runs on main: the github-pages environment deploys from main
+  # alone, so a tag run or a run on a feature branch would fail here (run
+  # 39093554447 built every platform and still ended red on this job).
+  deploy-page:
+    needs: build
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - name: Stage the page
+        run: mkdir -p site && cp docs/index.html site/
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+      - id: deploy
+        uses: actions/deploy-pages@v4

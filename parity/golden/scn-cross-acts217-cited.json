@@ -1,0 +1,71 @@
+{
+ "source": "scn-cross-acts217-cited",
+ "kind": "scenario",
+ "lang": "en",
+ "songLive": false,
+ "cues": [
+  {
+   "text": "Acts chapter two verse seventeen",
+   "audioMs": 0
+  },
+  {
+   "text": "and it shall come to pass in the last days, saith God, I will pour out of my Spirit upon all flesh: and your sons and your daughters shall prophesy",
+   "audioMs": 2900
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "Acts chapter two verse",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "Acts chapter two verse seventeen",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "and it shall come",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and it shall come to pass in the",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and it shall come to pass in the last days, saith God,",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and it shall come to pass in the last days, saith God, I will pour out",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and it shall come to pass in the last days, saith God, I will pour out of my Spirit upon",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and it shall come to pass in the last days, saith God, I will pour out of my Spirit upon all flesh: and your",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and it shall come to pass in the last days, saith God, I will pour out of my Spirit upon all flesh: and your sons and your daughters",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and it shall come to pass in the last days, saith God, I will pour out of my Spirit upon all flesh: and your sons and your daughters shall prophesy",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

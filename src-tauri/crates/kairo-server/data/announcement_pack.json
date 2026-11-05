@@ -1,0 +1,2581 @@
+{
+ "preservice": [
+  {
+   "id": "scene-welcome-0",
+   "name": "Welcome to Church",
+   "durationSec": 30,
+   "layers": [
+    {
+     "id": "bg",
+     "type": "background",
+     "name": "Canvas",
+     "visible": true,
+     "fill": "image",
+     "src": "backgrounds/teal-studio.jpg",
+     "color": "#1d3b3f",
+     "opacity": 100,
+     "color2": "#0c2023",
+     "angle": 160
+    },
+    {
+     "id": "light",
+     "type": "motion",
+     "name": "Soft light",
+     "visible": true,
+     "opacity": 100,
+     "pos": {
+      "x": 0,
+      "y": 0,
+      "w": 1920,
+      "h": 1080
+     },
+     "graphic": {
+      "kind": "aurora",
+      "colors": [
+       "#5f9096",
+       "#2f6269"
+      ],
+      "count": 3,
+      "size": 95,
+      "intensity": 34,
+      "speed": 0.35,
+      "blend": "glow",
+      "seed": 3
+     }
+    },
+    {
+     "id": "line",
+     "type": "motion",
+     "name": "Flowing line",
+     "visible": true,
+     "opacity": 90,
+     "pos": {
+      "x": 1060,
+      "y": 90,
+      "w": 780,
+      "h": 620
+     },
+     "build": {
+      "type": "fade",
+      "delay": 0.15,
+      "duration": 0.4
+     },
+     "graphic": {
+      "kind": "line",
+      "colors": [
+       "#f0b9d4"
+      ],
+      "shape": "loop",
+      "thickness": 7,
+      "draw": 2.4,
+      "mirror": "none",
+      "drift": 35,
+      "speed": 0.6,
+      "seed": 5
+     }
+    },
+    {
+     "id": "headline",
+     "type": "text",
+     "name": "Headline",
+     "visible": true,
+     "binding": "custom",
+     "customText": "Welcome\n*to church*",
+     "pos": {
+      "x": 140,
+      "y": 290,
+      "w": 1200,
+      "h": 400
+     },
+     "font": {
+      "family": "Anton",
+      "size": 196,
+      "weight": 400,
+      "italic": false,
+      "lineHeight": 0.98,
+      "letterSpacing": 1,
+      "transform": "uppercase"
+     },
+     "color": "#f3ead3",
+     "opacity": 100,
+     "align": "left",
+     "shadow": {
+      "enabled": true,
+      "color": "#000000",
+      "opacity": 45,
+      "blur": 18,
+      "x": 0,
+      "y": 4
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "accentColor": "#e3cf6c",
+     "build": {
+      "type": "words",
+      "delay": 0.35,
+      "duration": 0.8
+     },
+     "idle": {
+      "type": "float",
+      "amount": 22,
+      "speed": 0.55
+     }
+    },
+    {
+     "id": "sub",
+     "type": "text",
+     "name": "Supporting line",
+     "visible": true,
+     "binding": "custom",
+     "customText": "We're so glad you're *here*.",
+     "pos": {
+      "x": 146,
+      "y": 720,
+      "w": 1100,
+      "h": 70
+     },
+     "font": {
+      "family": "Manrope",
+      "size": 46,
+      "weight": 600,
+      "italic": false,
+      "lineHeight": 1.35,
+      "letterSpacing": 0,
+      "transform": "none"
+     },
+     "color": "#ffffff",
+     "opacity": 90,
+     "align": "left",
+     "shadow": {
+      "enabled": false,
+      "color": "#000000",
+      "opacity": 70,
+      "blur": 4,
+      "x": 0,
+      "y": 1
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "accentColor": "#e3cf6c",
+     "build": {
+      "type": "rise",
+      "delay": 0.95,
+      "duration": 0.8
+     }
+    },
+    {
+     "id": "countdown",
+     "type": "text",
+     "name": "Countdown",
+     "visible": true,
+     "binding": "timer",
+     "customText": "",
+     "pos": {
+      "x": 1230,
+      "y": 380,
+      "w": 1000,
+      "h": 320
+     },
+     "font": {
+      "family": "Anton",
+      "size": 300,
+      "weight": 400,
+      "italic": false,
+      "lineHeight": 1,
+      "letterSpacing": 8,
+      "transform": "none"
+     },
+     "color": "#f3ead3",
+     "opacity": 13,
+     "align": "center",
+     "shadow": {
+      "enabled": false,
+      "color": "#000000",
+      "opacity": 70,
+      "blur": 4,
+      "x": 0,
+      "y": 1
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "rotation": 90,
+     "warnColor": "#e3cf6c",
+     "overtimeColor": "#ed1c24",
+     "build": {
+      "type": "fade",
+      "delay": 0.1,
+      "duration": 1.4
+     },
+     "idle": {
+      "type": "float",
+      "amount": 25,
+      "speed": 0.4
+     }
+    },
+    {
+     "id": "grain",
+     "type": "motion",
+     "name": "Film grain",
+     "visible": true,
+     "opacity": 100,
+     "pos": {
+      "x": 0,
+      "y": 0,
+      "w": 1920,
+      "h": 1080
+     },
+     "graphic": {
+      "kind": "grain",
+      "intensity": 7,
+      "size": 2,
+      "blend": "overlay",
+      "speed": 1,
+      "seed": 11
+     }
+    }
+   ]
+  },
+  {
+   "id": "scene-worship-1",
+   "name": "Worship With Us",
+   "durationSec": 30,
+   "layers": [
+    {
+     "id": "bg",
+     "type": "background",
+     "name": "Canvas",
+     "visible": true,
+     "fill": "image",
+     "src": "backgrounds/teal-studio.jpg",
+     "color": "#1d3b3f",
+     "opacity": 100,
+     "color2": "#0c2023",
+     "angle": 160
+    },
+    {
+     "id": "light",
+     "type": "motion",
+     "name": "Soft light",
+     "visible": true,
+     "opacity": 100,
+     "pos": {
+      "x": 0,
+      "y": 0,
+      "w": 1920,
+      "h": 1080
+     },
+     "graphic": {
+      "kind": "aurora",
+      "colors": [
+       "#5f9096",
+       "#2f6269"
+      ],
+      "count": 3,
+      "size": 95,
+      "intensity": 34,
+      "speed": 0.35,
+      "blend": "glow",
+      "seed": 8
+     }
+    },
+    {
+     "id": "line",
+     "type": "motion",
+     "name": "Flowing line",
+     "visible": true,
+     "opacity": 90,
+     "pos": {
+      "x": 80,
+      "y": 660,
+      "w": 1500,
+      "h": 360
+     },
+     "build": {
+      "type": "fade",
+      "delay": 0.2,
+      "duration": 0.4
+     },
+     "graphic": {
+      "kind": "line",
+      "colors": [
+       "#f0b9d4"
+      ],
+      "shape": "swoosh",
+      "thickness": 7,
+      "draw": 2.4,
+      "mirror": "none",
+      "drift": 35,
+      "speed": 0.6,
+      "seed": 5
+     }
+    },
+    {
+     "id": "headline",
+     "type": "text",
+     "name": "Headline",
+     "visible": true,
+     "binding": "custom",
+     "customText": "Worship\n*with us*",
+     "pos": {
+      "x": 140,
+      "y": 230,
+      "w": 1200,
+      "h": 400
+     },
+     "font": {
+      "family": "Anton",
+      "size": 196,
+      "weight": 400,
+      "italic": false,
+      "lineHeight": 0.98,
+      "letterSpacing": 1,
+      "transform": "uppercase"
+     },
+     "color": "#f3ead3",
+     "opacity": 100,
+     "align": "left",
+     "shadow": {
+      "enabled": true,
+      "color": "#000000",
+      "opacity": 45,
+      "blur": 18,
+      "x": 0,
+      "y": 4
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "accentColor": "#e3cf6c",
+     "build": {
+      "type": "words",
+      "delay": 0.35,
+      "duration": 0.8
+     },
+     "idle": {
+      "type": "float",
+      "amount": 22,
+      "speed": 0.55
+     }
+    },
+    {
+     "id": "sub",
+     "type": "text",
+     "name": "Supporting line",
+     "visible": true,
+     "binding": "custom",
+     "customText": "Wherever you are, lift your heart to *God*.",
+     "pos": {
+      "x": 146,
+      "y": 660,
+      "w": 1100,
+      "h": 70
+     },
+     "font": {
+      "family": "Manrope",
+      "size": 46,
+      "weight": 600,
+      "italic": false,
+      "lineHeight": 1.35,
+      "letterSpacing": 0,
+      "transform": "none"
+     },
+     "color": "#ffffff",
+     "opacity": 90,
+     "align": "left",
+     "shadow": {
+      "enabled": false,
+      "color": "#000000",
+      "opacity": 70,
+      "blur": 4,
+      "x": 0,
+      "y": 1
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "accentColor": "#e3cf6c",
+     "build": {
+      "type": "rise",
+      "delay": 0.95,
+      "duration": 0.8
+     }
+    },
+    {
+     "id": "countdown",
+     "type": "text",
+     "name": "Countdown",
+     "visible": true,
+     "binding": "timer",
+     "customText": "",
+     "pos": {
+      "x": 1230,
+      "y": 380,
+      "w": 1000,
+      "h": 320
+     },
+     "font": {
+      "family": "Anton",
+      "size": 300,
+      "weight": 400,
+      "italic": false,
+      "lineHeight": 1,
+      "letterSpacing": 8,
+      "transform": "none"
+     },
+     "color": "#f3ead3",
+     "opacity": 13,
+     "align": "center",
+     "shadow": {
+      "enabled": false,
+      "color": "#000000",
+      "opacity": 70,
+      "blur": 4,
+      "x": 0,
+      "y": 1
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "rotation": 90,
+     "warnColor": "#e3cf6c",
+     "overtimeColor": "#ed1c24",
+     "build": {
+      "type": "fade",
+      "delay": 0.1,
+      "duration": 1.4
+     },
+     "idle": {
+      "type": "float",
+      "amount": 25,
+      "speed": 0.4
+     }
+    },
+    {
+     "id": "grain",
+     "type": "motion",
+     "name": "Film grain",
+     "visible": true,
+     "opacity": 100,
+     "pos": {
+      "x": 0,
+      "y": 0,
+      "w": 1920,
+      "h": 1080
+     },
+     "graphic": {
+      "kind": "grain",
+      "intensity": 7,
+      "size": 2,
+      "blend": "overlay",
+      "speed": 1,
+      "seed": 11
+     }
+    }
+   ]
+  },
+  {
+   "id": "scene-first-time-2",
+   "name": "First Time With Us?",
+   "durationSec": 30,
+   "layers": [
+    {
+     "id": "bg",
+     "type": "background",
+     "name": "Canvas",
+     "visible": true,
+     "fill": "image",
+     "src": "backgrounds/teal-studio.jpg",
+     "color": "#1d3b3f",
+     "opacity": 100,
+     "color2": "#0c2023",
+     "angle": 160
+    },
+    {
+     "id": "light",
+     "type": "motion",
+     "name": "Soft light",
+     "visible": true,
+     "opacity": 100,
+     "pos": {
+      "x": 0,
+      "y": 0,
+      "w": 1920,
+      "h": 1080
+     },
+     "graphic": {
+      "kind": "aurora",
+      "colors": [
+       "#5f9096",
+       "#2f6269"
+      ],
+      "count": 3,
+      "size": 95,
+      "intensity": 34,
+      "speed": 0.35,
+      "blend": "glow",
+      "seed": 13
+     }
+    },
+    {
+     "id": "photo",
+     "type": "image",
+     "name": "Photo",
+     "visible": true,
+     "src": "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%271200%27%20height%3D%271080%27%20viewBox%3D%270%200%201200%201080%27%3E%0A%3Cdefs%3E%3ClinearGradient%20id%3D%27g%27%20x1%3D%270%27%20y1%3D%270%27%20x2%3D%270%27%20y2%3D%271%27%3E%3Cstop%20offset%3D%270%27%20stop-color%3D%27%234a4f58%27%2F%3E%3Cstop%20offset%3D%271%27%20stop-color%3D%27%230d0f12%27%2F%3E%3C%2FlinearGradient%3E%0A%3ClinearGradient%20id%3D%27b%27%20x1%3D%270%27%20y1%3D%270%27%20x2%3D%270%27%20y2%3D%271%27%3E%3Cstop%20offset%3D%270%27%20stop-color%3D%27%23fff%27%20stop-opacity%3D%27.42%27%2F%3E%3Cstop%20offset%3D%271%27%20stop-color%3D%27%23fff%27%20stop-opacity%3D%270%27%2F%3E%3C%2FlinearGradient%3E%0A%3CradialGradient%20id%3D%27s%27%20cx%3D%2742%25%27%20cy%3D%2710%25%27%20r%3D%2762%25%27%3E%3Cstop%20offset%3D%270%27%20stop-color%3D%27%23fff4dc%27%20stop-opacity%3D%27.85%27%2F%3E%3Cstop%20offset%3D%271%27%20stop-color%3D%27%23fff4dc%27%20stop-opacity%3D%270%27%2F%3E%3C%2FradialGradient%3E%3C%2Fdefs%3E%0A%3Crect%20width%3D%271200%27%20height%3D%271080%27%20fill%3D%27url(%23g)%27%2F%3E%3Crect%20width%3D%271200%27%20height%3D%271080%27%20fill%3D%27url(%23s)%27%2F%3E%0A%3Cpolygon%20points%3D%27430%2C0%20520%2C0%20900%2C1080%20160%2C1080%27%20fill%3D%27url(%23b)%27%2F%3E%3Cpolygon%20points%3D%27860%2C0%20920%2C0%201180%2C1080%20640%2C1080%27%20fill%3D%27url(%23b)%27%20opacity%3D%27.6%27%2F%3E%0A%3Cg%20fill%3D%27%23fff%27%20opacity%3D%27.35%27%3E%3Ccircle%20cx%3D%27180%27%20cy%3D%27240%27%20r%3D%2726%27%2F%3E%3Ccircle%20cx%3D%27980%27%20cy%3D%27320%27%20r%3D%2718%27%2F%3E%3Ccircle%20cx%3D%27760%27%20cy%3D%27170%27%20r%3D%2712%27%2F%3E%3Ccircle%20cx%3D%27300%27%20cy%3D%27460%27%20r%3D%2710%27%2F%3E%3Ccircle%20cx%3D%271080%27%20cy%3D%27520%27%20r%3D%2722%27%2F%3E%3C%2Fg%3E%0A%3Cg%20fill%3D%27%23050607%27%3E%3Cpath%20d%3D%27M300%201080%20L320%20760%20L335%20560%20L352%20548%20L360%20760%20L380%201080%20Z%27%2F%3E%3Cpath%20d%3D%27M860%201080%20L875%20800%20L905%20610%20L922%20604%20L918%20800%20L930%201080%20Z%27%2F%3E%0A%3Cpath%20d%3D%27M0%201080%20L0%20930%20C40%20880%20110%20880%20140%20930%20C160%20860%20250%20850%20280%20920%20C310%20840%20420%20850%20440%20930%20C470%20860%20560%20860%20590%20940%20C620%20870%20720%20870%20740%20940%20C780%20860%20880%20860%20900%20930%20C930%20850%201040%20860%201060%20935%20C1090%20880%201170%20880%201200%20920%20L1200%201080%20Z%27%2F%3E%0A%3Ccircle%20cx%3D%2790%27%20cy%3D%27900%27%20r%3D%2752%27%2F%3E%3Ccircle%20cx%3D%27230%27%20cy%3D%27880%27%20r%3D%2756%27%2F%3E%3Ccircle%20cx%3D%27380%27%20cy%3D%27890%27%20r%3D%2754%27%2F%3E%3Ccircle%20cx%3D%27530%27%20cy%3D%27900%27%20r%3D%2752%27%2F%3E%3Ccircle%20cx%3D%27680%27%20cy%3D%27895%27%20r%3D%2756%27%2F%3E%3Ccircle%20cx%3D%27830%27%20cy%3D%27885%27%20r%3D%2754%27%2F%3E%3Ccircle%20cx%3D%27990%27%20cy%3D%27890%27%20r%3D%2756%27%2F%3E%3Ccircle%20cx%3D%271140%27%20cy%3D%27900%27%20r%3D%2752%27%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E",
+     "fit": "cover",
+     "opacity": 80,
+     "radius": 0,
+     "pos": {
+      "x": 860,
+      "y": 0,
+      "w": 1060,
+      "h": 1080
+     },
+     "grayscale": 100,
+     "fade": {
+      "side": "left",
+      "amount": 62
+     },
+     "build": {
+      "type": "fade",
+      "delay": 0,
+      "duration": 1.4
+     },
+     "idle": {
+      "type": "breathe",
+      "amount": 18,
+      "speed": 0.35
+     }
+    },
+    {
+     "id": "line",
+     "type": "motion",
+     "name": "Flowing line",
+     "visible": true,
+     "opacity": 90,
+     "pos": {
+      "x": 1210,
+      "y": 60,
+      "w": 560,
+      "h": 760
+     },
+     "build": {
+      "type": "fade",
+      "delay": 0.25,
+      "duration": 0.4
+     },
+     "graphic": {
+      "kind": "line",
+      "colors": [
+       "#f0b9d4"
+      ],
+      "shape": "loop",
+      "thickness": 7,
+      "draw": 2.4,
+      "mirror": "none",
+      "drift": 35,
+      "speed": 0.6,
+      "seed": 5
+     }
+    },
+    {
+     "id": "headline",
+     "type": "text",
+     "name": "Headline",
+     "visible": true,
+     "binding": "custom",
+     "customText": "*First time*\nwith us?",
+     "pos": {
+      "x": 140,
+      "y": 250,
+      "w": 1000,
+      "h": 400
+     },
+     "font": {
+      "family": "Anton",
+      "size": 188,
+      "weight": 400,
+      "italic": false,
+      "lineHeight": 0.98,
+      "letterSpacing": 1,
+      "transform": "uppercase"
+     },
+     "color": "#f3ead3",
+     "opacity": 100,
+     "align": "left",
+     "shadow": {
+      "enabled": true,
+      "color": "#000000",
+      "opacity": 45,
+      "blur": 18,
+      "x": 0,
+      "y": 4
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "accentColor": "#e3cf6c",
+     "build": {
+      "type": "words",
+      "delay": 0.35,
+      "duration": 0.8
+     },
+     "idle": {
+      "type": "float",
+      "amount": 22,
+      "speed": 0.55
+     }
+    },
+    {
+     "id": "sub",
+     "type": "text",
+     "name": "Supporting line",
+     "visible": true,
+     "binding": "custom",
+     "customText": "Welcome! We're happy to have you with us.",
+     "pos": {
+      "x": 146,
+      "y": 690,
+      "w": 780,
+      "h": 130
+     },
+     "font": {
+      "family": "Manrope",
+      "size": 44,
+      "weight": 600,
+      "italic": false,
+      "lineHeight": 1.35,
+      "letterSpacing": 0,
+      "transform": "none"
+     },
+     "color": "#ffffff",
+     "opacity": 90,
+     "align": "left",
+     "shadow": {
+      "enabled": false,
+      "color": "#000000",
+      "opacity": 70,
+      "blur": 4,
+      "x": 0,
+      "y": 1
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "accentColor": "#e3cf6c",
+     "build": {
+      "type": "rise",
+      "delay": 0.95,
+      "duration": 0.8
+     }
+    },
+    {
+     "id": "countdown",
+     "type": "text",
+     "name": "Countdown",
+     "visible": true,
+     "binding": "timer",
+     "customText": "",
+     "pos": {
+      "x": 1230,
+      "y": 380,
+      "w": 1000,
+      "h": 320
+     },
+     "font": {
+      "family": "Anton",
+      "size": 300,
+      "weight": 400,
+      "italic": false,
+      "lineHeight": 1,
+      "letterSpacing": 8,
+      "transform": "none"
+     },
+     "color": "#f3ead3",
+     "opacity": 13,
+     "align": "center",
+     "shadow": {
+      "enabled": false,
+      "color": "#000000",
+      "opacity": 70,
+      "blur": 4,
+      "x": 0,
+      "y": 1
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "rotation": 90,
+     "warnColor": "#e3cf6c",
+     "overtimeColor": "#ed1c24",
+     "build": {
+      "type": "fade",
+      "delay": 0.1,
+      "duration": 1.4
+     },
+     "idle": {
+      "type": "float",
+      "amount": 25,
+      "speed": 0.4
+     }
+    },
+    {
+     "id": "grain",
+     "type": "motion",
+     "name": "Film grain",
+     "visible": true,
+     "opacity": 100,
+     "pos": {
+      "x": 0,
+      "y": 0,
+      "w": 1920,
+      "h": 1080
+     },
+     "graphic": {
+      "kind": "grain",
+      "intensity": 7,
+      "size": 2,
+      "blend": "overlay",
+      "speed": 1,
+      "seed": 11
+     }
+    }
+   ]
+  },
+  {
+   "id": "scene-verse-3",
+   "name": "Verse of the Week",
+   "durationSec": 30,
+   "layers": [
+    {
+     "id": "bg",
+     "type": "background",
+     "name": "Canvas",
+     "visible": true,
+     "fill": "image",
+     "src": "backgrounds/teal-studio.jpg",
+     "color": "#1d3b3f",
+     "opacity": 100,
+     "color2": "#0c2023",
+     "angle": 160
+    },
+    {
+     "id": "light",
+     "type": "motion",
+     "name": "Soft light",
+     "visible": true,
+     "opacity": 100,
+     "pos": {
+      "x": 0,
+      "y": 0,
+      "w": 1920,
+      "h": 1080
+     },
+     "graphic": {
+      "kind": "aurora",
+      "colors": [
+       "#5f9096",
+       "#2f6269"
+      ],
+      "count": 3,
+      "size": 95,
+      "intensity": 34,
+      "speed": 0.35,
+      "blend": "glow",
+      "seed": 21
+     }
+    },
+    {
+     "id": "headline",
+     "type": "text",
+     "name": "Headline",
+     "visible": true,
+     "binding": "custom",
+     "customText": "*Verse*\nof the\nweek",
+     "pos": {
+      "x": 140,
+      "y": 200,
+      "w": 560,
+      "h": 640
+     },
+     "font": {
+      "family": "Anton",
+      "size": 170,
+      "weight": 400,
+      "italic": false,
+      "lineHeight": 0.98,
+      "letterSpacing": 1,
+      "transform": "uppercase"
+     },
+     "color": "#f3ead3",
+     "opacity": 100,
+     "align": "left",
+     "shadow": {
+      "enabled": true,
+      "color": "#000000",
+      "opacity": 45,
+      "blur": 18,
+      "x": 0,
+      "y": 4
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "accentColor": "#e3cf6c",
+     "build": {
+      "type": "words",
+      "delay": 0.35,
+      "duration": 0.8
+     },
+     "idle": {
+      "type": "float",
+      "amount": 22,
+      "speed": 0.55
+     }
+    },
+    {
+     "id": "quote",
+     "type": "text",
+     "name": "Verse",
+     "visible": true,
+     "binding": "custom",
+     "customText": "The LORD is my strength and my shield; my heart trusted in him, and I am helped: therefore *my heart greatly rejoiceth*; and with my song will I praise him.",
+     "pos": {
+      "x": 760,
+      "y": 230,
+      "w": 780,
+      "h": 500
+     },
+     "font": {
+      "family": "Manrope",
+      "size": 44,
+      "weight": 600,
+      "italic": false,
+      "lineHeight": 1.42,
+      "letterSpacing": 0,
+      "transform": "none"
+     },
+     "color": "#ffffff",
+     "opacity": 95,
+     "align": "left",
+     "shadow": {
+      "enabled": false,
+      "color": "#000000",
+      "opacity": 70,
+      "blur": 4,
+      "x": 0,
+      "y": 1
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "accentColor": "#e3cf6c",
+     "build": {
+      "type": "words",
+      "delay": 0.9,
+      "duration": 0.6
+     }
+    },
+    {
+     "id": "reference",
+     "type": "text",
+     "name": "Reference",
+     "visible": true,
+     "binding": "custom",
+     "customText": "Psalm 28:7",
+     "pos": {
+      "x": 764,
+      "y": 740,
+      "w": 700,
+      "h": 60
+     },
+     "font": {
+      "family": "Manrope",
+      "size": 30,
+      "weight": 800,
+      "italic": false,
+      "lineHeight": 1.35,
+      "letterSpacing": 6,
+      "transform": "uppercase"
+     },
+     "color": "#e3cf6c",
+     "opacity": 100,
+     "align": "left",
+     "shadow": {
+      "enabled": false,
+      "color": "#000000",
+      "opacity": 70,
+      "blur": 4,
+      "x": 0,
+      "y": 1
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "build": {
+      "type": "left",
+      "delay": 2.4,
+      "duration": 0.7
+     }
+    },
+    {
+     "id": "line",
+     "type": "motion",
+     "name": "Flowing line",
+     "visible": true,
+     "opacity": 90,
+     "pos": {
+      "x": 760,
+      "y": 810,
+      "w": 420,
+      "h": 50
+     },
+     "build": {
+      "type": "fade",
+      "delay": 2.6,
+      "duration": 0.4
+     },
+     "graphic": {
+      "kind": "line",
+      "colors": [
+       "#f0b9d4"
+      ],
+      "shape": "underline",
+      "thickness": 7,
+      "draw": 2.4,
+      "mirror": "none",
+      "drift": 35,
+      "speed": 0.6,
+      "seed": 5
+     }
+    },
+    {
+     "id": "countdown",
+     "type": "text",
+     "name": "Countdown",
+     "visible": true,
+     "binding": "timer",
+     "customText": "",
+     "pos": {
+      "x": 1230,
+      "y": 380,
+      "w": 1000,
+      "h": 320
+     },
+     "font": {
+      "family": "Anton",
+      "size": 300,
+      "weight": 400,
+      "italic": false,
+      "lineHeight": 1,
+      "letterSpacing": 8,
+      "transform": "none"
+     },
+     "color": "#f3ead3",
+     "opacity": 13,
+     "align": "center",
+     "shadow": {
+      "enabled": false,
+      "color": "#000000",
+      "opacity": 70,
+      "blur": 4,
+      "x": 0,
+      "y": 1
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "rotation": 90,
+     "warnColor": "#e3cf6c",
+     "overtimeColor": "#ed1c24",
+     "build": {
+      "type": "fade",
+      "delay": 0.1,
+      "duration": 1.4
+     },
+     "idle": {
+      "type": "float",
+      "amount": 25,
+      "speed": 0.4
+     }
+    },
+    {
+     "id": "grain",
+     "type": "motion",
+     "name": "Film grain",
+     "visible": true,
+     "opacity": 100,
+     "pos": {
+      "x": 0,
+      "y": 0,
+      "w": 1920,
+      "h": 1080
+     },
+     "graphic": {
+      "kind": "grain",
+      "intensity": 7,
+      "size": 2,
+      "blend": "overlay",
+      "speed": 1,
+      "seed": 11
+     }
+    }
+   ]
+  },
+  {
+   "id": "scene-prayer-4",
+   "name": "Need Prayer?",
+   "durationSec": 30,
+   "layers": [
+    {
+     "id": "bg",
+     "type": "background",
+     "name": "Canvas",
+     "visible": true,
+     "fill": "image",
+     "src": "backgrounds/teal-studio.jpg",
+     "color": "#1d3b3f",
+     "opacity": 100,
+     "color2": "#0c2023",
+     "angle": 160
+    },
+    {
+     "id": "light",
+     "type": "motion",
+     "name": "Soft light",
+     "visible": true,
+     "opacity": 100,
+     "pos": {
+      "x": 0,
+      "y": 0,
+      "w": 1920,
+      "h": 1080
+     },
+     "graphic": {
+      "kind": "aurora",
+      "colors": [
+       "#5f9096",
+       "#2f6269"
+      ],
+      "count": 3,
+      "size": 95,
+      "intensity": 34,
+      "speed": 0.35,
+      "blend": "glow",
+      "seed": 55
+     }
+    },
+    {
+     "id": "photo",
+     "type": "image",
+     "name": "Photo",
+     "visible": true,
+     "src": "data:image/svg+xml;utf8,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%271200%27%20height%3D%271080%27%20viewBox%3D%270%200%201200%201080%27%3E%0A%3Cdefs%3E%3CradialGradient%20id%3D%27l%27%20cx%3D%2755%25%27%20cy%3D%2740%25%27%20r%3D%2770%25%27%3E%3Cstop%20offset%3D%270%27%20stop-color%3D%27%23f5e6c8%27%2F%3E%3Cstop%20offset%3D%271%27%20stop-color%3D%27%231a1712%27%2F%3E%3C%2FradialGradient%3E%0A%3ClinearGradient%20id%3D%27p%27%20x1%3D%270%27%20y1%3D%270%27%20x2%3D%271%27%20y2%3D%270%27%3E%3Cstop%20offset%3D%270%27%20stop-color%3D%27%23fdf8ee%27%2F%3E%3Cstop%20offset%3D%271%27%20stop-color%3D%27%23d9d0bf%27%2F%3E%3C%2FlinearGradient%3E%3C%2Fdefs%3E%0A%3Crect%20width%3D%271200%27%20height%3D%271080%27%20fill%3D%27url(%23l)%27%2F%3E%0A%3Cpath%20d%3D%27M160%20760%20C360%20640%20520%20650%20600%20700%20L600%201000%20C520%20950%20360%20940%20160%201060%20Z%27%20fill%3D%27url(%23p)%27%2F%3E%0A%3Cpath%20d%3D%27M1040%20760%20C840%20640%20680%20650%20600%20700%20L600%201000%20C680%20950%20840%20940%201040%201060%20Z%27%20fill%3D%27url(%23p)%27%20opacity%3D%27.92%27%2F%3E%0A%3Cg%20stroke%3D%27%238f8574%27%20stroke-width%3D%275%27%20opacity%3D%27.5%27%3E%3Cpath%20d%3D%27M240%20780%20C360%20720%20470%20715%20560%20745%27%2F%3E%3Cpath%20d%3D%27M240%20820%20C360%20760%20470%20755%20560%20785%27%2F%3E%3Cpath%20d%3D%27M240%20860%20C360%20800%20470%20795%20560%20825%27%2F%3E%0A%3Cpath%20d%3D%27M960%20780%20C840%20720%20730%20715%20640%20745%27%2F%3E%3Cpath%20d%3D%27M960%20820%20C840%20760%20730%20755%20640%20785%27%2F%3E%3Cpath%20d%3D%27M960%20860%20C840%20800%20730%20795%20640%20825%27%2F%3E%3C%2Fg%3E%0A%3Cg%20fill%3D%27%232b241b%27%3E%3Cpath%20d%3D%27M330%20560%20C380%20470%20470%20450%20540%20480%20L610%20690%20C560%20660%20470%20660%20420%20690%20Z%27%2F%3E%3Cpath%20d%3D%27M880%20560%20C830%20470%20740%20450%20670%20480%20L600%20690%20C650%20660%20740%20660%20790%20690%20Z%27%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E",
+     "fit": "cover",
+     "opacity": 80,
+     "radius": 0,
+     "pos": {
+      "x": 880,
+      "y": 0,
+      "w": 1040,
+      "h": 1080
+     },
+     "grayscale": 100,
+     "fade": {
+      "side": "left",
+      "amount": 62
+     },
+     "build": {
+      "type": "fade",
+      "delay": 0,
+      "duration": 1.4
+     },
+     "idle": {
+      "type": "breathe",
+      "amount": 18,
+      "speed": 0.35
+     }
+    },
+    {
+     "id": "headline",
+     "type": "text",
+     "name": "Headline",
+     "visible": true,
+     "binding": "custom",
+     "customText": "Need\n*prayer?*",
+     "pos": {
+      "x": 140,
+      "y": 240,
+      "w": 900,
+      "h": 400
+     },
+     "font": {
+      "family": "Anton",
+      "size": 196,
+      "weight": 400,
+      "italic": false,
+      "lineHeight": 0.98,
+      "letterSpacing": 1,
+      "transform": "uppercase"
+     },
+     "color": "#f3ead3",
+     "opacity": 100,
+     "align": "left",
+     "shadow": {
+      "enabled": true,
+      "color": "#000000",
+      "opacity": 45,
+      "blur": 18,
+      "x": 0,
+      "y": 4
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "accentColor": "#e3cf6c",
+     "build": {
+      "type": "words",
+      "delay": 0.35,
+      "duration": 0.8
+     },
+     "idle": {
+      "type": "float",
+      "amount": 22,
+      "speed": 0.55
+     }
+    },
+    {
+     "id": "sub",
+     "type": "text",
+     "name": "Supporting line",
+     "visible": true,
+     "binding": "custom",
+     "customText": "Our prayer team would love to pray with you. Find us at the front after the service.",
+     "pos": {
+      "x": 146,
+      "y": 690,
+      "w": 760,
+      "h": 180
+     },
+     "font": {
+      "family": "Manrope",
+      "size": 40,
+      "weight": 600,
+      "italic": false,
+      "lineHeight": 1.35,
+      "letterSpacing": 0,
+      "transform": "none"
+     },
+     "color": "#ffffff",
+     "opacity": 90,
+     "align": "left",
+     "shadow": {
+      "enabled": false,
+      "color": "#000000",
+      "opacity": 70,
+      "blur": 4,
+      "x": 0,
+      "y": 1
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "accentColor": "#e3cf6c",
+     "build": {
+      "type": "rise",
+      "delay": 0.95,
+      "duration": 0.8
+     }
+    },
+    {
+     "id": "arrow",
+     "type": "motion",
+     "name": "Doodle arrow",
+     "visible": true,
+     "opacity": 100,
+     "pos": {
+      "x": 760,
+      "y": 820,
+      "w": 200,
+      "h": 200
+     },
+     "rotation": 0,
+     "build": {
+      "type": "fade",
+      "delay": 1.6,
+      "duration": 0.3
+     },
+     "graphic": {
+      "kind": "doodle",
+      "colors": [
+       "#e3cf6c"
+      ],
+      "shape": "curl",
+      "thickness": 9,
+      "draw": 1.1,
+      "mirror": "none",
+      "drift": 20,
+      "speed": 0.8,
+      "seed": 9
+     }
+    },
+    {
+     "id": "countdown",
+     "type": "text",
+     "name": "Countdown",
+     "visible": true,
+     "binding": "timer",
+     "customText": "",
+     "pos": {
+      "x": 1230,
+      "y": 380,
+      "w": 1000,
+      "h": 320
+     },
+     "font": {
+      "family": "Anton",
+      "size": 300,
+      "weight": 400,
+      "italic": false,
+      "lineHeight": 1,
+      "letterSpacing": 8,
+      "transform": "none"
+     },
+     "color": "#f3ead3",
+     "opacity": 13,
+     "align": "center",
+     "shadow": {
+      "enabled": false,
+      "color": "#000000",
+      "opacity": 70,
+      "blur": 4,
+      "x": 0,
+      "y": 1
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "rotation": 90,
+     "warnColor": "#e3cf6c",
+     "overtimeColor": "#ed1c24",
+     "build": {
+      "type": "fade",
+      "delay": 0.1,
+      "duration": 1.4
+     },
+     "idle": {
+      "type": "float",
+      "amount": 25,
+      "speed": 0.4
+     }
+    },
+    {
+     "id": "grain",
+     "type": "motion",
+     "name": "Film grain",
+     "visible": true,
+     "opacity": 100,
+     "pos": {
+      "x": 0,
+      "y": 0,
+      "w": 1920,
+      "h": 1080
+     },
+     "graphic": {
+      "kind": "grain",
+      "intensity": 7,
+      "size": 2,
+      "blend": "overlay",
+      "speed": 1,
+      "seed": 11
+     }
+    }
+   ]
+  },
+  {
+   "id": "scene-begins-5",
+   "name": "Service Begins",
+   "durationSec": 30,
+   "layers": [
+    {
+     "id": "bg",
+     "type": "background",
+     "name": "Canvas",
+     "visible": true,
+     "fill": "image",
+     "src": "backgrounds/teal-studio.jpg",
+     "color": "#1d3b3f",
+     "opacity": 100,
+     "color2": "#0c2023",
+     "angle": 160
+    },
+    {
+     "id": "light",
+     "type": "motion",
+     "name": "Soft light",
+     "visible": true,
+     "opacity": 100,
+     "pos": {
+      "x": 0,
+      "y": 0,
+      "w": 1920,
+      "h": 1080
+     },
+     "graphic": {
+      "kind": "aurora",
+      "colors": [
+       "#5f9096",
+       "#2f6269"
+      ],
+      "count": 3,
+      "size": 95,
+      "intensity": 34,
+      "speed": 0.35,
+      "blend": "glow",
+      "seed": 987
+     }
+    },
+    {
+     "id": "line",
+     "type": "motion",
+     "name": "Flowing line",
+     "visible": true,
+     "opacity": 90,
+     "pos": {
+      "x": 60,
+      "y": 720,
+      "w": 1100,
+      "h": 300
+     },
+     "build": {
+      "type": "fade",
+      "delay": 0.2,
+      "duration": 0.4
+     },
+     "graphic": {
+      "kind": "line",
+      "colors": [
+       "#f0b9d4"
+      ],
+      "shape": "swoosh",
+      "thickness": 7,
+      "draw": 2.4,
+      "mirror": "none",
+      "drift": 35,
+      "speed": 0.6,
+      "seed": 5
+     }
+    },
+    {
+     "id": "headline",
+     "type": "text",
+     "name": "Headline",
+     "visible": true,
+     "binding": "custom",
+     "customText": "*Service*\nbegins",
+     "pos": {
+      "x": 140,
+      "y": 250,
+      "w": 1000,
+      "h": 400
+     },
+     "font": {
+      "family": "Anton",
+      "size": 200,
+      "weight": 400,
+      "italic": false,
+      "lineHeight": 0.98,
+      "letterSpacing": 1,
+      "transform": "uppercase"
+     },
+     "color": "#f3ead3",
+     "opacity": 100,
+     "align": "left",
+     "shadow": {
+      "enabled": true,
+      "color": "#000000",
+      "opacity": 45,
+      "blur": 18,
+      "x": 0,
+      "y": 4
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "accentColor": "#e3cf6c",
+     "build": {
+      "type": "words",
+      "delay": 0.35,
+      "duration": 0.8
+     },
+     "idle": {
+      "type": "float",
+      "amount": 22,
+      "speed": 0.55
+     }
+    },
+    {
+     "id": "soon",
+     "type": "text",
+     "name": "In a moment",
+     "visible": true,
+     "binding": "custom",
+     "customText": "in a moment",
+     "pos": {
+      "x": 146,
+      "y": 660,
+      "w": 700,
+      "h": 70
+     },
+     "font": {
+      "family": "Manrope",
+      "size": 44,
+      "weight": 700,
+      "italic": true,
+      "lineHeight": 1.35,
+      "letterSpacing": 0,
+      "transform": "none"
+     },
+     "color": "#e3cf6c",
+     "opacity": 100,
+     "align": "left",
+     "shadow": {
+      "enabled": false,
+      "color": "#000000",
+      "opacity": 70,
+      "blur": 4,
+      "x": 0,
+      "y": 1
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "build": {
+      "type": "rise",
+      "delay": 0.9,
+      "duration": 0.8
+     }
+    },
+    {
+     "id": "sub",
+     "type": "text",
+     "name": "Supporting line",
+     "visible": true,
+     "binding": "custom",
+     "customText": "Find your seat, quiet your heart, and get ready to worship.",
+     "pos": {
+      "x": 146,
+      "y": 760,
+      "w": 820,
+      "h": 130
+     },
+     "font": {
+      "family": "Manrope",
+      "size": 38,
+      "weight": 600,
+      "italic": false,
+      "lineHeight": 1.35,
+      "letterSpacing": 0,
+      "transform": "none"
+     },
+     "color": "#ffffff",
+     "opacity": 90,
+     "align": "left",
+     "shadow": {
+      "enabled": false,
+      "color": "#000000",
+      "opacity": 70,
+      "blur": 4,
+      "x": 0,
+      "y": 1
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "accentColor": "#e3cf6c",
+     "build": {
+      "type": "rise",
+      "delay": 1.2,
+      "duration": 0.8
+     }
+    },
+    {
+     "id": "ring",
+     "type": "motion",
+     "name": "Countdown ring",
+     "visible": true,
+     "opacity": 100,
+     "pos": {
+      "x": 1180,
+      "y": 190,
+      "w": 620,
+      "h": 620
+     },
+     "build": {
+      "type": "pop",
+      "delay": 0.4,
+      "duration": 0.8
+     },
+     "graphic": {
+      "kind": "ring",
+      "colors": [
+       "#e3cf6c",
+       "#f3ead3",
+       "#e3cf6c",
+       "#ed1c24"
+      ],
+      "thickness": 3,
+      "trackOpacity": 16,
+      "direction": "deplete",
+      "caps": "round",
+      "glow": 35,
+      "stateColors": true,
+      "seed": 1
+     }
+    },
+    {
+     "id": "countdown",
+     "type": "text",
+     "name": "Countdown",
+     "visible": true,
+     "binding": "timer",
+     "customText": "",
+     "pos": {
+      "x": 1180,
+      "y": 400,
+      "w": 620,
+      "h": 200
+     },
+     "font": {
+      "family": "Anton",
+      "size": 170,
+      "weight": 400,
+      "italic": false,
+      "lineHeight": 1,
+      "letterSpacing": 4,
+      "transform": "none"
+     },
+     "color": "#f3ead3",
+     "opacity": 100,
+     "align": "center",
+     "shadow": {
+      "enabled": false,
+      "color": "#000000",
+      "opacity": 70,
+      "blur": 4,
+      "x": 0,
+      "y": 1
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "warnColor": "#e3cf6c",
+     "overtimeColor": "#ed1c24",
+     "build": {
+      "type": "fade",
+      "delay": 0.6,
+      "duration": 0.8
+     }
+    },
+    {
+     "id": "grain",
+     "type": "motion",
+     "name": "Film grain",
+     "visible": true,
+     "opacity": 100,
+     "pos": {
+      "x": 0,
+      "y": 0,
+      "w": 1920,
+      "h": 1080
+     },
+     "graphic": {
+      "kind": "grain",
+      "intensity": 7,
+      "size": 2,
+      "blend": "overlay",
+      "speed": 1,
+      "seed": 11
+     }
+    }
+   ],
+   "finale": true
+  }
+ ],
+ "preservice2": [
+  {
+   "id": "scene-pre-welcome-0",
+   "name": "Welcome",
+   "durationSec": 30,
+   "layers": [
+    {
+     "id": "bg",
+     "type": "background",
+     "name": "Canvas",
+     "visible": true,
+     "fill": "gradient",
+     "color": "#123b32",
+     "color2": "#1f5c4d",
+     "angle": 135,
+     "opacity": 100
+    },
+    {
+     "id": "glow-1",
+     "type": "background",
+     "name": "Soft circle",
+     "visible": true,
+     "shape": "ellipse",
+     "fill": "solid",
+     "color": "#e8c27a",
+     "opacity": 8,
+     "color2": "#e8c27a",
+     "angle": 0,
+     "pos": {
+      "x": 1390,
+      "y": -80,
+      "w": 520,
+      "h": 520
+     },
+     "build": {
+      "type": "blur",
+      "delay": 0,
+      "duration": 1.6
+     },
+     "idle": {
+      "type": "drift",
+      "amount": 14,
+      "speed": 0.25
+     }
+    },
+    {
+     "id": "glow-2",
+     "type": "background",
+     "name": "Soft circle",
+     "visible": true,
+     "shape": "ellipse",
+     "fill": "solid",
+     "color": "#e8c27a",
+     "opacity": 6,
+     "color2": "#e8c27a",
+     "angle": 0,
+     "pos": {
+      "x": -120,
+      "y": 580,
+      "w": 680,
+      "h": 680
+     },
+     "build": {
+      "type": "blur",
+      "delay": 0.2,
+      "duration": 1.6
+     },
+     "idle": {
+      "type": "breathe",
+      "amount": 16,
+      "speed": 0.3
+     }
+    },
+    {
+     "id": "title",
+     "type": "text",
+     "name": "Title",
+     "visible": true,
+     "binding": "custom",
+     "customText": "Welcome",
+     "pos": {
+      "x": 160,
+      "y": 375,
+      "w": 1600,
+      "h": 170
+     },
+     "font": {
+      "family": "Playfair Display",
+      "size": 150,
+      "weight": 700,
+      "italic": false,
+      "lineHeight": 1,
+      "letterSpacing": 4,
+      "transform": "uppercase"
+     },
+     "color": "#e8c27a",
+     "opacity": 100,
+     "align": "center",
+     "shadow": {
+      "enabled": true,
+      "color": "#000000",
+      "opacity": 45,
+      "blur": 18,
+      "x": 0,
+      "y": 4
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "build": {
+      "type": "letters",
+      "delay": 0.3,
+      "duration": 1.1
+     }
+    },
+    {
+     "id": "rule",
+     "type": "background",
+     "name": "Rule",
+     "visible": true,
+     "fill": "solid",
+     "color": "#e8c27a",
+     "opacity": 100,
+     "color2": "#e8c27a",
+     "angle": 0,
+     "radius": 2,
+     "pos": {
+      "x": 860,
+      "y": 658,
+      "w": 200,
+      "h": 4
+     },
+     "build": {
+      "type": "wipe",
+      "delay": 0.95,
+      "duration": 0.7
+     }
+    },
+    {
+     "id": "subtitle",
+     "type": "text",
+     "name": "Line under it",
+     "visible": true,
+     "binding": "custom",
+     "customText": "We are glad you are here",
+     "pos": {
+      "x": 360,
+      "y": 565,
+      "w": 1200,
+      "h": 60
+     },
+     "font": {
+      "family": "Manrope",
+      "size": 40,
+      "weight": 600,
+      "italic": false,
+      "lineHeight": 1.2,
+      "letterSpacing": 3,
+      "transform": "none"
+     },
+     "color": "#ffffff",
+     "opacity": 80,
+     "align": "center",
+     "shadow": {
+      "enabled": false,
+      "color": "#000000",
+      "opacity": 70,
+      "blur": 4,
+      "x": 0,
+      "y": 1
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "build": {
+      "type": "rise",
+      "delay": 1.15,
+      "duration": 0.8
+     }
+    },
+    {
+     "id": "countdown",
+     "type": "text",
+     "name": "Countdown",
+     "visible": true,
+     "binding": "timer",
+     "customText": "",
+     "pos": {
+      "x": 660,
+      "y": 715,
+      "w": 600,
+      "h": 120
+     },
+     "font": {
+      "family": "Playfair Display",
+      "size": 96,
+      "weight": 600,
+      "italic": false,
+      "lineHeight": 1,
+      "letterSpacing": 2,
+      "transform": "none"
+     },
+     "color": "#e8c27a",
+     "opacity": 100,
+     "align": "center",
+     "shadow": {
+      "enabled": false,
+      "color": "#000000",
+      "opacity": 70,
+      "blur": 4,
+      "x": 0,
+      "y": 1
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "warnColor": "#ffffff",
+     "overtimeColor": "#ed1c24",
+     "build": {
+      "type": "fade",
+      "delay": 1.4,
+      "duration": 0.9
+     }
+    }
+   ]
+  },
+  {
+   "id": "scene-pre-starting-1",
+   "name": "Starting Soon",
+   "durationSec": 30,
+   "layers": [
+    {
+     "id": "bg",
+     "type": "background",
+     "name": "Canvas",
+     "visible": true,
+     "fill": "gradient",
+     "color": "#5c3a1f",
+     "color2": "#8a5a2c",
+     "angle": 135,
+     "opacity": 100
+    },
+    {
+     "id": "glow-1",
+     "type": "background",
+     "name": "Soft circle",
+     "visible": true,
+     "shape": "ellipse",
+     "fill": "solid",
+     "color": "#f6e8cf",
+     "opacity": 8,
+     "color2": "#f6e8cf",
+     "angle": 0,
+     "pos": {
+      "x": 1390,
+      "y": -80,
+      "w": 520,
+      "h": 520
+     },
+     "build": {
+      "type": "blur",
+      "delay": 0,
+      "duration": 1.6
+     },
+     "idle": {
+      "type": "drift",
+      "amount": 14,
+      "speed": 0.25
+     }
+    },
+    {
+     "id": "glow-2",
+     "type": "background",
+     "name": "Soft circle",
+     "visible": true,
+     "shape": "ellipse",
+     "fill": "solid",
+     "color": "#f6e8cf",
+     "opacity": 6,
+     "color2": "#f6e8cf",
+     "angle": 0,
+     "pos": {
+      "x": -120,
+      "y": 580,
+      "w": 680,
+      "h": 680
+     },
+     "build": {
+      "type": "blur",
+      "delay": 0.2,
+      "duration": 1.6
+     },
+     "idle": {
+      "type": "breathe",
+      "amount": 16,
+      "speed": 0.3
+     }
+    },
+    {
+     "id": "title",
+     "type": "text",
+     "name": "Title",
+     "visible": true,
+     "binding": "custom",
+     "customText": "Starting soon",
+     "pos": {
+      "x": 160,
+      "y": 375,
+      "w": 1600,
+      "h": 170
+     },
+     "font": {
+      "family": "Playfair Display",
+      "size": 150,
+      "weight": 700,
+      "italic": false,
+      "lineHeight": 1,
+      "letterSpacing": 4,
+      "transform": "uppercase"
+     },
+     "color": "#f6e8cf",
+     "opacity": 100,
+     "align": "center",
+     "shadow": {
+      "enabled": true,
+      "color": "#000000",
+      "opacity": 45,
+      "blur": 18,
+      "x": 0,
+      "y": 4
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "build": {
+      "type": "letters",
+      "delay": 0.3,
+      "duration": 1.1
+     }
+    },
+    {
+     "id": "rule",
+     "type": "background",
+     "name": "Rule",
+     "visible": true,
+     "fill": "solid",
+     "color": "#f6e8cf",
+     "opacity": 100,
+     "color2": "#f6e8cf",
+     "angle": 0,
+     "radius": 2,
+     "pos": {
+      "x": 860,
+      "y": 658,
+      "w": 200,
+      "h": 4
+     },
+     "build": {
+      "type": "wipe",
+      "delay": 0.95,
+      "duration": 0.7
+     }
+    },
+    {
+     "id": "subtitle",
+     "type": "text",
+     "name": "Line under it",
+     "visible": true,
+     "binding": "custom",
+     "customText": "Please find your seat",
+     "pos": {
+      "x": 360,
+      "y": 565,
+      "w": 1200,
+      "h": 60
+     },
+     "font": {
+      "family": "Manrope",
+      "size": 40,
+      "weight": 600,
+      "italic": false,
+      "lineHeight": 1.2,
+      "letterSpacing": 3,
+      "transform": "none"
+     },
+     "color": "#ffffff",
+     "opacity": 80,
+     "align": "center",
+     "shadow": {
+      "enabled": false,
+      "color": "#000000",
+      "opacity": 70,
+      "blur": 4,
+      "x": 0,
+      "y": 1
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "build": {
+      "type": "rise",
+      "delay": 1.15,
+      "duration": 0.8
+     }
+    },
+    {
+     "id": "countdown",
+     "type": "text",
+     "name": "Countdown",
+     "visible": true,
+     "binding": "timer",
+     "customText": "",
+     "pos": {
+      "x": 660,
+      "y": 715,
+      "w": 600,
+      "h": 120
+     },
+     "font": {
+      "family": "Playfair Display",
+      "size": 96,
+      "weight": 600,
+      "italic": false,
+      "lineHeight": 1,
+      "letterSpacing": 2,
+      "transform": "none"
+     },
+     "color": "#f6e8cf",
+     "opacity": 100,
+     "align": "center",
+     "shadow": {
+      "enabled": false,
+      "color": "#000000",
+      "opacity": 70,
+      "blur": 4,
+      "x": 0,
+      "y": 1
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "warnColor": "#ffffff",
+     "overtimeColor": "#ed1c24",
+     "build": {
+      "type": "fade",
+      "delay": 1.4,
+      "duration": 0.9
+     }
+    }
+   ]
+  },
+  {
+   "id": "scene-pre-service-2",
+   "name": "Pre-Service",
+   "durationSec": 30,
+   "layers": [
+    {
+     "id": "bg",
+     "type": "background",
+     "name": "Canvas",
+     "visible": true,
+     "fill": "gradient",
+     "color": "#0f2d3d",
+     "color2": "#1c4f63",
+     "angle": 135,
+     "opacity": 100
+    },
+    {
+     "id": "glow-1",
+     "type": "background",
+     "name": "Soft circle",
+     "visible": true,
+     "shape": "ellipse",
+     "fill": "solid",
+     "color": "#e8c27a",
+     "opacity": 8,
+     "color2": "#e8c27a",
+     "angle": 0,
+     "pos": {
+      "x": 1390,
+      "y": -80,
+      "w": 520,
+      "h": 520
+     },
+     "build": {
+      "type": "blur",
+      "delay": 0,
+      "duration": 1.6
+     },
+     "idle": {
+      "type": "drift",
+      "amount": 14,
+      "speed": 0.25
+     }
+    },
+    {
+     "id": "glow-2",
+     "type": "background",
+     "name": "Soft circle",
+     "visible": true,
+     "shape": "ellipse",
+     "fill": "solid",
+     "color": "#e8c27a",
+     "opacity": 6,
+     "color2": "#e8c27a",
+     "angle": 0,
+     "pos": {
+      "x": -120,
+      "y": 580,
+      "w": 680,
+      "h": 680
+     },
+     "build": {
+      "type": "blur",
+      "delay": 0.2,
+      "duration": 1.6
+     },
+     "idle": {
+      "type": "breathe",
+      "amount": 16,
+      "speed": 0.3
+     }
+    },
+    {
+     "id": "title",
+     "type": "text",
+     "name": "Title",
+     "visible": true,
+     "binding": "custom",
+     "customText": "Pre-service",
+     "pos": {
+      "x": 160,
+      "y": 375,
+      "w": 1600,
+      "h": 170
+     },
+     "font": {
+      "family": "Playfair Display",
+      "size": 150,
+      "weight": 700,
+      "italic": false,
+      "lineHeight": 1,
+      "letterSpacing": 4,
+      "transform": "uppercase"
+     },
+     "color": "#e8c27a",
+     "opacity": 100,
+     "align": "center",
+     "shadow": {
+      "enabled": true,
+      "color": "#000000",
+      "opacity": 45,
+      "blur": 18,
+      "x": 0,
+      "y": 4
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "build": {
+      "type": "letters",
+      "delay": 0.3,
+      "duration": 1.1
+     }
+    },
+    {
+     "id": "rule",
+     "type": "background",
+     "name": "Rule",
+     "visible": true,
+     "fill": "solid",
+     "color": "#e8c27a",
+     "opacity": 100,
+     "color2": "#e8c27a",
+     "angle": 0,
+     "radius": 2,
+     "pos": {
+      "x": 860,
+      "y": 658,
+      "w": 200,
+      "h": 4
+     },
+     "build": {
+      "type": "wipe",
+      "delay": 0.95,
+      "duration": 0.7
+     }
+    },
+    {
+     "id": "subtitle",
+     "type": "text",
+     "name": "Line under it",
+     "visible": true,
+     "binding": "custom",
+     "customText": "Worship begins shortly",
+     "pos": {
+      "x": 360,
+      "y": 565,
+      "w": 1200,
+      "h": 60
+     },
+     "font": {
+      "family": "Manrope",
+      "size": 40,
+      "weight": 600,
+      "italic": false,
+      "lineHeight": 1.2,
+      "letterSpacing": 3,
+      "transform": "none"
+     },
+     "color": "#ffffff",
+     "opacity": 80,
+     "align": "center",
+     "shadow": {
+      "enabled": false,
+      "color": "#000000",
+      "opacity": 70,
+      "blur": 4,
+      "x": 0,
+      "y": 1
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "build": {
+      "type": "rise",
+      "delay": 1.15,
+      "duration": 0.8
+     }
+    },
+    {
+     "id": "countdown",
+     "type": "text",
+     "name": "Countdown",
+     "visible": true,
+     "binding": "timer",
+     "customText": "",
+     "pos": {
+      "x": 660,
+      "y": 715,
+      "w": 600,
+      "h": 120
+     },
+     "font": {
+      "family": "Playfair Display",
+      "size": 96,
+      "weight": 600,
+      "italic": false,
+      "lineHeight": 1,
+      "letterSpacing": 2,
+      "transform": "none"
+     },
+     "color": "#e8c27a",
+     "opacity": 100,
+     "align": "center",
+     "shadow": {
+      "enabled": false,
+      "color": "#000000",
+      "opacity": 70,
+      "blur": 4,
+      "x": 0,
+      "y": 1
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "warnColor": "#ffffff",
+     "overtimeColor": "#ed1c24",
+     "build": {
+      "type": "fade",
+      "delay": 1.4,
+      "duration": 0.9
+     }
+    }
+   ]
+  },
+  {
+   "id": "scene-pre-almost-3",
+   "name": "Almost Time",
+   "durationSec": 30,
+   "layers": [
+    {
+     "id": "bg",
+     "type": "background",
+     "name": "Canvas",
+     "visible": true,
+     "fill": "gradient",
+     "color": "#3a1f2e",
+     "color2": "#5c2f47",
+     "angle": 135,
+     "opacity": 100
+    },
+    {
+     "id": "glow-1",
+     "type": "background",
+     "name": "Soft circle",
+     "visible": true,
+     "shape": "ellipse",
+     "fill": "solid",
+     "color": "#f0c9a0",
+     "opacity": 8,
+     "color2": "#f0c9a0",
+     "angle": 0,
+     "pos": {
+      "x": 1390,
+      "y": -80,
+      "w": 520,
+      "h": 520
+     },
+     "build": {
+      "type": "blur",
+      "delay": 0,
+      "duration": 1.6
+     },
+     "idle": {
+      "type": "drift",
+      "amount": 14,
+      "speed": 0.25
+     }
+    },
+    {
+     "id": "glow-2",
+     "type": "background",
+     "name": "Soft circle",
+     "visible": true,
+     "shape": "ellipse",
+     "fill": "solid",
+     "color": "#f0c9a0",
+     "opacity": 6,
+     "color2": "#f0c9a0",
+     "angle": 0,
+     "pos": {
+      "x": -120,
+      "y": 580,
+      "w": 680,
+      "h": 680
+     },
+     "build": {
+      "type": "blur",
+      "delay": 0.2,
+      "duration": 1.6
+     },
+     "idle": {
+      "type": "breathe",
+      "amount": 16,
+      "speed": 0.3
+     }
+    },
+    {
+     "id": "title",
+     "type": "text",
+     "name": "Title",
+     "visible": true,
+     "binding": "custom",
+     "customText": "Almost time",
+     "pos": {
+      "x": 160,
+      "y": 375,
+      "w": 1600,
+      "h": 170
+     },
+     "font": {
+      "family": "Playfair Display",
+      "size": 150,
+      "weight": 700,
+      "italic": false,
+      "lineHeight": 1,
+      "letterSpacing": 4,
+      "transform": "uppercase"
+     },
+     "color": "#f0c9a0",
+     "opacity": 100,
+     "align": "center",
+     "shadow": {
+      "enabled": true,
+      "color": "#000000",
+      "opacity": 45,
+      "blur": 18,
+      "x": 0,
+      "y": 4
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "build": {
+      "type": "letters",
+      "delay": 0.3,
+      "duration": 1.1
+     }
+    },
+    {
+     "id": "rule",
+     "type": "background",
+     "name": "Rule",
+     "visible": true,
+     "fill": "solid",
+     "color": "#f0c9a0",
+     "opacity": 100,
+     "color2": "#f0c9a0",
+     "angle": 0,
+     "radius": 2,
+     "pos": {
+      "x": 860,
+      "y": 658,
+      "w": 200,
+      "h": 4
+     },
+     "build": {
+      "type": "wipe",
+      "delay": 0.95,
+      "duration": 0.7
+     }
+    },
+    {
+     "id": "subtitle",
+     "type": "text",
+     "name": "Line under it",
+     "visible": true,
+     "binding": "custom",
+     "customText": "Silence your phones",
+     "pos": {
+      "x": 360,
+      "y": 565,
+      "w": 1200,
+      "h": 60
+     },
+     "font": {
+      "family": "Manrope",
+      "size": 40,
+      "weight": 600,
+      "italic": false,
+      "lineHeight": 1.2,
+      "letterSpacing": 3,
+      "transform": "none"
+     },
+     "color": "#ffffff",
+     "opacity": 80,
+     "align": "center",
+     "shadow": {
+      "enabled": false,
+      "color": "#000000",
+      "opacity": 70,
+      "blur": 4,
+      "x": 0,
+      "y": 1
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "build": {
+      "type": "rise",
+      "delay": 1.15,
+      "duration": 0.8
+     }
+    },
+    {
+     "id": "countdown",
+     "type": "text",
+     "name": "Countdown",
+     "visible": true,
+     "binding": "timer",
+     "customText": "",
+     "pos": {
+      "x": 660,
+      "y": 715,
+      "w": 600,
+      "h": 120
+     },
+     "font": {
+      "family": "Playfair Display",
+      "size": 96,
+      "weight": 600,
+      "italic": false,
+      "lineHeight": 1,
+      "letterSpacing": 2,
+      "transform": "none"
+     },
+     "color": "#f0c9a0",
+     "opacity": 100,
+     "align": "center",
+     "shadow": {
+      "enabled": false,
+      "color": "#000000",
+      "opacity": 70,
+      "blur": 4,
+      "x": 0,
+      "y": 1
+     },
+     "outline": {
+      "enabled": false,
+      "color": "#000000",
+      "width": 2
+     },
+     "warnColor": "#ffffff",
+     "overtimeColor": "#ed1c24",
+     "build": {
+      "type": "fade",
+      "delay": 1.4,
+      "duration": 0.9
+     }
+    }
+   ],
+   "finale": true
+  }
+ ],
+ "pace": {
+  "mode": "countdown",
+  "maxSec": 30,
+  "finaleSec": 60,
+  "transition": "blur"
+ }
+}

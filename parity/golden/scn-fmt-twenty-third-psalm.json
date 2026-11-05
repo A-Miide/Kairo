@@ -1,0 +1,42 @@
+{
+ "source": "scn-fmt-twenty-third-psalm",
+ "kind": "scenario",
+ "lang": "en",
+ "songLive": false,
+ "cues": [
+  {
+   "text": "let us go to the twenty third Psalm, the Lord is my shepherd, I shall not want",
+   "audioMs": 0
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "let us go to",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "let us go to the twenty third Psalm,",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "let us go to the twenty third Psalm, the Lord is my",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "let us go to the twenty third Psalm, the Lord is my shepherd, I shall not",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "let us go to the twenty third Psalm, the Lord is my shepherd, I shall not want",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

@@ -1,0 +1,44 @@
+# Windows: the offline speech engine (sherpa-onnx) ships only built against
+# the static C runtime (/MT), so everything else is built that way too —
+# mixing it with the DLL runtime (/MD, Spout's default) fails to link. It also
+# means the installer needs no Visual C++ redistributable.
+# ort's prebuilt ONNX Runtime for Windows is built /MD, so it can't be linked
+# here either; ort uses the speech engine's copy instead, as on Intel Macs.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.x86_64-pc-windows-msvc.onnxruntime]
+rustc-link-lib = []
+
+[target.aarch64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
+
+[target.aarch64-pc-windows-msvc.onnxruntime]
+rustc-link-lib = []
+
+# Linux: the speech engine's static library carries ONNX Runtime, and ort links
+# its own prebuilt copy of the same release (1.28.2) beside it; the 4.1.1
+# release build failed on the duplicate symbols (abseil, re2). Either copy is
+# the same code, so the linker may keep the first. (Using only the speech
+# engine's copy, as below for Windows, left OrtGetApiBase unresolved on Linux.)
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-Wl,--allow-multiple-definition"]
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["-C", "link-arg=-Wl,--allow-multiple-definition"]
+
+# Intel Macs: ort publishes no prebuilt ONNX Runtime for x86_64-apple-darwin.
+# The offline speech engine already links ONNX Runtime (1.28.2, the same
+# release ort expects), so ort uses that copy instead of linking its own.
+# kairo-semantic links the speech engine's library on these targets, so
+# every program that uses ort finds ONNX Runtime.
+[target.x86_64-apple-darwin.onnxruntime]
+rustc-link-lib = []
+
+# Apple Silicon Macs: ort's own prebuilt copy of the same release linked fine
+# beside the speech engine's, but which copy a call reaches then depends on how
+# each program links: in one, a model ort prepared was packed differently from
+# what the speech engine expects, so the engine's saved prepacked weights were
+# ignored (offline::map_weights). One copy, the speech engine's, as on Intel.
+[target.aarch64-apple-darwin.onnxruntime]
+rustc-link-lib = []

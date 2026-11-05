@@ -1,0 +1,85 @@
+{
+ "source": "scn-chapter-number-next",
+ "kind": "scenario",
+ "lang": "en",
+ "songLive": false,
+ "cues": [
+  {
+   "text": "Elijah prayed, the sky became black, he said get on your way before the rain stops you",
+   "audioMs": 0
+  },
+  {
+   "text": "you are getting speed tonight, first Kings eighteen and",
+   "audioMs": 7700
+  },
+  {
+   "text": "forty six, and the hand of the Lord was on Elijah, and he ran before Ahab",
+   "audioMs": 12200
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "Elijah prayed, the sky",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "Elijah prayed, the sky became black, he said",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "Elijah prayed, the sky became black, he said get on your way",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "Elijah prayed, the sky became black, he said get on your way before the rain stops",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "Elijah prayed, the sky became black, he said get on your way before the rain stops you",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "you are getting speed",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "you are getting speed tonight, first Kings eighteen",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "you are getting speed tonight, first Kings eighteen and",
+   "isFinal": true
+  },
+  {
+   "cue": 2,
+   "text": "forty six, and the",
+   "isFinal": false
+  },
+  {
+   "cue": 2,
+   "text": "forty six, and the hand of the Lord",
+   "isFinal": false
+  },
+  {
+   "cue": 2,
+   "text": "forty six, and the hand of the Lord was on Elijah, and",
+   "isFinal": false
+  },
+  {
+   "cue": 2,
+   "text": "forty six, and the hand of the Lord was on Elijah, and he ran before Ahab",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

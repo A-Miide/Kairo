@@ -1,0 +1,1293 @@
+//! Offline transcription: NVIDIA Nemotron Speech Streaming through
+//! sherpa-onnx, on this machine, into the same detection funnel as Deepgram.
+//!
+//! Words are locked in a few at a time while the sentence runs on (the
+//! newest few stay live, so a recogniser still revising them can), and the
+//! utterance ends at a pause.
+
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
+use std::time::{Duration, Instant};
+
+use bytes::Bytes;
+use serde_json::{json, Value};
+use sherpa_onnx::{OnlineModelConfig, OnlineRecognizer, OnlineRecognizerConfig, OnlineTransducerModelConfig};
+
+use crate::Shared;
+
+const SAMPLE_RATE: i32 = 16_000;
+const FEATURE_DIM: i32 = 128;
+/// How often the recogniser is asked what it heard.
+pub const POLL: Duration = Duration::from_millis(120);
+pub const SAMPLE_RATE_HZ: usize = SAMPLE_RATE as usize;
+/// The newest words kept live; words are locked in runs of at least this many.
+const LIVE_TAIL_WORDS: usize = 4;
+const MIN_LOCK_WORDS: usize = 3;
+const MAX_LIVE_WORDS: usize = LIVE_TAIL_WORDS + 4;
+/// The recogniser restarts its context after an utterance this long.
+const RESET_AFTER_WORDS: usize = 300;
+const UTTERANCE_END_SECS: f32 = 1.2;
+/// How long a model may take to load. The Core ML model's first load after an
+/// install or update (macOS preparing it for the Neural Engine) took 34 s on
+/// an idle M1 and passed a minute on a busy one.
+const START_WAIT: Duration = Duration::from_secs(240);
+/// How long the Core ML engine may take to load the model in `prepare_coreml_now`.
+const PREPARE_WAIT: Duration = Duration::from_secs(600);
+
+/// Live speech stays live: audio still waiting to be decoded when it is older than this is
+/// dropped and recognition starts again at the newest audio, unless this computer is catching up
+/// ([`MAX_BEHIND_HARD`]). On a computer too busy to decode in real time the backlog otherwise
+/// grew for the whole service (measured 2026-10-16: 5.4 minutes behind after an hour), detection
+/// reacting to things said minutes before. The live worker and `offline-transcribe --realtime`
+/// both use this rule (see [`too_far_behind`]).
+pub const MAX_BEHIND: Duration = Duration::from_secs(4);
+
+/// While singing is heard, no backlog at all is kept. Singing costs the recogniser half as much
+/// again as speech (lyrics, word after word) and on an 8 GB M1 playing the service in Safari it
+/// fell behind only then: 15 skips in 15 minutes, every one in a song (2026-10-27). Dropped at
+/// once, the song costs what the computer can spare, and the preacher who speaks after it is
+/// heard live, not 4 s late.
+pub const MAX_BEHIND_SINGING: Duration = Duration::from_secs(1);
+
+/// Past [`MAX_BEHIND`] the waiting audio is kept while this computer decodes fast enough to catch up
+/// on it ([`Pace`]); this is as late as live speech may run even then. Dropping at 4 s whatever the
+/// pace lost speech to a stall alone: on an 8 GB M1 under memory pressure (2026-10-31) the engine
+/// decoded at 7x real time between stalls and dropped 54 s of 80 s of speech.
+pub const MAX_BEHIND_HARD: Duration = Duration::from_secs(15);
+
+/// Decoding at least this much faster than real time catches up on a backlog instead of dropping it.
+pub const MIN_PACE: f64 = 1.25;
+
+/// The pace is measured over this much of the latest audio, in seconds.
+const PACE_WINDOW: f64 = 30.0;
+
+/// How fast this computer decodes: seconds of audio per second spent decoding, over the latest
+/// [`PACE_WINDOW`] of audio. A stall (the disk, a busy moment) barely moves it; a computer that
+/// can't keep up shows it within half a minute.
+#[derive(Default)]
+pub struct Pace {
+    spans: std::collections::VecDeque<(f64, f64)>,
+    audio: f64,
+    busy: f64,
+}
+
+impl Pace {
+    pub fn add(&mut self, audio: f64, busy: Duration) {
+        let busy = busy.as_secs_f64();
+        self.spans.push_back((audio, busy));
+        self.audio += audio;
+        self.busy += busy;
+        while let Some(&(a, b)) = self.spans.front() {
+            if self.audio - a < PACE_WINDOW {
+                break;
+            }
+            self.audio -= a;
+            self.busy -= b;
+            self.spans.pop_front();
+        }
+    }
+    pub fn value(&self) -> f64 {
+        if self.busy > 0.0 { self.audio / self.busy } else { f64::INFINITY }
+    }
+}
+
+/// The catch-up rule: audio that arrived `waited` ago and isn't decoded yet is dropped only when
+/// this computer can't catch up on it (`pace`, [`Pace::value`]), or it's too old to use.
+pub fn too_far_behind(waited: Duration, pace: f64) -> bool {
+    waited > MAX_BEHIND_HARD || (waited > MAX_BEHIND && pace < MIN_PACE)
+}
+
+/// A frame length that isn't audio: one byte follows, 1 while singing is heard, else 0.
+const SINGING_FRAME: u32 = u32::MAX;
+const REQUIRED: [&str; 4] = ["encoder.int8.onnx", "decoder.int8.onnx", "joiner.int8.onnx", "tokens.txt"];
+
+static NUMBER_WORD: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+    regex::Regex::new(r"(?i)^(\d+|zero|oh|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|first|second|third|fourth|fifth)$").unwrap()
+});
+static LANGUAGE_TAG: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"\s*<[a-z]{2,3}(?:-[A-Za-z]{2,4})?>").unwrap());
+
+/// The model for a spoken language: English, or the multilingual one with the language pinned.
+pub fn model_for(stt_language: &str) -> (&'static str, Option<String>) {
+    if stt_language.to_lowercase().starts_with("en") {
+        return ("en", None);
+    }
+    let lang = match stt_language {
+        "multi" => "auto",
+        "id" => "id-ID",
+        "ja" => "ja-JP",
+        "zh" => "zh-CN",
+        other => other,
+    };
+    ("multi", Some(lang.to_string()))
+}
+
+/// English on Apple Silicon runs on the Neural Engine: the same model as Core ML, in a program of
+/// its own (src-tauri/coreml-speech) that speaks this worker's protocol. Measured on an 8 GB M1
+/// playing the service in Safari (2026-10-27): ~4% of one core live on singing against ~155%,
+/// 94 MB against ~707, and detection on the eval sermons the same or better (44/53 = 44/53,
+/// 22/29 against 18/29). Intel Macs, Windows and Linux keep the ONNX engine below.
+pub fn coreml() -> bool {
+    cfg!(all(target_os = "macos", target_arch = "aarch64"))
+}
+
+/// Core ML's streaming models need macOS 14; every Apple Silicon Mac can run it.
+fn coreml_supported() -> bool {
+    #[cfg(target_os = "macos")]
+    {
+        let mut buf = [0u8; 32];
+        let mut len = buf.len();
+        let ok = unsafe { libc::sysctlbyname(c"kern.osproductversion".as_ptr(), buf.as_mut_ptr().cast(), &mut len, std::ptr::null_mut(), 0) } == 0;
+        let version = std::str::from_utf8(&buf[..len.saturating_sub(1)]).unwrap_or("");
+        return ok && version.split('.').next().and_then(|m| m.parse::<u32>().ok()).is_some_and(|m| m >= 14);
+    }
+    #[allow(unreachable_code)]
+    false
+}
+
+/// Whether the model for `model` ("en" or "multi") runs through the Core ML engine here.
+pub fn uses_coreml(model: &str) -> bool {
+    model == "en" && coreml()
+}
+
+pub fn model_dir(app: &Shared, model: &str) -> std::path::PathBuf {
+    let override_var = if model == "multi" { "KAIRO_OFFLINE_MODEL_MULTI" } else { "KAIRO_OFFLINE_MODEL" };
+    if let Some(p) = std::env::var_os(override_var) {
+        return p.into();
+    }
+    app.cfg.models_dir.join(if model == "multi" {
+        "sherpa-streaming-multi"
+    } else if uses_coreml(model) {
+        "coreml-nemotron-en"
+    } else {
+        "sherpa-streaming-en"
+    })
+}
+
+/// The model for `model` is installed in `dir`.
+pub fn present_for(model: &str, dir: &std::path::Path) -> bool {
+    if uses_coreml(model) { coreml_present(dir) } else { present(dir) }
+}
+
+pub fn coreml_present(dir: &std::path::Path) -> bool {
+    crate::installer::coreml_files().all(|f| dir.join(f).exists())
+}
+
+/// The Core ML engine's program: inside the app beside the UI (`bin`, as ffmpeg), or in the
+/// source tree when running from it (scripts/build-coreml-speech.sh).
+pub fn coreml_worker(app: &Shared) -> Option<std::path::PathBuf> {
+    const EXE: &str = "kairo-coreml-speech";
+    if let Some(p) = std::env::var_os("KAIRO_COREML_SPEECH").map(std::path::PathBuf::from).filter(|p| p.is_file()) {
+        return Some(p);
+    }
+    let mut candidates = Vec::new();
+    if let Some(res) = app.cfg.ui_dir.parent() {
+        candidates.push(res.join("bin").join(EXE));
+        candidates.push(res.join("src-tauri").join("bin").join(EXE));
+    }
+    if let Some(dir) = std::env::current_exe().ok().and_then(|me| me.parent().map(std::path::Path::to_path_buf)) {
+        candidates.push(dir.join(EXE));
+    }
+    candidates.into_iter().find(|p| p.is_file())
+}
+
+/// Held while the Core ML model loads in the background, so Start listening
+/// waits for that load instead of starting a second one beside it.
+static PREPARING: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+/// macOS drops what it prepared for the Neural Engine when Kairo is updated (the engine's program
+/// changes), so the first load after an update takes 30 s or more again, and every load takes a
+/// second. Loading the model in the background when Kairo opens, and keeping that engine waiting,
+/// takes both out of Start listening.
+/// On the CPU (the speech engine's default since 2026-10-30) a load takes half a second, or about
+/// 4 s the first time after an install: done once at launch, so Start is quick, then let go, not kept
+/// loaded (up to 1.3 GB on an 8 GB Mac while nothing is being listened to).
+pub fn prepare_at_launch(app: Shared) {
+    if !coreml() || !coreml_supported() {
+        return;
+    }
+    let dir = model_dir(&app, "en");
+    if !coreml_present(&dir) {
+        return;
+    }
+    let _ = std::thread::Builder::new().name("coreml-prepare".into()).spawn(move || {
+        if let Err(e) = prepare_coreml(&app, &dir) {
+            eprintln!("[Offline] {e}");
+        }
+    });
+}
+
+/// A started speech engine and what it says.
+type Worker = (std::process::Child, std::sync::mpsc::Receiver<FromWorker>);
+
+/// The Core ML engine's model on this Mac: "preparing" while it loads (after a macOS or Kairo update,
+/// macOS rebuilds it for the Neural Engine: minutes), "ready", "failed", or "" when not used. Shown in
+/// Settings → Audio's Offline card (owner, 2026-10-30), with "speech-engine" messages as it changes.
+static ENGINE_STATE: std::sync::Mutex<&'static str> = std::sync::Mutex::new("");
+/// A load that takes longer than this is "preparing" (macOS rebuilding the model); a usual one takes
+/// a second, and says nothing (owner, 2026-10-30: it flashed at every launch).
+const PREPARING_AFTER: Duration = Duration::from_secs(3);
+/// Loads under way (the launch-time one, setup's, a start's): one still running after
+/// PREPARING_AFTER says the engine is being prepared.
+static LOADS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// Says "preparing" if this load (`id`, from LOADS) is still running after PREPARING_AFTER.
+fn preparing_if_slow(app: &Shared, id: u64, waiting: bool) {
+    let app = app.clone();
+    let _ = std::thread::Builder::new().name("coreml-slow-load".into()).spawn(move || {
+        std::thread::sleep(PREPARING_AFTER);
+        if LOADS.load(Ordering::SeqCst) == id && engine_state() != "ready" {
+            set_engine_state(&app, "preparing", waiting);
+        }
+    });
+}
+
+pub fn engine_state() -> &'static str {
+    *crate::util::lock(&ENGINE_STATE)
+}
+
+fn set_engine_state(app: &Shared, state: &'static str, waiting: bool) {
+    *crate::util::lock(&ENGINE_STATE) = state;
+    app.hub.broadcast(json!({ "type": "speech-engine", "state": state, "waiting": waiting }));
+}
+
+
+/// Waits for a started engine's model to load: the engine, or why it didn't.
+fn wait_ready((mut child, from): Worker, stopping: &AtomicBool) -> Result<Worker, String> {
+    let deadline = Instant::now() + START_WAIT;
+    loop {
+        match from.recv_timeout(Duration::from_millis(100)) {
+            Ok(FromWorker::Ready) => return Ok((child, from)),
+            Ok(FromWorker::Gone) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                // Its output closed; make sure it's gone too (one hung on teardown would block here).
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("the offline model could not be loaded".to_string());
+            }
+            _ if stopping.load(Ordering::SeqCst) || Instant::now() > deadline => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("the engine didn't start in time".to_string());
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Loads the Core ML model once, so macOS prepares it for the Neural Engine at install (~45 s on an
+/// M1) and not when someone first presses Start; it keeps what it prepared.
+pub fn prepare_coreml(app: &Shared, dir: &std::path::Path) -> Result<(), String> {
+    // Start listening meanwhile waits for this load rather than starting a second one beside it,
+    // and Settings → Audio says the engine is being prepared (a fresh install, 2026-10-30).
+    let _held = PREPARING.lock();
+    let load = LOADS.fetch_add(1, Ordering::SeqCst) + 1;
+    if engine_state() != "ready" {
+        preparing_if_slow(app, load, false);
+    }
+    // Before anything loads it (Start waits for this lock): an install, or the first launch after an
+    // update, keeps part of the encoder int8 (coreml_encoder) once the engine has checked, on this
+    // Mac, that it computes what the published one does; Core ML then compiles it once.
+    if let Some(exe) = coreml_worker(app) {
+        crate::coreml_encoder::rewrite_installed(dir, |a, b| crate::coreml_encoder::compare_with_engine(&exe, a, b));
+    }
+    let mut result = prepare_coreml_now(app, dir);
+    // Not loaded with the encoder rewritten (or cut short by a crash): the published one back, and
+    // the rewrite given up here only if that one loads, so it was the reason.
+    if result.is_err() && crate::coreml_encoder::restore(dir) {
+        eprintln!("[Offline] the encoder didn't load as rewritten: back to the published one");
+        result = prepare_coreml_now(app, dir);
+        if result.is_ok() {
+            crate::coreml_encoder::decline(dir);
+        }
+    }
+    LOADS.fetch_add(1, Ordering::SeqCst);
+    set_engine_state(app, if result.is_ok() { "ready" } else { "failed" }, false);
+    result
+}
+
+fn prepare_coreml_now(app: &Shared, dir: &std::path::Path) -> Result<(), String> {
+    use std::io::BufRead;
+    let exe = coreml_worker(app).ok_or("the offline speech engine is missing from this copy of Kairo")?;
+    let mut child = std::process::Command::new(exe)
+        .arg(dir)
+        .arg("-")
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .map_err(|e| format!("couldn't start the speech engine: {e}"))?;
+    // Its stderr read alongside: an engine that writes a lot before "ready" would otherwise fill
+    // the pipe and stall, and Start (waiting on PREPARING) with it.
+    let err_reader = child.stderr.take().map(|mut e| std::thread::spawn(move || {
+        use std::io::Read;
+        let mut s = String::new();
+        let _ = e.read_to_string(&mut s);
+        s
+    }));
+    let (tx, rx) = std::sync::mpsc::channel();
+    if let Some(o) = child.stdout.take() {
+        std::thread::spawn(move || {
+            let _ = tx.send(std::io::BufReader::new(o).lines().map_while(Result::ok).any(|l| l == "K1 ready"));
+        });
+    }
+    // Generous (the first load after an install compiles the model) but not forever.
+    let ready = rx.recv_timeout(PREPARE_WAIT);
+    if ready.is_err() {
+        let _ = child.kill();
+    }
+    drop(child.stdin.take());
+    let _ = child.wait();
+    let err = err_reader.and_then(|h| h.join().ok()).unwrap_or_default();
+    match ready {
+        Ok(true) => Ok(()),
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err("the offline model didn't load in time".into()),
+        _ => Err(format!("the offline model couldn't be loaded: {}", err.trim())),
+    }
+}
+
+pub fn present(dir: &std::path::Path) -> bool {
+    let encoder = dir.join("encoder.int8.onnx");
+    REQUIRED.iter().all(|f| dir.join(f).exists())
+        && (std::fs::metadata(&encoder).is_ok_and(|m| m.len() > 5_000_000) || crate::onnx_weights::external(&encoder))
+}
+
+/// The encoder's weights mapped from their own file rather than copied onto the heap (see
+/// `onnx_weights`), then locked in memory once loaded ([`pin_weights`]), done once per model
+/// folder (and again after an app update or on another computer). Measured on an 8 GB M1
+/// (2026-10-27): footprint 726-1,111 MB → ~117 MB (plus the 629 MB locked) while decoding, the
+/// same CPU and the transcript word for word the same; under a live test's memory pressure, the
+/// same audio dropped as on the heap (mapped but not locked: four times as much). The model takes
+/// ~1.19 GB of disk instead of 650 MB. If the weights can't be prepacked they're still mapped,
+/// with ONNX Runtime's prepacking (which copies them onto the heap) off: ~12-15% more CPU.
+/// Only where they can be locked (macOS so far): elsewhere the weights stay on the heap.
+/// Returns the provider string for sherpa-onnx.
+pub(crate) fn map_weights(dir: &std::path::Path) -> String {
+    if !cfg!(target_os = "macos") {
+        return "cpu".into();
+    }
+    let encoder = dir.join("encoder.int8.onnx");
+    let stamp = crate::onnx_weights::stamp();
+    if crate::onnx_weights::prepacked(&encoder, &stamp) {
+        return "cpu".into();
+    }
+    match prepack(&encoder, &stamp) {
+        Ok(()) => {
+            let _ = std::fs::remove_file(dir.join("kairo-ort.cfg"));
+            return "cpu".into();
+        }
+        // Another start is preparing it: this one loads the model as it is, and leaves the files
+        // alone (the fallback below rewrites the model, which would race with that prepack).
+        Err(e) if e.contains(crate::onnx_weights::PREPACK_BUSY) => {
+            eprintln!("[Offline] {e}: loading it as it is this time");
+            return "cpu".into();
+        }
+        Err(e) => eprintln!("[Offline] the model's weights couldn't be prepacked: {e}"),
+    }
+    // Next best: the weights mapped as they are, ONNX Runtime's prepacking off.
+    if !crate::onnx_weights::external(&encoder) {
+        if let Err(e) = crate::onnx_weights::externalize(&encoder) {
+            eprintln!("[Offline] the model's weights stay in memory: {e}");
+            return "cpu".into();
+        }
+    }
+    // sherpa-onnx reads "cpu:<file>" and passes each SessionConfig.* line to ONNX Runtime.
+    let cfg = dir.join("kairo-ort.cfg");
+    match std::fs::write(&cfg, "SessionConfig.session.disable_prepacking=1\n") {
+        Ok(()) => format!("cpu:{}", cfg.display()),
+        Err(_) => "cpu".into(),
+    }
+}
+
+/// Locks the loaded encoder's weights in memory, when they're mapped (see `onnx_weights::pin`).
+#[cfg(target_os = "macos")]
+fn pin_weights(dir: &std::path::Path) -> Option<crate::onnx_weights::Pinned> {
+    let encoder = dir.join("encoder.int8.onnx");
+    if !crate::onnx_weights::external(&encoder) {
+        return None;
+    }
+    match crate::onnx_weights::pin(&encoder) {
+        Ok(p) => {
+            eprintln!("[Offline] {} MB of the model's weights locked in memory", p.bytes >> 20);
+            Some(p)
+        }
+        Err(e) => {
+            eprintln!("[Offline] the model's weights aren't locked in memory: {e}");
+            None
+        }
+    }
+}
+
+/// How the recogniser decodes. Beam search can lean towards words a service
+/// is likely to hear (the Bible's book names, which the model otherwise
+/// mishears: "Proverbate", "someone 25"); greedy is the fastest.
+///
+/// Beam search for NeMo streaming models arrived in sherpa-onnx after 1.13.8
+/// (k2-fsa/sherpa-onnx#3895); 1.13.8 exits the process when asked for it.
+/// Until a release carries it the app decodes greedily, and only
+/// `offline-transcribe --beam` / `--hotwords` (for measuring it) ask for beam.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Decoding {
+    pub beam: bool,
+    /// How strongly the book names are favoured (0: not at all).
+    pub hotwords_score: f32,
+    /// Taken off the "nothing said" score at every step. The model otherwise
+    /// hears a phrase right after a pause as silence ("Romans five five" |
+    /// "…shed abroad in our heart" lost); at 1.0 drops of 4+ words fell from
+    /// 39 to 23 on two sermons, wrong sends 4 -> 1, at no extra CPU.
+    pub blank_penalty: f32,
+}
+
+/// Measured on the eval sermons (`offline-transcribe --blank-penalty`).
+pub const BLANK_PENALTY: f32 = 1.0;
+
+impl Default for Decoding {
+    fn default() -> Decoding {
+        Decoding { beam: false, hotwords_score: 0.0, blank_penalty: BLANK_PENALTY }
+    }
+}
+
+/// Book names that aren't everyday words — favouring "Acts" or "Numbers"
+/// would put them where nobody said them.
+const EVERYDAY_WORDS: &[&str] = &["Acts", "Numbers", "Judges", "Kings", "Job", "Mark", "John", "James", "Jude", "Ruth"];
+
+/// The book names as the model's own word pieces, one per line.
+pub fn hotwords(tokens: &std::path::Path) -> String {
+    let vocab: std::collections::HashSet<String> = std::fs::read_to_string(tokens)
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| l.rsplit_once(' ').map(|(t, _)| t.to_string()))
+        .collect();
+    let mut names: Vec<String> = Vec::new();
+    for b in kairo_bible::Book::all() {
+        let name = b.name().trim_start_matches(|c: char| c.is_ascii_digit() || c == ' ').to_string();
+        if EVERYDAY_WORDS.contains(&name.as_str()) || names.contains(&name) {
+            continue;
+        }
+        if name == "Psalms" {
+            names.push("Psalm".into());
+        }
+        names.push(name);
+    }
+    names.iter().filter_map(|n| pieces(n, &vocab)).map(|p| p.join(" ")).collect::<Vec<_>>().join("\n")
+}
+
+/// A phrase in the vocabulary's pieces, longest first ("▁Jer" "em" "iah").
+fn pieces(phrase: &str, vocab: &std::collections::HashSet<String>) -> Option<Vec<String>> {
+    let mut out = Vec::new();
+    for word in phrase.split_whitespace() {
+        let chars: Vec<char> = format!("\u{2581}{word}").chars().collect();
+        let mut i = 0;
+        while i < chars.len() {
+            let piece = (i + 1..=chars.len()).rev().map(|j| chars[i..j].iter().collect::<String>()).find(|p| vocab.contains(p))?;
+            i += piece.chars().count();
+            out.push(piece);
+        }
+    }
+    Some(out)
+}
+
+/// One loaded recogniser, shared by sessions, released a while after the last.
+struct Loaded {
+    dir: std::path::PathBuf,
+    decoding: Decoding,
+    recognizer: Arc<OnlineRecognizer>,
+    /// The encoder's weights locked in memory while it's loaded (onnx_weights::pin).
+    #[cfg(target_os = "macos")]
+    _pinned: Option<crate::onnx_weights::Pinned>,
+}
+static LOADED: Mutex<Option<Loaded>> = Mutex::new(None);
+static GENERATION: AtomicU64 = AtomicU64::new(0);
+
+pub fn recognizer(dir: &std::path::Path, decoding: &Decoding) -> Result<Arc<OnlineRecognizer>, String> {
+    let mut l = LOADED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    GENERATION.fetch_add(1, Ordering::SeqCst);
+    if let Some(r) = l.as_ref().filter(|r| r.dir == dir && r.decoding == *decoding) {
+        return Ok(r.recognizer.clone());
+    }
+    *l = None;
+    let p = |f: &str| Some(dir.join(f).to_string_lossy().into_owned());
+    // Two at most: measured on a 3-minute sermon under a full service's load (2026-10-16), 2
+    // threads decoded fastest; 4 took longer and twice the CPU (the runtime's idle threads
+    // spin), which is what a small laptop can't spare. KAIRO_ASR_THREADS overrides it.
+    let threads = std::env::var("KAIRO_ASR_THREADS").ok().and_then(|v| v.parse::<i32>().ok()).filter(|n| (1..=8).contains(n))
+        .unwrap_or_else(|| std::thread::available_parallelism().map_or(2, |n| n.get()).saturating_sub(2).clamp(1, 2) as i32);
+    let provider = map_weights(dir);
+    // Locked before the runtime maps the weights: once it has, macOS refuses to lock them.
+    #[cfg(target_os = "macos")]
+    let _pinned = pin_weights(dir);
+    let mut cfg = OnlineRecognizerConfig {
+        model_config: OnlineModelConfig {
+            transducer: OnlineTransducerModelConfig { encoder: p("encoder.int8.onnx"), decoder: p("decoder.int8.onnx"), joiner: p("joiner.int8.onnx") },
+            tokens: p("tokens.txt"),
+            num_threads: threads,
+            provider: Some(provider),
+            ..Default::default()
+        },
+        decoding_method: Some(if decoding.beam { "modified_beam_search" } else { "greedy_search" }.into()),
+        max_active_paths: 4,
+        enable_endpoint: true,
+        rule1_min_trailing_silence: 2.4,
+        rule2_min_trailing_silence: UTTERANCE_END_SECS,
+        rule3_min_utterance_length: 1e6,
+        blank_penalty: decoding.blank_penalty,
+        ..Default::default()
+    };
+    if decoding.beam && decoding.hotwords_score > 0.0 {
+        cfg.hotwords_buf = Some(hotwords(&dir.join("tokens.txt")).into_bytes());
+        cfg.hotwords_score = decoding.hotwords_score;
+    }
+    cfg.feat_config.sample_rate = SAMPLE_RATE;
+    cfg.feat_config.feature_dim = FEATURE_DIM;
+    let r = Arc::new(OnlineRecognizer::create(&cfg).ok_or("the offline model could not be loaded")?);
+    *l = Some(Loaded {
+        dir: dir.to_path_buf(),
+        decoding: decoding.clone(),
+        recognizer: r.clone(),
+        #[cfg(target_os = "macos")]
+        _pinned,
+    });
+    Ok(r)
+}
+
+
+/// What the recogniser has heard, as the detection funnel takes it.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Heard {
+    /// The words still live (the recogniser may revise them).
+    Interim(String),
+    /// Words locked in while the sentence runs on.
+    Locked(String),
+    /// The rest of an utterance, ended by a pause.
+    Final(String),
+}
+
+/// One recognition stream with the locking rules: audio in, [`Heard`] out.
+/// The app's offline sessions and the evaluation tools both use it.
+pub struct Transcriber {
+    rec: Arc<OnlineRecognizer>,
+    stream: sherpa_onnx::OnlineStream,
+    language: Option<String>,
+    locked: usize,
+    last_partial: String,
+    /// Restart the recogniser's context at a pause once this many words are in it.
+    pub reset_after: usize,
+}
+
+impl Transcriber {
+    pub fn new(rec: Arc<OnlineRecognizer>, language: Option<String>) -> Transcriber {
+        let stream = rec.create_stream();
+        let t = Transcriber { rec, stream, language, locked: 0, last_partial: String::new(), reset_after: RESET_AFTER_WORDS };
+        t.pin();
+        t
+    }
+
+    fn pin(&self) {
+        if let Some(l) = &self.language {
+            self.stream.set_option("language", l);
+        }
+    }
+
+    /// 16 kHz mono samples in [-1, 1].
+    pub fn accept(&self, samples: &[f32]) {
+        self.stream.accept_waveform(SAMPLE_RATE, samples);
+    }
+
+    fn words(&self) -> Vec<String> {
+        let text = self.rec.get_result(&self.stream).map(|r| r.text).unwrap_or_default();
+        LANGUAGE_TAG.replace_all(&text, "").split_whitespace().map(str::to_string).collect()
+    }
+
+    fn decode(&self) {
+        while self.rec.is_ready(&self.stream) {
+            self.rec.decode(&self.stream);
+        }
+    }
+
+    /// Decodes what has arrived and says what changed.
+    pub fn pump(&mut self) -> Vec<Heard> {
+        self.decode();
+        let words = self.words();
+        self.locked = self.locked.min(words.len());
+        let mut out = Vec::new();
+        if self.rec.is_endpoint(&self.stream) {
+            let rest = words[self.locked..].join(" ");
+            if !rest.is_empty() {
+                out.push(Heard::Final(rest));
+            }
+            self.last_partial.clear();
+            self.locked = words.len();
+            if words.len() >= self.reset_after {
+                self.rec.reset(&self.stream);
+                self.pin();
+                self.locked = 0;
+            }
+            return out;
+        }
+        // Lock in all but the newest few words — and not a number its own
+        // sound may still be growing.
+        let mut up_to = words.len().saturating_sub(LIVE_TAIL_WORDS);
+        while up_to > self.locked && words.len() - up_to < MAX_LIVE_WORDS && NUMBER_WORD.is_match(&words[up_to - 1]) {
+            up_to -= 1;
+        }
+        if up_to >= self.locked + MIN_LOCK_WORDS {
+            out.push(Heard::Locked(words[self.locked..up_to].join(" ")));
+            self.locked = up_to;
+        }
+        let live = words[self.locked..].join(" ");
+        if !live.is_empty() && live != self.last_partial {
+            self.last_partial = live.clone();
+            out.push(Heard::Interim(live));
+        }
+        out
+    }
+
+    /// Recognition fell behind and the waiting audio was dropped: what was heard so far ends
+    /// as a final, and the recogniser starts fresh at the next audio (no half-sentence glued
+    /// across the gap).
+    pub fn cut(&mut self) -> Option<Heard> {
+        self.decode();
+        let words = self.words();
+        let rest = words.get(self.locked.min(words.len())..).unwrap_or(&[]).join(" ");
+        self.rec.reset(&self.stream);
+        self.pin();
+        self.locked = 0;
+        self.last_partial.clear();
+        (!rest.is_empty()).then_some(Heard::Final(rest))
+    }
+
+    /// The audio has ended: whatever is left, as a final.
+    pub fn finish(&mut self) -> Option<Heard> {
+        self.stream.input_finished();
+        self.decode();
+        let words = self.words();
+        let rest = words.get(self.locked.min(words.len())..).unwrap_or(&[]).join(" ");
+        (!rest.is_empty()).then_some(Heard::Final(rest))
+    }
+}
+
+pub struct Session {
+    stop: Arc<AtomicBool>,
+    done: Option<std::thread::JoinHandle<()>>,
+}
+
+impl Session {
+    pub fn alive(&self) -> bool {
+        self.done.as_ref().is_some_and(|h| !h.is_finished())
+    }
+
+    pub async fn stop(mut self) {
+        self.stop.store(true, Ordering::SeqCst);
+        if let Some(h) = self.done.take() {
+            let _ = tokio::task::spawn_blocking(move || h.join()).await;
+        }
+    }
+}
+
+fn state(app: &Shared, state: &str, error: Option<(&str, String)>) {
+    let mut m = json!({ "type": "connection-state", "state": state, "engine": "offline" });
+    if let Some((kind, msg)) = error {
+        m["error"] = json!(msg);
+        m["errorKind"] = json!(kind);
+    }
+    app.hub.broadcast(m);
+}
+
+pub async fn start(app: Shared) -> Result<Session, Value> {
+    let Some((_, detector)) = app.ready() else { return Err(json!({ "error": "The detection engine is still loading" })) };
+    let detector = detector.clone();
+    let spoken = app.settings.str("sttLanguage").await.unwrap_or_else(|| "en-US".into());
+    let (model, language) = model_for(&spoken);
+    let dir = model_dir(&app, model);
+    state(&app, "connecting", None);
+    // The Core ML engine's program, where this machine uses it.
+    let coreml_exe = if uses_coreml(model) {
+        if !coreml_supported() {
+            let msg = "Offline listening on this Mac needs macOS 14 (Sonoma) or later: update macOS in System Settings → General → Software Update.";
+            state(&app, "error", Some(("unsupported", msg.into())));
+            return Err(json!({ "error": msg }));
+        }
+        match coreml_worker(&app) {
+            Some(exe) => Some(exe),
+            None => {
+                let msg = "The offline speech engine is missing from this copy of Kairo: reinstall Kairo.";
+                state(&app, "error", Some(("unknown", msg.into())));
+                return Err(json!({ "error": msg }));
+            }
+        }
+    } else {
+        None
+    };
+    if !present_for(model, &dir) {
+        let msg = if model == "multi" {
+            "Offline model missing for this language: offline listening in it needs the offline model for other languages. Download it from Settings → Language, or listen with Deepgram."
+        } else {
+            "Offline model missing: download it from Settings → Language, or listen with Deepgram."
+        };
+        state(&app, "error", Some(("model-missing", msg.into())));
+        return Err(json!({ "error": msg }));
+    }
+    detector.send(kairo_detect::engine::Event::Reset);
+    detector.configure(|c| c.offline = true);
+    let (tx, rx) = tokio::sync::mpsc::channel::<Bytes>(1024);
+    *app.audio.lock().await = Some(tx);
+    let stop = Arc::new(AtomicBool::new(false));
+    let flag = stop.clone();
+    // The engine runs in its own process (worker_main); this thread starts
+    // it, feeds it and restarts it if it dies. Started: Ok once the model is
+    // loaded and listening, or why it couldn't.
+    let (started_tx, started_rx) = std::sync::mpsc::sync_channel::<Result<(), String>>(1);
+    let app2 = app.clone();
+    if coreml_exe.is_some() {
+        // The engine being prepared (at launch, by setup, or by this start): Settings → Audio says
+        // why Start is waiting (owner, 2026-10-30); a usual load of a second says nothing.
+        if engine_state() == "preparing" {
+            set_engine_state(&app, "preparing", true);
+        } else if engine_state() != "ready" {
+            preparing_if_slow(&app, LOADS.load(Ordering::SeqCst), true);
+        }
+        let _ = tokio::task::spawn_blocking(|| drop(PREPARING.lock())).await;
+    }
+    let uses_coreml = coreml_exe.is_some();
+    let worker = std::thread::Builder::new()
+        .name("offline-speech".into())
+        .spawn(move || supervise(app2, detector, dir, language, coreml_exe, rx, flag, started_tx))
+        .map_err(|e| json!({ "error": e.to_string() }))?;
+    let started = tokio::task::spawn_blocking(move || started_rx.recv_timeout(START_WAIT).unwrap_or_else(|_| Err("the engine didn't start in time".into())))
+        .await
+        .unwrap_or_else(|e| Err(e.to_string()));
+    if let Err(e) = started {
+        stop.store(true, Ordering::SeqCst);
+        let msg = format!("Offline engine failed to start: {e}");
+        state(&app, "error", Some(("unknown", msg.clone())));
+        return Err(json!({ "error": msg }));
+    }
+    if uses_coreml && engine_state() != "ready" {
+        set_engine_state(&app, "ready", false);
+    }
+    state(&app, "connected", None);
+    eprintln!("[Offline] Listening ({model} model).");
+    Ok(Session { stop, done: Some(worker) })
+}
+
+// ── The speech engine in its own process ─────────────────────────────────
+// sherpa-onnx is C++: an error inside it can't be caught here, and it used
+// to end the whole app mid-service (live, 2026-10-14). So the engine runs as
+// a second copy of this program (`<exe> --kairo-speech-worker <model dir>
+// <language|->`): audio in on stdin (u32 length + 16 kHz 16-bit PCM, a zero
+// length to finish), what it heard out on stdout ("K1 " + JSON per line). If
+// it dies, it's restarted; the audio meanwhile waits in the session's queue
+// (~65 s) and is fed in once it's back, so nothing is lost and the screens
+// never notice. Three deaths in a minute: it stops and says so.
+
+/// Run as the first thing in `main`: if this process was started as the
+/// speech engine, runs it and returns the exit code.
+pub fn worker_main() -> Option<i32> {
+    DISPATCHES.store(true, Ordering::SeqCst);
+    let args: Vec<String> = std::env::args().collect();
+    if args.get(1).map(String::as_str) == Some(PREPACK_FLAG) {
+        let model = std::path::PathBuf::from(args.get(2)?);
+        return Some(match crate::onnx_weights::prepack(&model, &crate::onnx_weights::stamp()) {
+            Ok(()) => 0,
+            Err(e) => {
+                eprintln!("{e}");
+                1
+            }
+        });
+    }
+    if args.get(1).map(String::as_str) != Some(WORKER_FLAG) {
+        return None;
+    }
+    let dir = std::path::PathBuf::from(args.get(2)?);
+    let language = args.get(3).filter(|l| l.as_str() != "-").cloned();
+    Some(run_worker(&dir, language))
+}
+
+pub const WORKER_FLAG: &str = "--kairo-speech-worker";
+/// Prepacks a model's weights (onnx_weights::prepack) in a process of its own: it briefly
+/// needs 1.3 GB, which the caller's heap would otherwise keep until it exits.
+const PREPACK_FLAG: &str = "--kairo-prepack-speech-model";
+/// Whether this program runs [`worker_main`] first, so its own executable takes [`PREPACK_FLAG`].
+static DISPATCHES: AtomicBool = AtomicBool::new(false);
+
+fn prepack(encoder: &std::path::Path, stamp: &str) -> Result<(), String> {
+    if !DISPATCHES.load(Ordering::SeqCst) {
+        return crate::onnx_weights::prepack(encoder, stamp);
+    }
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    let mut cmd = std::process::Command::new(exe);
+    cmd.arg(PREPACK_FLAG).arg(encoder).stdin(std::process::Stdio::null());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let out = cmd.output().map_err(|e| e.to_string())?;
+    if out.status.success() { Ok(()) } else { Err(String::from_utf8_lossy(&out.stderr).trim().to_string()) }
+}
+const RESTARTS_PER_MINUTE: usize = 3;
+/// Audio already sent that a restarted engine hears again first: the words
+/// the old one hadn't settled, with lead-in for it to find its feet (8 s of
+/// 64 ms frames).
+const REPLAY_FRAMES: usize = 125;
+/// Settled words remembered, so a restarted engine doesn't repeat them.
+const REMEMBERED_WORDS: usize = 40;
+
+fn plain(w: &str) -> String {
+    w.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase()
+}
+
+/// `text` without its opening words that are the end of what was already
+/// settled (`said`): a restarted engine re-hears the last few seconds.
+fn without_repeat(said: &std::collections::VecDeque<String>, text: &str) -> String {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let max = words.len().min(said.len());
+    let k = (1..=max).rev().find(|&k| said.iter().skip(said.len() - k).zip(&words[..k]).all(|(a, b)| *a == plain(b))).unwrap_or(0);
+    words[k..].join(" ")
+}
+
+/// Windows' counterpart of the worker's QoS: the whole process above normal (Windows threads don't
+/// inherit a thread's priority, but every thread takes the process's class, the runtime's too), and
+/// out of EcoQoS, which on a laptop puts a process it thinks is background on the efficiency cores
+/// at low clock. Neither costs memory (the owner: nothing that grows Kairo's footprint on Windows,
+/// so the weights aren't locked here as on macOS). Best effort: Windows before 10 1709 has no EcoQoS.
+#[cfg(windows)]
+fn above_normal_unthrottled() {
+    use windows_sys::Win32::System::Threading::{
+        GetCurrentProcess, ProcessPowerThrottling, SetPriorityClass, SetProcessInformation, ABOVE_NORMAL_PRIORITY_CLASS, PROCESS_POWER_THROTTLING_CURRENT_VERSION,
+        PROCESS_POWER_THROTTLING_EXECUTION_SPEED, PROCESS_POWER_THROTTLING_STATE,
+    };
+    // The setting named in ControlMask and left out of StateMask: never throttled.
+    let state = PROCESS_POWER_THROTTLING_STATE { Version: PROCESS_POWER_THROTTLING_CURRENT_VERSION, ControlMask: PROCESS_POWER_THROTTLING_EXECUTION_SPEED, StateMask: 0 };
+    unsafe {
+        let me = GetCurrentProcess();
+        SetPriorityClass(me, ABOVE_NORMAL_PRIORITY_CLASS);
+        SetProcessInformation(me, ProcessPowerThrottling, (&state as *const PROCESS_POWER_THROTTLING_STATE).cast(), std::mem::size_of_val(&state) as u32);
+    }
+}
+
+fn run_worker(dir: &std::path::Path, language: Option<String>) -> i32 {
+    use std::io::{Read, Write};
+    // Live speech goes before a browser tab or video player on a busy media machine (a YouTube
+    // tab at 78% CPU had it skipping speech, 2026-10-26). Set before the model loads: the
+    // runtime's threads, and the reader below, inherit it. Not user-interactive: that is the UI's.
+    #[cfg(target_os = "macos")]
+    unsafe {
+        libc::pthread_set_qos_class_self_np(libc::qos_class_t::QOS_CLASS_USER_INITIATED, 0);
+    }
+    #[cfg(windows)]
+    above_normal_unthrottled();
+    let rec = match recognizer(dir, &Decoding::default()) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("[Offline] {e}");
+            return 2;
+        }
+    };
+    let out = std::io::stdout();
+    let say = |line: String| {
+        let mut o = out.lock();
+        let _ = writeln!(o, "K1 {line}");
+        let _ = o.flush();
+    };
+    say("ready".into());
+    // Each chunk with when it arrived (for the catch-up rule). `gone`: the server closed our
+    // input (stopped listening, or the server itself went): no one is listening any more, so
+    // nothing still queued is decoded (it used to decode minutes of backlog for no one).
+    let (tx, rx) = std::sync::mpsc::channel::<Option<(Instant, Vec<u8>)>>();
+    let gone = Arc::new(AtomicBool::new(false));
+    let gone_reader = gone.clone();
+    let singing = Arc::new(AtomicBool::new(false));
+    let singing_reader = singing.clone();
+    std::thread::spawn(move || {
+        let mut input = std::io::stdin().lock();
+        loop {
+            let mut len = [0u8; 4];
+            if input.read_exact(&mut len).is_err() {
+                gone_reader.store(true, Ordering::SeqCst);
+                let _ = tx.send(None);
+                return;
+            }
+            if u32::from_le_bytes(len) == SINGING_FRAME {
+                let mut on = [0u8; 1];
+                if input.read_exact(&mut on).is_err() {
+                    gone_reader.store(true, Ordering::SeqCst);
+                    let _ = tx.send(None);
+                    return;
+                }
+                singing_reader.store(on[0] == 1, Ordering::Relaxed);
+                continue;
+            }
+            let n = u32::from_le_bytes(len) as usize;
+            let mut buf = vec![0u8; n];
+            if n == 0 || input.read_exact(&mut buf).is_err() {
+                // A zero length is the server's "finish": the last words still matter.
+                if n != 0 { gone_reader.store(true, Ordering::SeqCst); }
+                let _ = tx.send(None);
+                return;
+            }
+            if tx.send(Some((Instant::now(), buf))).is_err() {
+                return;
+            }
+        }
+    });
+    let mut heard = Transcriber::new(rec, language);
+    let emit = |h: Heard| {
+        let (k, t) = match h {
+            Heard::Interim(t) => ("i", t),
+            Heard::Locked(t) => ("l", t),
+            Heard::Final(t) => ("f", t),
+        };
+        say(json!({ "k": k, "t": t }).to_string());
+    };
+    let mut last_pump = Instant::now();
+    let mut pace = Pace::default();
+    loop {
+        if gone.load(Ordering::SeqCst) {
+            return 0;
+        }
+        match rx.recv_timeout(Duration::from_millis(15)) {
+            Ok(Some((arrived, chunk))) => {
+                let sung = singing.load(Ordering::Relaxed);
+                if too_far_behind(arrived.elapsed(), pace.value()) || (sung && arrived.elapsed() > MAX_BEHIND_SINGING) {
+                    // Behind live speech and not catching up: drop what is waiting, say so, start
+                    // fresh at the newest.
+                    let mut dropped = chunk.len() / 2;
+                    let mut ended = false;
+                    while let Ok(next) = rx.try_recv() {
+                        match next {
+                            Some((_, c)) => dropped += c.len() / 2,
+                            None => { ended = true; break; }
+                        }
+                    }
+                    if let Some(h) = heard.cut() {
+                        emit(h);
+                    }
+                    say(json!({ "k": "s", "ms": dropped * 1000 / SAMPLE_RATE_HZ, "sung": sung }).to_string());
+                    if ended {
+                        return 0;
+                    }
+                    continue;
+                }
+                let samples: Vec<f32> = chunk.chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect();
+                let started = Instant::now();
+                heard.accept(&samples);
+                pace.add(samples.len() as f64 / SAMPLE_RATE_HZ as f64, started.elapsed());
+            }
+            Ok(None) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                if let Some(h) = heard.finish() {
+                    emit(h);
+                }
+                return 0;
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {}
+        }
+        if last_pump.elapsed() >= POLL {
+            last_pump = Instant::now();
+            for h in heard.pump() {
+                emit(h);
+            }
+            // Decoding happens here: its time counts against the audio accepted since.
+            pace.add(0.0, last_pump.elapsed());
+        }
+    }
+}
+
+enum FromWorker {
+    Ready,
+    Heard(Heard),
+    /// Recognition had fallen behind: this much waiting audio was dropped to stay live (and
+    /// whether it was singing).
+    Skipped(u64, bool),
+    Gone,
+}
+
+/// One engine process, and a thread reading what it says.
+/// `coreml`: the Core ML engine's program (coreml_worker), else this program's own ONNX engine.
+fn spawn_worker(dir: &std::path::Path, language: &Option<String>, coreml: Option<&std::path::Path>) -> Result<(std::process::Child, std::sync::mpsc::Receiver<FromWorker>), String> {
+    use std::io::BufRead;
+    let mut cmd = match coreml {
+        Some(exe) => std::process::Command::new(exe),
+        None => {
+            let mut c = std::process::Command::new(std::env::current_exe().map_err(|e| e.to_string())?);
+            c.arg(WORKER_FLAG);
+            c
+        }
+    };
+    cmd.arg(dir).arg(language.as_deref().unwrap_or("-"));
+    cmd.stdin(std::process::Stdio::piped()).stdout(std::process::Stdio::piped()).stderr(std::process::Stdio::inherit());
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        cmd.creation_flags(0x0800_0000); // CREATE_NO_WINDOW
+    }
+    let mut child = cmd.spawn().map_err(|e| format!("couldn't start the speech engine: {e}"))?;
+    let stdout = child.stdout.take().ok_or("the speech engine has no output")?;
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        for line in std::io::BufReader::new(stdout).lines() {
+            let Ok(line) = line else { break };
+            let Some(body) = line.strip_prefix("K1 ") else { continue };
+            let msg = if body == "ready" {
+                FromWorker::Ready
+            } else {
+                let Ok(v) = serde_json::from_str::<Value>(body) else { continue };
+                let t = v["t"].as_str().unwrap_or("").to_string();
+                if v["k"] == "s" {
+                    if tx.send(FromWorker::Skipped(v["ms"].as_u64().unwrap_or(0), v["sung"].as_bool().unwrap_or(false))).is_err() { return; }
+                    continue;
+                }
+                FromWorker::Heard(match v["k"].as_str() {
+                    Some("f") => Heard::Final(t),
+                    Some("l") => Heard::Locked(t),
+                    _ => Heard::Interim(t),
+                })
+            };
+            if tx.send(msg).is_err() {
+                return;
+            }
+        }
+        let _ = tx.send(FromWorker::Gone);
+    });
+    Ok((child, rx))
+}
+
+fn supervise(
+    app: Shared,
+    detector: crate::detect::Detector,
+    dir: std::path::PathBuf,
+    language: Option<String>,
+    coreml: Option<std::path::PathBuf>,
+    mut audio: tokio::sync::mpsc::Receiver<Bytes>,
+    stopping: Arc<AtomicBool>,
+    started: std::sync::mpsc::SyncSender<Result<(), String>>,
+) {
+    use std::io::Write;
+    let hub = app.hub.clone();
+    // Settled words so far (for a restarted engine's overlap), and whether
+    // the engine was just restarted and may still be repeating them.
+    let mut said: std::collections::VecDeque<String> = Default::default();
+    let catching_up = std::cell::Cell::new(false);
+    let mut tell = |h: Heard| {
+        crate::audio_stats::STATS.engine_results.fetch_add(1, Ordering::Relaxed);
+        let h = if catching_up.get() {
+            let strip = |t: &str| without_repeat(&said, t);
+            match h {
+                Heard::Interim(t) => Heard::Interim(strip(&t)),
+                Heard::Locked(t) => Heard::Locked(strip(&t)),
+                Heard::Final(t) => Heard::Final(strip(&t)),
+            }
+        } else {
+            h
+        };
+        if let Heard::Locked(t) | Heard::Final(t) = &h {
+            if t.is_empty() {
+                return;
+            }
+            catching_up.set(false);
+            said.extend(t.split_whitespace().map(plain));
+            while said.len() > REMEMBERED_WORDS {
+                said.pop_front();
+            }
+        }
+        if let Heard::Interim(t) = &h {
+            if t.is_empty() {
+                return;
+            }
+        }
+        match h {
+            Heard::Final(text) => detector.speech(&hub, &text, true, 0.9, true, None, false),
+            Heard::Locked(text) => detector.speech(&hub, &text, true, 0.9, false, None, true),
+            Heard::Interim(text) => detector.speech(&hub, &text, false, 0.85, false, None, false),
+        }
+    };
+    let mut started = Some(started);
+    let mut deaths: std::collections::VecDeque<Instant> = Default::default();
+    let mut recent: std::collections::VecDeque<Bytes> = Default::default();
+    loop {
+        // Start (or restart) the engine and wait for its model to load. The
+        // audio queue isn't read meanwhile: it holds what's said.
+        let ready = spawn_worker(&dir, &language, coreml.as_deref()).and_then(|w| wait_ready(w, &stopping));
+        let (mut child, from) = match ready {
+            Ok(w) => w,
+            Err(e) => {
+                if let Some(s) = started.take() {
+                    let _ = s.send(Err(e));
+                    return;
+                }
+                if stopping.load(Ordering::SeqCst) {
+                    return;
+                }
+                eprintln!("[Offline] Speech engine couldn't restart: {e}");
+                state(&app, "error", Some(("unknown", format!("The offline speech engine stopped and couldn't restart: {e}"))));
+                return;
+            }
+        };
+        if let Some(s) = started.take() {
+            let _ = s.send(Ok(()));
+        } else {
+            state(&app, "connected", None);
+            eprintln!("[Offline] Speech engine back — catching up on the audio held meanwhile");
+        }
+        let mut input = child.stdin.take();
+        let mut dead = false;
+        // What this engine was last told about singing (a restarted one starts out not told).
+        let mut told_singing = false;
+        // After a restart: the last seconds again first (see REPLAY_FRAMES).
+        if !recent.is_empty() {
+            catching_up.set(true);
+            let w = input.as_mut().expect("engine input");
+            for chunk in &recent {
+                if w.write_all(&(chunk.len() as u32).to_le_bytes()).and_then(|_| w.write_all(chunk)).is_err() {
+                    dead = true;
+                    break;
+                }
+            }
+        }
+        loop {
+            while let Ok(m) = from.try_recv() {
+                match m {
+                    FromWorker::Heard(h) => tell(h),
+                    // A song dropped to stay live is no loss: logged, not put to the operator.
+                    FromWorker::Skipped(ms, true) => crate::routes::write_debug_global("server:singing-skipped", json!({ "skippedMs": ms })),
+                    FromWorker::Skipped(ms, false) => {
+                        // Said, in the log and to the operator: this computer can't keep up.
+                        crate::routes::write_debug_global("server:speech-behind", json!({ "skippedMs": ms }));
+                        hub.broadcast(json!({ "type": "speech-behind", "skippedMs": ms }));
+                        // Voice it dropped unheard is no interpreter.
+                        if let Some(c) = crate::interpretation::with(|i| i.speech_dropped()) {
+                            crate::detect::announce_interpretation(&hub, c);
+                        }
+                    }
+                    FromWorker::Gone => dead = true,
+                    FromWorker::Ready => {}
+                }
+            }
+            if dead {
+                break;
+            }
+            if stopping.load(Ordering::SeqCst) {
+                // Finish: the last words, then the engine ends itself.
+                if let Some(mut w) = input.take() {
+                    let _ = w.write_all(&0u32.to_le_bytes());
+                }
+                let deadline = Instant::now() + Duration::from_secs(3);
+                while Instant::now() < deadline {
+                    match from.recv_timeout(Duration::from_millis(50)) {
+                        Ok(FromWorker::Heard(h)) => tell(h),
+                        Ok(FromWorker::Gone) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+                        _ => {}
+                    }
+                }
+                let _ = child.kill();
+                let _ = child.wait();
+                return;
+            }
+            let singing = crate::music::SINGING.load(Ordering::Relaxed);
+            if singing != told_singing {
+                told_singing = singing;
+                let w = input.as_mut().expect("engine input");
+                if w.write_all(&SINGING_FRAME.to_le_bytes()).and_then(|_| w.write_all(&[singing as u8])).is_err() {
+                    dead = true;
+                }
+            }
+            let mut got = false;
+            while let Ok(chunk) = audio.try_recv() {
+                got = true;
+                let w = input.as_mut().expect("engine input");
+                if w.write_all(&(chunk.len() as u32).to_le_bytes()).and_then(|_| w.write_all(&chunk)).is_err() {
+                    dead = true;
+                    break;
+                }
+                crate::audio_stats::STATS.engine_frames.fetch_add(1, Ordering::Relaxed);
+                recent.push_back(chunk);
+                if recent.len() > REPLAY_FRAMES {
+                    recent.pop_front();
+                }
+            }
+            if dead {
+                break;
+            }
+            if !got {
+                std::thread::sleep(Duration::from_millis(15));
+            }
+        }
+        // It died. Restart it — unless it keeps dying. (Killed first: one that closed its output
+        // but hangs on teardown would block this wait, and the restart, for good.)
+        let _ = child.kill();
+        let status = child.wait().map(|s| s.to_string()).unwrap_or_default();
+        let now = Instant::now();
+        deaths.push_back(now);
+        while deaths.front().is_some_and(|t| now.duration_since(*t) > Duration::from_secs(60)) {
+            deaths.pop_front();
+        }
+        crate::routes::write_debug_line(&app, "server:speech-engine", json!({ "stopped": status, "recentStops": deaths.len() }));
+        if deaths.len() >= RESTARTS_PER_MINUTE {
+            eprintln!("[Offline] Speech engine stopped {} times in a minute ({status}) — giving up", deaths.len());
+            state(&app, "error", Some(("unknown", "The offline speech engine keeps stopping. Stop and start listening again; if it keeps happening, switch the Speech Engine in Settings → Audio.".into())));
+            return;
+        }
+        eprintln!("[Offline] Speech engine stopped ({status}) — restarting; what's said meanwhile is kept");
+        state(&app, "reconnecting", None);
+    }
+}
+
+/// After a session: the audio channel closed, the state told.
+pub async fn stopped(app: &Shared) {
+    *app.audio.lock().await = None;
+    if let Some((_, d)) = app.ready() {
+        d.configure(|c| c.offline = false);
+    }
+    state(app, "disconnected", None);
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn live_speech_stays_live() {
+        use std::time::Duration;
+        let slow = 1.0;
+        let fast = 7.0;
+        assert!(!super::too_far_behind(Duration::from_millis(500), slow), "a normal wait is decoded");
+        assert!(!super::too_far_behind(super::MAX_BEHIND, slow), "exactly at the limit is still decoded");
+        assert!(super::too_far_behind(super::MAX_BEHIND + Duration::from_millis(1), slow), "too slow to catch up: dropped");
+        assert!(!super::too_far_behind(super::MAX_BEHIND + Duration::from_secs(5), fast), "catching up: kept");
+        assert!(super::too_far_behind(super::MAX_BEHIND_HARD + Duration::from_millis(1), fast), "too old even when catching up");
+    }
+
+    #[test]
+    fn a_stall_barely_moves_the_pace() {
+        use std::time::Duration;
+        let mut pace = super::Pace::default();
+        assert!(pace.value().is_infinite(), "nothing measured yet: assumed able");
+        for _ in 0..50 {
+            pace.add(0.56, Duration::from_millis(80));
+        }
+        pace.add(0.56, Duration::from_secs(5));
+        assert!(pace.value() > super::MIN_PACE, "one 5 s stall in 30 s of audio: {}", pace.value());
+        for _ in 0..60 {
+            pace.add(0.56, Duration::from_millis(1100));
+        }
+        assert!(pace.value() < super::MIN_PACE, "slower than real time: {}", pace.value());
+    }
+
+    #[test]
+    fn a_restarted_engine_does_not_repeat_settled_words() {
+        let said: std::collections::VecDeque<String> = ["through", "this", "testimony"].iter().map(|w| w.to_string()).collect();
+        assert_eq!(super::without_repeat(&said, "this testimony, Ephesians two six came"), "Ephesians two six came");
+        assert_eq!(super::without_repeat(&said, "Ephesians two six"), "Ephesians two six");
+        assert_eq!(super::without_repeat(&said, "Testimony."), "");
+    }
+
+    #[test]
+    fn book_names_in_the_models_pieces() {
+        let vocab: std::collections::HashSet<String> = ["\u{2581}J", "er", "em", "iah", "\u{2581}Song", "\u{2581}of", "\u{2581}Sol", "omon", "e", "r", "m", "i", "a", "h"].iter().map(|s| s.to_string()).collect();
+        assert_eq!(super::pieces("Jeremiah", &vocab).unwrap(), ["\u{2581}J", "er", "em", "iah"]);
+        assert_eq!(super::pieces("Song of Solomon", &vocab).unwrap().len(), 4);
+        assert!(super::pieces("Zz", &vocab).is_none());
+    }
+
+    #[test]
+    fn languages_choose_the_model() {
+        assert_eq!(super::model_for("en-US").0, "en");
+        assert_eq!(super::model_for("ja"), ("multi", Some("ja-JP".to_string())));
+    }
+}

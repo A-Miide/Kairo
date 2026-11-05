@@ -1,0 +1,24 @@
+{
+ "videoId": "scn-slip-wrong-chapter",
+ "title": "Scenario: slip-wrong-chapter",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "Matthew five verse thirty three, the Bible says"
+  },
+  {
+   "startMs": 4100,
+   "text": "but seek ye first the kingdom of God, and his righteousness; and all these things shall be added unto you"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Matthew",
+   "chapter": 6,
+   "kind": "quote",
+   "startMs": 4100,
+   "verse": 33
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

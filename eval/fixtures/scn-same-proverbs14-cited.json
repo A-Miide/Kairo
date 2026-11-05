@@ -1,0 +1,24 @@
+{
+ "videoId": "scn-same-proverbs14-cited",
+ "title": "Scenario: same-proverbs14-cited",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "Proverbs fourteen twelve"
+  },
+  {
+   "startMs": 2100,
+   "text": "there is a way which seemeth right unto a man, but the end thereof are the ways of death"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Proverbs",
+   "chapter": 14,
+   "kind": "citation",
+   "startMs": 0,
+   "verse": 12
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

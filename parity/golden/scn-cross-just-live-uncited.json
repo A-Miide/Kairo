@@ -1,0 +1,37 @@
+{
+ "source": "scn-cross-just-live-uncited",
+ "kind": "scenario",
+ "lang": "en",
+ "songLive": false,
+ "cues": [
+  {
+   "text": "and I want you to know this morning that the just shall live by faith",
+   "audioMs": 0
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "and I want you",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "and I want you to know this morning",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "and I want you to know this morning that the just shall",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "and I want you to know this morning that the just shall live by faith",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

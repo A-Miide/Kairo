@@ -1,0 +1,65 @@
+{
+ "source": "scn-turn-to-chapter-after-citation",
+ "kind": "scenario",
+ "lang": "en",
+ "songLive": false,
+ "cues": [
+  {
+   "text": "For God so loved the world John three sixteen",
+   "audioMs": 0
+  },
+  {
+   "text": "now turn to chapter four verse five",
+   "audioMs": 4500
+  },
+  {
+   "text": "then cometh he to a city of Samaria which is called Sychar",
+   "audioMs": 8200
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "For God so loved",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "For God so loved the world John three",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "For God so loved the world John three sixteen",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "now turn to chapter",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "now turn to chapter four verse five",
+   "isFinal": true
+  },
+  {
+   "cue": 2,
+   "text": "then cometh he to",
+   "isFinal": false
+  },
+  {
+   "cue": 2,
+   "text": "then cometh he to a city of Samaria",
+   "isFinal": false
+  },
+  {
+   "cue": 2,
+   "text": "then cometh he to a city of Samaria which is called Sychar",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

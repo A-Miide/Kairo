@@ -1,0 +1,24 @@
+{
+ "videoId": "scn-cross-acts217-cited",
+ "title": "Scenario: cross-acts217-cited",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "Acts chapter two verse seventeen"
+  },
+  {
+   "startMs": 2900,
+   "text": "and it shall come to pass in the last days, saith God, I will pour out of my Spirit upon all flesh: and your sons and your daughters shall prophesy"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Acts",
+   "chapter": 2,
+   "kind": "citation",
+   "startMs": 0,
+   "verse": 17
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

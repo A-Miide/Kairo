@@ -1,0 +1,71 @@
+# Dependencies
+node_modules/
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Sensitive config — never commit API keys
+databases/settings.json
+
+# Large binary / model files
+databases/bibles/ivf.faiss
+databases/bibles/verses.bin
+databases/bibles/verse_embeddings.f32
+databases/bibles/verse_embeddings.json
+databases/bibles/model/
+databases/bibles/reranker_model/
+# map.json and kjv.json are required by the Tauri bundle — committed.
+
+# Operator runtime state — regenerated on first run (segments.js seeds
+# DEFAULT_SEGMENTS, triggers/media start empty). Not source.
+databases/segments/
+databases/triggers/
+databases/media/
+databases/sessions/
+databases/songs/songs.json
+
+# Whisper offline-STT models (downloaded by scripts/download-whisper-model.js on first use)
+models/
+
+# Eval run output — regenerated on every run. The fixtures (ground truth)
+# and decks in eval/ are source; run snapshots aren't.
+eval/results/
+eval-results/
+
+# Tauri build output
+src-tauri/target/
+
+# Logs
+*.log
+logs/
+
+# Environment files
+.env
+.env.*
+
+# Tauri updater signing key — NEVER commit the private key.
+# The public key (.pub) is safe to commit; it's already baked into tauri.conf.json.
+scripts/kairo-updater.key
+
+# Claude Code working dir (per-clone state, never shared)
+.claude/
+
+.scratch_preview/
+
+# Parity recorder run logs
+parity/*.log
+databases/bibles/verse_index.*.kvx
+
+# The ffmpeg that ships in the app is built by scripts/build-ffmpeg-macos.sh, not committed.
+src-tauri/bin/*
+!src-tauri/bin/.gitkeep
+
+# Scratch space for scripts/build-ffmpeg-macos.sh
+/target/
+
+# Dev data and local symlink
+databases/learned-keyterms.json
+node_modules
+src-tauri/coreml-speech/.build/

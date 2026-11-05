@@ -1,0 +1,156 @@
+// KAIRO — helpers shared by every window (main app, display outputs).
+// Loaded first by index.html and display.html, so each page gets ONE
+// implementation instead of a copy per file (display.html's auth-token loader
+// had drifted to a version with no retry, which loses the token permanently if
+// the Tauri bridge attaches a tick late on a cold launch).
+'use strict';
+
+let AUTH_TOKEN = '';
+
+// Retries with backoff rather than a single attempt: the packaged app runs
+// with AUTH_REQUIRED on (dev mode never sets KAIRO_AUTH_TOKEN, so this whole
+// path went untested all the way through this build), and a cold ad-hoc-signed
+// launch is exactly the scenario where the injected `window.__TAURI__` bridge
+// might not be fully ready on the very first task-queue turn. A silent,
+// permanent failure here means EVERY authenticated request 401s for the rest
+// of the session — Start Listening surfaces it, but so would verse search,
+// settings, everything else, just without an obvious toast.
+// Same-origin pages embedded in the operator window (the monitor's live
+// copies of each output, display.html?monitor=1) have no Tauri bridge of
+// their own — they borrow the token the operator window already holds.
+window.kairoAuthToken = () => AUTH_TOKEN;
+
+// Every window's lines for the debug log (databases/debug.log, prefixed client: by the server):
+// one way to write them. They carry the token themselves, so they aren't refused (401) in the
+// packaged app, and a line written before the token has loaded waits for it instead of being
+// lost. Lines logged before this script ran (window.__kairoEarlyLog) are sent too.
+const _kairoLogQueue = [];
+let _kairoLogReady = false;
+// One after another, so the log keeps the order things happened in.
+let _kairoLogChain = Promise.resolve();
+function _kairoPostLog(event, data) {
+  const body = JSON.stringify({ event, data });
+  _kairoLogChain = _kairoLogChain.then(() => {
+    const headers = { 'Content-Type': 'application/json' };
+    if (AUTH_TOKEN) headers.Authorization = `Bearer ${AUTH_TOKEN}`;
+    return (window.__kairoRawFetch || fetch)(`${location.origin}/api/debug-log`, { method: 'POST', headers, body });
+  }).catch(() => {});
+}
+function kairoLog(event, data) {
+  if (_kairoLogReady) { _kairoPostLog(event, data); return; }
+  _kairoLogQueue.push([event, data]);
+  if (_kairoLogQueue.length > 200) _kairoLogQueue.shift();
+}
+function _kairoLogFlush() {
+  if (_kairoLogReady) return;
+  _kairoLogReady = true;
+  _kairoLogQueue.splice(0).forEach(([e, d]) => _kairoPostLog(e, d));
+}
+window.kairoLog = kairoLog;
+// A smaller copy of a picture imported from a ProPresenter file, for the operator's own tiles and
+// previews: a 4K slide image costs ~33 MB of memory once the web view decodes it, however small it
+// is drawn. The output screens keep the full picture. Anything else comes back as it was.
+window.kairoSmall = function (url, width) {
+  const u = String(url || '');
+  return u.includes('/api/pp-assets/') && !u.includes('?') ? `${u}?w=${width}` : u;
+};
+(window.__kairoEarlyLog || []).splice(0).forEach(([e, d]) => kairoLog(e, d));
+// A page that never loads the token (or a token that never comes) still gets its lines out.
+setTimeout(_kairoLogFlush, 8000);
+
+// Settles once loadAuthToken has its answer (a token, or none after its retries):
+// a request made before then waits for it (app.js _authFetch) instead of going out
+// without the token and being refused. The Media Bin's first load at startup was
+// refused this way (HTTP 401, owner's screenshot 2026-10-17).
+let _kairoAuthDone;
+window.kairoAuthReady = new Promise(r => { _kairoAuthDone = r; });
+async function loadAuthToken(attempts = 5, delayMs = 200) {
+  try { await _loadAuthToken(attempts, delayMs); } finally { _kairoLogFlush(); _kairoAuthDone(); }
+}
+async function _loadAuthToken(attempts, delayMs) {
+  if (window.parent !== window) {
+    for (let i = 0; i < attempts; i++) {
+      try {
+        const t = window.parent.kairoAuthToken?.();
+        if (typeof t === 'string' && t) { AUTH_TOKEN = t; return; }
+      } catch { break; }   // not same-origin — fall through to the bridge
+      await new Promise(r => setTimeout(r, delayMs * (i + 1)));
+    }
+  }
+  for (let i = 0; i < attempts; i++) {
+    // `window.__TAURI__` missing here does NOT mean "plain-browser dev, give
+    // up forever" — on a fresh navigation the IPC bridge can attach a tick or
+    // two after our script starts running, which is exactly the race this
+    // retry loop exists to survive. Returning here (as this used to do) exited
+    // the whole function on the very first check, before the backoff below
+    // ever got a chance — AUTH_TOKEN stayed '' permanently and every request
+    // for the rest of the session silently dropped its Authorization header
+    // and 401'd. Skip this attempt instead and let the loop keep retrying;
+    // only a plain browser with no Tauri bridge at all pays the full ~3s of
+    // backoff before giving up.
+    const inv = window.__TAURI__?.core?.invoke || window.__TAURI__?.invoke;
+    if (inv) {
+      try {
+        AUTH_TOKEN = await inv('get_server_token');
+        // The bridge answered. An empty token means the server runs without
+        // auth (dev) — retrying just delayed every window's connect by ~3s.
+        return;
+      } catch (err) {
+        if (i === attempts - 1) {
+          console.error('[KAIRO] Could not load auth token from Tauri after retries:', err?.message || err);
+        }
+      }
+    }
+    await new Promise(r => setTimeout(r, delayMs * (i + 1)));
+  }
+  console.error('[KAIRO] No auth token after ' + attempts + ' attempts — every API/WS request will 401 for this session.');
+}
+
+// Append ?token=… to a WS URL so the server can authenticate the upgrade.
+function authedWsUrl(base) {
+  if (!AUTH_TOKEN) return base;
+  return base + (base.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(AUTH_TOKEN);
+}
+
+// A media file's address with the token on it. <video> and <audio> can't send
+// an Authorization header, and the server only lets image files through
+// without one, so a video from the app's own server needs ?token=… or it
+// gets a 401 and stays black. Anything else (data:, blob:, other hosts) is
+// left alone.
+function authedMediaUrl(u) {
+  if (!AUTH_TOKEN || typeof u !== 'string' || !u) return u;
+  const local = u.startsWith('/') && !u.startsWith('//');
+  const sameOrigin = /^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?\//.test(u);
+  if (!local && !sameOrigin) return u;
+  if (/[?&]token=/.test(u)) return u;
+  return u + (u.includes('?') ? '&' : '?') + 'token=' + encodeURIComponent(AUTH_TOKEN);
+}
+
+// HTML escape for safe interpolation into innerHTML or attributes. Same map
+// in either context, so we don't keep two lookalike helpers.
+function escapeHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[c]));
+}
+
+const SECTION_TYPE_RE = /^(verse|chorus|refrain|solo|pre-?chorus|bridge|tag|intro|outro|ending)/i;
+function sectionTypeClass(label) {
+  const m = SECTION_TYPE_RE.exec(String(label || '').trim());
+  if (!m) return null;
+  const t = m[1].toLowerCase().replace(/-/g, '');
+  if (t === 'prechorus') return 'sec-prechorus';
+  if (t === 'ending') return 'sec-outro';
+  return `sec-${t}`;
+}
+
+const loadedFonts = new Set(['Manrope', 'system-ui']);
+function loadGoogleFont(family) {
+  if (!family || loadedFonts.has(family)) return;
+  loadedFonts.add(family);
+  const link = document.createElement('link');
+  link.rel = 'stylesheet';
+  link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:wght@100;200;300;400;500;600;700;800;900&display=swap`;
+  document.head.appendChild(link);
+}
+

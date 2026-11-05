@@ -1,0 +1,56 @@
+{
+ "source": "scn-cross-romans117-cited",
+ "kind": "scenario",
+ "lang": "en",
+ "songLive": false,
+ "cues": [
+  {
+   "text": "Romans one seventeen",
+   "audioMs": 0
+  },
+  {
+   "text": "for therein is the righteousness of God revealed from faith to faith: as it is written, the just shall live by faith",
+   "audioMs": 2100
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "Romans one seventeen",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "for therein is the",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "for therein is the righteousness of God revealed",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "for therein is the righteousness of God revealed from faith to faith:",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "for therein is the righteousness of God revealed from faith to faith: as it is written,",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "for therein is the righteousness of God revealed from faith to faith: as it is written, the just shall live",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "for therein is the righteousness of God revealed from faith to faith: as it is written, the just shall live by faith",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

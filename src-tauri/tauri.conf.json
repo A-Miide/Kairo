@@ -1,0 +1,93 @@
+{
+  "productName": "Kairo",
+  "version": "4.4.12",
+  "identifier": "com.kairo.scripture",
+  "build": {
+    "beforeDevCommand": "npm run server",
+    "devUrl": "http://localhost:7777",
+    "beforeBuildCommand": "cargo run --release --manifest-path src-tauri/Cargo.toml -p kairo-eval --bin bundle-data",
+    "frontendDist": "http://localhost:7777"
+  },
+  "app": {
+    "withGlobalTauri": true,
+    "windows": [
+      {
+        "label": "main",
+        "title": "Kairo",
+        "width": 1280,
+        "height": 820,
+        "minWidth": 1180,
+        "minHeight": 700,
+        "resizable": true,
+        "fullscreen": false,
+        "decorations": true,
+        "transparent": false,
+        "titleBarStyle": "Overlay",
+        "trafficLightPosition": { "x": 18, "y": 26 },
+        "hiddenTitle": true,
+        "visible": false,
+        "backgroundColor": "#0d0d0d",
+        "dragDropEnabled": false
+      }
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDhGQzRGQTQ2OTdEMzUwRDkKUldUWlVOT1hSdnJFangrS05yMjMwMkwwbSt5R1E3ZWYwSVVHa0pyRkxJbnZkUHN1NGRmcXhGTTkK",
+      "endpoints": [
+        "https://github.com/A-Miide/Kairo/releases/latest/download/latest.json"
+      ],
+      "dialog": false,
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "resources": {
+      "../src": "src",
+      "../databases/bibles/kjv.json": "databases/bibles/kjv.json",
+      "../databases/bibles/model": "databases/bibles/model",
+      "../databases/bibles/reranker_model": "databases/bibles/reranker_model",
+      "../databases/bibles/packs": "databases/bibles/packs",
+      "../databases/bibles/translations": "databases/bibles/translations",
+      "../databases/bibles/verse_index.bge-small.kvx": "databases/bibles/verse_index.bge-small.kvx",
+      "../databases/i18n": "databases/i18n",
+      "bin": "bin",
+      "../databases/vad": "databases/vad"
+    },
+    "linux": {
+      "deb": {
+        "depends": [
+          "libwebkit2gtk-4.1-0",
+          "libssl3",
+          "libasound2t64 | libasound2"
+        ]
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "12.0",
+      "entitlements": "entitlements.plist",
+      "exceptionDomain": "",
+      "frameworks": [
+        "Frameworks/Syphon.framework"
+      ]
+    },
+    "windows": {
+      "digestAlgorithm": "sha256",
+      "certificateThumbprint": null,
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
+    }
+  }
+}

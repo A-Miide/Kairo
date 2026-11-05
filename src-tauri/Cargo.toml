@@ -1,0 +1,141 @@
+[package]
+name = "kairo"
+version = "4.4.12"
+description = "Kairo — AI Scripture Assistant"
+authors = ["Kairo"]
+edition = "2021"
+
+[lib]
+name = "kairo_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+# The package name above stays lowercase (crate-naming convention, and
+# renaming it would ripple into Cargo.lock/dependency references for no
+# real benefit) — but it's also literally what macOS shows as the process
+# name for an unbundled `cargo run` dev binary (Dock tooltip, Activity
+# Monitor), which is where the Dock's "kairo" label was actually coming
+# from — tauri.conf.json's productName only takes effect once a real .app
+# bundle exists (a release build, or a bundled dev run), not for the bare
+# executable. This gives the compiled BINARY its own name, independent of
+# the package identity, so even the raw dev process shows "Kairo".
+[[bin]]
+name = "Kairo"
+path = "src/main.rs"
+
+# The backend crates (docs/RUST_REWRITE_PLAN.md). The workspace root stays
+# here so Tauri's layout and CI's src-tauri/target cache are unchanged.
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+
+[workspace.package]
+edition = "2021"
+version = "4.4.12"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+anyhow = "1"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+# Compiles native/decklink.cpp (DeckLink output) against vendor/decklink.
+cc = "1"
+
+[dependencies]
+# Kairo's backend, run inside the app (release builds).
+kairo-server = { path = "crates/kairo-server" }
+kairo-compositor = { path = "crates/kairo-compositor" }
+tauri = { version = "2", features = ["webview-data-url"] }
+tauri-plugin-shell = "2"
+tauri-plugin-dialog = "2"
+tauri-plugin-updater = "2"
+# "Paste from clipboard" imports (service.js's quickImportClipboard) used
+# plain navigator.clipboard.readText() — the web Clipboard API, which a
+# Tauri webview never grants without this plugin, so it silently threw every
+# time and the operator was dumped into the manual paste-textarea fallback
+# on EVERY use, not just when the OS clipboard genuinely couldn't be read.
+tauri-plugin-clipboard-manager = "2"
+# Suppresses WRY's own native right-click menu (Reload/Inspect Element) —
+# in a dev/debug build that menu wins over the page's contextmenu listener
+# unconditionally, no matter what the JS does (confirmed: preventDefault()
+# has no effect on it), so the app's own custom menu (Quick edit/Rename/
+# Edit/Duplicate/Delete — Timer, Slides, Songs, Media cards) never even
+# got a chance to show. Only CONTEXT_MENU is disabled — Cmd+Option+I still
+# opens devtools directly, this just stops right-click from being
+# intercepted before the page ever sees it.
+tauri-plugin-prevent-default = "5"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", features = ["blocking"] }
+tokio = { version = "1", features = ["time"] }
+base64 = "0.22"
+getrandom = "0.2"
+
+# NDI native sender — links to libndi.dylib/dll/so at runtime via libloading.
+# We don't bundle the NDI SDK; KAIRO finds libndi on the user's system from
+# the standard NDI Tools / NDI SDK install paths. Renders verse/media/timer
+# frames in pure Rust (no webview capture) so this works headless.
+libloading = "0.8"
+tiny-skia  = "0.11"
+cosmic-text = "0.12"
+crossbeam-channel = "0.5"
+# Decodes Media-layer images for the NDI/Syphon renderers (Output Looks —
+# see ndi.rs/syphon.rs render_frame). png+jpeg only: every real Media import
+# in this app is one of those two (server/slide_import.js's own media
+# handling); trimmed feature set keeps compile time/binary size down.
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+
+# ── macOS-only: Syphon native sender ─────────────────────────────────────
+# Syphon publishes via OpenGL textures shared through IOSurface. We use
+# objc2 to talk to Cocoa + the bundled Syphon.framework; gl_loader / gl
+# for the CGL context and texture upload. All macOS-gated so non-Mac
+# builds (Linux .deb / Windows .msi) skip these entirely.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2            = "0.5"
+objc2-foundation = { version = "0.2", features = ["NSString", "NSDictionary", "NSValue", "NSGeometry"] }
+core-foundation  = "0.10"
+gl               = "0.14"
+# Output capture (capture.rs): snapshots an output's hidden display window
+# for NDI / Syphon / DeckLink. The objc2 0.6 family Tauri itself uses, under
+# other names so they sit beside the 0.5 crates Syphon is written against.
+objc2_06             = { package = "objc2", version = "0.6" }
+block2_06            = { package = "block2", version = "0.6" }
+foundation3          = { package = "objc2-foundation", version = "0.3", features = ["NSValue", "NSError", "NSString"] }
+objc2-app-kit        = { version = "0.3", default-features = false, features = ["std", "NSImage", "NSImageRep", "NSGraphicsContext", "objc2-core-graphics", "objc2-core-foundation"] }
+objc2-web-kit        = { version = "0.3", default-features = false, features = ["std", "WKWebView", "WKSnapshotConfiguration", "block2", "objc2-app-kit"] }
+objc2-core-graphics  = { version = "0.3", default-features = false, features = ["std", "CGImage", "CGContext", "CGBitmapContext", "CGColorSpace"] }
+objc2-core-foundation = { version = "0.3", default-features = false, features = ["std", "CFCGTypes"] }
+
+# Spout — Windows' equivalent of Syphon (same-machine, zero-copy sharing).
+# spout2-rs's DirectX 11 backend owns its own D3D11 device internally and
+# sends plain CPU pixel buffers (Sender::new + send_image(&pixels, w, h)),
+# so — like Syphon's CGL path — no external graphics context setup is
+# needed from spout.rs's side. Deliberately NOT a hand-rolled FFI binding to
+# Spout's own C++ interface (SpoutLibrary's exported interface is a raw
+# C++ vtable, not flat C functions the way libndi's are) — getting a vtable
+# layout wrong by hand, with no Windows machine available to test against
+# the real DLL, risks silent memory corruption, a strictly worse failure
+# mode than a clean crash. Target-scoped so macOS/Linux builds never touch
+# this dependency at all.
+[target.'cfg(windows)'.dependencies]
+spout2-rs = "0.1"
+
+# No `panic = "abort"`: WebKit reports a stopped request by raising an
+# Objective-C exception, which wry catches with objc2::exception::catch —
+# that only works if the exception may unwind through Rust frames. Under
+# panic = "abort" it aborts instead. Real crash: 3.0.13 died 8s after launch
+# when the startup navigate() stopped IPC requests still waiting on a reply.
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+strip = true
+
+# Proc-macro/build-script crates are host tooling, not shipped code — LTO +
+# strip on them (inherited from [profile.release] by default) was producing
+# a proc-macro dylib rustc couldn't load ("can't find crate for X_derive").
+[profile.release.build-override]
+opt-level = 0
+strip = false

@@ -1,0 +1,20 @@
+{
+ "videoId": "scn-num-french",
+ "title": "Scenario: num-french",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "Romains huit verset vingt-huit"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Romans",
+   "chapter": 8,
+   "kind": "citation",
+   "startMs": 0,
+   "verse": 28
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

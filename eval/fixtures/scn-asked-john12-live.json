@@ -1,0 +1,124 @@
+{
+ "videoId": "scn-asked-john12-live",
+ "title": "Scenario: asked-john12-live",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "Hear me"
+  },
+  {
+   "startMs": 1700,
+   "text": "What number are"
+  },
+  {
+   "startMs": 3800,
+   "text": "we now? Number what"
+  },
+  {
+   "startMs": 6300,
+   "text": "number three that means"
+  },
+  {
+   "startMs": 8800,
+   "text": "you are following me."
+  },
+  {
+   "startMs": 11300,
+   "text": "I want you"
+  },
+  {
+   "startMs": 13400,
+   "text": "to pray. Can"
+  },
+  {
+   "startMs": 15500,
+   "text": "I have the"
+  },
+  {
+   "startMs": 17600,
+   "text": "Book of John"
+  },
+  {
+   "startMs": 19700,
+   "text": "chapter what twelve from verse ten?"
+  },
+  {
+   "startMs": 23000,
+   "text": "I want you to"
+  },
+  {
+   "startMs": 25500,
+   "text": "see it one wickedness there and I want"
+  },
+  {
+   "startMs": 29600,
+   "text": "you to relate"
+  },
+  {
+   "startMs": 31700,
+   "text": "it here if you"
+  },
+  {
+   "startMs": 34200,
+   "text": "understand what happened"
+  },
+  {
+   "startMs": 36300,
+   "text": "in John chapter eleven,"
+  },
+  {
+   "startMs": 38800,
+   "text": "then this script,"
+  },
+  {
+   "startMs": 40900,
+   "text": "this verse should"
+  },
+  {
+   "startMs": 43000,
+   "text": "strike you. He"
+  },
+  {
+   "startMs": 45100,
+   "text": "said, but the chief priest"
+  },
+  {
+   "startMs": 48000,
+   "text": "consulted that what"
+  },
+  {
+   "startMs": 50100,
+   "text": "the same Lazarus that resurrected"
+  },
+  {
+   "startMs": 53000,
+   "text": "am I making sense, you"
+  },
+  {
+   "startMs": 55900,
+   "text": "know, there are"
+  },
+  {
+   "startMs": 58000,
+   "text": "people that your congratulation"
+  },
+  {
+   "startMs": 60500,
+   "text": "has started they"
+  },
+  {
+   "startMs": 62600,
+   "text": "want to kill it"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "John",
+   "chapter": 12,
+   "kind": "citation",
+   "startMs": 19700,
+   "verse": 10
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

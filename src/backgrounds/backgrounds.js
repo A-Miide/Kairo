@@ -1,0 +1,257 @@
+// KAIRO — the bundled background pool: original abstract backgrounds that ship
+// with the app (src/backgrounds/), reusable by any theme or slide. Written by
+// scripts/make-backgrounds.js — edit the recipes there and re-run it rather
+// than editing this list by hand. tone: which text reads on it ('dark' takes
+// light text); color: the picture's average colour.
+(function (root) {
+  'use strict';
+  const BACKGROUNDS = [
+    {
+      "id": "midnight",
+      "name": "Midnight",
+      "tone": "dark",
+      "tags": [
+        "blue",
+        "soft light"
+      ],
+      "color": "#1a2154",
+      "src": "backgrounds/midnight.jpg",
+      "thumb": "backgrounds/thumbs/midnight.jpg"
+    },
+    {
+      "id": "aurora",
+      "name": "Aurora",
+      "tone": "dark",
+      "tags": [
+        "teal",
+        "violet"
+      ],
+      "color": "#1a394b",
+      "src": "backgrounds/aurora.jpg",
+      "thumb": "backgrounds/thumbs/aurora.jpg"
+    },
+    {
+      "id": "teal-studio",
+      "name": "Teal Studio",
+      "tone": "dark",
+      "tags": [
+        "teal",
+        "announcements"
+      ],
+      "color": "#234144",
+      "src": "backgrounds/teal-studio.jpg",
+      "thumb": "backgrounds/thumbs/teal-studio.jpg"
+    },
+    {
+      "id": "ember",
+      "name": "Ember",
+      "tone": "dark",
+      "tags": [
+        "warm",
+        "amber"
+      ],
+      "color": "#431a06",
+      "src": "backgrounds/ember.jpg",
+      "thumb": "backgrounds/thumbs/ember.jpg"
+    },
+    {
+      "id": "royal",
+      "name": "Royal",
+      "tone": "dark",
+      "tags": [
+        "purple",
+        "magenta"
+      ],
+      "color": "#390e39",
+      "src": "backgrounds/royal.jpg",
+      "thumb": "backgrounds/thumbs/royal.jpg"
+    },
+    {
+      "id": "emerald",
+      "name": "Emerald",
+      "tone": "dark",
+      "tags": [
+        "green"
+      ],
+      "color": "#0c3c22",
+      "src": "backgrounds/emerald.jpg",
+      "thumb": "backgrounds/thumbs/emerald.jpg"
+    },
+    {
+      "id": "crimson",
+      "name": "Crimson",
+      "tone": "dark",
+      "tags": [
+        "red",
+        "velvet"
+      ],
+      "color": "#3b0810",
+      "src": "backgrounds/crimson.jpg",
+      "thumb": "backgrounds/thumbs/crimson.jpg"
+    },
+    {
+      "id": "charcoal",
+      "name": "Charcoal",
+      "tone": "dark",
+      "tags": [
+        "neutral",
+        "grey"
+      ],
+      "color": "#212427",
+      "src": "backgrounds/charcoal.jpg",
+      "thumb": "backgrounds/thumbs/charcoal.jpg"
+    },
+    {
+      "id": "golden-bokeh",
+      "name": "Golden Bokeh",
+      "tone": "dark",
+      "tags": [
+        "warm",
+        "bokeh"
+      ],
+      "color": "#2a1a0a",
+      "src": "backgrounds/golden-bokeh.jpg",
+      "thumb": "backgrounds/thumbs/golden-bokeh.jpg"
+    },
+    {
+      "id": "starfield",
+      "name": "Starfield",
+      "tone": "dark",
+      "tags": [
+        "night",
+        "stars"
+      ],
+      "color": "#0e132f",
+      "src": "backgrounds/starfield.jpg",
+      "thumb": "backgrounds/thumbs/starfield.jpg"
+    },
+    {
+      "id": "ocean",
+      "name": "Ocean",
+      "tone": "dark",
+      "tags": [
+        "blue",
+        "calm"
+      ],
+      "color": "#052b47",
+      "src": "backgrounds/ocean.jpg",
+      "thumb": "backgrounds/thumbs/ocean.jpg"
+    },
+    {
+      "id": "dawn",
+      "name": "Dawn",
+      "tone": "light",
+      "tags": [
+        "pastel",
+        "sunrise"
+      ],
+      "color": "#eedbe2",
+      "src": "backgrounds/dawn.jpg",
+      "thumb": "backgrounds/thumbs/dawn.jpg"
+    },
+    {
+      "id": "linen",
+      "name": "Linen",
+      "tone": "light",
+      "tags": [
+        "paper",
+        "warm"
+      ],
+      "color": "#ebe5da",
+      "src": "backgrounds/linen.jpg",
+      "thumb": "backgrounds/thumbs/linen.jpg"
+    },
+    {
+      "id": "mist",
+      "name": "Mist",
+      "tone": "light",
+      "tags": [
+        "cool",
+        "grey-blue"
+      ],
+      "color": "#dce4ec",
+      "src": "backgrounds/mist.jpg",
+      "thumb": "backgrounds/thumbs/mist.jpg"
+    },
+    {
+      "id": "mesh-ember-glow",
+      "name": "Ember Glow",
+      "tone": "dark",
+      "tags": [
+        "mesh",
+        "magenta",
+        "gold"
+      ],
+      "color": "#83136f",
+      "src": "backgrounds/mesh-ember-glow.jpg",
+      "thumb": "backgrounds/thumbs/mesh-ember-glow.jpg"
+    },
+    {
+      "id": "mesh-nebula",
+      "name": "Nebula",
+      "tone": "dark",
+      "tags": [
+        "mesh",
+        "violet",
+        "blue"
+      ],
+      "color": "#5840e0",
+      "src": "backgrounds/mesh-nebula.jpg",
+      "thumb": "backgrounds/thumbs/mesh-nebula.jpg"
+    },
+    {
+      "id": "mesh-northern-lights",
+      "name": "Northern Lights",
+      "tone": "dark",
+      "tags": [
+        "mesh",
+        "blue",
+        "green"
+      ],
+      "color": "#4236cf",
+      "src": "backgrounds/mesh-northern-lights.jpg",
+      "thumb": "backgrounds/thumbs/mesh-northern-lights.jpg"
+    },
+    {
+      "id": "mesh-lagoon",
+      "name": "Lagoon",
+      "tone": "light",
+      "tags": [
+        "mesh",
+        "aqua",
+        "blue"
+      ],
+      "color": "#18a5f5",
+      "src": "backgrounds/mesh-lagoon.jpg",
+      "thumb": "backgrounds/thumbs/mesh-lagoon.jpg"
+    },
+    {
+      "id": "mesh-tropical",
+      "name": "Tropical",
+      "tone": "dark",
+      "tags": [
+        "mesh",
+        "pink",
+        "orange"
+      ],
+      "color": "#e83079",
+      "src": "backgrounds/mesh-tropical.jpg",
+      "thumb": "backgrounds/thumbs/mesh-tropical.jpg"
+    },
+    {
+      "id": "mesh-twilight",
+      "name": "Twilight",
+      "tone": "dark",
+      "tags": [
+        "mesh",
+        "violet",
+        "gold"
+      ],
+      "color": "#8532a4",
+      "src": "backgrounds/mesh-twilight.jpg",
+      "thumb": "backgrounds/thumbs/mesh-twilight.jpg"
+    }
+  ];
+  root.KairoBackgrounds = BACKGROUNDS;
+  if (typeof module !== 'undefined' && module.exports) module.exports = BACKGROUNDS;
+})(typeof globalThis !== 'undefined' ? globalThis : this);

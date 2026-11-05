@@ -1,0 +1,32 @@
+{
+ "source": "scn-rank-john-3-16-tail-uncited",
+ "kind": "scenario",
+ "lang": "en",
+ "songLive": false,
+ "cues": [
+  {
+   "text": "that whosoever believeth in him should not perish, but have everlasting life",
+   "audioMs": 0
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "that whosoever believeth in",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "that whosoever believeth in him should not perish,",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "that whosoever believeth in him should not perish, but have everlasting life",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

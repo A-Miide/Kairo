@@ -1,0 +1,76 @@
+{
+ "source": "scn-same-psalm42-11-cited",
+ "kind": "scenario",
+ "lang": "en",
+ "songLive": false,
+ "cues": [
+  {
+   "text": "Psalm forty two verse eleven",
+   "audioMs": 0
+  },
+  {
+   "text": "why art thou cast down, O my soul? and why art thou disquieted within me? hope thou in God: for I shall yet praise him, who is the health of my countenance, and my God",
+   "audioMs": 2900
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "Psalm forty two verse",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "Psalm forty two verse eleven",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "why art thou cast",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "why art thou cast down, O my soul?",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "why art thou cast down, O my soul? and why art thou",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "why art thou cast down, O my soul? and why art thou disquieted within me? hope",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "why art thou cast down, O my soul? and why art thou disquieted within me? hope thou in God: for",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "why art thou cast down, O my soul? and why art thou disquieted within me? hope thou in God: for I shall yet praise",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "why art thou cast down, O my soul? and why art thou disquieted within me? hope thou in God: for I shall yet praise him, who is the",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "why art thou cast down, O my soul? and why art thou disquieted within me? hope thou in God: for I shall yet praise him, who is the health of my countenance,",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "why art thou cast down, O my soul? and why art thou disquieted within me? hope thou in God: for I shall yet praise him, who is the health of my countenance, and my God",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

@@ -1,0 +1,66 @@
+{
+ "source": "scn-cross-micah43-cited",
+ "kind": "scenario",
+ "lang": "en",
+ "songLive": false,
+ "cues": [
+  {
+   "text": "Micah four three",
+   "audioMs": 0
+  },
+  {
+   "text": "and they shall beat their swords into plowshares, and their spears into pruninghooks: nation shall not lift up a sword against nation, neither shall they learn war any more",
+   "audioMs": 2100
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "Micah four three",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "and they shall beat",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and they shall beat their swords into plowshares,",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and they shall beat their swords into plowshares, and their spears into",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and they shall beat their swords into plowshares, and their spears into pruninghooks: nation shall not",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and they shall beat their swords into plowshares, and their spears into pruninghooks: nation shall not lift up a sword",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and they shall beat their swords into plowshares, and their spears into pruninghooks: nation shall not lift up a sword against nation, neither shall",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and they shall beat their swords into plowshares, and their spears into pruninghooks: nation shall not lift up a sword against nation, neither shall they learn war any",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and they shall beat their swords into plowshares, and their spears into pruninghooks: nation shall not lift up a sword against nation, neither shall they learn war any more",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

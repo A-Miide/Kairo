@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- Shown by macOS the first time KAIRO requests the microphone.
+         Without this key, the OS suppresses the prompt and the app
+         silently has no audio access. -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>KAIRO listens to your sermon audio to detect Bible verses in real time.</string>
+
+    <!-- Shown by macOS the first time KAIRO opens a camera or capture card
+         for live video input. Without this key the OS refuses camera access
+         outright. -->
+    <key>NSCameraUsageDescription</key>
+    <string>KAIRO shows your camera or capture card as live video behind scripture on your outputs.</string>
+
+    <!-- Allow loading localhost over HTTP (the bundled Node server). -->
+    <key>NSAppTransportSecurity</key>
+    <dict>
+        <key>NSAllowsLocalNetworking</key>
+        <true/>
+    </dict>
+
+    <!-- Keep macOS App Nap from throttling the webview while the window sits
+         unfocused during a service: a background app can have its timers
+         slowed, and capture must keep pace. A precaution — no stall so far
+         has actually been traced to App Nap. -->
+    <key>NSAppSleepDisabled</key>
+    <true/>
+</dict>
+</plist>

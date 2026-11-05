@@ -1,0 +1,878 @@
+/* Video director mode: the Sources pane (sources_panel.js) and the Preview / Program band (video_director.js). Loaded only while the mode is on. */
+.vsrc-root { display: flex; flex-direction: column; gap: 22px; }
+.vsrc-add-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.vsrc-add-row .setting-input { flex: 1 1 220px; min-width: 0; }
+.vsrc-error { color: var(--orange); }
+.vsrc-split { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(240px, 1.2fr); gap: 16px; align-items: start; }
+@media (max-width: 760px) { .vsrc-split { grid-template-columns: 1fr; } }
+.vsrc-list { display: flex; flex-direction: column; gap: 6px; }
+.vsrc-item {
+  display: flex; align-items: center; gap: 10px; padding: 6px 8px;
+  border: 1px solid var(--border); border-radius: var(--radius); cursor: pointer;
+  background: rgba(255,255,255,0.015);
+}
+.vsrc-item:hover { background: var(--bg-hover); }
+.vsrc-item.active { background: var(--selected-dim); border-color: var(--selected-border); }
+.vsrc-item:focus-visible { outline: 2px solid var(--selected-border); outline-offset: 1px; }
+.vsrc-thumb, .vsrc-preview {
+  position: relative; aspect-ratio: 16 / 9; background: #000; border-radius: var(--radius-sm);
+  overflow: hidden; flex: 0 0 auto;
+}
+.vsrc-thumb { width: 96px; }
+.vsrc-preview { width: 100%; margin-bottom: 12px; }
+.vsrc-thumb video, .vsrc-preview video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.vsrc-thumb-msg {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  text-align: center; padding: 4px; font-size: 10px; color: var(--text-2);
+}
+.vsrc-preview .vsrc-thumb-msg { font-size: 12px; }
+.vsrc-item-info { flex: 1 1 auto; min-width: 0; }
+.vsrc-item-name { font-size: 12px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vsrc-item-sub { font-size: 11px; color: var(--text-2); margin-top: 2px; }
+.vsrc-item-tools { display: flex; flex-direction: column; gap: 2px; }
+.vsrc-item-tools .ls-icon-btn { width: 22px; height: 18px; font-size: 11px; }
+.vsrc-item-tools .ls-icon-btn:disabled { opacity: 0.35; cursor: default; }
+.vsrc-props { display: flex; flex-direction: column; gap: 10px; }
+.vsrc-field { display: flex; flex-direction: column; gap: 4px; }
+.vsrc-field-label { font-size: 11px; font-weight: 600; color: var(--text-2); }
+.vsrc-field .setting-input { width: 100%; }
+.vsrc-remove { align-self: flex-start; color: var(--red); }
+.vsrc-live { display: flex; flex-direction: column; gap: 8px; }
+.vsrc-live-row { display: grid; grid-template-columns: minmax(100px, 1fr) minmax(140px, 1.4fr) auto; gap: 10px; align-items: center; }
+.vsrc-live-name { font-size: 12px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vsrc-layer-toggle { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-2); white-space: nowrap; }
+
+
+/* The top-bar switch. */
+#video-director-btn.active { color: var(--text); background: var(--selected-dim); }
+#video-director-btn.vd-armed { color: var(--orange); }
+
+/* ── Director mode screen. Every rule is under body.video-director. ───────── */
+/* Possible Matches and Message sit in the Scripture column (see the end of this file); the rest of the basic screen's side panels are not here. */
+body.video-director #topic-chips-section,
+body.video-director .ls-status-bar,
+body.video-director .rs-preview-output-row,
+body.video-director #slide-preview,
+body.video-director #outputs-monitor-grid,
+body.video-director:not(.vd-sheet) #svc-stack-view, body.video-director:not(.vd-sheet) #svc-fullscreen,
+body.video-director:not(.vd-sheet) #songs-library-view, body.video-director:not(.vd-sheet) #media-library-view, body.video-director:not(.vd-sheet) #timer-view:not(.vd-in-dock),
+body.video-director .center-stage > #media-bin { display: none !important; }
+/* Possible Matches, opened from the Scripture header's Matches button. */
+body.video-director .vd-pop-matches .rs-candidates { display: flex !important; flex-direction: column; width: min(380px, calc(100vw - 24px)); max-height: 60vh; overflow: auto; }
+.vd-match-btn { width: auto !important; padding: 0 9px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.vd-match-btn[hidden] { display: none !important; }
+body.video-director .vd-tab-off { opacity: 0.4; cursor: default; }
+
+/* No sidebars: the director screen runs edge to edge. What they held lives in the groups. */
+body.video-director .left-sidebar, body.video-director .right-sidebar { display: none !important; }
+body.video-director .main-layout { grid-template-columns: minmax(0, 1fr); }
+body.video-director .center-stage { grid-column: 1; grid-row: 1; min-width: 0; border-right: 0; }
+
+/* Centre column, top to bottom: top line, stage, verses, dock. */
+body.video-director .center-stage { padding: 8px 12px 10px; gap: 8px; overflow: hidden; }
+.vd-topline { order: 0; display: flex; align-items: center; gap: 12px; flex: 0 0 auto; min-height: 30px; }
+.vd-ticker { flex: 1 1 auto; min-width: 0; height: 28px; display: flex; justify-content: flex-end; align-items: center; overflow: hidden; -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 8%); mask-image: linear-gradient(90deg, transparent 0, #000 8%); }
+.vd-ticker-text { flex: 0 0 auto; white-space: nowrap; font-size: 15px; color: var(--text); }
+.vd-ticker-text.is-empty { color: var(--text-3); font-size: 12px; }
+
+/* Stage: Preview and Program as large as the width and height allow. */
+.vd-col-displays { min-width: 0; min-height: 0; display: flex; }
+.vd-band { flex: 1 1 auto; min-width: 0; min-height: 0; padding: 0; --vd-fw: 320px; }
+.vd-screens { display: flex; justify-content: center; align-items: center; gap: 8px; height: 100%; }
+.vd-screen { flex: 0 0 auto; width: var(--vd-fw); display: flex; flex-direction: column; gap: 6px; }
+.vd-screen-head { display: flex; align-items: center; gap: 8px; min-height: 22px; min-width: 0; overflow: hidden; }
+/* Preview's x and Edit never push into the Output column when the screens are small. */
+.vd-screen-head .vd-mini { flex: 0 0 auto; }
+.vd-tag { font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 6px; border-radius: 4px; flex: 0 0 auto; }
+.vd-tag-pvw { background: rgba(255,145,48,0.18); color: var(--accent); }
+.vd-tag-pgm { background: var(--red-dim); color: var(--red); }
+.vd-ref { font-size: 11px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 0; }
+.vd-frame { position: relative; aspect-ratio: 16 / 9; background: #000; border-radius: var(--radius-sm); overflow: hidden; border: 2px solid var(--border-md); }
+.vd-screen-pvw .vd-frame { border-color: rgba(255,145,48,0.5); }
+.vd-screen-pgm .vd-frame { border-color: var(--border-md); transition: border-color 150ms ease, box-shadow 150ms ease; }
+.vd-screen-pgm.is-live .vd-frame { border-color: var(--red); box-shadow: 0 0 0 1px var(--red), 0 0 18px rgba(237,28,36,0.35); }
+.vd-frame iframe { position: absolute; top: 0; left: 0; border: 0; transform-origin: 0 0; pointer-events: none; background: #000; }
+.vd-strip { flex: 0 0 auto; width: 88px; display: flex; flex-direction: column; align-items: stretch; gap: 6px; }
+.vd-take-verse { background: var(--brand); border-color: transparent; color: #fff; }
+.vd-take-verse:hover:not(:disabled) { background: var(--brand-hover); color: #fff; }
+.vd-strip .vd-mini[hidden] { display: none; }
+.vd-dur { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text-3); }
+.vd-dur input { width: 100%; min-width: 0; height: 24px; padding: 0 4px; border: 1px solid var(--border-md); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text); font: inherit; font-size: 11px; text-align: right; }
+.vd-tbar-wrap { display: flex; flex-direction: column; align-items: center; gap: 4px; padding-top: 2px; }
+.vd-tbar-wrap .vd-tbar { margin: 32px -32px; }
+.vd-tbar { width: 84px; height: 20px; margin: 0; transform: rotate(-90deg); accent-color: var(--brand); }
+.vd-tbar:disabled { opacity: 0.4; }
+.vd-tbar-label { font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); }
+.vd-take { height: 30px; min-width: 0; padding: 0 8px; border: 1px solid var(--border-md); border-radius: var(--radius-sm); background: var(--bg-hover); color: var(--text-2); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.vd-take:hover:not(:disabled) { color: var(--text); border-color: var(--selected-border); }
+.vd-take.is-current { background: var(--selected-dim); color: var(--text); border-color: var(--selected-border); }
+.vd-take:disabled { opacity: 0.4; cursor: default; }
+.vd-take:focus-visible, .vd-mini:focus-visible, .vd-chip:focus-visible, .vd-tile:focus-visible, .vd-slide:focus-visible { outline: 2px solid var(--selected-border); outline-offset: 1px; }
+.vd-mini { height: 22px; padding: 0 8px; border: 1px solid var(--border-md); border-radius: var(--radius-sm); background: transparent; color: var(--text-2); font: inherit; font-size: 10.5px; font-weight: 600; cursor: pointer; flex: 0 0 auto; }
+.vd-mini[hidden] { display: none; }
+.vd-mini-primary { background: var(--brand); border-color: transparent; color: #fff; }
+
+/* Top half: three columns with splits. Bottom half below, with its own split. */
+.vd-main { flex: 1 1 0; min-height: 0; display: flex; flex-direction: row; }
+.vd-left { flex: 1 1 0; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.vd-main > .vd-section-sends { flex: 0 0 300px; min-width: 0; }
+.vd-top { flex: 1 1 0; min-height: 140px; display: grid; grid-template-columns: minmax(0, 22fr) 8px minmax(0, 78fr); min-width: 0; }
+.vd-section { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: rgba(255,255,255,0.015); }
+.vd-section-head { display: flex; align-items: center; gap: 8px; min-height: 22px; flex-wrap: wrap; }
+.vd-section-head .vd-label { margin-right: auto; }
+.vd-section-foot { display: flex; flex-wrap: wrap; gap: 4px; margin-top: auto; }
+.vd-mini.is-on { background: var(--selected-dim); color: var(--text); border-color: var(--selected-border); }
+.vd-split { position: relative; background: transparent; }
+.vd-split::after { content: ''; position: absolute; background: var(--border-md); border-radius: 2px; transition: background 120ms ease; }
+.vd-split-v { cursor: col-resize; }
+.vd-split-v::after { top: 20%; bottom: 20%; left: 3px; width: 2px; }
+.vd-split-h { flex: 0 0 8px; cursor: row-resize; }
+.vd-split-h::after { left: 30%; right: 30%; top: 3px; height: 2px; }
+.vd-split:hover::after, .vd-split.is-drag::after, .vd-split:focus-visible::after { background: var(--brand); }
+.vd-split:focus-visible { outline: none; }
+.vd-bottom-wrap { flex: 1 1 0; min-height: 110px; display: flex; }
+.vd-bottom { flex: 1 1 auto; min-height: 0; min-width: 0; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.vd-bottom .vd-section { min-height: 0; }
+.vd-chips { flex-wrap: wrap; }
+
+/* Scripture sends: one group for the search bar, Bible and Theme controls, and the Live Queue. */
+.vd-section-sends { min-height: 0; overflow: hidden; }
+body.video-director .vd-section-sends .cs-lookup { margin: 0; flex: 0 0 auto; order: 0; }
+body.video-director .vd-section-sends #live-queue-section { flex: 1 1 0; min-height: 0; padding: 0; border: 0; background: none; display: flex; flex-direction: column; }
+body.video-director .vd-section-sends #current-display-card { flex: 1 1 0; min-height: 0; overflow-y: auto; }
+body.video-director #current-display-card .is-live { box-shadow: inset 0 0 0 1px var(--red); }
+body.video-director #current-display-card .is-live .lvc-ref::before { content: 'On air'; margin-right: 6px; padding: 1px 5px; border-radius: 3px; background: var(--red); color: #fff; font-size: 9px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; }
+.vd-label { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-3); }
+.vd-empty { margin: 0; font-size: 11px; color: var(--text-3); align-self: center; }
+
+/* The input grid (video_input_grid.js): 2-up or 4-up tiles, sized by the grid's height. */
+.vg-controls { display: flex; align-items: center; gap: 8px; }
+.vg-switch { display: flex; padding: 2px; border-radius: 7px; background: rgba(255,255,255,0.05); }
+.vg-mode { height: 20px; padding: 0 8px; border: 0; border-radius: 5px; background: transparent; color: var(--text-3); font: inherit; font-size: 10px; font-weight: 700; cursor: pointer; }
+.vg-mode.is-on { background: var(--bg-hover); color: var(--text); }
+.vg-pager { display: flex; align-items: center; gap: 4px; font-size: 10px; color: var(--text-3); }
+.vg-pager[hidden] { display: none; }
+.vg-page { width: 20px; height: 20px; border: 1px solid var(--border-md); border-radius: 5px; background: transparent; color: var(--text-2); cursor: pointer; line-height: 1; }
+.vg-page:disabled { opacity: 0.35; cursor: default; }
+.vg { display: grid; gap: 6px; height: 156px; justify-content: start; align-content: start; }
+.vg-4 { grid-template-columns: repeat(2, auto); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+.vg-2 { grid-template-columns: repeat(2, auto); grid-template-rows: minmax(0, 1fr); }
+.vg-tile { position: relative; height: 100%; aspect-ratio: 16 / 9; background: #000; border: 2px solid var(--border-md); border-radius: 6px; overflow: hidden; cursor: pointer; }
+.vg-tile:hover { border-color: var(--selected-border); }
+.vg-tile:focus-visible { outline: 2px solid var(--selected-border); outline-offset: 1px; }
+.vg-tile.is-pvw { border-color: rgba(255,145,48,0.85); }
+.vg-tile.is-pgm { border-color: var(--red); box-shadow: 0 0 0 1px var(--red), 0 0 12px rgba(237,28,36,0.3); }
+.vg-tile video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.vg-tile[data-msg]::after { content: attr(data-msg); position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--text-2); text-align: center; }
+.vg-name { position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 6px 3px; font-size: 10.5px; font-weight: 600; color: #fff; background: linear-gradient(transparent, rgba(0,0,0,0.75)); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vg-flag { position: absolute; top: 4px; left: 4px; font-size: 8.5px; font-weight: 800; letter-spacing: 0.05em; text-transform: uppercase; padding: 1px 5px; border-radius: 3px; color: #fff; }
+.vg-flag-pgm { background: rgba(220,38,38,0.95); }
+.vg-flag-pvw { background: rgba(170,86,0,0.95); }
+.vg-pvw { position: absolute; top: 4px; right: 4px; height: 18px; padding: 0 6px; border: 0; border-radius: 3px; background: rgba(0,0,0,0.7); color: #fff; font: inherit; font-size: 9px; font-weight: 700; cursor: pointer; opacity: 0; }
+.vg-tile:hover .vg-pvw, .vg-tile:focus-within .vg-pvw { opacity: 1; }
+.vg-empty { margin: 0; font-size: 11px; color: var(--text-3); align-self: center; }
+
+.vd-media { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; min-width: 0; min-height: 0; }
+.vd-chips { display: flex; gap: 6px; flex: 0 0 auto; }
+.vd-chip { height: 22px; padding: 0 11px; border: 1px solid var(--border-md); border-radius: 11px; background: transparent; color: var(--text-2); font: inherit; font-size: 10.5px; font-weight: 600; cursor: pointer; }
+.vd-chip.is-on { background: var(--selected-dim); color: var(--text); border-color: var(--selected-border); }
+.vd-media-body { flex: 1 1 auto; min-height: 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; align-content: flex-start; overflow-x: hidden; overflow-y: auto; }
+.vd-group { flex: 0 0 auto; align-self: flex-start; margin-top: 4px; max-width: 120px; font-size: 10px; font-weight: 700; color: var(--text-3); text-transform: uppercase; letter-spacing: 0.04em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vd-slide { position: relative; flex: 0 0 auto; width: 120px; height: 68px; padding: 6px 8px; border: 1px solid var(--border-md); border-radius: 6px; background: var(--bg-input); color: var(--text-2); text-align: left; cursor: pointer; overflow: hidden; font: inherit; }
+.vd-slide:hover { border-color: var(--selected-border); color: var(--text); }
+.vd-slide img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.vd-slide-text { font-size: 10.5px; line-height: 1.3; display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.vd-slide-num { position: absolute; right: 5px; bottom: 3px; font-size: 9px; font-weight: 700; color: var(--text-3); text-shadow: 0 0 3px #000; }
+.vd-overlay.is-on { border-color: var(--red); color: var(--text); }
+/* The Media Bin's own cards, moved into the dock. */
+.vd-media-body #media-bin { display: flex !important; flex-direction: column; flex: 1 1 100%; width: 100%; min-width: 0; height: auto !important; border: 0; background: none; padding: 0; }
+.vd-media-body #media-bin .media-bin-splitter, .vd-media-body #media-bin .media-bin-hint, .vd-media-body #media-bin .media-bin-size, .vd-media-body #media-bin #media-bin-hide-btn, .vd-media-body #media-bin .cs-section-label { display: none; }
+.vd-media-body #media-bin .media-bin-header { padding: 0 0 4px; min-height: 0; }
+.vd-media-body #media-bin .media-bin-strip { overflow: visible; display: flex; flex-wrap: wrap; gap: 8px; }
+
+/* The input grid in the narrow Inputs column: tiles fill the column's width. */
+.vg.vg-col { height: auto; justify-content: stretch; flex: 1 1 auto; min-height: 0; overflow-y: auto; align-content: start; }
+.vg-col.vg-2 { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; }
+.vg-col.vg-4 { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-template-rows: none; }
+.vg-col .vg-tile { height: auto; width: 100%; }
+.vg-col .vg-name { font-size: 10px; padding: 10px 4px 2px; }
+
+/* Playlist group: header, then the list, stacked with no overlap. */
+.vd-pl-top { display: block; flex: 0 0 auto; min-height: 0; }
+.vd-pl-top .vd-pl-head { position: static; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 0 0 6px; margin: 0; border: 0; border-radius: 0; background: none; }
+.vd-pl-list { flex: 1 1 0; min-height: 0; overflow-y: auto; }
+.vd-pl-list #svc-items-list { height: auto; overflow: visible; padding: 0; }
+.vd-pl-list .svc-item { cursor: pointer; }
+.vd-pl-list .svc-item.vd-selected { background: var(--selected-dim) !important; box-shadow: inset 0 0 0 1px var(--selected-border); }
+
+
+/* Scripture sends: Bible select and an icon-only Theme button on top, the search bar full width below. */
+body.video-director .vd-section-sends .cs-lookup { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; padding: 0; border: 0; background: none; box-shadow: none; }
+body.video-director .vd-section-sends .cs-translation-select { order: 0; margin-right: auto; }
+body.video-director .vd-section-sends .cs-theme-btn { order: 1; width: 28px; height: 28px; padding: 0; justify-content: center; }
+body.video-director .vd-section-sends .cs-theme-btn span { display: none; }
+body.video-director .vd-section-sends .cs-search-wrap { order: 2; flex: 1 1 100%; min-width: 0; }
+/* What the right sidebar held, under the queue. */
+.vd-sends-foot { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; }
+.vd-sends-foot:empty { display: none; }
+.vd-sends-foot > * { margin: 0; }
+
+/* Media bin toggles: several kinds at once, all tiles the same size. */
+.vd-media-body { flex-direction: column; flex-wrap: nowrap; gap: 10px; overflow-x: hidden; overflow-y: auto; align-items: stretch; }
+.vd-kind { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; }
+.vd-kind-head { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-3); }
+.vd-kind-tiles { display: flex; flex-wrap: wrap; gap: 8px; align-items: flex-start; --mb-thumb: 120px; }
+.vd-kind-tiles .vd-slide, .vd-kind-tiles .media-card { width: 120px; flex: 0 0 120px; }
+.vd-kind-tiles .vd-slide { height: 68px; }
+.vd-kind-bin[data-show="video"] .media-card:not(:has(.media-card-badge)), .vd-kind[data-show="video"] .media-card:not(:has(.media-card-badge)) { display: none; }
+.vd-kind[data-show="images"] .media-card:has(.media-card-badge) { display: none; }
+body.video-director .vd-section-sends .cs-theme-btn { background: transparent; border: 1px solid var(--border-md); color: var(--text-2); }
+body.video-director .vd-section-sends .cs-theme-btn:hover { color: var(--text); border-color: var(--selected-border); }
+
+/* Top line: only the live words, and no height at all until there are some. */
+.vd-topline { display: none; }
+.vd-topline.has-text { display: flex; }
+
+/* An input with no device (or whose device is unplugged): a dashed tile. */
+.vg-tile.is-empty { background: transparent; border: 2px dashed var(--border-md); display: flex; align-items: center; justify-content: center; }
+.vg-tile.is-empty:hover { border-color: var(--selected-border); }
+.vg-empty-mid { display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--text-3); }
+.vg-empty-why { font-size: 10px; font-weight: 600; }
+.vg-tile.is-empty .vg-name { background: none; color: var(--text-2); }
+
+/* Video Sources page: one row per input. */
+.vsrc-title-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.vsrc-title-row .settings-section-label { margin: 0; }
+/* Add opened from the Cameras overlay sits above it. */
+.vd-cam-modal ~ .vd-add-panel { z-index: 2600; }
+.vsrc-inputs { display: flex; flex-direction: column; gap: 8px; }
+.vsrc-input { padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius-lg); background: rgba(255,255,255,0.015); display: flex; flex-direction: column; gap: 8px; cursor: pointer; }
+.vsrc-input.is-sel { border-color: var(--selected-border); }
+.vsrc-input.is-empty { border-style: dashed; }
+.vsrc-input.is-off { opacity: 0.6; }
+.vsrc-input-top { display: flex; align-items: center; gap: 10px; }
+.vsrc-input-top .output-toggle { flex: none; }
+.vsrc-trash { flex: none; width: 34px; height: 34px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 1px solid var(--border-md); border-radius: var(--radius); background: transparent; color: var(--text-2); cursor: pointer; }
+.vsrc-trash:hover { color: var(--red); border-color: var(--red); background: rgba(255,59,48,0.08); }
+.vsrc-name { flex: 1 1 auto; min-width: 0; }
+.vsrc-input-sub { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.vsrc-input-sub .setting-input { width: 100%; min-width: 0; }
+.vsrc-input-status { font-size: 11px; color: var(--text-3); }
+.vsrc-input .vsrc-preview { margin: 0; max-width: 320px; }
+.vsrc-add-title { margin-top: 8px; font-size: 11px; font-weight: 700; color: var(--text-2); }
+.vsrc-add { display: flex; flex-direction: column; gap: 8px; }
+.vsrc-add-row { display: flex; gap: 8px; align-items: center; }
+.vsrc-add-row .setting-input { flex: 1 1 auto; min-width: 0; }
+.vsrc-det-head { display: flex; align-items: center; gap: 8px; }
+.vsrc-det-head .vd-label { margin-right: auto; }
+.vsrc-det { display: flex; flex-direction: column; gap: 4px; }
+.vsrc-det-row { display: flex; align-items: center; gap: 8px; padding: 5px 8px; border: 1px solid var(--border); border-radius: var(--radius-sm); font-size: 12px; }
+.vsrc-det-row.is-added { opacity: 0.65; }
+.vsrc-det-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.vsrc-det-added { font-size: 10.5px; color: var(--text-3); white-space: nowrap; }
+.vsrc-offer { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border: 1px solid var(--selected-border); border-radius: var(--radius-sm); background: var(--selected-dim); font-size: 12px; }
+.vsrc-offer span { flex: 1 1 auto; min-width: 0; }
+
+/* The Director screen's add panel and device picker. */
+.vd-add-panel { position: fixed; z-index: 200; width: 340px; max-height: 70vh; overflow-y: auto; padding: 10px; display: flex; flex-direction: column; gap: 8px; background: var(--bg); border: 1px solid var(--border-md); border-radius: var(--radius-lg); box-shadow: 0 10px 34px rgba(0,0,0,0.6); }
+.vd-add-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.vd-add-title { font-size: 12px; font-weight: 700; color: var(--text); }
+.vg-tile.is-empty { flex-direction: column; gap: 2px; padding: 4px; }
+.vg-tile.is-empty .vg-name { position: static; padding: 0; text-align: center; max-width: 100%; }
+
+/* ── Displays: Preview and Output side by side, the transition bar centred under them. ── */
+.vd-band { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+.vd-screens { height: auto; gap: 8px; }
+.vd-transbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 8px; max-width: 100%; }
+.vd-bar-sep { width: 1px; align-self: stretch; min-height: 22px; background: var(--border-md); }
+.vd-transbar .vd-take { height: 32px; min-width: 56px; padding: 0 12px; }
+.vd-transbar .vd-dur { width: 78px; }
+.vd-tbar-wrap { flex-direction: row; align-items: center; gap: 6px; padding: 0; }
+.vd-tbar { width: 120px; height: 20px; margin: 0; transform: none; accent-color: var(--brand); }
+.vd-tbar-wrap .vd-tbar { margin: 0; }
+.vd-tbar-label { margin: 0; }
+.vd-frame-name { position: absolute; left: 6px; bottom: 6px; max-width: calc(100% - 12px); padding: 2px 7px; border-radius: 4px; background: rgba(0,0,0,0.65); color: #fff; font-size: 10.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; pointer-events: none; z-index: 2; }
+.vd-frame-name:empty { display: none; }
+.vd-live-badge { display: none; position: absolute; top: 6px; right: 6px; padding: 2px 8px; border-radius: 4px; background: var(--red); color: #fff; font-size: 10px; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; pointer-events: none; z-index: 2; }
+.vd-screen-pgm.is-live .vd-live-badge { display: block; }
+.vd-frame.is-drop { outline: 3px dashed var(--accent); outline-offset: -3px; }
+
+/* Input tiles: key number, add tile. */
+.vg-key { position: absolute; right: 4px; bottom: 3px; font-size: 9.5px; font-weight: 800; color: rgba(255,255,255,0.8); text-shadow: 0 0 3px #000; pointer-events: none; }
+.vg-add { grid-column: 1 / -1; min-height: 64px; border: 2px dashed var(--border-md); border-radius: 6px; background: transparent; color: var(--text-2); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.vg-add:hover { color: var(--text); border-color: var(--selected-border); }
+.vg-add:focus-visible { outline: 2px solid var(--selected-border); outline-offset: 1px; }
+
+/* Media bin header: title, then the toggles on one row with the tile size at the far right. */
+.vd-md-head { display: flex; flex-direction: column; gap: 4px; flex: 0 0 auto; }
+.vd-md-row { display: flex; align-items: center; gap: 6px; }
+.vd-md-row .vd-chips { flex: 0 1 auto; }
+.vd-md-row .vd-size { margin-left: auto; width: 90px; accent-color: var(--brand); }
+.vd-icon-btn { display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 22px; padding: 0; border: 1px solid var(--border-md); border-radius: 11px; background: transparent; color: var(--text-2); cursor: pointer; flex: 0 0 auto; }
+.vd-icon-btn[hidden] { display: none; }
+.vd-icon-btn:hover { color: var(--text); border-color: var(--selected-border); }
+.vd-media-body #media-bin .media-bin-header { display: none; }
+.vd-media-body { padding-top: 0; }
+.vd-kind-tiles .vd-slide, .vd-kind-tiles .media-card { width: var(--vd-tile, 120px); flex: 0 0 var(--vd-tile, 120px); }
+.vd-kind-tiles .vd-slide { height: calc(var(--vd-tile, 120px) * 0.5625); }
+.vd-kind-tiles { --mb-thumb: var(--vd-tile, 120px); }
+.vd-menu { position: fixed; z-index: 220; min-width: 160px; max-height: 50vh; overflow-y: auto; padding: 4px; background: var(--bg); border: 1px solid var(--border-md); border-radius: var(--radius); box-shadow: 0 8px 26px rgba(0,0,0,0.55); display: flex; flex-direction: column; }
+.vd-menu-item { text-align: left; padding: 6px 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; }
+.vd-menu-item:hover, .vd-menu-item.is-on { background: var(--selected-dim); color: var(--text); }
+
+/* Slide tiles in the media bin: real thumbnails, 16:9, the slide number bottom-left. */
+.vd-slide { padding: 0; background: #000; overflow: hidden; }
+.vd-slide .vd-slide-thumb { position: absolute; inset: 0; }
+.vd-slide .vd-slide-num { left: 5px; right: auto; bottom: 3px; padding: 1px 5px; border-radius: 3px; background: rgba(0,0,0,0.6); color: #fff; font-size: 9px; font-weight: 700; z-index: 2; }
+.vd-slide.is-live { border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
+.vd-slide:hover { border-color: var(--selected-border); }
+.vd-bottom > .vd-split-v { min-height: 0; }
+
+/* ── Displays: one group card, a single title, the transitions inside it. ── */
+.vd-section-displays { padding: 8px 10px; gap: 6px; }
+.vd-section-displays > .vd-label { flex: 0 0 auto; }
+.vd-section-displays .vd-band { flex: 1 1 0; }
+.vd-bar-label { font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-3); }
+.vd-verse-seg { flex: 1 1 100%; display: flex; align-items: center; justify-content: center; gap: 8px; }
+.vd-verse-seg .rs-transition-bar { margin: 0; padding: 0; border: 0; background: none; gap: 8px; flex-wrap: nowrap; }
+.vd-verse-seg .rs-transition-bar .rs-anim-btn { height: 26px; }
+
+/* ── Scripture sends: the queue is the hero. ── */
+.vd-section-sends { gap: 8px; }
+.vd-sends-head { flex: 0 0 auto; display: flex; align-items: center; flex-wrap: nowrap; gap: 6px; min-width: 0; }
+.vd-sends-title { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vd-sends-spacer { flex: 1 1 0; min-width: 0; }
+.vd-sends-head > select, .vd-sends-head > .cs-theme-btn, .vd-hbtn { height: 28px; flex: 0 0 auto; }
+.vd-sends-head > select { width: auto; min-width: 0; max-width: 90px; }
+.vd-hbtn { display: inline-flex; align-items: center; justify-content: center; gap: 5px; min-width: 28px; padding: 0 8px; border: 1px solid var(--border-md); border-radius: var(--radius-sm); background: transparent; color: var(--text-2); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.vd-hbtn[hidden] { display: none; }
+.vd-hbtn:hover { color: var(--text); border-color: var(--selected-border); }
+.vd-hbtn:focus-visible { outline: 2px solid var(--selected-border); outline-offset: 1px; }
+body.video-director .vd-section-sends .cs-lookup { flex: 0 0 auto; }
+body.video-director .vd-section-sends .cs-search-wrap { flex: 1 1 100%; }
+body.video-director .vd-section-sends #live-queue-section { flex: 1 1 0; min-height: 0; }
+.vd-pop { position: fixed; z-index: 230; width: 340px; padding: 8px; background: var(--bg); border: 1px solid var(--border-md); border-radius: var(--radius-lg); box-shadow: 0 10px 34px rgba(0,0,0,0.6); }
+.vd-pop .monitor-message-bar { margin: 0; }
+/* The footer shows only while a range or a playing video has controls to show. */
+.vd-sends-foot { display: none; }
+.vd-sends-foot:has(> :not(.hidden):not([hidden]):not([style*="display: none"]):not([style*="display:none"])) { display: flex; flex-direction: column; gap: 6px; }
+
+.vd-sends-head { gap: 4px; }
+.vd-sends-title { letter-spacing: 0.03em; flex: 0 0 auto; }
+.vd-sends-head > select { max-width: 60px; padding-left: 6px; padding-right: 14px; }
+.vd-hbtn { padding: 0 6px; min-width: 26px; }
+.vd-sends-head > .cs-theme-btn { width: 28px; padding: 0; }
+
+/* Ready check, and the multiview confirmation line in Settings. */
+.vd-ready.has-issues { border-color: var(--accent); color: var(--text); }
+.dm-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 0 16px 12px; padding: 8px 10px; border: 1px solid var(--selected-border); border-radius: var(--radius-sm); background: var(--selected-dim); font-size: 12px; }
+.dm-confirm[hidden] { display: none; }
+.dm-confirm span { flex: 1 1 200px; }
+.vd-sends-title { flex: 0 1 auto; min-width: 30px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── Responsive: groups answer to their own width. ── */
+.vd-section-sends, .vd-section-displays { container-type: inline-size; }
+.cs-auto-badge { white-space: nowrap; flex: 0 0 auto; }
+body.video-director #live-queue-section .cs-section-header { flex-wrap: nowrap; min-width: 0; overflow: hidden; }
+body.video-director #live-queue-section .cs-section-header > * { flex-shrink: 0; }
+body.video-director #live-queue-section .cs-section-label { flex-shrink: 1; min-width: 0; }
+@container (max-width: 335px) {
+  #cs-auto-badge-label { font-size: 0; }
+  #cs-auto-badge-label::after { content: 'Auto'; font-size: 10px; }
+}
+@container (max-width: 335px) { .vd-clr-text { display: none; } }
+@container (max-width: 299px) { .vd-sends-title, .vd-gh > .vd-sends-title { display: none; } }
+@container (max-width: 720px) {
+  .vd-transbar { gap: 5px 6px; }
+  .vd-tbar-label, .vd-bar-sep, .vd-verse-seg .vd-bar-label { display: none; }
+  .vd-tbar { width: 72px; }
+  .vd-transbar .vd-take { padding: 0 8px; min-width: 0; }
+  .vd-transbar .vd-dur { width: 66px; }
+}
+.vd-media-body, .vd-pl-list { contain: paint; }
+/* Placeholder tiles in a narrow 4-up grid keep just the plug and the name. */
+.vg-col.vg-4 .vg-tile.is-empty .vg-empty-why { display: none; }
+.vg-tile.is-empty .vg-name { font-size: 10px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@container (max-width: 720px) {
+  .vd-verse-seg { flex: 0 0 auto; }
+  .vd-transbar .vd-take { height: 28px; }
+  .vd-verse-seg .rs-transition-bar .rs-anim-btn { height: 24px; padding: 0 6px; }
+}
+.vg-col.vg-4 .vg-tile.is-empty .vg-empty-mid { display: none; }
+.vg-col.vg-4 .vg-tile.is-empty { justify-content: center; }
+
+/* Media bin grid: equal tiles that fill the width, scrolling when there are more than fit. */
+.vd-media-body { display: block; overflow-x: hidden; overflow-y: auto; }
+.vd-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(var(--vd-tile, 150px), 1fr)); gap: 8px; align-content: start; }
+.vd-grid .svc-slide { width: auto; min-width: 0; margin: 0; padding: 4px; gap: 0; }
+.vd-grid .svc-slide .svc-slide-preview { width: 100%; padding: 0; }
+.vd-grid .media-card { width: auto; min-width: 0; flex: none; }
+.vd-grid .vd-empty { grid-column: 1 / -1; }
+
+/* No Clear buttons on the Director screen: the displays' own controls take things down. */
+body.video-director #clear-locked-btn { display: none !important; }
+
+/* ── One transition cluster under the displays: Take first, then how it goes. ── */
+.vd-transbar { flex-direction: column; flex-wrap: nowrap; gap: 6px; }
+.vd-cluster { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 8px; max-width: 100%; }
+.vd-transbar .vd-take-main { background: var(--brand); border-color: transparent; color: #fff; min-width: 76px; height: 34px; font-size: 13px; }
+.vd-transbar .vd-take-main:hover:not(:disabled) { background: var(--brand-hover); color: #fff; }
+.vd-transbar .vd-take-main:disabled { background: var(--bg-hover); color: var(--text-3); }
+.vd-seg2 { display: flex; padding: 2px; gap: 0; border-radius: 8px; background: rgba(255,255,255,0.05); }
+.vd-seg2 .vd-take { height: 28px; min-width: 48px; border-color: transparent; background: transparent; }
+.vd-seg2 .vd-take.is-current { background: var(--bg-hover); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.35); }
+.vd-tuck { display: flex; align-items: center; justify-content: center; gap: 10px; flex-wrap: wrap; }
+.vd-tuck .vd-verse-seg { flex: 0 0 auto; }
+.vd-transbar .vd-take-quiet { height: 24px; min-width: 0; padding: 0 10px; font-size: 11px; background: transparent; color: var(--text-3); }
+.vd-transbar .vd-take-quiet:hover:not(:disabled) { color: var(--text); }
+
+/* Looks: chips under Preview, on one row. */
+.vd-looks { display: flex; flex-wrap: nowrap; gap: 5px; overflow-x: auto; overflow-y: hidden; padding: 1px 0 3px; scrollbar-width: none; flex: 0 0 auto; }
+.vd-looks::-webkit-scrollbar { display: none; }
+.vd-look { position: relative; flex: 0 0 auto; display: inline-flex; align-items: center; gap: 5px; height: 26px; padding: 0 10px; border: 1px solid var(--border-md); border-radius: 13px; background: transparent; color: var(--text-2); font: inherit; font-size: 11px; font-weight: 600; white-space: nowrap; cursor: pointer; }
+.vd-look:hover { color: var(--text); border-color: var(--selected-border); }
+.vd-look:focus-visible { outline: 2px solid var(--selected-border); outline-offset: 1px; }
+.vd-look.is-pvw { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); color: var(--text); }
+.vd-look.is-live { color: var(--text); }
+.vd-look-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--red); box-shadow: 0 0 6px rgba(237,28,36,0.7); }
+.vd-look.is-drop { border-color: var(--brand); }
+.vd-look-add { border-style: dashed; color: var(--text-3); }
+.vd-look-input { flex: 0 0 auto; width: 130px; height: 26px; padding: 0 10px; border: 1px solid var(--accent); border-radius: 13px; background: var(--bg-input); color: var(--text); font: inherit; font-size: 11px; }
+.vd-menu-item.is-danger { color: var(--red); }
+
+/* ── One header for every group: a title on the left, its controls on the same row. ── */
+.vd-gh { display: flex; align-items: center; flex-wrap: nowrap; gap: 8px; height: 28px; min-height: 28px; min-width: 0; flex: 0 0 auto; margin: 0; padding: 0; border: 0; background: none; }
+.vd-gh > .vd-label, .vd-gh-title { flex: 0 0 auto; margin: 0; line-height: 28px; font-size: 10px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-3); }
+.vd-gh-ctl { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 6px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; }
+.vd-gh-ctl::-webkit-scrollbar { display: none; }
+.vd-gh-ctl.vd-gh-start { justify-content: flex-start; }
+.vd-gh .vd-mini, .vd-gh .vd-chip { height: 24px; flex: 0 0 auto; }
+.vd-gh .vd-size { flex: 0 0 auto; margin-left: 0; }
+.vd-gh .vg-controls { flex: 0 0 auto; }
+.vd-pl-top .vd-pl-head { flex: 1 1 auto; min-width: 0; padding: 0; }
+.vd-section-sends .vd-sends-head { height: 28px; }
+.vd-section-sends .vd-sends-spacer { flex: 1 1 0; }
+/* The queue has no header of its own: Auto-deploy sits in the Scripture sends header. */
+body.video-director #live-queue-section .cs-section-header { display: none !important; }
+
+/* Inputs: the grid toggle, no pages, and the column scrolls. */
+.vg-toggle { height: 24px; padding: 0 10px; border: 1px solid var(--border-md); border-radius: 12px; background: transparent; color: var(--text-3); font: inherit; font-size: 10.5px; font-weight: 700; cursor: pointer; }
+.vg-toggle.is-on { background: var(--selected-dim); color: var(--text); border-color: var(--selected-border); }
+.vg.vg-col { flex: 1 1 0; min-height: 0; overflow-y: auto; align-content: start; height: auto; }
+.vg-col.vg-grid { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); grid-template-rows: none; }
+.vg-col.vg-list { grid-template-columns: minmax(0, 1fr); grid-template-rows: none; gap: 4px; }
+.vg-col.vg-list .vg-tile { display: grid; grid-template-columns: 72px minmax(0, 1fr) auto; align-items: center; gap: 8px; height: auto; aspect-ratio: auto; padding: 4px; border-radius: 6px; }
+.vg-col.vg-list .vg-tile video { position: static; grid-column: 1; width: 72px; height: 41px; border-radius: 3px; background: #000; }
+.vg-col.vg-list .vg-name { position: static; grid-column: 2; padding: 0; background: none; font-size: 12px; color: var(--text); }
+.vg-col.vg-list .vg-flag { position: static; grid-column: 3; }
+.vg-col.vg-list .vg-key { position: static; grid-column: 3; color: var(--text-3); text-shadow: none; }
+.vg-col.vg-list .vg-pvw { position: static; grid-column: 3; opacity: 1; }
+.vg-col.vg-list .vg-tile.is-empty { display: grid; border-width: 1px; }
+.vg-col.vg-list .vg-tile.is-empty .vg-empty-mid { display: contents; }
+.vg-col.vg-list .vg-tile.is-empty .vg-empty-mid svg { grid-column: 1; justify-self: center; }
+.vg-col.vg-list .vg-tile.is-empty .vg-empty-why { grid-column: 3; display: block; }
+.vg-col.vg-list .vg-tile.is-empty .vg-name { grid-column: 2; }
+.vg-col.vg-grid .vg-tile.is-empty .vg-empty-why { display: none; }
+.vg-col.vg-grid .vg-tile.is-empty .vg-empty-mid { display: none; }
+
+/* Looks wrap to at most two rows under Preview. */
+.vd-looks { flex-wrap: wrap; max-height: 60px; overflow-y: auto; overflow-x: hidden; }
+.vg-col.vg-list .vg-tile > * { grid-row: 1; }
+.vg-col.vg-list .vg-tile.is-empty .vg-empty-mid svg, .vg-col.vg-list .vg-tile.is-empty .vg-empty-why { grid-row: 1; }
+@container (max-width: 560px) { .vd-looks { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; max-height: none; } }
+
+/* ── Fixes from the first look at the merged build ── */
+/* Inputs: tiles keep their size and the column scrolls instead. */
+.vg.vg-col { grid-auto-rows: max-content; align-content: start; gap: 8px; }
+.vg-col .vg-tile { flex: none; width: 100%; height: auto; min-height: 0; aspect-ratio: 16 / 9; }
+.vg-col.vg-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+.vg-col.vg-list { gap: 4px; }
+.vg-col.vg-list .vg-tile { aspect-ratio: auto; height: 52px; min-height: 52px; }
+.vg-state { display: none; }
+.vg-col.vg-list .vg-state { display: block; grid-column: 3; grid-row: 1; font-size: 11px; font-weight: 600; color: var(--text-3); white-space: nowrap; }
+.vg-col.vg-list .vg-tile.is-pgm .vg-state { color: var(--red); }
+.vg-col.vg-list .vg-tile.is-pvw .vg-state { color: var(--accent); }
+.vg-col.vg-list .vg-flag, .vg-col.vg-list .vg-key, .vg-col.vg-list .vg-pvw { display: none; }
+.vg-col.vg-grid .vg-tile.is-empty { flex-direction: column; gap: 2px; }
+.vg-col.vg-grid .vg-tile.is-empty .vg-name { position: static; padding: 0; background: none; color: var(--text-2); text-align: center; }
+.vg-col.vg-grid .vg-tile.is-empty .vg-state { display: block; font-size: 10px; color: var(--text-3); }
+.vg-col.vg-list .vg-tile.is-empty .vg-empty-why { display: none; }
+.vg-col.vg-list .vg-tile.is-empty .vg-empty-mid { display: contents; }
+/* Grid | List */
+.vg-seg { display: flex; padding: 2px; border-radius: 8px; background: rgba(255,255,255,0.05); }
+.vg-seg-btn { display: inline-flex; align-items: center; justify-content: center; height: 22px; width: 28px; padding: 0; border: 0; border-radius: 6px; background: transparent; color: var(--text-3); font: inherit; font-size: 10.5px; font-weight: 700; cursor: pointer; }
+.vg-seg-btn.is-on { background: var(--bg-hover); color: var(--text); box-shadow: 0 1px 2px rgba(0,0,0,.35); }
+/* + Add is not red: red means live. */
+.vd-add { background: transparent; border-color: var(--accent); color: var(--accent); }
+.vd-add:hover { background: var(--accent-dim); color: var(--text); }
+/* Displays: two equal panes on the same line; Looks run under both. */
+.vd-screens { align-items: flex-start; }
+.vd-band > .vd-looks { flex-wrap: nowrap; overflow-x: auto; overflow-y: hidden; max-height: none; width: 100%; justify-content: center; }
+.vd-look-add { min-width: 26px; padding: 0 9px; justify-content: center; }
+.vd-seg2 .vd-bar-label { padding: 0 6px 0 8px; align-self: center; }
+.vd-tbar-label, .vd-seg2 .vd-bar-label, .vd-verse-seg .vd-bar-label { display: inline !important; }
+/* Take is the main button in the brand colour; disabled only dims it. */
+.vd-transbar .vd-take-main { background: var(--brand-gradient); border: 0; color: #fff; }
+.vd-transbar .vd-take-main:hover:not(:disabled) { background: var(--brand-gradient); filter: brightness(1.08); }
+.vd-transbar .vd-take-main:disabled { background: var(--brand-gradient); color: #fff; opacity: 0.45; cursor: default; }
+/* No line through the displays group: the splits show only when pointed at. */
+.vd-split::after { background: transparent; }
+.vd-split:hover::after, .vd-split.is-drag::after, .vd-split:focus-visible::after { background: var(--brand); }
+/* Scripture sends keeps its title, shortened when narrow. */
+.vd-sends-head > .cs-translation-select { max-width: 54px; }
+/* The message button reads as an action: brand-accent, with a clear hover and press. */
+.vd-sends-head .vd-hbtn[aria-label="Monitor message"] { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+.vd-sends-head .vd-hbtn[aria-label="Monitor message"]:hover { background: var(--accent); color: #1a0f00; }
+.vd-sends-head .vd-hbtn[aria-label="Monitor message"]:active { transform: scale(0.94); }
+.vd-sends-spacer { order: 0; }
+.vg-col.vg-list .vg-name { text-align: left; }
+
+/* ── Displays, final form: panes as large as the group allows; the cluster under them or beside them. ── */
+.vd-section-displays .vd-band { align-items: center; justify-content: center; gap: 8px; }
+.vd-screens { gap: 8px; }
+.vd-band.is-stack .vd-screens { flex-direction: column; align-items: center; }
+.vd-band.is-beside { flex-direction: row; }
+.vd-transbar { align-self: stretch; }
+.vd-band.is-beside .vd-transbar { align-self: center; width: 132px; flex: 0 0 132px; }
+.vd-cluster { display: flex; flex-wrap: nowrap; align-items: center; justify-content: space-between; gap: 8px; width: 100%; }
+.vd-cluster > * { flex: 0 0 auto; }
+.vd-transbar .vd-take, .vd-transbar .vd-take-main { height: 34px; }
+.vd-transbar .vd-seg2 .vd-take { height: 30px; }
+.vd-dur { display: inline-flex; align-items: center; gap: 5px; height: 34px; }
+.vd-dur input { width: 56px; height: 30px; }
+.vd-band.is-beside .vd-cluster { flex-direction: column; align-items: stretch; gap: 8px; }
+.vd-band.is-beside .vd-cluster > * { width: 100%; }
+.vd-band.is-beside .vd-seg2 { display: grid; grid-template-columns: 1fr 1fr; }
+.vd-band.is-beside .vd-seg2 .vd-take { min-width: 0; }
+.vd-band.is-beside .vd-dur { justify-content: space-between; }
+.vd-band.is-beside .vd-dur input { flex: 1 1 auto; width: auto; min-width: 0; }
+.vd-band.is-beside .vd-take-main { height: 40px; }
+/* Looks button text; the loaded Look beside PREVIEW; the Looks dialog. */
+.vd-look-tag { padding: 1px 7px; border-radius: 9px; border: 1px solid var(--accent); color: var(--accent); font-size: 10px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40%; }
+.vd-look-tag[hidden] { display: none; }
+.vd-card-key { font-size: 10px; color: var(--text-3); }
+.vd-card-input { flex: 1 1 auto; min-width: 0; height: 26px; padding: 0 8px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text); font: inherit; font-size: 13px; }
+.vd-danger { color: var(--red); }
+.vd-sends-head { min-width: 0; }
+.vd-sends-head > * { min-width: 0; }
+.vd-sends-head > .cs-theme-btn, .vd-sends-head > .vd-hbtn { flex: 0 0 auto; }
+/* The Bible select gives way before the icons do (the Theme icon was pushed off the end of a narrow column). */
+.vd-sends-head > select { flex: 0 1 auto; min-width: 54px; }
+.vd-transbar .vd-dur { width: auto; }
+.vd-dur input { flex: 0 0 56px; }
+.vd-band.is-beside .vd-transbar { width: var(--vd-colw, 132px); flex: 0 0 var(--vd-colw, 132px); }
+/* Live Queue cards say it once: the red outline and the single LIVE pill. No second ON AIR badge, no SEND on the card that is live. */
+body.video-director #current-display-card .is-live .lvc-ref::before { content: none !important; }
+body.video-director #current-display-card .is-live .lvc-send-btn { display: none; }
+
+/* The Scripture group keeps its title: short ("Scripture") from 300px, none below. */
+@container (min-width: 300px) and (max-width: 469px) { .vd-sends-head.vd-gh > .vd-sends-title { font-size: 0; letter-spacing: 0; } .vd-sends-head.vd-gh > .vd-sends-title::after { content: 'Scripture'; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; } }
+@container (max-width: 299px) { .vd-sends-head.vd-gh > .vd-sends-title { display: none !important; } }
+
+/* ── Looks: the screen theme of a Look ── */
+
+/* ── Transition cluster: one centred row. Cut | Fade (+ length) · Send to screen · Fade to black, Undo ── */
+.vd-band .vd-cluster { display: grid; grid-template-columns: var(--vd-sendw, 240px) auto; grid-template-areas: "send right"; align-items: center; justify-content: center; column-gap: 8px; row-gap: 8px; width: 100%; }
+.vd-band .vd-cluster > * { flex: none; }
+.vd-band .vd-cl-left { grid-area: left; justify-self: end; display: flex; min-width: 0; }
+.vd-band .vd-cl-right { grid-area: right; justify-self: start; display: flex; gap: 6px; min-width: 0; }
+.vd-band .vd-cluster .vd-send { grid-area: send; width: 100%; height: 36px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 12px; font-size: 14px; font-weight: 700; background: var(--brand-gradient); border: 0; color: #fff; border-radius: var(--radius-sm); cursor: pointer; }
+.vd-band .vd-cluster .vd-send:hover:not(:disabled) { filter: brightness(1.08); }
+.vd-band .vd-cluster .vd-send:disabled { opacity: 0.45; cursor: default; }
+.vd-send-text { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.vd-send-key { flex: 0 0 auto; font-size: 10px; font-weight: 600; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 4px; background: rgba(0,0,0,0.22); color: rgba(255,255,255,0.85); }
+.vd-band .vd-seg2 { height: 36px; box-sizing: border-box; padding: 3px; align-items: center; }
+.vd-band .vd-seg2 .vd-take { height: 28px; min-width: 46px; }
+.vd-band .vd-dur { display: inline-flex; align-items: center; gap: 3px; height: 28px; margin-left: 3px; padding-left: 8px; border-left: 1px solid var(--border-md); }
+.vd-band .vd-dur[hidden] { display: none; }
+.vd-band .vd-dur input { flex: 0 0 44px; width: 44px; height: 24px; padding: 0 2px; text-align: right; border: 0; background: transparent; -moz-appearance: textfield; }
+.vd-band .vd-dur input::-webkit-outer-spin-button, .vd-band .vd-dur input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.vd-dur-unit { font-size: 10px; color: var(--text-3); }
+.vd-band .vd-cluster .vd-quiet { height: 36px; padding: 0 12px; font-size: 12px; background: transparent; border: 1px solid var(--border-md); color: var(--text-2); }
+.vd-band .vd-cluster .vd-quiet:hover:not(:disabled) { color: var(--text); border-color: var(--selected-border); }
+/* Not enough width for one row: Send to screen first, the rest centred under it. */
+.vd-band.is-wrap .vd-cluster { grid-template-columns: auto auto; grid-template-areas: "send send" "left right"; }
+.vd-band.is-wrap .vd-cluster .vd-send { width: min(100%, 300px); justify-self: center; }
+.vd-band.is-wrap.is-narrow .vd-cluster { grid-template-columns: minmax(0, 1fr); grid-template-areas: "send" "left" "right"; justify-items: center; }
+/* Beside the displays (a column): one control per row, centred. */
+.vd-band.is-beside .vd-cluster { grid-template-columns: minmax(0, 1fr); grid-template-areas: "send" "left" "right"; }
+.vd-band.is-beside .vd-cluster .vd-send { width: 100%; justify-self: stretch; }
+.vd-band.is-beside .vd-cl-left, .vd-band.is-beside .vd-cl-right { justify-self: stretch; justify-content: center; }
+.vd-band.is-beside .vd-cl-right { flex-direction: column; }
+.vd-band.is-beside .vd-seg2 { display: flex; justify-content: center; flex-wrap: wrap; height: auto; min-height: 36px; }
+.vd-band.is-beside .vd-seg2 .vd-take { flex: 1 1 0; }
+
+/* ── Inputs: Grid is two columns of 16:9 tiles (one under 200px, three from 480px); List is compact rows. ── */
+.vd-section-inputs { container-type: inline-size; container-name: vin; }
+.vg-col.vg-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); grid-auto-rows: auto; }
+.vg-col.vg-grid .vg-tile { height: auto; width: 100%; aspect-ratio: 16 / 9; min-height: 0; }
+@container vin (max-width: 149px) { .vg-col.vg-grid { grid-template-columns: minmax(0, 1fr); } }
+@container vin (max-width: 300px) { .vg-col.vg-grid .vg-tile.is-empty .vg-empty-mid, .vg-col.vg-grid .vg-tile .vg-state, .vg-col.vg-grid .vg-tile .vg-key { display: none; } .vg-col.vg-grid .vg-tile.is-empty { justify-content: center; } }
+@container vin (min-width: 480px) { .vg-col.vg-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.vg-col.vg-list .vg-tile { min-height: 48px; aspect-ratio: auto; }
+
+/* ── Looks: a grid of picture tiles ── */
+.vd-looks-modal .vd-lk-content { width: min(860px, 94vw); position: relative; }
+.vd-lk-title { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.vd-lk-title h2 { margin: 0; }
+.vd-lk-sub { font-size: 11px; color: var(--text-3); }
+.vd-lk-body { display: block; padding: 14px 20px 18px; max-height: 66vh; overflow-y: auto; container-type: inline-size; }
+.vd-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+@container (min-width: 640px) { .vd-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+.vd-lk { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 6px; border: 1px solid var(--border-md); border-radius: var(--radius); background: rgba(255,255,255,0.02); cursor: pointer; }
+.vd-lk:hover { border-color: var(--selected-border); }
+.vd-lk:focus-visible { outline: 2px solid var(--selected-border); outline-offset: 2px; }
+.vd-lk.is-pvw { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+.vd-lk.is-drop { border-color: var(--brand); }
+.vd-lk-thumb { position: relative; width: 100%; aspect-ratio: 16 / 9; border-radius: 5px; overflow: hidden; background: #000; border: 1px solid var(--border-md); }
+.vd-lk-th-in { position: absolute; top: 0; left: 0; width: 56px; height: 32px; transform-origin: top left; }
+.vd-lk-thumb.is-plain { background: linear-gradient(135deg, #14161d, #0c0d12); }
+.vd-lk-cam { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-3); }
+.vd-lk-cam svg { width: 34%; height: auto; max-height: 60%; }
+.vd-lk-bar { position: absolute; left: 12%; right: 12%; bottom: 10%; height: 14%; border-radius: 3px; background: rgba(255,255,255,0.78); opacity: 0.85; }
+.vd-lk-zone { position: absolute; display: flex; align-items: center; justify-content: center; color: rgba(255,255,255,0.75); background: rgba(0,0,0,0.45); border-radius: 4px; pointer-events: none; }
+.vd-lk-zone svg { width: 40%; max-width: 28px; height: auto; max-height: 60%; }
+.vd-lk-live { position: absolute; left: 6px; top: 6px; padding: 1px 6px; border-radius: 3px; background: var(--red); color: #fff; font-size: 9px; font-weight: 800; letter-spacing: 0.06em; text-transform: uppercase; }
+.vd-lk-more { position: absolute; right: 5px; top: 5px; width: 24px; height: 22px; display: flex; align-items: center; justify-content: center; border: 0; border-radius: 4px; background: rgba(0,0,0,0.6); color: #fff; cursor: pointer; opacity: 0; }
+.vd-lk:hover .vd-lk-more, .vd-lk:focus-within .vd-lk-more { opacity: 1; }
+.vd-lk-more:hover { background: rgba(0,0,0,0.85); }
+.vd-lk-more:focus-visible { outline: 2px solid var(--selected-border); }
+.vd-lk-row { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 0 2px; }
+.vd-lk-name { flex: 1 1 auto; min-width: 0; font-size: 13px; font-weight: 700; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vd-card-key { flex: 0 0 auto; font-size: 10px; color: var(--text-3); }
+.vd-card-input { flex: 1 1 auto; min-width: 0; height: 24px; padding: 0 8px; border: 1px solid var(--accent); border-radius: var(--radius-sm); background: var(--bg-input); color: var(--text); font: inherit; font-size: 12.5px; }
+.vd-lk-icons { display: flex; gap: 8px; padding: 0 2px; }
+.vd-lk-ic { display: inline-flex; color: var(--text-3); opacity: 0.35; }
+.vd-lk-ic.is-on { color: var(--text); opacity: 1; }
+.vd-lk-info { padding: 0 2px; font-size: 10.5px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.vd-lk-new { justify-content: center; align-items: stretch; border-style: dashed; background: transparent; color: var(--text-2); font: inherit; }
+.vd-lk-new-pic { display: flex; align-items: center; justify-content: center; aspect-ratio: 16 / 9; border-radius: 5px; font-size: 28px; font-weight: 300; color: var(--text-3); }
+.vd-lk-new .vd-lk-name { text-align: center; flex: none; color: var(--text-2); font-weight: 600; font-size: 12px; }
+.vd-lk-new:hover { border-color: var(--selected-border); color: var(--text); }
+.vd-lk-menu { position: absolute; z-index: 5; min-width: 168px; padding: 4px; border: 1px solid var(--border-md); border-radius: var(--radius); background: var(--bg); box-shadow: 0 10px 30px rgba(0,0,0,0.6); display: flex; flex-direction: column; }
+.vd-lk-mi { text-align: left; height: 28px; padding: 0 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-2); font: inherit; font-size: 12px; cursor: pointer; }
+.vd-lk-mi:hover, .vd-lk-mi:focus-visible { background: var(--bg-hover); color: var(--text); outline: none; }
+.vd-lk-mi.is-danger { color: var(--red); }
+.vd-lk-sep { height: 1px; margin: 4px 2px; background: var(--border); }
+.vd-lk-themes { width: 232px; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 8px; }
+.vd-lk-themes .vd-lk-mi { grid-column: 1 / -1; }
+.vd-lk-opt { display: flex; flex-direction: column; gap: 4px; padding: 4px; border: 1px solid var(--border-md); border-radius: var(--radius-sm); background: transparent; color: var(--text-2); font: inherit; font-size: 11px; cursor: pointer; text-align: left; }
+.vd-lk-opt:hover, .vd-lk-opt:focus-visible { border-color: var(--selected-border); outline: none; color: var(--text); }
+.vd-lk-opt.is-on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); color: var(--text); }
+.vd-lk-toast { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); display: flex; align-items: center; gap: 10px; padding: 6px 8px 6px 12px; border: 1px solid var(--border-md); border-radius: var(--radius); background: var(--bg); box-shadow: 0 8px 24px rgba(0,0,0,0.55); font-size: 12px; color: var(--text); }
+.vd-lk-toast[hidden] { display: none; }
+
+/* ── Verse transition popover: one small container, sized to its content, right-aligned under its button. ── */
+.vd-pop.vd-pop-verse { width: max-content; max-width: calc(100vw - 16px); padding: 8px 10px 10px; border-radius: var(--radius); }
+.vd-pop-verse::before { content: 'Verse transition'; display: block; margin-bottom: 6px; font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); white-space: nowrap; }
+.vd-pop-verse .rs-transition-bar { display: flex; flex-direction: column; align-items: stretch; gap: 6px; margin: 0; padding: 0; border: 0; background: none; box-shadow: none; }
+.vd-pop-verse .rs-transition-label { display: none; }
+.vd-pop-verse .ts-align-group { display: flex; gap: 2px; padding: 2px; border-radius: 7px; background: rgba(255,255,255,0.05); border: 0; }
+.vd-pop-verse .rs-duration { display: flex; margin: 0; padding: 0; border: 0; }
+.vd-pop-verse #rs-anim-picker .rs-anim-btn { flex: 1 1 0; width: 34px; height: 26px; padding: 0; justify-content: center; }
+.vd-pop-verse #rs-anim-picker .rs-anim-btn span { display: none; }
+.vd-pop-verse #rs-anim-speed .rs-anim-btn { flex: 1 1 0; height: 22px; padding: 0 7px; font-size: 10.5px; }
+.vd-pop-verse #rs-anim-picker .rs-anim-btn svg { display: block; width: 14px; height: 14px; }
+
+/* ── The Looks button: an icon and the label, an accent outline on hover, filled while its dialog is open. ── */
+.vd-looks-btn { display: inline-flex; align-items: center; gap: 6px; padding: 0 10px; color: var(--text); }
+.vd-looks-btn svg { flex: 0 0 auto; color: var(--accent); }
+.vd-looks-btn:hover { border-color: var(--accent); background: var(--accent-dim); }
+.vd-looks-btn.is-open { border-color: var(--accent); background: var(--accent-dim); }
+.vd-looks-chip { max-width: 140px; height: 22px; line-height: 20px; padding: 0 8px; border: 1px solid var(--accent); border-radius: 11px; font-size: 10.5px; font-weight: 600; color: var(--accent); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; box-sizing: border-box; }
+.vd-looks-chip[hidden] { display: none; }
+
+/* ── Staged slide / media tile: the orange Preview outline. The live one keeps its own live look. ── */
+body.video-director .svc-slide.is-staged, body.video-director .media-card.is-staged, body.video-director .timer-card.is-staged .timer-card-preview { outline: 2px solid var(--accent); outline-offset: -1px; box-shadow: 0 0 0 1px var(--accent); border-color: var(--accent); }
+
+/* ── Send: a quiet outline until something is staged, then the solid brand colour with a glow ring. ── */
+.vd-band .vd-cluster .vd-send { position: relative; overflow: hidden; background: transparent; border: 1px solid var(--border-md); color: var(--text-3); opacity: 1; filter: none; font-size: 14px; font-weight: 700; }
+.vd-band .vd-cluster .vd-send:disabled { opacity: 1; cursor: default; }
+.vd-band .vd-cluster .vd-send .vd-send-key { background: rgba(255,255,255,0.06); color: var(--text-3); }
+.vd-band .vd-cluster .vd-send.is-ready { background: linear-gradient(180deg, #FF6A22, var(--brand)); border-color: transparent; color: #fff; box-shadow: 0 0 0 2px rgba(245,48,26,0.35), 0 0 16px rgba(245,48,26,0.35); }
+.vd-band .vd-cluster .vd-send.is-ready:hover { filter: brightness(1.07); }
+.vd-band .vd-cluster .vd-send.is-ready .vd-send-key { background: rgba(255,255,255,0.22); color: #fff; }
+.vd-band .vd-cluster .vd-send::after { content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: rgba(255,255,255,0.28); pointer-events: none; }
+.vd-band .vd-cluster .vd-send.is-sending::after { animation: vd-send-fill var(--vd-send-ms, 300ms) linear forwards; }
+@keyframes vd-send-fill { from { width: 0; } to { width: 100%; } }
+.vd-frame.has-zone .vd-frame-name { display: none; }
+
+/* ── Send, toned down: a deep desaturated brand fill, a soft label, at most a slow border pulse. ── */
+.vd-band .vd-cluster .vd-send.is-ready { background: linear-gradient(180deg, #8f3d1f, #7a2a1a); border: 1px solid #b5532c; color: #f3e6dc; box-shadow: 0 0 10px rgba(181, 83, 44, 0.22); }
+.vd-band .vd-cluster .vd-send.is-ready:hover { filter: none; background: linear-gradient(180deg, #9c4523, #84301d); }
+.vd-band .vd-cluster .vd-send .vd-send-key, .vd-band .vd-cluster .vd-send.is-ready .vd-send-key { background: rgba(255,255,255,0.10); color: rgba(243,230,220,0.72); }
+.vd-band .vd-cluster .vd-send:disabled .vd-send-key { color: var(--text-3); }
+.vd-band .vd-cluster .vd-send::after { background: rgba(255,255,255,0.16); }
+.vd-band .vd-cluster .vd-send.is-ready:not(.is-sending)::before { content: ''; position: absolute; inset: 0; border: 1px solid #e0916a; border-radius: inherit; pointer-events: none; opacity: 0; animation: vd-send-pulse 3.2s ease-in-out infinite; }
+@keyframes vd-send-pulse { 0%, 100% { opacity: 0; } 50% { opacity: 0.55; } }
+@media (prefers-reduced-motion: reduce) { .vd-band .vd-cluster .vd-send.is-ready:not(.is-sending)::before { animation: none; opacity: 0.35; } }
+/* Fade to black and Undo: quiet outlines, muted until usable, no bright fill at any state. */
+.vd-band .vd-cluster .vd-quiet { background: transparent; border: 1px solid var(--border-md); color: var(--text-2); box-shadow: none; }
+.vd-band .vd-cluster .vd-quiet:hover:not(:disabled) { background: rgba(255,255,255,0.04); color: var(--text); border-color: var(--border-md); }
+.vd-band .vd-cluster .vd-quiet:disabled { color: var(--text-3); border-color: var(--border); opacity: 0.6; cursor: default; }
+
+/* ── A top-menu tab (Media, Songs, Timer, Slides) is a modal card over the Director screen, which stays visible
+   (dimmed) and keeps running underneath. Done, Esc or a click outside closes it, as the camera inputs do. ── */
+body.video-director.vd-sheet { --sh-w: min(1080px, calc(100vw - 96px)); --sh-h: min(780px, calc(100vh - 140px)); --sh-top: calc(64px + (100vh - 64px - var(--sh-h)) / 2); --sh-left: calc((100vw - var(--sh-w)) / 2); }
+body.video-director.vd-sheet .center-stage { position: relative; }
+body.video-director.vd-sheet #svc-stack-view:not(.hidden), body.video-director.vd-sheet #svc-fullscreen:not(.hidden),
+body.video-director.vd-sheet #songs-library-view:not(.hidden), body.video-director.vd-sheet #media-library-view:not(.hidden),
+body.video-director.vd-sheet #timer-view:not(.hidden) { position: fixed; top: calc(var(--sh-top) + 44px); left: var(--sh-left); width: var(--sh-w); height: calc(var(--sh-h) - 44px); right: auto; bottom: auto; z-index: 30; background: var(--bg-elevated, var(--bg)); overflow: auto; border: 1px solid var(--border-md); border-top: 0; border-radius: 0 0 var(--radius-lg, 14px) var(--radius-lg, 14px); box-shadow: 0 24px 64px rgba(0,0,0,.55); }
+.vd-sheet-backdrop { position: fixed; inset: 0; z-index: 25; background: rgba(0,0,0,.55); }
+.vd-sheet-bar { position: fixed; top: var(--sh-top); left: var(--sh-left); width: var(--sh-w); height: 44px; z-index: 31; display: flex; align-items: center; gap: 12px; padding: 0 14px; background: var(--bg-elevated, var(--bg)); border: 1px solid var(--border-md); border-bottom-color: var(--border); border-radius: var(--radius-lg, 14px) var(--radius-lg, 14px) 0 0; box-sizing: border-box; }
+.vd-sheet-back { height: 26px; border-color: var(--accent); color: var(--accent); }
+.vd-sheet-back:hover { background: var(--accent-dim); color: var(--text); }
+body.video-director .vd-tab-off { opacity: 1; cursor: pointer; }
+
+/* ── Inputs: the empty state ── */
+.vg-add.vg-add-first { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; min-height: 96px; aspect-ratio: auto; color: var(--text-2); }
+.vg-add.vg-add-first svg { color: var(--text-3); }
+.vg-add.vg-add-first:hover svg { color: var(--accent); }
+
+/* ── The "?" keyboard help ── */
+.vd-help-btn { width: 24px; padding: 0; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; }
+.vd-pop.vd-pop-keys { width: max-content; max-width: calc(100vw - 16px); padding: 10px 12px 12px; }
+.vd-keys-title { font-size: 10px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text-3); margin-bottom: 8px; }
+.vd-keys { display: grid; grid-template-columns: auto auto; gap: 6px 14px; margin: 0; font-size: 12px; }
+.vd-keys dt { color: var(--text); font-weight: 600; white-space: nowrap; }
+.vd-keys dd { margin: 0; color: var(--text-2); white-space: nowrap; }
+
+/* ── On air, the same everywhere: red means live. A live slide or media tile gets a red edge and a small dot. ── */
+body.video-director .svc-slide.live, body.video-director .media-card.is-live { position: relative; border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
+body.video-director .svc-slide.live::after, body.video-director .media-card.is-live::after { content: ''; position: absolute; top: 6px; right: 6px; width: 8px; height: 8px; border-radius: 50%; background: var(--red); box-shadow: 0 0 6px rgba(237,28,36,0.7); pointer-events: none; z-index: 2; }
+/* A tile that is both staged and live keeps the live edge. */
+body.video-director .svc-slide.live.is-staged, body.video-director .media-card.is-live.is-staged { outline-color: var(--accent); }
+.vd-det-chip { max-width: 150px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border-color: var(--accent); color: var(--accent); }
+.vd-det-chip[hidden] { display: none; }
+
+/* Record, docked in the Displays header in Director mode: sized like its other buttons. */
+.vd-gh-ctl .tb-record-btn.vd-docked::before { width: 8px; height: 8px; }
+.vd-gh-ctl .tb-stream-btn.vd-docked { height: 22px; padding: 0 8px; font-size: 10.5px; font-weight: 600; border-radius: var(--radius-sm); }
+.vd-gh-ctl .tb-stream-btn.vd-docked[hidden] { display: none; }
+
+/* An input's settings (right-click a tile): label and control on one line each. */
+.vsrc-props { display: flex; flex-direction: column; gap: 8px; }
+.vsrc-prop { display: grid; grid-template-columns: 84px minmax(0, 1fr); align-items: center; gap: 10px; }
+.vsrc-prop-label { font-size: 11px; color: var(--text-3); }
+.vsrc-prop .setting-input, .vsrc-prop select { width: 100%; min-width: 0; }
+.vsrc-prop-actions { display: flex; justify-content: flex-end; gap: 6px; margin-top: 4px; }
+
+/* Manage: every camera and input in an overlay over the Director board. */
+.vd-cam-modal { position: fixed; inset: 0; z-index: 2500; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.55); padding: 24px; }
+.vd-cam-card { width: min(760px, 100%); max-height: calc(100vh - 48px); overflow: auto; background: var(--bg-elevated, var(--bg)); border: 1px solid var(--border-md); border-radius: var(--radius-lg, 14px); box-shadow: 0 24px 64px rgba(0,0,0,.55); }
+.vd-cam-head { position: sticky; top: 0; z-index: 1; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; background: var(--bg-elevated, var(--bg)); border-bottom: 1px solid var(--border); }
+.vd-cam-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.vd-cam-card .vsrc-root { padding: 6px 18px 18px; }
+
+/* The Timer screen shown in the bottom-right area (the dock's Timer view): fills it and scrolls. */
+.vd-media-body #timer-view.vd-in-dock { display: block; position: static; width: 100%; height: 100%; overflow: auto; background: transparent; padding: 0; border: 0; }
+.vd-media-body #timer-view.vd-in-dock .svc-header { position: sticky; top: 0; z-index: 6; background: var(--bg); }   /* above the cards' own labels */
+
+/* A tile that is not on air or on Preview: its last picture, or a camera silhouette until it has one. */
+.vg-tile .vg-still { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: 0.85; }
+.vg-tile .vg-silhouette { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--text-3); }
+.vg-tile .vg-silhouette[hidden], .vg-tile .vg-still[hidden] { display: none; }
+.vg-col.vg-list .vg-tile .vg-still { position: static; grid-column: 1; grid-row: 1; width: 72px; height: 41px; border-radius: 3px; background: #000; }
+.vg-col.vg-list .vg-tile .vg-silhouette { position: static; grid-column: 1; grid-row: 1; width: 72px; height: 41px; border-radius: 3px; background: #000; }
+.vg-col.vg-list .vg-tile .vg-silhouette svg { width: 22px; height: 22px; }
+.vg-col.vg-list .vg-tile video { grid-row: 1; }
+.vg-col.vg-list .vg-tile video[hidden] { display: none; }
+.vsrc-key-btn { text-align: left; cursor: pointer; min-width: 90px; }
+.vsrc-key-btn.is-listening { border-color: var(--accent); color: var(--accent); }
+.vsrc-key-note { margin: 0; }
+
+/* The Layout editor (video_looks.js edit) */
+.vd-lk-editor .vd-lke-content { width: min(520px, 94vw); }
+.vd-lke-body { display: flex; flex-direction: column; gap: 14px; }
+.vd-lke-row { display: grid; grid-template-columns: 96px minmax(0, 1fr); align-items: center; column-gap: 12px; row-gap: 4px; }
+.vd-lke-label { font-size: 12px; font-weight: 600; color: var(--text-2); }
+.vd-lke-hint { grid-column: 2; margin: 0; }
+.vd-lke-name, .vd-lke-select { width: 100%; min-width: 0; }
+.vd-lke-inline { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.vd-lke-inline .vd-lke-select { flex: 1 1 auto; }
+.vd-lke-layers { display: flex; flex-wrap: wrap; gap: 6px; }
+.vd-lke-layer { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 10px; border: 1px solid var(--border-md); border-radius: var(--radius-sm); background: transparent; color: var(--text-3); font: inherit; font-size: 12px; cursor: pointer; }
+.vd-lke-layer:hover { color: var(--text); }
+.vd-lke-layer.is-on { background: var(--bg-hover); border-color: var(--selected-border); color: var(--text); }
+.vd-lke-layer:focus-visible { outline: 2px solid var(--selected-border); outline-offset: 1px; }
+
+/* An empty view (no media, no slides): its message and button in the middle of the area. */
+.vd-grid.is-empty { display: flex; align-items: center; justify-content: center; flex: 1 1 100%; align-self: stretch; width: 100%; height: 100%; min-height: 120px; }
+.vd-grid.is-empty .vd-empty { display: flex; flex-direction: column; align-items: center; gap: 10px; font-size: 12px; text-align: center; }
+
+/* Fade to black in the Displays header: black while the outputs are black. */
+.vd-ftb.is-on { background: #000; color: #fff; border-color: var(--red, #e5484d); }
+
+/* Clear (Displays header): one kind of content at a time. */
+.vd-clear-menu { display: flex; flex-direction: column; gap: 4px; padding: 4px 0; }
+.vd-clear-menu .vd-clear-item { height: 30px; justify-content: flex-start; text-align: left; font-size: 12px; }
+.vd-clear-sep { height: 1px; margin: 4px 0; background: var(--border-md); }
+
+/* No helper text beside PREVIEW and OUTPUT (owner, 2026-10-18): the pictures say it. The space stays,
+   so Edit and the Output's buttons keep their place. */
+.vd-screen-head .vd-ref { visibility: hidden; }
+
+/* Matches in the Scripture header: always there, quiet while there are none. */
+.vd-match-btn.is-empty { color: var(--text-3); border-color: var(--border); }
+
+/* No camera name over Preview or Output (owner, 2026-10-18): the pictures are clean, as on the outputs. */
+.vd-frame .vd-frame-name { display: none; }
+
+/* The dock's Slides / Timer / Media Bin choice, lit in the top bar (a ring, so Bible's filled pill still says where you are). */
+body.video-director .tb-studio-btn.vd-dock-lit { color: var(--brand); border-color: var(--brand-dim); box-shadow: inset 0 0 0 1px var(--brand-dim); }
+/* The basic screen's red "shelf showing" state means nothing here: only the dock's own choice lights it. */
+body.video-director #media-bin-toggle-btn.active:not(.vd-dock-lit) { color: var(--text-2); border-color: var(--border-md); background: var(--bg-hover); }
+
+.vd-band .vd-cl-left:empty { display: none; }
+
+/* Message and Possible Matches live in the Scripture column, as on the basic screen. */
+body.video-director .vd-section-sends #monitor-message-bar { flex: 0 0 auto; margin: 0; }
+body.video-director .vd-section-sends .rs-candidates { flex: 0 1 220px; min-height: 110px; margin: 0; display: flex !important; flex-direction: column; }
+
+/* The Timer's cards follow the same size slider as the Slides and Media tiles: about four across at the app's default size. */
+.vd-media-body #timer-view.vd-in-dock .timer-grid { grid-template-columns: repeat(auto-fill, minmax(var(--vd-tile, 150px), 1fr)); gap: 8px; }
+/* At about four across the chips get little room: one row, smaller type, and a card with no time set shows only its name. */
+.vd-media-body #timer-view.vd-in-dock .timer-card-foot { left: 6px; right: 6px; bottom: 6px; gap: 4px; }
+.vd-media-body #timer-view.vd-in-dock .timer-card-label, .vd-media-body #timer-view.vd-in-dock .timer-card-readout { font-size: 10.5px; padding: 1px 6px; }
+.vd-media-body #timer-view.vd-in-dock .timer-card-readout.is-unset { display: none; }
+
+/* Inputs footer: Ready check on the left, Manage at the right end (owner, 2026-10-19). */
+.vd-section-foot > :last-child { margin-left: auto; }
+
+/* Button system: "+ Add" is an ordinary secondary action, not a "look here" one; only Ready check (when something is not ready) is outlined orange. */
+.vd-add { background: transparent; border-color: var(--border-md); color: var(--text-2); }
+.vd-add:hover { background: var(--btn-hover); color: var(--text); border-color: var(--btn-line-hover); }
+
+/* Layer strip in each screen's header: which layers the screen carries; a click drops one from Preview or clears it on the Output. */
+.vd-layers { display: flex; gap: 2px; margin-left: auto; flex: 0 0 auto; }
+.vd-layer { width: 24px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 1px solid transparent; border-radius: 5px; background: transparent; color: var(--text-3, #6b6b6b); opacity: 0.55; cursor: default; }
+.vd-layer.is-lit { color: var(--text-1, #fff); opacity: 1; }
+.vd-screen-pvw .vd-layer.is-lit { color: var(--accent); }
+.vd-screen-pgm .vd-layer.is-lit { color: var(--red); }
+.vd-layer:not(:disabled) { cursor: pointer; }
+.vd-layer:not(:disabled):hover { background: var(--btn-hover, rgba(255,255,255,0.08)); border-color: var(--btn-line-hover, rgba(255,255,255,0.16)); }
+.vd-layer:disabled { pointer-events: auto; }
+
+.vd-icon-btn { padding: 0 8px; min-width: 30px; display: inline-flex; align-items: center; justify-content: center; }
+
+.vd-layout-toggle.is-on { color: var(--accent); border-color: var(--accent); }
+
+.vd-input-toggle.is-on { color: var(--accent); border-color: var(--accent); }
+.vd-inputs-off { opacity: 0.45; }
+
+.vd-looks-btn.is-active { color: var(--accent); border-color: var(--accent); }
+.vd-lk-switch { margin-left: auto; margin-right: 10px; padding: 6px 12px; border-radius: 8px; border: 1px solid var(--border-md); background: transparent; color: var(--text-2); font-weight: 600; cursor: pointer; }
+.vd-lk-switch.is-on { color: var(--accent); border-color: var(--accent); }
+
+.vd-tgl { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; }
+.vd-tgl-text { font-size: 11px; font-weight: 600; color: var(--text-2); }
+.vd-lk-switch { display: inline-flex; align-items: center; gap: 10px; margin-left: auto; margin-right: 14px; cursor: pointer; border: 0; background: transparent; padding: 0; }
+.vd-lk-switch-text { font-weight: 600; color: var(--text-2); }
+
+.vd-lk-footer { display: flex; justify-content: flex-end; padding: 12px 20px 16px; border-top: 1px solid var(--border); }
+button.vd-lk-ic { background: transparent; border: 0; padding: 2px; border-radius: 4px; cursor: pointer; }
+button.vd-lk-ic:hover { opacity: 1; background: var(--btn-hover, rgba(255,255,255,0.08)); }
+.vd-screen-head .vd-ftb { margin-left: auto; }
+.vd-screen-head .vd-layers + .vd-ftb { margin-left: 6px; }
+
+.vd-layer[hidden] { display: none; }

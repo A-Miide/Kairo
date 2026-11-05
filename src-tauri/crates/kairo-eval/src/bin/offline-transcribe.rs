@@ -1,0 +1,302 @@
+//! Transcribes a recording with the offline engine exactly as a live session
+//! would (same model, same locking, the recogniser asked every 120 ms of
+//! audio), faster than real time, into a file the replay scores.
+//!
+//! `cargo run --release -p kairo-eval --bin offline-transcribe -- <audio> <name> [--beam] [--hotwords <score>] [--blank-penalty <x>] [--reset-after <words>]`
+//! writes `parity/offline/<name>.json`; then `replay --offline <name>`.
+//! `--beam` decodes with beam search; `--hotwords` also favours the book names.
+//! `--coreml <program>` transcribes with the Core ML engine (src-tauri/coreml-speech, as on Apple
+//! Silicon) instead, through its own protocol, a frame at a time; the model folder is then
+//! `KAIRO_OFFLINE_MODEL` or `models/coreml-nemotron-en`.
+
+use std::cell::RefCell;
+use std::io::Read;
+use std::process::{Command, Stdio};
+use std::time::Instant;
+
+use kairo_eval::root;
+use kairo_server::interpretation::{model_path, Change, Interpreter, Verdict};
+use kairo_server::offline::{recognizer, Decoding, Heard, Transcriber, POLL, SAMPLE_RATE_HZ};
+use serde_json::{json, Value};
+
+fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let (Some(audio), Some(name)) = (args.first(), args.get(1)) else {
+        eprintln!("usage: offline-transcribe <audio file> <name>");
+        std::process::exit(2);
+    };
+    let opt = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned();
+    let coreml = opt("--coreml");
+    let model = std::env::var_os("KAIRO_OFFLINE_MODEL")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| root().join(if coreml.is_some() { "models/coreml-nemotron-en" } else { "models/sherpa-streaming-en" }));
+    let hotwords_score: f32 = opt("--hotwords").and_then(|s| s.parse().ok()).unwrap_or(0.0);
+    let blank_penalty: f32 = opt("--blank-penalty").and_then(|s| s.parse().ok()).unwrap_or(kairo_server::offline::BLANK_PENALTY);
+    let decoding = Decoding { beam: hotwords_score > 0.0 || args.iter().any(|a| a == "--beam"), hotwords_score, blank_penalty };
+    let mut heard = match &coreml {
+        Some(exe) => Engine::CoreMl(CoreMl::start(exe, &model)),
+        None => {
+            let rec = recognizer(&model, &decoding).expect("offline model");
+            let mut t = Transcriber::new(rec, None);
+            if let Some(n) = opt("--reset-after").and_then(|s| s.parse().ok()) {
+                t.reset_after = n;
+            }
+            Engine::Onnx(t)
+        }
+    };
+
+    let mut ffmpeg = Command::new("ffmpeg")
+        .args(["-v", "error", "-i", audio, "-ac", "1", "-ar", "16000", "-f", "s16le", "-"])
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("ffmpeg");
+    let mut pcm = ffmpeg.stdout.take().unwrap();
+
+    let step = SAMPLE_RATE_HZ * POLL.as_millis() as usize / 1000;
+    let mut buf = vec![0u8; step * 2];
+    let mut fed = 0usize;
+    let mut cues: Vec<Value> = Vec::new();
+    let mut inputs: Vec<Value> = Vec::new();
+    let mut cue_start: Option<u64> = None;
+    let started = Instant::now();
+    // The interpreter, exactly as the app runs it: an interpreter's turn is not transcribed and
+    // never reaches the detectors (KAIRO_INTERPRETER=off turns it off for comparison runs).
+    let interp = RefCell::new(Interpreter::load(&model_path()));
+    {
+        // The Bible's vocabulary tells real words from the fragments of another language.
+        let k = std::sync::Arc::new(kairo_eval::knowledge());
+        interp.borrow_mut().set_known(std::sync::Arc::new(move |w: &str| k.lexicon.vocab().id(w).is_some()));
+    }
+    let interp_on = std::env::var("KAIRO_INTERPRETER").map_or(true, |v| v != "off");
+    let marks: RefCell<Vec<Value>> = RefCell::new(Vec::new());
+    let mut record = |h: Heard, t: u64, cues: &mut Vec<Value>, inputs: &mut Vec<Value>| {
+        let (text, fin, speech_final, continues) = match h {
+            Heard::Interim(s) => (s, false, false, false),
+            Heard::Locked(s) => (s, true, false, true),
+            Heard::Final(s) => (s, true, true, false),
+        };
+        // What the interpreter held back as possibly the preacher's goes through first when the turn ends on his sentence.
+        let mut batch: Vec<(String, bool, bool, bool)> = Vec::new();
+        if interp_on && !text.trim().is_empty() {
+            let (verdict, change, released) = {
+                let mut i = interp.borrow_mut();
+                let (v, c) = i.text(&text, fin);
+                (v, c, i.take_released())
+            };
+            if let Some(c) = change {
+                marks.borrow_mut().push(json!({ "audioMs": t, "active": c == Change::Started }));
+            }
+            if verdict == Verdict::Interpretation {
+                marks.borrow_mut().push(json!({ "audioMs": t, "dropped": text }));
+                if fin {
+                    cue_start = None;
+                }
+                return;
+            }
+            batch.extend(released.into_iter().map(|(x, f)| (x, f, false, false)));
+        }
+        batch.push((text, fin, speech_final, continues));
+        for (text, fin, speech_final, continues) in batch {
+        let cue = cues.len();
+        let start = *cue_start.get_or_insert(t);
+        inputs.push(json!({ "t": t, "audioMs": t, "cue": cue, "text": text, "isFinal": fin, "speechFinal": speech_final, "continues": continues }));
+        if fin {
+            cues.push(json!({ "text": text, "audioMs": start }));
+            cue_start = None;
+        }
+        }
+    };
+    // --realtime: the audio arrives at live speed, as in the app, and the app's catch-up rule
+    // (offline::too_far_behind / Transcriber::cut) applies: on a computer too slow to keep up
+    // the run shows exactly what the live worker would skip. Without it the audio is fed as
+    // fast as it decodes (the deterministic default, what the app does whenever it keeps up).
+    let realtime = args.iter().any(|a| a == "--realtime");
+    let mut skips: Vec<Value> = Vec::new();
+    let mut pace = kairo_server::offline::Pace::default();
+    loop {
+        let n = read_full(&mut pcm, &mut buf);
+        if n == 0 {
+            break;
+        }
+        let samples: Vec<f32> = buf[..n].chunks_exact(2).map(|b| i16::from_le_bytes([b[0], b[1]]) as f32 / 32768.0).collect();
+        if realtime {
+            let arrives = started + std::time::Duration::from_millis((fed * 1000 / SAMPLE_RATE_HZ) as u64);
+            let now = Instant::now();
+            if now < arrives {
+                std::thread::sleep(arrives - now);
+            } else if kairo_server::offline::too_far_behind(now - arrives, pace.value()) {
+                // Everything that has arrived by now is dropped, as the worker drops its queue.
+                let at = (fed * 1000 / SAMPLE_RATE_HZ) as u64;
+                let mut dropped = samples.len();
+                fed += samples.len();
+                while started + std::time::Duration::from_millis((fed * 1000 / SAMPLE_RATE_HZ) as u64) <= Instant::now() {
+                    let m = read_full(&mut pcm, &mut buf);
+                    if m == 0 { break; }
+                    dropped += m / 2;
+                    fed += m / 2;
+                }
+                if let Some(h) = heard.cut() {
+                    record(h, at, &mut cues, &mut inputs);
+                }
+                skips.push(json!({ "audioMs": at, "skippedMs": dropped * 1000 / SAMPLE_RATE_HZ }));
+                continue;
+            }
+        }
+        fed += samples.len();
+        let busy = Instant::now();
+        heard.accept(&samples);
+        let t = (fed * 1000 / SAMPLE_RATE_HZ) as u64;
+        if interp_on {
+            if let Some(c) = interp.borrow_mut().audio(&samples) {
+                marks.borrow_mut().push(json!({ "audioMs": t, "active": c == Change::Started }));
+            }
+        }
+        for h in heard.pump() {
+            record(h, t, &mut cues, &mut inputs);
+        }
+        pace.add(samples.len() as f64 / SAMPLE_RATE_HZ as f64, busy.elapsed());
+    }
+    if realtime {
+        let total: u64 = skips.iter().filter_map(|s| s["skippedMs"].as_u64()).sum();
+        eprintln!("[offline] realtime: {} skips, {:.1} s of audio dropped to stay live", skips.len(), total as f64 / 1000.0);
+    }
+    let t = (fed * 1000 / SAMPLE_RATE_HZ) as u64;
+    if let Some(h) = heard.finish() {
+        record(h, t, &mut cues, &mut inputs);
+    }
+    let _ = ffmpeg.wait();
+
+    let out = json!({
+        "source": name,
+        "kind": "offline",
+        "offline": true,
+        "model": model.file_name().map(|f| f.to_string_lossy().into_owned()),
+        "decoding": if coreml.is_some() { json!("coreml") } else { json!({ "beam": decoding.beam, "hotwordsScore": decoding.hotwords_score }) },
+        "cues": cues,
+        "inputs": inputs,
+        "stable": [],
+        "unstable": [],
+        "skips": skips,
+        "interpretation": marks.into_inner(),
+    });
+    let dir = root().join("parity/offline");
+    std::fs::create_dir_all(&dir).unwrap();
+    let path = dir.join(format!("{name}.json"));
+    std::fs::write(&path, serde_json::to_string(&out).unwrap()).unwrap();
+    let secs = t as f64 / 1000.0;
+    eprintln!(
+        "[offline] {name}: {:.0} min of audio in {:.0}s ({:.0}× real time), {} utterances → {}",
+        secs / 60.0,
+        started.elapsed().as_secs_f64(),
+        secs / started.elapsed().as_secs_f64(),
+        out["cues"].as_array().map_or(0, |c| c.len()),
+        path.display()
+    );
+}
+
+/// The ONNX engine in this process, or the Core ML engine's program (as the app runs each).
+enum Engine {
+    Onnx(Transcriber),
+    CoreMl(CoreMl),
+}
+
+impl Engine {
+    fn accept(&mut self, samples: &[f32]) {
+        match self {
+            Engine::Onnx(t) => t.accept(samples),
+            Engine::CoreMl(c) => c.send(samples),
+        }
+    }
+    fn pump(&mut self) -> Vec<Heard> {
+        match self {
+            Engine::Onnx(t) => t.pump(),
+            Engine::CoreMl(c) => c.until_ack(),
+        }
+    }
+    fn cut(&mut self) -> Option<Heard> {
+        match self {
+            Engine::Onnx(t) => t.cut(),
+            // Fed as fast as it decodes, it never falls behind.
+            Engine::CoreMl(_) => None,
+        }
+    }
+    fn finish(&mut self) -> Option<Heard> {
+        match self {
+            Engine::Onnx(t) => t.finish(),
+            Engine::CoreMl(c) => c.finish().into_iter().last(),
+        }
+    }
+}
+
+/// The Core ML engine's program, told to answer after every frame (KAIRO_SPEECH_ACK), so what it
+/// heard lands at the audio time it was heard.
+struct CoreMl {
+    child: std::process::Child,
+    lines: std::io::Lines<std::io::BufReader<std::process::ChildStdout>>,
+}
+
+impl CoreMl {
+    fn start(exe: &str, model: &std::path::Path) -> CoreMl {
+        use std::io::BufRead;
+        let mut child = Command::new(exe)
+            .arg(model)
+            .arg("-")
+            .env("KAIRO_SPEECH_ACK", "1")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .spawn()
+            .expect("Core ML speech engine");
+        let mut lines = std::io::BufReader::new(child.stdout.take().unwrap()).lines();
+        for l in lines.by_ref() {
+            if l.expect("engine output") == "K1 ready" {
+                break;
+            }
+        }
+        CoreMl { child, lines }
+    }
+
+    fn send(&mut self, samples: &[f32]) {
+        use std::io::Write;
+        let pcm: Vec<u8> = samples.iter().flat_map(|s| ((s * 32768.0).clamp(-32768.0, 32767.0) as i16).to_le_bytes()).collect();
+        let w = self.child.stdin.as_mut().unwrap();
+        w.write_all(&(pcm.len() as u32).to_le_bytes()).and_then(|_| w.write_all(&pcm)).expect("engine input");
+    }
+
+    /// What it heard, up to its answer for the frame just sent (or to the end).
+    fn until_ack(&mut self) -> Vec<Heard> {
+        let mut out = Vec::new();
+        for l in self.lines.by_ref() {
+            let Some(body) = l.expect("engine output").strip_prefix("K1 ").map(str::to_string) else { continue };
+            let Ok(v) = serde_json::from_str::<Value>(&body) else { continue };
+            let t = v["t"].as_str().unwrap_or("").to_string();
+            match v["k"].as_str() {
+                Some("a") => break,
+                Some("i") => out.push(Heard::Interim(t)),
+                Some("l") => out.push(Heard::Locked(t)),
+                Some("f") => out.push(Heard::Final(t)),
+                _ => {}
+            }
+        }
+        out
+    }
+
+    fn finish(&mut self) -> Vec<Heard> {
+        use std::io::Write;
+        let _ = self.child.stdin.as_mut().unwrap().write_all(&0u32.to_le_bytes());
+        drop(self.child.stdin.take());
+        let out = self.until_ack();
+        let _ = self.child.wait();
+        out
+    }
+}
+
+fn read_full(r: &mut impl Read, buf: &mut [u8]) -> usize {
+    let mut n = 0;
+    while n < buf.len() {
+        match r.read(&mut buf[n..]) {
+            Ok(0) | Err(_) => break,
+            Ok(k) => n += k,
+        }
+    }
+    n - n % 2
+}
