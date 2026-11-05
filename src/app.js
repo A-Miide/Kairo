@@ -1743,9 +1743,20 @@ async function toggleChapterChildren(card, open) {
   box._verses = await chapterVerses(card.dataset.book, card.dataset.chapter);
   renderChapterChildren(card);
 }
+// The list never grows taller than the Live Queue can show below the card's own header
+// (owner, 2026-11-05: the ten-line list ran past the bottom of the panel).
+function fitChapterList(box) {
+  const body = box?.closest('.cs-live-queue-body');
+  const card = box?.closest('.locked-verse-card');
+  if (!body || !card) return;
+  const above = box.getBoundingClientRect().top - card.getBoundingClientRect().top;
+  box.style.setProperty('--lvc-fit', `${Math.max(60, body.clientHeight - above - 16)}px`);
+}
+window.addEventListener('resize', () => document.querySelectorAll('.lvc-children').forEach(fitChapterList));
 function renderChapterChildren(card) {
   const box = card.querySelector('.lvc-children');
   if (!box || !box._verses) return;
+  fitChapterList(box);
   const all = box._verses;
   const here = screenVerseNums.book === card.dataset.book && String(screenVerseNums.chapter) === card.dataset.chapter ? screenVerseNums.verses : [];
   const centre = here[0] || Number((card.dataset.ref.match(/:(\d+)/) || [])[1]) || 1;
@@ -1783,6 +1794,7 @@ function renderChapterChildren(card) {
 const LIST_HAND_PAUSE_MS = 4000, LIST_WIDE_MS = 10000;
 function listScrolledByHand(box) {
   box.classList.add('is-wide');
+  fitChapterList(box);
   box._handUntil = Date.now() + LIST_HAND_PAUSE_MS;
   clearTimeout(box._narrowTimer);
   box._narrowTimer = setTimeout(() => narrowChapterList(box), LIST_WIDE_MS);

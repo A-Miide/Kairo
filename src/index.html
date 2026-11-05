@@ -2141,6 +2141,11 @@
                         <p class="ob-eyebrow">Listening <span class="ob-need">Needed to start</span></p>
                         <h2 class="ob-title">Kairo listens to the sermon.</h2>
                         <p class="ob-lede">It catches a verse when it&rsquo;s cited, read aloud or quoted, and puts it on screen in your theme. Press <strong>Start Listening</strong> at the top when the service begins.</p>
+                        <!-- What Kairo hears first, then how it turns that into words. -->
+                        <div class="ob-input">
+                            <label for="first-run-mic" class="ob-label">Microphone or audio input</label>
+                            <select id="first-run-mic" class="setting-input"><option value="">Finding inputs&hellip;</option></select>
+                        </div>
                         <div class="toggle-group ob-choices" id="first-run-engine-toggle">
                             <button class="toggle-btn ob-choice active" data-engine="deepgram">
                                 <span class="ob-choice-badge">Most accurate</span>
@@ -2170,8 +2175,6 @@
                                 <p class="ob-hint">Runs entirely on this computer: no internet, no key. Less accurate than Deepgram.</p>
                             </div>
                             <p id="onboarding-speech-warning" class="ob-warning hidden">No Deepgram key or offline speech yet. You can finish this any time in Settings &rarr; Audio before the service.</p>
-                            <label for="first-run-mic" class="ob-label ob-gap">Microphone or audio input</label>
-                            <select id="first-run-mic" class="setting-input"><option value="">Finding inputs&hellip;</option></select>
                         </div>
                     </div>
                     <div class="ob-visual ob-listen">
