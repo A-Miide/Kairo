@@ -2065,7 +2065,8 @@
                         <!-- Required before anything else: the language sets what Kairo listens for, the
                              model it needs and the Bible it matches (owner, 2026-11-05). The same choices as
                              Settings → Language (ONBOARDING_MIRRORS, app.js). -->
-                        <div class="ob-service">
+                        <div class="ob-service" role="group" aria-labelledby="ob-service-title">
+                            <p class="ob-service-title" id="ob-service-title">Your service <span>Needed to start</span></p>
                             <div class="ob-field">
                                 <label for="first-run-language" class="ob-label">The preacher speaks</label>
                                 <select id="first-run-language" class="setting-input"></select>
