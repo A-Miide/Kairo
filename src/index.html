@@ -2055,7 +2055,6 @@
          Every id the wizard logic (app.js) uses is kept. -->
     <div id="first-run-modal" class="onboarding hidden" role="dialog" aria-modal="true" aria-label="Welcome to Kairo">
         <div class="ob-backdrop"></div>
-        <div class="ob-spot" id="ob-spot" aria-hidden="true"></div>
         <div class="ob-shell">
             <header class="ob-top">
                 <div class="ob-brand" id="ob-brand"></div>
@@ -2067,7 +2066,7 @@
                 <!-- 1 · What Kairo does -->
                 <section class="onboarding-step ob-step ob-welcome" data-step="0">
                     <div class="ob-copy">
-                        <p class="ob-hello" data-welcome-cycle><span class="obw-sr">Welcome to Kairo</span></p>
+                        <p class="ob-hellos" data-welcome-cycle><span class="obw-sr">Welcome to Kairo</span></p>
                         <h2 class="ob-title">Scripture on screen the moment it&rsquo;s spoken.</h2>
                         <p class="ob-lede">Kairo listens to the sermon and puts up the verse &mdash; in your theme, on every screen, online or off.</p>
                     </div>
@@ -2137,145 +2136,119 @@
                     </div>
                 </section>
 
-                <!-- 2 · How it listens (functional) -->
-                <section class="onboarding-step ob-step hidden" data-step="1">
+                <!-- 2 · Listening: the one setup Kairo needs before it can start -->
+                <section class="onboarding-step ob-step ob-feature hidden" data-step="1">
                     <div class="ob-copy">
-                        <p class="ob-eyebrow">Step 1 of 2</p>
-                        <h2 class="ob-title">How should Kairo listen?</h2>
-                        <p class="ob-lede">You can change this any time in Settings &rarr; Audio.</p>
-                    </div>
-                    <div class="toggle-group ob-choices" id="first-run-engine-toggle">
-                        <button class="toggle-btn ob-choice active" data-engine="deepgram">
-                            <span class="ob-choice-badge">Most accurate</span>
-                            <span class="ob-choice-name">Deepgram</span>
-                            <span class="ob-choice-desc">Cloud transcription. Needs internet and a free Deepgram key.</span>
-                        </button>
-                        <button class="toggle-btn ob-choice" data-engine="browser">
-                            <span class="ob-choice-badge">No internet</span>
-                            <span class="ob-choice-name">Offline</span>
-                            <span class="ob-choice-desc">Runs on this computer. One download, no account, no cost.</span>
-                        </button>
-                    </div>
-                    <div class="ob-setup">
-                        <div id="first-run-deepgram-group">
-                            <label for="first-run-deepgram-key" class="ob-label">Deepgram API key</label>
-                            <input id="first-run-deepgram-key" type="password" class="setting-input" autocomplete="off" spellcheck="false" placeholder="Paste your Deepgram API key" />
-                            <a href="https://console.deepgram.com/signup" target="_blank" rel="noopener" class="ob-link">Get a free key &rarr;</a>
+                        <p class="ob-eyebrow">Listening <span class="ob-need">Needed to start</span></p>
+                        <h2 class="ob-title">Kairo listens to the sermon.</h2>
+                        <p class="ob-lede">It catches a verse when it&rsquo;s cited, read aloud or quoted, and puts it on screen in your theme. Press <strong>Start Listening</strong> at the top when the service begins.</p>
+                        <div class="toggle-group ob-choices" id="first-run-engine-toggle">
+                            <button class="toggle-btn ob-choice active" data-engine="deepgram">
+                                <span class="ob-choice-badge">Most accurate</span>
+                                <span class="ob-choice-name">Deepgram</span>
+                                <span class="ob-choice-desc">Needs internet and a free key.</span>
+                            </button>
+                            <button class="toggle-btn ob-choice" data-engine="browser">
+                                <span class="ob-choice-badge">No internet</span>
+                                <span class="ob-choice-name">Offline</span>
+                                <span class="ob-choice-desc">Runs on this computer. One download, no account.</span>
+                            </button>
                         </div>
-                        <div id="first-run-offline-group" style="display:none;">
-                        <label style="display:block;margin-bottom:6px;font-size:12px;font-weight:600;">Offline Model</label>
-                        <div id="first-run-offline-status-line" style="font-size:12px;color:var(--text-3);margin-bottom:8px;">Checking…</div>
-                        <button id="first-run-offline-install-btn" class="setting-input btn-brand" style="cursor:pointer;display:none;width:100%;">Download offline model</button>
-                        <div id="first-run-offline-progress-wrap" style="display:none;margin-top:6px;">
-                            <div style="background:var(--surface-2);height:6px;border-radius:3px;overflow:hidden;">
-                                <div id="first-run-offline-progress-bar" style="background:var(--accent);height:100%;width:0%;transition:width .2s;"></div>
+                        <div class="ob-setup">
+                            <div id="first-run-deepgram-group">
+                                <label for="first-run-deepgram-key" class="ob-label">Deepgram key</label>
+                                <input id="first-run-deepgram-key" type="password" class="setting-input" autocomplete="off" spellcheck="false" placeholder="Paste your Deepgram key" />
+                                <a href="https://console.deepgram.com/signup" target="_blank" rel="noopener" class="ob-link">Get a free key &rarr;</a>
                             </div>
-                            <div id="first-run-offline-progress-text" style="font-size:11px;color:var(--text-3);margin-top:4px;">Starting…</div>
+                            <div id="first-run-offline-group" style="display:none;">
+                                <label class="ob-label">Offline speech</label>
+                                <div id="first-run-offline-status-line" class="ob-status">Checking&hellip;</div>
+                                <button id="first-run-offline-install-btn" class="setting-input btn-brand ob-install" style="display:none;">Download offline speech</button>
+                                <div id="first-run-offline-progress-wrap" style="display:none;" class="ob-progress-wrap">
+                                    <div class="ob-bar"><div id="first-run-offline-progress-bar" class="ob-bar-fill"></div></div>
+                                    <div id="first-run-offline-progress-text" class="ob-status">Starting&hellip;</div>
+                                </div>
+                                <p class="ob-hint">Runs entirely on this computer: no internet, no key. Less accurate than Deepgram.</p>
+                            </div>
+                            <p id="onboarding-speech-warning" class="ob-warning hidden">No Deepgram key or offline speech yet. You can finish this any time in Settings &rarr; Audio before the service.</p>
+                            <label for="first-run-mic" class="ob-label ob-gap">Microphone or audio input</label>
+                            <select id="first-run-mic" class="setting-input"><option value="">Finding inputs&hellip;</option></select>
                         </div>
-                        <p style="margin:10px 0 0;font-size:12px;line-height:1.5;color:var(--text-dim,#aaa);">
-                            Runs entirely on this computer — no internet, no API key. Lower accuracy than Deepgram.
-                        </p>
                     </div>
-                        <p id="onboarding-speech-warning" class="hidden" style="margin:12px 0 0;padding:8px 10px;background:rgba(255,180,60,0.1);border:1px solid rgba(255,180,60,0.3);border-radius:6px;font-size:12px;line-height:1.5;color:var(--text-2);">
-                        You haven't set up a Deepgram key or downloaded the offline model yet —
-                        you can finish this anytime in Settings → Language before starting a session.
-                    </p>
+                    <div class="ob-visual ob-listen">
+                        <img class="ob-pic ob-pic-a" src="tour/tour-listen-card.jpg" alt="A verse heard in the sermon, live in the Live Queue" loading="lazy">
+                        <img class="ob-pic ob-pic-b" src="tour/tour-listen-output.jpg" alt="The same verse on the main output" loading="lazy">
                     </div>
                 </section>
 
-                <!-- 3 · The standout features -->
-                <section class="onboarding-step ob-step hidden" data-step="2">
+                <!-- 3 · Bibles and languages -->
+                <section class="onboarding-step ob-step ob-feature hidden" data-step="2">
                     <div class="ob-copy">
-                        <p class="ob-eyebrow">Made for the whole room</p>
+                        <p class="ob-eyebrow">Bibles and languages <span class="ob-need">Optional</span></p>
+                        <h2 class="ob-title">Every Bible your church reads.</h2>
+                        <p class="ob-lede">Ten are built in, in nine languages. Add the NIV, NLT and more free through API.Bible; they keep working offline.</p>
+                        <div class="ob-setup">
+                            <label for="first-run-bible-language" class="ob-label">Verses shown in</label>
+                            <select id="first-run-bible-language" class="setting-input"></select>
+                            <label for="first-run-api-bible-key" class="ob-label ob-gap">API.Bible key <span class="ob-optional">optional</span></label>
+                            <input id="first-run-api-bible-key" type="password" class="setting-input" autocomplete="off" spellcheck="false" placeholder="Paste your API.Bible key" />
+                            <a href="https://api.bible/sign-up" target="_blank" rel="noopener" class="ob-link">Get a free key &rarr;</a>
+                            <label for="first-run-second-lang" class="ob-label ob-gap">Second language beside the verse <span class="ob-optional">optional</span></label>
+                            <select id="first-run-second-lang" class="setting-input"></select>
+                            <p class="ob-hint">Shows on the Multi-Language theme.</p>
+                        </div>
+                    </div>
+                    <div class="ob-visual">
+                        <div class="ob-bi" aria-hidden="true">
+                            <div><p>For God so loved the world, that he gave his only begotten Son&hellip;</p><b>John 3:16 &middot; KJV</b></div>
+                            <div lang="es"><p>Porque de tal manera am&oacute; Dios al mundo, que ha dado &aacute; su Hijo unig&eacute;nito&hellip;</p><b>John 3:16 &middot; Espa&ntilde;ol</b></div>
+                        </div>
+                        <div class="ob-pills"><span>KJV</span><span>BSB</span><span>Yor&ugrave;b&aacute;</span><span>Igbo</span><span>Hausa</span><span>Kiswahili</span><span>Fran&ccedil;ais</span><span>Espa&ntilde;ol</span><span>Portugu&ecirc;s</span><span>Deutsch</span><span>+ NIV, NLT and more via API.Bible</span></div>
+                    </div>
+                </section>
+
+                <!-- 4 · Screens -->
+                <section class="onboarding-step ob-step ob-feature hidden" data-step="3">
+                    <div class="ob-copy">
+                        <p class="ob-eyebrow">Screens <span class="ob-need">Set up any time</span></p>
                         <h2 class="ob-title">One verse. Every screen. Its own look.</h2>
+                        <p class="ob-lede">Projector, livestream and lobby each get their own theme from the same verse. Watch them all at once from the Monitor.</p>
+                        <div class="ob-chips"><span>HDMI</span><span>NDI</span><span>Syphon</span><span>Spout</span><span>DeckLink</span><span>OBS</span></div>
+                        <button type="button" id="ob-add-screen" class="ob-action">Add a screen</button>
+                        <p class="ob-hint">Or later, in Settings &rarr; Outputs.</p>
                     </div>
-                    <div class="ob-tiles">
-                        <div class="ob-tile">
-                            <img class="ob-shot" src="tour/tour-outputs.jpg" alt="The theme picker for an output, each theme with a small preview" loading="lazy">
-                            <h3>Many outputs, each with its own theme</h3>
-                            <p>Projector, lobby, livestream over NDI or Syphon, and Blackmagic DeckLink &mdash; give every output a different theme, all fed by the same verse.</p>
-                        </div>
-                        <div class="ob-tile">
-                            <div class="ob-art ob-art-bi" aria-hidden="true"><b><em>For God so loved&hellip;</em></b><b><em>Car Dieu a tant aim&eacute;&hellip;</em></b></div>
-                            <h3>Multi-language, multi-theme</h3>
-                            <p>Show the verse in two languages side by side, on a theme built for it. Slide text translates on this computer.</p>
-                        </div>
-                        <div class="ob-tile">
-                            <img class="ob-shot" src="tour/tour-monitor.jpg" alt="The monitoring panel showing the live verse, with the transition controls under it" loading="lazy">
-                            <h3>Monitor: see every output at once</h3>
-                            <p>Open it in its own window and watch what each screen is showing, live, from the sound desk.</p>
-                        </div>
+                    <div class="ob-visual ob-stack">
+                        <img class="ob-pic ob-pic-a" src="tour/tour-outputs.jpg" alt="The theme picker for an output, each theme with a small preview" loading="lazy">
+                        <img class="ob-pic ob-pic-b" src="tour/tour-monitor.jpg" alt="The Monitor showing every output at once" loading="lazy">
                     </div>
                 </section>
 
-                <!-- 3 · What's inside -->
-                <section class="onboarding-step ob-step hidden" data-step="3">
+                <!-- 5 · Songs and slides -->
+                <section class="onboarding-step ob-step ob-feature hidden" data-step="4">
                     <div class="ob-copy">
-                        <p class="ob-eyebrow">What&rsquo;s inside</p>
-                        <h2 class="ob-title">Fits how your church already works.</h2>
+                        <p class="ob-eyebrow">Songs and slides <span class="ob-need">Optional</span></p>
+                        <h2 class="ob-title">Bring what you already have.</h2>
+                        <p class="ob-lede">Songs, schedules and slides come in looking as they did. 286 hymns are built in, and sermon notes are ready when the sermon ends.</p>
+                        <div class="ob-chips ob-files"><span><b>.pro</b>ProPresenter</span><span><b>.ewsx</b>EasyWorship</span><span><b>.pptx</b>PowerPoint</span><span><b>.docx</b>Word</span><span><b>&#9835;</b>286 hymns</span></div>
+                        <button type="button" id="ob-import-now" class="ob-action">Import now</button>
+                        <p class="ob-hint">Or later, from + Add content.</p>
                     </div>
-                    <div class="ob-tiles">
-                        <div class="ob-tile">
-                            <div class="ob-art ob-art-pro" aria-hidden="true"><i></i><i></i><i></i></div>
-                            <h3>Your ProPresenter or EasyWorship library</h3>
-                            <p>Bring in ProPresenter files, bundles, playlists and themes, or EasyWorship songs and schedules &mdash; slides keep their look.</p>
-                        </div>
-                        <div class="ob-tile">
-                            <div class="ob-art ob-art-import" aria-hidden="true"><b></b><i></i><i></i></div>
-                            <h3>Import anything</h3>
-                            <p>Word, PowerPoint or pasted text. Headings start slides; line breaks stay.</p>
-                        </div>
-                        <div class="ob-tile">
-                            <div class="ob-art ob-art-lang" aria-hidden="true" data-welcome-cycle></div>
-                            <h3>Every language in the room</h3>
-                            <p>Ten Bibles built in, including the KJV, the BSB, Yoruba, Igbo and Hausa, plus the NIV, NLT and more free through API.Bible &mdash; all working offline.</p>
-                        </div>
+                    <div class="ob-visual">
+                        <img class="ob-pic" src="tour/tour-songs.jpg" alt="The Songs tab with the built-in hymns" loading="lazy">
                     </div>
                 </section>
 
-                <!-- 4 · Production: cameras, streaming, overlays -->
-                <section class="onboarding-step ob-step hidden" data-step="4">
+                <!-- 6 · Production: everything here stays off until it's turned on -->
+                <section class="onboarding-step ob-step ob-feature hidden" data-step="5">
                     <div class="ob-copy">
-                        <p class="ob-eyebrow">When you&rsquo;re ready for more</p>
+                        <p class="ob-eyebrow">Production <span class="ob-need">For when you&rsquo;re ready</span></p>
                         <h2 class="ob-title">Cameras, the live stream and the extras.</h2>
+                        <p class="ob-lede">All of these stay off until you turn them on, so the screen stays simple on your first Sunday.</p>
                     </div>
-                    <div class="ob-tiles">
-                        <div class="ob-tile">
-                            <div class="ob-art ob-art-dir" aria-hidden="true"><i></i><i></i><b></b></div>
-                            <h3>Director mode</h3>
-                            <p>Cameras and inputs, Preview and Output, layouts that frame the verse beside the camera. Turn it on in Settings when you need it.</p>
-                        </div>
-                        <div class="ob-tile">
-                            <div class="ob-art ob-art-live" aria-hidden="true"><span>&#9679; LIVE</span><i></i><i></i><i></i></div>
-                            <h3>Go live, everywhere at once</h3>
-                            <p>Stream what the screen shows to YouTube, Facebook, Twitch or any RTMP server, with the sound from your desk.</p>
-                        </div>
-                        <div class="ob-tile">
-                            <div class="ob-art ob-art-ovl" aria-hidden="true"><i></i><b></b></div>
-                            <h3>Overlays and background music</h3>
-                            <p>A logo or badge over every screen, and music that plays on its own while slides and scripture change.</p>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- 5 · Ready: the real controls, spotlit -->
-                <section class="onboarding-step ob-step hidden" data-step="5">
-                    <div class="ob-copy">
-                        <p class="ob-eyebrow">Step 2 of 2</p>
-                        <h2 class="ob-title">You&rsquo;re ready.</h2>
-                        <p class="ob-lede">Pick the input that hears the preacher, then press <strong>Start Listening</strong> &mdash; up there.</p>
-                    </div>
-                    <div class="ob-setup">
-                        <label for="first-run-mic" class="ob-label">Microphone or audio input</label>
-                        <select id="first-run-mic" class="setting-input"><option value="">Finding inputs&hellip;</option></select>
-                    </div>
-                    <!-- Bibles beyond the ones that ship: the church's own free API.Bible account
-                         (bible_import.js connects the key when the tour is saved). -->
-                    <div class="ob-setup ob-bibles">
-                        <label for="first-run-api-bible-key" class="ob-label">Your church's Bibles <span class="ob-optional">optional</span></label>
-                        <p class="ob-bibles-lede">Get the NIV, NLT, the Message and more free from API.Bible. They download to work without internet.</p>
-                        <input id="first-run-api-bible-key" type="password" class="setting-input" autocomplete="off" spellcheck="false" placeholder="Paste your API.Bible key" />
-                        <a href="https://api.bible/sign-up" target="_blank" rel="noopener" class="ob-link">Get a free key &rarr;</a>
+                    <div class="ob-visual ob-rows">
+                        <div class="ob-row"><span class="ob-row-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg></span><div><b>Director mode</b><p>Cameras and inputs with Preview and Output, and layouts that put the verse beside the camera.</p></div><span class="ob-row-where">In Settings</span></div>
+                        <div class="ob-row"><span class="ob-row-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M6.3 6.3a8 8 0 0 0 0 11.4M17.7 6.3a8 8 0 0 1 0 11.4"/></svg></span><div><b>Go live</b><p>Stream what the screen shows to YouTube, Facebook or any RTMP server, with the sound from your desk.</p></div><span class="ob-row-where">In Settings</span></div>
+                        <div class="ob-row"><span class="ob-row-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg></span><div><b>Overlays and background music</b><p>A logo over every screen, and music that keeps playing while slides change.</p></div><span class="ob-row-where">In Settings</span></div>
                     </div>
                 </section>
             </div>
@@ -2284,7 +2257,7 @@
                 <button id="first-run-skip" class="ob-skip-link">Skip tour</button>
                 <button id="onboarding-back" class="modal-btn secondary hidden">Back</button>
                 <button id="onboarding-next" class="modal-btn primary">Get started</button>
-                <button id="first-run-save" class="modal-btn primary hidden">Start using Kairo</button>
+                <button id="first-run-save" class="modal-btn primary hidden">Finish</button>
             </footer>
         </div>
     </div>

@@ -7889,16 +7889,18 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 }
 .ob-shell {
   position: relative;
-  width: min(900px, calc(100vw - 48px));
+  width: min(1120px, calc(100vw - 48px));
   max-height: calc(100vh - 40px);
   display: flex; flex-direction: column; gap: 26px;
   overflow: auto;
 }
 .ob-top { display: flex; align-items: center; gap: 20px; }
 .ob-brand svg { height: 24px; width: auto; display: block; }
-.ob-progress { display: flex; gap: 6px; width: 200px; margin-left: auto; }
-.ob-progress span { flex: 1; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.12); transition: background 0.3s ease; }
-.ob-progress span.is-done { background: var(--brand); }
+/* Every step named, with a bar over it that fills as the tour moves on. */
+.ob-progress { display: flex; gap: 6px; margin-left: auto; }
+.ob-seg { width: 96px; padding-top: 9px; border-top: 3px solid rgba(255, 255, 255, 0.12); font-size: 11px; font-weight: 600; color: var(--text-3); white-space: nowrap; transition: border-color 0.3s ease, color 0.3s ease; }
+.ob-seg.is-done { border-top-color: var(--brand); color: var(--text-2); }
+.ob-seg.is-on { border-top-color: var(--brand); color: #fff; }
 .ob-close { background: none; border: none; color: var(--text-3); font-size: 12px; font-weight: 600; cursor: pointer; padding: 6px; }
 .ob-close:hover { color: var(--text); }
 .ob-body { min-height: 380px; }
@@ -8129,53 +8131,69 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .ob-choice-name { font-size: 18px; font-weight: 700; color: #fff; }
 .ob-choice-desc { font-size: 13px; font-weight: 400; line-height: 1.45; color: var(--text-2); }
 
-/* 3 · what's inside: three tiles, each with a small looping picture */
-.ob-tiles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 26px; }
-.ob-tile { padding: 20px; border: 1px solid var(--border); border-radius: 14px; background: rgba(255, 255, 255, 0.03); }
-.ob-tile h3 { margin: 16px 0 6px; font-size: 15px; font-weight: 700; color: #fff; }
-.ob-tile p { margin: 0; font-size: 13px; line-height: 1.5; color: var(--text-2); }
-.ob-art { position: relative; height: 84px; border-radius: 10px; background: rgba(255, 255, 255, 0.03); overflow: hidden; }
-.ob-art-pro i { position: absolute; left: 50%; top: 50%; width: 66px; height: 38px; margin: -19px 0 0 -33px; border-radius: 5px; background: linear-gradient(135deg, #F5301A, #9E1608); box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4); animation: ob-fan 4.5s ease-in-out infinite; }
-.ob-art-pro i:nth-child(1) { --r: -14deg; --x: -26px; background: #3a3a42; }
-.ob-art-pro i:nth-child(2) { --r: 0deg; --x: 0px; background: #55555f; }
-.ob-art-pro i:nth-child(3) { --r: 14deg; --x: 26px; }
-@keyframes ob-fan { 0%, 15% { transform: none; } 45%, 85% { transform: translateX(var(--x)) rotate(var(--r)); } 100% { transform: none; } }
-.ob-art-import b { position: absolute; left: 18px; top: 16px; width: 36px; height: 50px; border-radius: 4px; background: #e8e8ec; }
-.ob-art-import b::before { content: ''; position: absolute; left: 7px; right: 7px; top: 10px; height: 26px; background: repeating-linear-gradient(#9a9aa3 0 2px, transparent 2px 7px); }
-.ob-art-import i { position: absolute; left: 30px; top: 26px; width: 54px; height: 30px; border-radius: 4px; background: linear-gradient(135deg, #F5301A, #9E1608); opacity: 0; animation: ob-out 4.5s ease-in-out infinite; }
-.ob-art-import i:nth-of-type(2) { animation-delay: 0.5s; --y: 10px; }
-@keyframes ob-out { 0%, 10% { opacity: 0; transform: none; } 40%, 85% { opacity: 1; transform: translate(70px, var(--y, -12px)); } 100% { opacity: 0; transform: translate(70px, var(--y, -12px)); } }
-/* "Welcome" in every Bible language, one word at a time (onboarding_reel.js fills [data-welcome-cycle]). */
-[data-welcome-cycle] { position: relative; }
-.obw { position: absolute; inset: 0; display: flex; align-items: center; opacity: 0; transform: translateY(0.35em); white-space: nowrap; transition: opacity 0.16s ease, transform 0.16s ease; }
-.obw.is-on { opacity: 1; transform: none; }
-.ob-art-lang .obw { justify-content: center; font-size: 20px; font-weight: 700; color: #fff; }
-.ob-hello { height: 1.3em; margin: 0 0 14px; font-size: clamp(28px, 3.2vw, 40px); font-weight: 700; letter-spacing: -0.01em; color: var(--brand); }
+/* "Welcome" in every Bible language, large, each word rolling up out of view as the next rolls in
+   (onboarding_reel.js fills [data-welcome-cycle] and marks the word leaving with is-out). */
+.ob-hellos { position: relative; height: 1.15em; margin: 0 0 18px; overflow: hidden; font-size: clamp(48px, 5.6vw, 76px); font-weight: 800; line-height: 1.15; letter-spacing: -0.02em; color: var(--brand); }
+.obw { position: absolute; left: 0; top: 0; white-space: nowrap; transform: translateY(105%); opacity: 0; transition: transform 0.55s cubic-bezier(0.2, 0.7, 0.2, 1), opacity 0.4s ease; }
+.obw.is-on { transform: none; opacity: 1; }
+.obw.is-out { transform: translateY(-105%); opacity: 0; }
 .obw-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
-/* 4 · ready: the app shows through, the real control is spotlit */
-.ob-spot { position: fixed; display: none; border-radius: 10px; pointer-events: none; transition: all 0.4s cubic-bezier(0.2, 0.7, 0.2, 1);
-  box-shadow: 0 0 0 9999px rgba(8, 8, 10, 0.78), 0 0 0 2px var(--brand), 0 0 28px 6px rgba(245, 48, 26, 0.45); }
-.onboarding.is-spotlight .ob-backdrop { opacity: 0; }
-.onboarding.is-spotlight .ob-spot { display: block; }
-.onboarding.is-spotlight .ob-shell {
-  position: fixed; top: var(--ob-card-top, 90px); right: 24px; width: min(420px, calc(100vw - 48px)); gap: 18px;
-  padding: 22px; border: 1px solid var(--border-md); border-radius: 16px; background: var(--bg-card);
-  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.55);
-}
-.onboarding.is-spotlight .ob-body { min-height: 0; }
-.onboarding.is-spotlight .ob-title { font-size: 28px; }
-.onboarding.is-spotlight .ob-brand, .onboarding.is-spotlight .ob-progress { display: none; }
-.onboarding.is-spotlight .ob-top { position: absolute; top: 12px; right: 12px; }
+
+/* The feature steps: the words and that group's setup on the left, the app on the right. */
+.ob-feature { display: grid; grid-template-columns: minmax(0, 460px) minmax(0, 1fr); gap: 56px; align-items: center; }
+.ob-need { margin-left: 10px; color: var(--text-3); letter-spacing: 0.1em; }
+.ob-feature .ob-title { font-size: clamp(28px, 3.4vw, 42px); }
+.ob-feature .ob-choices { margin-top: 22px; }
+.ob-feature .ob-setup { margin-top: 18px; }
+.ob-optional { font-weight: 400; color: var(--text-3); margin-left: 6px; }
+.ob-gap { margin-top: 18px; }
+.ob-hint { margin: 8px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--text-3); }
+.ob-status { font-size: 12px; color: var(--text-3); margin-bottom: 8px; }
+.ob-install { cursor: pointer; width: 100%; }
+.ob-progress-wrap { margin-top: 6px; }
+.ob-bar { height: 6px; border-radius: 3px; overflow: hidden; background: rgba(255, 255, 255, 0.08); }
+.ob-bar-fill { width: 0%; height: 100%; background: var(--accent); transition: width 0.2s; }
+.ob-warning { margin: 14px 0 0; padding: 9px 12px; border: 1px solid rgba(255, 180, 60, 0.3); border-radius: 8px; background: rgba(255, 180, 60, 0.1); font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
+.ob-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
+.ob-chips span { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border: 1px solid var(--border-md); border-radius: 9px; background: rgba(255, 255, 255, 0.03); font-size: 13px; font-weight: 600; color: var(--text); }
+.ob-files b { padding: 3px 6px; border-radius: 6px; background: var(--brand-dim); font-size: 11px; color: var(--brand); }
+.ob-action { margin-top: 16px; height: 40px; padding: 0 18px; border: 1px solid var(--border-md); border-radius: 10px; background: rgba(255, 255, 255, 0.04); color: var(--text); font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.ob-action:hover { border-color: rgba(255, 255, 255, 0.28); }
+.ob-visual { position: relative; min-width: 0; }
+.ob-pic { display: block; width: 100%; border: 1px solid var(--border-md); border-radius: 14px; background: #0c0c0e; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5); }
+/* Two pictures, one over the other's corner. */
+.ob-stack { min-height: 440px; }
+.ob-stack .ob-pic { position: absolute; }
+.ob-stack .ob-pic-a { left: 0; top: 0; width: 76%; }
+.ob-stack .ob-pic-b { right: 0; bottom: 0; width: 56%; }
+/* Listening: the verse heard, as a Live Queue card, and the same verse on the output just under it. */
+.ob-listen { display: flex; flex-direction: column; align-items: flex-end; }
+.ob-listen .ob-pic-a { width: 100%; }
+.ob-listen .ob-pic-b { width: 68%; margin-top: -10px; margin-right: 6%; }
+.ob-bi { display: grid; grid-template-columns: 1fr 1fr; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 14px; box-shadow: 0 30px 80px rgba(0, 0, 0, 0.5); }
+.ob-bi div { display: flex; flex-direction: column; justify-content: center; padding: 8%; background: linear-gradient(160deg, #e8462e, #b5220f); }
+.ob-bi div + div { background: linear-gradient(160deg, #283b8f, #16245e); }
+.ob-bi p { margin: 0 0 14px; font-size: 20px; font-weight: 600; line-height: 1.4; color: #fff; }
+.ob-bi b { font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(255, 255, 255, 0.75); }
+.ob-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 16px; }
+.ob-pills span { padding: 5px 10px; border: 1px solid var(--border-md); border-radius: 999px; font-size: 12px; font-weight: 600; color: var(--text-2); }
+.ob-rows { display: flex; flex-direction: column; gap: 12px; }
+.ob-row { display: flex; align-items: center; gap: 18px; padding: 18px 20px; border: 1px solid var(--border-md); border-radius: 14px; background: rgba(255, 255, 255, 0.03); }
+.ob-row-ic { flex: none; display: flex; align-items: center; justify-content: center; width: 48px; height: 48px; border-radius: 12px; background: var(--brand-dim); }
+.ob-row-ic svg { width: 24px; height: 24px; fill: none; stroke: var(--brand); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.ob-row b { display: block; margin-bottom: 4px; font-size: 15px; color: #fff; }
+.ob-row p { margin: 0; font-size: 13px; line-height: 1.45; color: var(--text-2); }
+.ob-row-where { margin-left: auto; padding: 5px 11px; border: 1px solid var(--border-md); border-radius: 999px; font-size: 11.5px; font-weight: 600; color: var(--text-3); white-space: nowrap; }
 
 @media (max-width: 760px) {
-  .ob-welcome { grid-template-columns: 1fr; gap: 26px; }
-  .ob-tiles { grid-template-columns: 1fr; }
+  .ob-welcome, .ob-feature { grid-template-columns: 1fr; gap: 26px; }
+  .ob-stack { min-height: 300px; }
+  .ob-seg { width: auto; font-size: 0; }
   .ob-choices { grid-template-columns: 1fr; }
 }
 @media (prefers-reduced-motion: reduce) {
   .onboarding *, .onboarding *::before { animation: none !important; transition: none !important; }
-  .ob-art-import i { opacity: 1; transform: translate(70px, var(--y, -12px)); }
 }
 
 
@@ -8245,30 +8263,6 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .theme-pick-item.active { background: var(--selected-dim); color: var(--selected-text); font-weight: 600; }
 .theme-pick-item span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* Tour: the standout-features step. */
-.ob-art-multi i { position: absolute; top: 20px; width: 62px; height: 40px; border-radius: 5px; box-shadow: 0 6px 16px rgba(0,0,0,.4); }
-.ob-art-multi i:nth-child(1) { left: 14px; background: linear-gradient(135deg, #F5301A, #9E1608); }
-.ob-art-multi i:nth-child(2) { left: 50%; margin-left: -31px; background: #101014; border: 1px solid #55555f; }
-.ob-art-multi i:nth-child(3) { right: 14px; background: linear-gradient(135deg, #2c4a8a, #162a52); }
-.ob-art-multi i::after { content: ''; position: absolute; left: 9px; right: 9px; top: 14px; height: 12px; background: repeating-linear-gradient(rgba(255,255,255,.85) 0 2px, transparent 2px 6px); }
-.ob-art-multi i { animation: ob-pulse 4.5s ease-in-out infinite; }
-.ob-art-multi i:nth-child(2) { animation-delay: .4s; } .ob-art-multi i:nth-child(3) { animation-delay: .8s; }
-@keyframes ob-pulse { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-4px); } }
-.ob-art-bi { display: flex; gap: 6px; padding: 14px; }
-.ob-art-bi b { flex: 1; display: flex; align-items: center; justify-content: center; border-radius: 5px; padding: 4px; text-align: center; }
-.ob-art-bi b:first-child { background: linear-gradient(135deg, #F5301A, #9E1608); }
-.ob-art-bi b:last-child { background: linear-gradient(135deg, #2c4a8a, #162a52); }
-.ob-art-bi em { font-style: normal; font-size: 10px; font-weight: 700; line-height: 1.3; color: #fff; }
-.ob-art-mon { display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px; padding: 18px 12px; }
-.ob-art-mon i { border-radius: 3px; background: #101014; border: 1px solid #55555f; position: relative; }
-.ob-art-mon i::after { content: ''; position: absolute; left: 4px; right: 4px; top: 40%; height: 3px; border-radius: 2px; background: #F5301A; animation: ob-blink 4.5s ease-in-out infinite; }
-.ob-art-mon i:nth-child(2)::after { animation-delay: .5s; background: #7a98e0; } .ob-art-mon i:nth-child(3)::after { animation-delay: 1s; } .ob-art-mon i:nth-child(4)::after { animation-delay: 1.5s; background: #7a98e0; }
-@keyframes ob-blink { 0%, 100% { opacity: .25; } 40%, 70% { opacity: 1; } }
-
-/* Tour: real screenshots of the app in the feature tiles. */
-.ob-shot { display: block; width: 100%; height: 150px; object-fit: cover; object-position: top; border-radius: 10px; border: 1px solid var(--border-md); background: #0c0c0e; }
-.ob-art-bi { height: 150px; padding: 18px; border: 1px solid var(--border-md); }
-.ob-art-bi em { font-size: 13px; }
 
 /* Grouped theme tree shared by every theme picker: a parent row with a chevron opens its themes. */
 .thm-tree { display: flex; flex-direction: column; gap: 2px; }
@@ -8614,18 +8608,6 @@ body.video-director #ts-add-videozone-btn, body.video-director #ts-add-contentzo
 .oc-order-note { color: var(--text-muted, #8b8b96); font-size: 11.5px; text-align: right; }
 
 
-/* Tour: the production step's three small pictures. */
-.ob-art-dir i { position: absolute; top: 18px; width: 58px; height: 34px; border-radius: 5px; background: #0d0d11; border: 2px solid #c27a3a; }
-.ob-art-dir i:nth-child(1) { left: calc(50% - 64px); }
-.ob-art-dir i:nth-child(2) { left: calc(50% + 6px); border-color: #b5532c; background: linear-gradient(135deg, #3a1a10, #120a08); }
-.ob-art-dir b { position: absolute; left: 50%; bottom: 12px; width: 54px; height: 12px; margin-left: -27px; border-radius: 6px; background: #7a2a1a; }
-.ob-art-live span { position: absolute; left: 50%; top: 14px; transform: translateX(-50%); padding: 3px 9px; border-radius: 999px; background: #5a2414; color: #ffe9e0; font-size: 11px; font-weight: 700; letter-spacing: .06em; animation: ob-blink 2.4s ease-in-out infinite; }
-@keyframes ob-blink { 50% { opacity: .55; } }
-@media (prefers-reduced-motion: reduce) { .ob-art-live span { animation: none; } }
-.ob-art-live i { position: absolute; bottom: 14px; width: 30px; height: 20px; border-radius: 4px; background: #2a2a31; }
-.ob-art-live i:nth-of-type(1) { left: calc(50% - 52px); } .ob-art-live i:nth-of-type(2) { left: calc(50% - 15px); } .ob-art-live i:nth-of-type(3) { left: calc(50% + 22px); }
-.ob-art-ovl i { position: absolute; left: 50%; top: 14px; width: 110px; height: 58px; margin-left: -55px; border-radius: 6px; background: linear-gradient(135deg, #0a1a45, #13266b); }
-.ob-art-ovl b { position: absolute; left: calc(50% + 30px); top: 20px; width: 18px; height: 18px; border-radius: 50%; background: linear-gradient(135deg, #FF9130, #F5301A); box-shadow: 0 0 0 2px rgba(255,255,255,.15); }
 
 /* The message's audience: a small quiet select beside the label. */
 .monitor-message-head { display: flex; align-items: center; gap: 8px; }
@@ -8873,9 +8855,6 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 .bi-list .bi-credit { font-size: 11px; color: var(--text-3, var(--text-2)); line-height: 1.4; }
 .bi-list .bi-credit a { color: var(--text-2); }
 /* Onboarding: the optional API.Bible key on the last step */
-.ob-bibles { margin-top: 18px; }
-.ob-optional { font-weight: 400; color: var(--text-2); margin-left: 6px; text-transform: none; letter-spacing: 0; }
-.ob-bibles-lede { margin: 0 0 8px; font-size: 13px; line-height: 1.5; color: var(--text-2); }
 .au-dot { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--text-2); flex: none; }
 .toggle-btn.active .au-dot { background: #3fb950; border-color: #3fb950; }
 /* A missing item gets a proper warning sign, not a bare "!" (Language and Audio capability lines) */

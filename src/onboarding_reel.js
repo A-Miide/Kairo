@@ -1,13 +1,13 @@
 // "Welcome" in every language Kairo carries a Bible for (the nine of Settings → Bible language, app_outputs.js
-// LANG_PACKS), one word at a time and quickly: at the top of the welcome step and in the "Every language in the
-// room" tile. Any element marked data-welcome-cycle is filled and kept in step; with reduced motion the first
-// word (English) stays put.
+// LANG_PACKS), large at the top of the welcome step: each word rolls up out of view as the next rolls in. Any
+// element marked data-welcome-cycle is filled and kept in step; with reduced motion the first word (English)
+// stays put.
 (() => {
   const WELCOME = [
     ['en', 'Welcome'], ['es', 'Bienvenido'], ['pt', 'Bem-vindo'], ['fr', 'Bienvenue'], ['de', 'Willkommen'],
     ['yo', 'Ẹ kú àbọ̀'], ['ig', 'Nnọ̀ọ'], ['ha', 'Barka da zuwa'], ['sw', 'Karibu'],
   ];
-  const STEP_MS = 1000;
+  const STEP_MS = 1600;
   const hosts = [...document.querySelectorAll('[data-welcome-cycle]')];
   if (!hosts.length) return;
   const rows = hosts.map((host) => WELCOME.map(([lang, word]) => {
@@ -20,11 +20,16 @@
     return w;
   }));
   let i = 0;
-  const show = () => rows.forEach((row) => row.forEach((w, k) => w.classList.toggle('is-on', k === i)));
+  let prev = -1;
+  const show = () => rows.forEach((row) => row.forEach((w, k) => {
+    w.classList.toggle('is-on', k === i);
+    w.classList.toggle('is-out', k === prev);
+  }));
   show();
   const still = window.matchMedia('(prefers-reduced-motion: reduce)');
   setInterval(() => {
     if (still.matches || !hosts.some((h) => h.offsetParent !== null)) return; // nobody is looking
+    prev = i;
     i = (i + 1) % WELCOME.length;
     show();
   }, STEP_MS);

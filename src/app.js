@@ -3330,16 +3330,20 @@ async function loadSettings() {
 }
 
 // ── First-run onboarding wizard ─────────────────────────────────────────────
-// Multi-step tour (speech engine, Playlist, Slides, Timer, Themes, Outputs,
-// done) — see index.html's own "FIRST-RUN ONBOARDING WIZARD" comment for the
-// step markup. Shown once per install (settings.onboardingCompleted),
+// Six steps, one per feature group (welcome, listening, Bibles, screens, songs
+// and slides, production), each with that group's own setup — see index.html's
+// own "FIRST-RUN ONBOARDING WIZARD" comment for the step markup. Shown once per install (settings.onboardingCompleted),
 // independent of whether speech-engine setup happens to already be done —
 // a returning user who configured Deepgram via some other path still gets
 // the tour once, since the tour is about the whole app, not just that one
 // step. Re-openable anytime from Settings → Help ("Take the tour again").
 let firstRunDismissed = false;
-const ONBOARDING_STEP_COUNT = 6; // see the step panels' data-step: welcome, listening, standout features, inside, production, ready
+const ONBOARDING_STEPS = ['Welcome', 'Listening', 'Bibles', 'Screens', 'Songs and slides', 'Production']; // the panels' data-step order
+const ONBOARDING_STEP_COUNT = ONBOARDING_STEPS.length;
 const ONBOARDING_LISTEN_STEP = 1;
+// What to open once the tour is saved, when a step's own button finishes it ("Add a screen", "Import now").
+let onboardingThen = null;
+const OB_BRAND_MARK = document.querySelector('.bootstrap-mark')?.cloneNode(true) || null;
 let onboardingStep = 0;
 
 function showFirstRunBannerIfNeeded(s) {
@@ -3356,45 +3360,54 @@ function showFirstRunBannerIfNeeded(s) {
 function openOnboardingWizard() {
   const modal = document.getElementById('first-run-modal');
   if (!modal) return;
-  // The brand lockup, from the loading screen — one copy of the artwork.
+  // The brand lockup, from the loading screen — one copy of the artwork, kept when the app started
+  // (the loading screen is gone by the time "Take the tour again" opens the tour).
   const brand = document.getElementById('ob-brand');
-  const mark = document.querySelector('.bootstrap-mark');
-  if (brand && mark && !brand.firstChild) brand.appendChild(mark.cloneNode(true));
+  if (brand && OB_BRAND_MARK && !brand.firstChild) brand.appendChild(OB_BRAND_MARK.cloneNode(true));
   modal.classList.remove('hidden');
   const input = document.getElementById('first-run-deepgram-key');
   if (input) input.value = '';
   syncToggleGroup('first-run-engine-toggle', 'engine', 'deepgram'); // always starts on Deepgram
+  syncOnboardingBiblePickers();
   goToOnboardingStep(0);
   // Nothing is focused for the operator (a focused button wears the
   // system's blue ring); Enter still moves on — see the keydown below.
 }
 
+// The progress bar names every step; the steps passed and the current one are filled.
 function renderOnboardingProgress() {
   const host = document.getElementById('onboarding-progress');
   if (!host) return;
   host.innerHTML = '';
-  for (let i = 0; i < ONBOARDING_STEP_COUNT; i++) {
+  ONBOARDING_STEPS.forEach((name, i) => {
     const seg = document.createElement('span');
-    if (i <= onboardingStep) seg.className = 'is-done';
+    seg.className = 'ob-seg' + (i < onboardingStep ? ' is-done' : i === onboardingStep ? ' is-on' : '');
+    seg.textContent = name;
     host.appendChild(seg);
-  }
+  });
 }
 
-// The last step dims the app and rings the real Start Listening button, the
-// step's card sitting just under it.
-function placeOnboardingSpotlight() {
-  const modal = document.getElementById('first-run-modal');
-  const spot = document.getElementById('ob-spot');
-  const target = document.getElementById('listen-btn');
-  if (!modal || !spot || !target || !modal.classList.contains('is-spotlight')) return;
-  const r = target.getBoundingClientRect();
-  const pad = 6;
-  Object.assign(spot.style, { left: `${r.left - pad}px`, top: `${r.top - pad}px`, width: `${r.width + pad * 2}px`, height: `${r.height + pad * 2}px` });
-  modal.style.setProperty('--ob-card-top', `${r.bottom + 18}px`);
+// The Bibles step's two pickers are Settings' own (Bible language: settings.bibleLanguage; the second
+// language beside the verse: settings.bibleTranslateTo): same choices, and choosing here is choosing there.
+const ONBOARDING_MIRRORS = [['first-run-bible-language', 'bible-language'], ['first-run-second-lang', 'bible-translate-to-select']];
+function syncOnboardingBiblePickers() {
+  ONBOARDING_MIRRORS.forEach(([mine, theirs]) => {
+    const pick = document.getElementById(mine);
+    const source = document.getElementById(theirs);
+    if (!pick || !source) return;
+    pick.innerHTML = '';
+    [...source.options].forEach(o => pick.appendChild(new Option(o.textContent, o.value, false, o.value === source.value)));
+  });
 }
-window.addEventListener('resize', placeOnboardingSpotlight);
+ONBOARDING_MIRRORS.forEach(([mine, theirs]) => document.getElementById(mine)?.addEventListener('change', (e) => {
+  const source = document.getElementById(theirs);
+  if (!source) return;
+  source.value = e.target.value;
+  source.dispatchEvent(new Event('change'));
+  window.renderLangPills?.();
+}));
 
-// The input picker on the last step mirrors Settings → Audio's own list (the
+// The input picker on the listening step mirrors Settings → Audio's own list (the
 // one capture reads), so choosing here is choosing there.
 async function syncOnboardingMicList() {
   const pick = document.getElementById('first-run-mic');
@@ -3425,10 +3438,10 @@ function goToOnboardingStep(n) {
     next.textContent = onboardingStep === 0 ? 'Get started' : 'Next';
   }
   document.getElementById('first-run-save')?.classList.toggle('hidden', !isLast);
-  const modal = document.getElementById('first-run-modal');
-  modal?.classList.toggle('is-spotlight', isLast);
-  if (isLast) { placeOnboardingSpotlight(); syncOnboardingMicList(); }
-  if (onboardingStep === ONBOARDING_LISTEN_STEP) setTimeout(() => document.getElementById('first-run-deepgram-key')?.focus(), 60);
+  if (onboardingStep === ONBOARDING_LISTEN_STEP) {
+    syncOnboardingMicList();
+    setTimeout(() => document.getElementById('first-run-deepgram-key')?.focus(), 60);
+  }
 }
 
 // Real, non-blocking validation on the way OUT of the speech-engine step —
@@ -3464,10 +3477,11 @@ async function markOnboardingComplete() {
 
 function closeFirstRunModal() {
   firstRunDismissed = true;
-  const modal = document.getElementById('first-run-modal');
-  modal?.classList.add('hidden');
-  modal?.classList.remove('is-spotlight');
+  document.getElementById('first-run-modal')?.classList.add('hidden');
   markOnboardingComplete();
+  const then = onboardingThen;
+  onboardingThen = null;
+  if (then) setTimeout(then, 60);
 }
 
 async function saveFirstRunChoice() {
@@ -3610,6 +3624,16 @@ document.getElementById('onboarding-next')?.addEventListener('click', async () =
   goToOnboardingStep(onboardingStep + 1);
 });
 document.getElementById('onboarding-back')?.addEventListener('click', () => goToOnboardingStep(onboardingStep - 1));
+// A step's own button finishes the tour (saving what was typed, as Finish does) and opens its place.
+function finishOnboardingThen(then) {
+  onboardingThen = then;
+  document.getElementById('first-run-save')?.click();
+}
+document.getElementById('ob-add-screen')?.addEventListener('click', () => finishOnboardingThen(() => {
+  settingsModal?.classList.remove('hidden');
+  showSettingsPane('outputs');
+}));
+document.getElementById('ob-import-now')?.addEventListener('click', () => finishOnboardingThen(() => window.KairoImport?.open()));
 // Settings → Help's "Take the tour again" — re-runs the exact same wizard,
 // not a separate/lesser version of it.
 document.getElementById('replay-onboarding-btn')?.addEventListener('click', () => {
