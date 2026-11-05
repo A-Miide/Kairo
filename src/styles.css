@@ -51,9 +51,10 @@
   --brand-gradient: linear-gradient(135deg, #FF9130, #F5301A);
   /* A filled brand button under the pointer — a shade deeper, not lighter. */
   --brand-hover:    #DB2A15;
-  /* The warm end of the brand gradient: progress fills, ticks and "ready" states. */
-  --accent:         #FF9130;
-  --accent-dim:     rgba(255,145,48,0.15);
+  /* Progress fills, ticks and highlights: the brand colour itself. The lighter orange of the
+     brand gradient read as yellow in the interface (owner, 2026-11-05), so it stays in the logo only. */
+  --accent:         var(--brand);
+  --accent-dim:     var(--brand-dim);
   /* Secondary/interactive accent — input focus rings, hover borders, toggle
      tracks, drag-drop indicators, primary CTA buttons (.modal-btn.primary),
      accent-color on checkboxes. Was teal, kept "near-complementary to
@@ -2144,7 +2145,7 @@ body > .lyric-follow-hud { position: fixed; left: 14px; bottom: 14px; z-index: 4
   box-shadow: 0 0 0 0 currentColor;
 }
 .lfh-dot.tracking { background: #35c46a; animation: lfh-pulse 1.6s ease-out infinite; color: #35c46a; }
-.lfh-dot.armed    { background: #ff9130; color: #ff9130; }
+.lfh-dot.armed    { background: var(--brand); color: var(--brand); }
 .lfh-dot.frozen   { background: var(--red); color: var(--red); }
 .lfh-dot.idle     { background: var(--text-3); }
 @keyframes lfh-pulse { 0% { box-shadow: 0 0 0 0 currentColor; } 70% { box-shadow: 0 0 0 5px rgba(53,196,106,0); } 100% { box-shadow: 0 0 0 0 rgba(53,196,106,0); } }
@@ -2340,7 +2341,7 @@ body > .lyric-follow-hud { position: fixed; left: 14px; bottom: 14px; z-index: 4
   border-top: 1px solid rgba(255,255,255,0.12);
 }
 .svc-slide-label.sec-verse      { background: rgba(77,182,172,0.55);  color: #d3f0ec; border-top-color: rgba(77,182,172,0.5); }
-.svc-slide-label.sec-chorus     { background: rgba(255,145,48,0.45);  color: #ffe2c7; border-top-color: rgba(255,145,48,0.5); }
+.svc-slide-label.sec-chorus     { background: rgba(245,48,26,0.45);  color: #ffd9d3; border-top-color: rgba(245,48,26,0.5); }
 .svc-slide-label.sec-refrain    { background: rgba(244,63,94,0.4);    color: #fbd0da; border-top-color: rgba(244,63,94,0.5); }
 .svc-slide-label.sec-solo       { background: rgba(14,165,233,0.4);   color: #cbeafd; border-top-color: rgba(14,165,233,0.5); }
 .svc-slide-label.sec-prechorus  { background: rgba(16,185,129,0.4);   color: #c1f2e0; border-top-color: rgba(16,185,129,0.5); }
@@ -8895,10 +8896,10 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 
 /* A Live Queue verse's chapter, collapsible under its card (app.js chapterChildren). */
 .cs-live-queue-body .locked-verse-card.children-open { flex-wrap: wrap; }
-.lvc-children-toggle { display: inline-flex; align-self: flex-start; max-width: 100%; align-items: center; gap: 6px; margin-top: 6px; padding: 3px 9px 3px 7px; border: 1px solid var(--accent); border-radius: 999px; background: var(--accent-dim); color: var(--accent); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
+.lvc-children-toggle { display: inline-flex; align-self: flex-start; max-width: 100%; align-items: center; gap: 6px; margin-top: 6px; padding: 3px 9px 3px 7px; border: 1px solid rgba(255,255,255,0.35); border-radius: 999px; background: rgba(255,255,255,0.06); color: var(--text); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
 .lvc-children-toggle::before { content: ''; width: 0; height: 0; border-left: 4px solid currentColor; border-top: 3.5px solid transparent; border-bottom: 3.5px solid transparent; transition: transform var(--trans); }
 .children-open .lvc-children-toggle::before { transform: rotate(90deg); }
-.lvc-children-toggle:hover { background: rgba(255,145,48,0.25); }
+.lvc-children-toggle:hover { background: rgba(255,255,255,0.14); }
 /* A window about four rows tall (26px row + 1px gap, plus the 6px top padding) on the verse up; about ten while scrolled by hand (app.js listScrolledByHand). */
 .lvc-children { flex-basis: 100%; display: flex; flex-direction: column; gap: 1px; max-height: calc(4 * 27px + 6px); overflow-y: auto; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); cursor: default; }
 .lvc-children.is-wide { max-height: calc(10 * 27px + 6px); }

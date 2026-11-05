@@ -381,10 +381,10 @@
     .st-dest-kind { font-size: 11.5px; color: var(--text-muted, #8b8b96); }
     .st-dest-actions { display: flex; align-items: center; gap: 8px; }
     .st-dest-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 8px; font-size: 12px; color: var(--text-muted, #8b8b96); font-family: ui-monospace, Menlo, monospace; }
-    .st-link { background: none; border: 0; padding: 0; color: var(--accent, #ff7a30); cursor: pointer; font: inherit; font-family: inherit; font-size: 12px; }
+    .st-link { background: none; border: 0; padding: 0; color: var(--accent, #F5301A); cursor: pointer; font: inherit; font-family: inherit; font-size: 12px; }
     .st-result { margin: 8px 0 0; font-size: 12px; }
     .st-result.ok { color: #4cc38a; }
-    .st-result.bad { color: var(--orange, #ff9130); }
+    .st-result.bad { color: var(--red, #ed1c24); }
     .st-form { border: 1px solid var(--border); border-radius: var(--radius-md, 10px); padding: 4px 14px 12px; margin: 10px 0 0; background: rgba(255,255,255,0.02); }
     .st-form-buttons { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
     .st-delete { margin-right: auto; }

@@ -425,7 +425,7 @@
   const style = document.createElement('style');
   style.textContent = `
     .tb-stream-btn { height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--border-md, rgba(255,255,255,0.14)); background: transparent; color: var(--text); font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer; margin-right: 8px; white-space: nowrap; }
-    .tb-stream-btn:hover { border-color: var(--accent, #ff6a3d); }
+    .tb-stream-btn:hover { border-color: var(--accent, #F5301A); }
     .tb-stream-btn[hidden] { display: none; }
     .tb-stream-btn.is-live { border-color: #b5532c; background: #5a2414; color: #ffe9e0; font-variant-numeric: tabular-nums; }
     .tb-stream-btn.is-trouble { border-color: #b5832c; background: #4a3512; color: #ffeccc; }
