@@ -1407,9 +1407,12 @@ function showInViewerNow(verses, method, topScore, correctedFrom = null, look = 
     const isEmpty = currentDisplayCard.querySelector('.display-empty, .cs-queue-empty');
     if (isEmpty) isEmpty.remove();
 
+    const home = !rangeRefs.has(v.reference) && chapterCardOf(v);
     if (rangeRefs.has(v.reference)) {
       // Range verse auto-advancing — just shift the highlight
       handleRangeActive(v.reference);
+    } else if (home) {
+      placeChapterCard(home, v);
     } else if (v.book && currentDisplayCard.querySelector(`.locked-verse-card.children-open[data-book="${CSS.escape(v.book)}"][data-chapter="${v.chapter}"]`)) {
       // A verse of a chapter open under its card (chosen there, or stepped to): the list marks it;
       // a card of its own would push the open chapter down the queue (owner, 2026-10-30).
@@ -1426,7 +1429,19 @@ function showInViewerNow(verses, method, topScore, correctedFrom = null, look = 
       const place = window.KairoQueueOrder?.placeInQueue(cards.map(el => el.dataset.ref), v.reference) || { action: 'top' };
       const anchor = place.action === 'after' ? cards[place.index].nextSibling : currentDisplayCard.firstChild;
       const existing = currentDisplayCard.querySelector(`[data-ref="${CSS.escape(v.reference)}"]`);
-      if (existing) {
+      if (existing?.dataset.block) {
+        // A verse of an earlier passage called again: the passage comes up whole, in reading
+        // order; the reading moving on inside it moves nothing.
+        const block = [...currentDisplayCard.querySelectorAll(`:scope > [data-block="${existing.dataset.block}"]`)];
+        if (!followsReading(v) && block[0] !== currentDisplayCard.firstElementChild) {
+          existing.classList.remove('sent-pulse');
+          void existing.offsetWidth;
+          existing.classList.add('sent-pulse');
+          const frag = document.createDocumentFragment();
+          frag.append(...block);
+          currentDisplayCard.insertBefore(frag, currentDisplayCard.firstChild);
+        }
+      } else if (existing) {
         existing.dataset.at = String(Date.now());
         // Already where it belongs (the top card, or in the passage) — nothing
         // to change; re-pulsing or re-inserting it only makes an on-screen verse flicker.
@@ -1438,6 +1453,11 @@ function showInViewerNow(verses, method, topScore, correctedFrom = null, look = 
         }
       } else {
         const card = buildQueueRow(v, method, correctedFrom);
+        // Read on past a passage's last verse, the verse is a card of that passage.
+        if (place.action === 'after' && cards[place.index].dataset.block) {
+          card.dataset.block = cards[place.index].dataset.block;
+          card.querySelector('.lvc-children-toggle')?.remove();
+        }
         currentDisplayCard.insertBefore(card, anchor);
         // Trim to keep session manageable (50 entries)
         const children = currentDisplayCard.children;
@@ -1685,9 +1705,11 @@ function syncRangeJumpIfNeeded(v) {
 }
 
 // ── A Live Queue verse's chapter, under its card (owner, 2026-10-30) ──────────
-// Opened by its "Psalms 22" toggle, or by itself the first time Previous/Next is pressed. The whole
-// chapter, scrolled to the verse on screen (owner: no second press for the rest); the verses on
+// Opened by its "Psalms 22" toggle, by itself the first time Previous/Next is pressed, or when
+// another verse of the chapter is called. The whole chapter in a window about four lines tall,
+// kept on the verse on screen (owner, 2026-11-04: the card never grows by itself); the verses on
 // screen are marked as they change; a click sends one. A new passage going up closes the others.
+// Closed by hand, it stays closed while the reading moves on.
 var screenVerseNums = { book: '', chapter: 0, verses: [] };
 const chapterCache = new Map();
 async function chapterVerses(book, chapter) {
@@ -1712,6 +1734,7 @@ async function toggleChapterChildren(card, open) {
   box.className = 'lvc-children';
   box.addEventListener('click', (e) => e.stopPropagation());
   box.addEventListener('dblclick', (e) => e.stopPropagation());
+  for (const ev of ['wheel', 'touchmove']) box.addEventListener(ev, () => listScrolledByHand(box), { passive: true });
   card.appendChild(box);
   box._verses = await chapterVerses(card.dataset.book, card.dataset.chapter);
   renderChapterChildren(card);
@@ -1725,17 +1748,49 @@ function renderChapterChildren(card) {
   box.replaceChildren(...all.map((v) => {
     const row = document.createElement('button');
     row.type = 'button';
-    row.className = 'lvc-child' + (here.includes(v.verse) ? ' on-screen' : '');
+    row.className = 'lvc-child' + (here.includes(v.verse) ? ' on-screen' : here.length && v.verse < here[0] ? ' is-past' : '');
     row.title = `Send ${v.reference}`;
     const n = document.createElement('span'); n.className = 'lvc-child-num'; n.textContent = v.verse;
     const t = document.createElement('span'); t.className = 'lvc-child-text'; t.textContent = cleanVerseText(v.text || '');
     row.append(n, t);
-    row.addEventListener('click', () => sendReferenceToScreen(v.reference));
+    row.addEventListener('click', () => {
+      // A verse of the passage being read goes up as the passage's own Send does, so its
+      // position ("N / total", Next) follows. A chapter card holds one card for many verses.
+      if (rangeRefs.has(v.reference)) {
+        const held = card._rangeVerses?.find(x => x.reference === v.reference) || v;
+        showInViewer([held], 'direct', 1.0);
+        sendVerseToServer(held, null, { direct: true });
+        syncRangeJumpIfNeeded(held);
+        return;
+      }
+      handPick = v.reference;   // the card shows it where it is, as the reading moving on does
+      sendReferenceToScreen(v.reference);
+    });
     return row;
   }));
-  // Scrolled inside the list only (not the page) to the verse on screen, else the card's verse.
+  // Scrolled inside the list only (not the page) to the verse on screen, else the card's verse;
+  // not while the operator is scrolling it.
+  if (Date.now() < (box._handUntil || 0)) return;
   const at = box.querySelector('.lvc-child.on-screen') || box.children[Math.max(0, centre - 1)];
   if (at) box.scrollTop = at.offsetTop - box.offsetTop - box.clientHeight / 2 + at.offsetHeight / 2;
+}
+// Scrolled by hand: the list grows to about ten lines and Kairo leaves its scroll alone for a few
+// seconds; ten seconds untouched, it is four lines again, back on the verse (owner, 2026-11-04).
+const LIST_HAND_PAUSE_MS = 4000, LIST_WIDE_MS = 10000;
+function listScrolledByHand(box) {
+  box.classList.add('is-wide');
+  box._handUntil = Date.now() + LIST_HAND_PAUSE_MS;
+  clearTimeout(box._narrowTimer);
+  box._narrowTimer = setTimeout(() => narrowChapterList(box), LIST_WIDE_MS);
+}
+function narrowChapterList(box) {
+  if (!box) return;
+  clearTimeout(box._narrowTimer);
+  box._handUntil = 0;
+  if (!box.classList.contains('is-wide')) return;
+  box.classList.remove('is-wide');
+  const card = box.closest('.locked-verse-card');
+  if (card) renderChapterChildren(card);
 }
 // What's on screen changed: mark it in every open chapter; a new passage closes the others.
 function chapterChildrenFollow(verses) {
@@ -1748,27 +1803,84 @@ function chapterChildrenFollow(verses) {
     else if (bible) closeChapterChildren(card);
   });
 }
-// The verse's chapter under its card, collapsible: a "Psalms 22" toggle under the text.
-function addChapterToggle(card, v) {
+// The verse's chapter under its card, collapsible: a "Psalms 22 · 31 verses" toggle under the text.
+function addChapterToggle(card, v, verseCount = 0) {
   if (!v.book || v.book === 'Service' || !(v.chapter > 0)) return;
   card.dataset.book = v.book;
   card.dataset.chapter = String(v.chapter);
   const toggle = document.createElement('button');
   toggle.type = 'button';
   toggle.className = 'lvc-children-toggle';
-  toggle.textContent = `${v.book} ${v.chapter}`;
+  const label = (n) => n ? `${v.book} ${v.chapter} · ${n} verses` : `${v.book} ${v.chapter}`;
+  toggle.textContent = label(verseCount);
+  if (!verseCount) chapterVerses(v.book, v.chapter).then((all) => { if (all.length) toggle.textContent = label(all.length); });
   toggle.title = 'Show the chapter';
-  toggle.addEventListener('click', (e) => { e.stopPropagation(); toggleChapterChildren(card); });
+  toggle.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const open = !card.classList.contains('children-open');
+    // Closed by hand, it stays closed while the reading moves on (openChildrenOfScreen).
+    if (open) delete card.dataset.handClosed; else card.dataset.handClosed = '1';
+    toggleChapterChildren(card, open);
+  });
   toggle.addEventListener('dblclick', (e) => e.stopPropagation());
   card.querySelector('.history-card-content')?.appendChild(toggle);
 }
 
-// Previous / Next pressed: the passage on screen opens its chapter (once; it stays open after).
+// Previous / Next pressed: the verse's chapter card opens its list (once; it stays open after). A
+// passage's cards show the reading themselves, so its first card's list stays as it is.
 function openChildrenOfScreen() {
-  if (!screenVerseNums.book) return;
-  const cards = [...(currentDisplayCard?.querySelectorAll('.locked-verse-card[data-book]') || [])];
+  if (!screenVerseNums.book || currentDisplayCard?.querySelector(`[data-block][data-ref="${CSS.escape(screenVerseRef)}"]`)) return;
+  const cards = [...(currentDisplayCard?.querySelectorAll('.locked-verse-card[data-book]:not([data-block])') || [])];
   const card = cards.find(c => c.dataset.book === screenVerseNums.book && c.dataset.chapter === String(screenVerseNums.chapter));
-  if (card && !card.classList.contains('children-open')) toggleChapterChildren(card, true);
+  if (card && !card.dataset.handClosed && !card.classList.contains('children-open')) toggleChapterChildren(card, true);
+}
+
+// ── One card per chapter called (owner, 2026-11-04) ──────────────────────────
+// A verse called is one card with its chapter under it; another verse of that chapter called later
+// is shown on the same card, not a new one. Only a new call moves a card to the top: Kairo
+// following the reading (Previous/Next, the reader moving on, a verse picked from the open list)
+// shows the verse on its card where it is.
+let readingStepAt = 0;   // when Previous/Next was last pressed
+let handPick = '';       // the verse last clicked in an open chapter list, on its way up
+function followsReading(v) {
+  if (handPick && handPick === v.reference) { handPick = ''; return true; }
+  if (Date.now() - readingStepAt < 3000) return true;
+  const up = screenVerseNums;   // still the verse that was up: chapterChildrenFollow runs after
+  return !!window.KairoQueueOrder?.isNextVerse({ book: up.book, chapter: up.chapter, verse: up.verses[0] }, v);
+}
+// The card of this verse's chapter, if it has one; never a card of a passage (those stay as read).
+function chapterCardOf(v) {
+  if (!currentDisplayCard || !v.book || v.book === 'Service' || !(v.chapter > 0)) return null;
+  return currentDisplayCard.querySelector(`:scope > .locked-verse-card[data-book="${CSS.escape(v.book)}"][data-chapter="${Number(v.chapter)}"]:not([data-block])`);
+}
+// The card's top line becomes this verse; its Send and double-click send it from then on.
+function showVerseOnCard(card, v) {
+  if (card.dataset.ref === v.reference) return;
+  card._verse = v;
+  card.dataset.ref = v.reference;
+  card.dataset.translatedText = v.translatedText || '';
+  const ref = card.querySelector('.lvc-ref'), text = card.querySelector('.lvc-text');
+  if (ref) ref.textContent = v.reference;
+  if (text) text.textContent = cleanVerseText(v.text || v.kjv_text || '');
+}
+// John 3:18 called after John 3:16: the John 3 card shows 3:18, goes to the top and opens its list
+// on it (even after the operator closed it), four lines tall again.
+function placeChapterCard(card, v) {
+  const following = followsReading(v);
+  const another = card.dataset.ref !== v.reference;
+  showVerseOnCard(card, v);
+  if (following) return;
+  card.dataset.at = String(Date.now());
+  if (card !== currentDisplayCard.firstElementChild) {
+    card.classList.remove('sent-pulse');
+    void card.offsetWidth;
+    card.classList.add('sent-pulse');
+    currentDisplayCard.insertBefore(card, currentDisplayCard.firstChild);
+  }
+  if (!another) return;
+  delete card.dataset.handClosed;
+  narrowChapterList(card.querySelector('.lvc-children'));
+  toggleChapterChildren(card, true);
 }
 
 // Compact single-row card for the Live Queue section
@@ -1792,23 +1904,27 @@ function buildQueueRow(v, method, correctedFrom = null) {
     </div>
   `;
   addChapterToggle(card, v);
+  // The verse the card shows now (another of its chapter may be shown on it later: showVerseOnCard).
+  card._verse = v;
   // Send button → update viewer and outputs
   const sendBtn = card.querySelector('.lvc-send-btn');
   sendBtn?.addEventListener('click', (e) => {
     e.stopPropagation();
-    showInViewer([v], method || 'direct', 1.0);
-    sendVerseToServer(v);
-    syncRangeJumpIfNeeded(v);
+    const cur = card._verse;
+    showInViewer([cur], method || 'direct', 1.0);
+    sendVerseToServer(cur);
+    syncRangeJumpIfNeeded(cur);
   });
   // Double-click anywhere on card → send to screen (no reorder)
   wireDoubleClickSend(card, () => {
-    updateViewerDisplay(v);   // update preview only — card stays in place
-    sendVerseToServer(v, null, { direct: true });
-    syncRangeJumpIfNeeded(v);
+    const cur = card._verse;
+    updateViewerDisplay(cur);   // update preview only — card stays in place
+    sendVerseToServer(cur, null, { direct: true });
+    syncRangeJumpIfNeeded(cur);
     // Flash feedback
     card.classList.add('sent-pulse');
     setTimeout(() => card.classList.remove('sent-pulse'), 600);
-  }, () => { showInViewer([v], method || 'direct', 1.0); sendVerseToServer(v); });
+  }, () => { showInViewer([card._verse], method || 'direct', 1.0); sendVerseToServer(card._verse); });
   return card;
 }
 
@@ -1872,6 +1988,7 @@ async function stepVerse(dir) {
   if (screenIsSlide()) return window.KairoService?.advanceLiveSlide?.(dir, { direct: true });
   openChildrenOfScreen();
   const seq = ++stepSeq;
+  readingStepAt = Date.now();
   try {
     const r = await fetch(`${SERVER}/api/verse/step`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ dir }) });
     const d = await r.json();
@@ -1901,7 +2018,7 @@ function handleRangeState({ remaining, total, next }) {
     rangeOn = null;
     renderVerseBar();
     currentDisplayCard?.querySelectorAll('.range-verse-card').forEach(el => {
-      el.classList.remove('range-verse-card', 'range-active', 'range-queued');
+      el.classList.remove('range-verse-card', 'range-chapter-card', 'range-active', 'range-queued');
       // Strip the blue range badge tint so it looks like a normal history card
       el.querySelector('.range-book-badge')?.classList.remove('range-book-badge');
     });
@@ -1923,7 +2040,9 @@ function handleRangeState({ remaining, total, next }) {
 // with the active one highlighted. Subsequent 'range-active' events just shift
 // the highlight as the sermon advances through the range.
 
-function handleRangeVerses({ verses, activeRef }) {
+let rangeBuild = 0;        // the passage handleRangeVerses is placing (a newer call supersedes it)
+let rangeActiveRef = '';  // the verse the passage being read has reached
+async function handleRangeVerses({ verses, activeRef }) {
   if (!currentDisplayCard || !verses?.length) return;
 
   // Same range re-announced (e.g. repeated broadcast): keep the existing
@@ -1934,10 +2053,17 @@ function handleRangeVerses({ verses, activeRef }) {
     handleRangeActive(activeRef);
     return;
   }
+  const heldRange = currentDisplayCard.querySelector('.range-chapter-card')?._rangeVerses;
+  if (heldRange && heldRange.length === verses.length && heldRange.every((x, i) => x.reference === verses[i].reference)) {
+    handleRangeActive(activeRef);
+    return;
+  }
 
   // Mark all range refs so showInViewer dedup doesn't fight us
   rangeRefs = new Set(verses.map(v => v.reference));
   finishedRangeRefs = new Set();
+  rangeActiveRef = activeRef;
+  const build = ++rangeBuild;
 
   // Clear placeholders
   currentDisplayCard.querySelectorAll('.display-empty, .cs-queue-empty').forEach(el => el.remove());
@@ -1945,7 +2071,7 @@ function handleRangeVerses({ verses, activeRef }) {
   // A previous passage's cards stay, as ordinary history (as when a passage finishes): a new
   // passage called before it ended took them off the list (owner, 2026-10-30).
   currentDisplayCard.querySelectorAll('.range-verse-card').forEach(el => {
-    el.classList.remove('range-verse-card', 'range-active', 'range-queued');
+    el.classList.remove('range-verse-card', 'range-chapter-card', 'range-active', 'range-queued');
     el.querySelector('.range-book-badge')?.classList.remove('range-book-badge');
   });
 
@@ -1957,29 +2083,65 @@ function handleRangeVerses({ verses, activeRef }) {
     });
   }
 
-  // Insert all range cards at the top, in their natural order. A single
-  // insertBefore(fragment, firstChild) preserves the fragment's own child
-  // order at the insertion point — unlike prepending nodes one at a time,
-  // this does NOT need reversing to land verse 1 first; reversing here was
-  // what put whole-chapter searches on screen highest-verse-first.
-  const fragment = document.createDocumentFragment();
-  let lastChapter = '';
-  for (const v of verses) {
-    const card = buildRangeCard(v, v.reference === activeRef);
-    if (`${v.book} ${v.chapter}` !== lastChapter) addChapterToggle(card, v);
-    lastChapter = `${v.book} ${v.chapter}`;
-    fragment.appendChild(card);
+  // Only a range that is its whole chapter ("Romans 8") is one card; "John 1 verses 3 to 7", or a
+  // range of twenty, is a card per verse (owner, 2026-11-04). Telling them apart takes the
+  // chapter's length, asked for only when the range starts at verse 1 and runs unbroken.
+  const Q = window.KairoQueueOrder;
+  const whole = !!Q?.isWholeChapter(verses, verses.length)
+    && Q.isWholeChapter(verses, (await chapterVerses(verses[0].book, verses[0].chapter)).length);
+  if (build !== rangeBuild) return;   // another passage was called meanwhile
+  activeRef = rangeActiveRef;
+
+  if (whole) {
+    // Like a single verse called, from verse 1: one card, the chapter folded under it, the card
+    // following the reading. The chapter's own card from an earlier call gives way to it.
+    chapterCardOf(verses[0])?.remove();
+    const first = verses.find(v => v.reference === activeRef) || verses[0];
+    const card = buildRangeCard(first, true);
+    card.classList.add('range-chapter-card');
+    card._rangeVerses = verses;
+    addChapterToggle(card, first, verses.length);
+    currentDisplayCard.insertBefore(card, currentDisplayCard.firstChild);
+  } else {
+    // Insert all range cards at the top, in their natural order. A single
+    // insertBefore(fragment, firstChild) preserves the fragment's own child
+    // order at the insertion point — unlike prepending nodes one at a time,
+    // this does NOT need reversing to land verse 1 first; reversing here was
+    // what put whole-chapter searches on screen highest-verse-first.
+    // The passage's cards are one block (data-block): it moves as one and never splits.
+    const fragment = document.createDocumentFragment();
+    let lastChapter = '';
+    for (const v of verses) {
+      const card = buildRangeCard(v, v.reference === activeRef);
+      card.dataset.block = String(build);
+      if (`${v.book} ${v.chapter}` !== lastChapter) addChapterToggle(card, v);
+      lastChapter = `${v.book} ${v.chapter}`;
+      fragment.appendChild(card);
+    }
+    currentDisplayCard.insertBefore(fragment, currentDisplayCard.firstChild);
   }
-  currentDisplayCard.insertBefore(fragment, currentDisplayCard.firstChild);
   dropSuggestionsCoveredByQueue();
 
   // Update live preview to the active verse.
   const active = verses.find(v => v.reference === activeRef) || verses[0];
   if (active) renderPreviewScreen(cleanVerseText(active.text), active.reference, null, active.translatedText || '');
+  // Waiting on the chapter's length, the verse may already be up: its card is LIVE now.
+  if (screenVerseRef) markLiveInQueue(screenVerseRef);
 }
 
 function handleRangeActive(activeRef) {
   if (!currentDisplayCard || !activeRef) return;
+  rangeActiveRef = activeRef;
+  // The chapter's one card shows the verse the reading has reached, where it is; its open list
+  // moves along (chapterChildrenFollow).
+  const chapterCard = currentDisplayCard.querySelector('.range-chapter-card');
+  if (chapterCard) {
+    const verse = chapterCard._rangeVerses.find(x => x.reference === activeRef);
+    if (!verse) return;
+    showVerseOnCard(chapterCard, verse);
+    renderPreviewScreen(cleanVerseText(verse.text), verse.reference, null, verse.translatedText || '');
+    return;
+  }
   currentDisplayCard.querySelectorAll('.range-verse-card').forEach(card => {
     const isActive = card.dataset.ref === activeRef;
     card.classList.toggle('range-active', isActive);
@@ -2014,22 +2176,26 @@ function buildRangeCard(v, isActive) {
     </div>
   `;
 
+  // The verse the card shows now (a whole chapter's card follows the reading: showVerseOnCard).
+  card._verse = v;
   const sendBtn = card.querySelector('.lvc-send-btn');
   sendBtn?.addEventListener('click', (e) => {
     e.stopPropagation();
-    showInViewer([v], 'direct', 1.0);
+    const cur = card._verse;
+    showInViewer([cur], 'direct', 1.0);
     // A verse of the range already on screen: straight out in Director mode too, as the range's Next.
-    sendVerseToServer(v, null, { direct: true });
-    syncRangeJumpIfNeeded(v);
+    sendVerseToServer(cur, null, { direct: true });
+    syncRangeJumpIfNeeded(cur);
   });
 
   wireDoubleClickSend(card, () => {
-    updateViewerDisplay(v);   // update preview only — card stays in place
-    sendVerseToServer(v, null, { direct: true });
-    syncRangeJumpIfNeeded(v);
+    const cur = card._verse;
+    updateViewerDisplay(cur);   // update preview only — card stays in place
+    sendVerseToServer(cur, null, { direct: true });
+    syncRangeJumpIfNeeded(cur);
     card.classList.add('sent-pulse');
     setTimeout(() => card.classList.remove('sent-pulse'), 600);
-  }, () => sendVerseToServer(v));
+  }, () => sendVerseToServer(card._verse));
 
   return card;
 }

@@ -1,6 +1,6 @@
 // KAIRO — Live Queue order and Possible Matches overlap (pure helpers)
 //
-// Two rules the Live Queue / Possible Matches panels follow, kept here so
+// Rules the Live Queue / Possible Matches panels follow, kept here so
 // they can be tested in Node without a DOM:
 //
 // 1. A passage reads in order. A cited range already lands in reading order
@@ -16,6 +16,9 @@
 //    numbered sibling (2 Corinthians 4:16 live, 1 Corinthians 4:16 offered at
 //    93%, same incident). That's the engine guessing the book number, not a
 //    second citation.
+//
+// 3. Only a whole chapter called is one card (isWholeChapter), and the
+//    reading moving on to the next verse is not a new call (isNextVerse).
 
 (function (root) {
   'use strict';
@@ -84,7 +87,23 @@
     return { action: 'top' };
   }
 
-  const API = { OVERLAP_WINDOW_MS, parseRef, bookFamily, sameVerseAnyBookNumber, coveredByQueue, topPassageLength, placeInQueue };
+  // A cited range that is its whole chapter ("Romans 8") is one card in the queue; any shorter
+  // range, however long, is a card per verse (owner, 2026-11-04). verses: [{ book, chapter, verse }]
+  // in order; chapterLength: how many verses the chapter has.
+  function isWholeChapter(verses, chapterLength) {
+    if (!verses || !verses.length || !(chapterLength > 0) || verses.length !== chapterLength) return false;
+    const a = verses[0];
+    return !!a.book && a.chapter > 0 && verses.every((v, i) => v.book === a.book && v.chapter === a.chapter && v.verse === i + 1);
+  }
+
+  // The verse straight after the one that was up, in its chapter: the reading moving on (Kairo
+  // following the reader), not a new call. A new call moves its card to the top; this never does.
+  function isNextVerse(prev, v) {
+    return !!(prev && v && prev.book && prev.book === v.book && Number(prev.chapter) === Number(v.chapter)
+      && Number(v.verse) === Number(prev.verse) + 1);
+  }
+
+  const API = { OVERLAP_WINDOW_MS, parseRef, bookFamily, sameVerseAnyBookNumber, coveredByQueue, topPassageLength, placeInQueue, isWholeChapter, isNextVerse };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
   if (root) root.KairoQueueOrder = API;

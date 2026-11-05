@@ -8901,14 +8901,19 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 
 /* A Live Queue verse's chapter, collapsible under its card (app.js chapterChildren). */
 .cs-live-queue-body .locked-verse-card.children-open { flex-wrap: wrap; }
-.lvc-children-toggle { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; padding: 0; border: 0; background: none; color: var(--text-3); font: inherit; font-size: 11px; cursor: pointer; }
+.lvc-children-toggle { display: inline-flex; align-self: flex-start; max-width: 100%; align-items: center; gap: 6px; margin-top: 6px; padding: 3px 9px 3px 7px; border: 1px solid var(--accent); border-radius: 999px; background: var(--accent-dim); color: var(--accent); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
 .lvc-children-toggle::before { content: ''; width: 0; height: 0; border-left: 4px solid currentColor; border-top: 3.5px solid transparent; border-bottom: 3.5px solid transparent; transition: transform var(--trans); }
 .children-open .lvc-children-toggle::before { transform: rotate(90deg); }
-.lvc-children-toggle:hover { color: var(--text); }
-.lvc-children { flex-basis: 100%; display: flex; flex-direction: column; gap: 1px; max-height: 260px; overflow-y: auto; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); cursor: default; }
-.lvc-child { display: flex; gap: 8px; align-items: baseline; width: 100%; padding: 5px 6px; border: 0; border-radius: var(--radius); background: none; color: var(--text-2); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.lvc-children-toggle:hover { background: rgba(255,145,48,0.25); }
+/* A window about four rows tall (26px row + 1px gap, plus the 6px top padding) on the verse up; about ten while scrolled by hand (app.js listScrolledByHand). */
+.lvc-children { flex-basis: 100%; display: flex; flex-direction: column; gap: 1px; max-height: calc(4 * 27px + 6px); overflow-y: auto; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); cursor: default; }
+.lvc-children.is-wide { max-height: calc(10 * 27px + 6px); }
+.lvc-child { display: flex; flex: 0 0 auto; gap: 8px; align-items: baseline; width: 100%; padding: 5px 6px; border: 0; border-radius: var(--radius); background: none; font: inherit; font-size: 12px; line-height: 16px; text-align: left; cursor: pointer; }
 .lvc-child:hover { background: var(--bg-hover); color: var(--text); }
-.lvc-child.on-screen { background: var(--brand-dim, rgba(237,28,36,0.12)); color: var(--text); }
+.lvc-child { color: var(--text); }
+.lvc-child.is-past { color: var(--text-3); }
+.lvc-child.is-past .lvc-child-num { opacity: 0.6; }
+.lvc-child.on-screen { background: var(--brand-dim); color: var(--text); font-weight: 500; box-shadow: inset 0 0 0 1px var(--brand); }
 .lvc-child-num { flex: 0 0 22px; font-weight: 700; font-variant-numeric: tabular-nums; color: var(--text-3); text-align: right; }
 .lvc-child.on-screen .lvc-child-num { color: var(--brand); }
 .lvc-child-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
