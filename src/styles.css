@@ -1557,14 +1557,19 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
 
 .modal-header h2 { font-size: 14px; font-weight: 700; margin: 0; }
 
+/* Every dialog closes with a plain X. The "Close" word stays in the markup for screen readers only. */
 .modal-close-btn {
-  width: auto; height: 26px;
-  display: flex; align-items: center; justify-content: center; gap: 6px;
-  padding: 0 10px;
+  position: relative;
+  width: 30px; height: 30px;
+  display: flex; align-items: center; justify-content: center;
+  padding: 0;
   background: transparent; border: none;
-  color: var(--text-3); cursor: pointer;
-  font-size: 11px; font-weight: 600; font-family: var(--font);
-  border-radius: 4px; transition: all var(--trans);
+  color: var(--text-2); cursor: pointer;
+  border-radius: 6px; transition: all var(--trans);
+}
+.modal-close-btn span {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); clip-path: inset(50%); white-space: nowrap;
 }
 
 .modal-close-btn:hover { background: var(--bg-hover); color: var(--text); }
