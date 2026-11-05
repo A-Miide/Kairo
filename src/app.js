@@ -3440,16 +3440,17 @@ function goToOnboardingStep(n) {
   document.getElementById('first-run-save')?.classList.toggle('hidden', !isLast);
   if (onboardingStep === ONBOARDING_LISTEN_STEP) {
     syncOnboardingMicList();
+    checkOnboardingSpeechSetup();
     setTimeout(() => document.getElementById('first-run-deepgram-key')?.focus(), 60);
   }
 }
 
-// Real, non-blocking validation on the way OUT of the speech-engine step —
-// owner: "if no deepgram key exist and no offline model is found, prompt
-// the user to download the model in settings or add a deepgram key." This
-// is the proactive, tour-time version; startListening's own missingKey/
-// missingModel handling is the reactive one that fires later if this got
-// skipped. Async because "is the offline model actually installed" is a
+// Owner: "if no deepgram key exist and no offline model is found, prompt
+// the user to download the model in settings or add a deepgram key." The note
+// shows while the speech-engine step is open and updates as a key is typed or
+// the engine changes; it never holds Next back (a click that seemed to do
+// nothing read as broken). startListening's own missingKey/missingModel
+// handling is the reactive one that fires later if this got skipped. Async because "is the offline model actually installed" is a
 // real filesystem check on the server, not something the client already
 // knows — checked fresh each time so downloading it mid-tour clears the
 // warning without needing to leave and re-enter this step.
@@ -3598,7 +3599,6 @@ document.querySelector('.modal-overlay')?.addEventListener('click', closeModal);
 // First-run onboarding wizard wiring
 document.getElementById('first-run-save')?.addEventListener('click', saveFirstRunChoice);
 document.getElementById('first-run-skip')?.addEventListener('click', closeFirstRunModal);
-document.getElementById('close-first-run')?.addEventListener('click', closeFirstRunModal);
 document.addEventListener('keydown', (e) => {
   const modal = document.getElementById('first-run-modal');
   if (!modal || modal.classList.contains('hidden')) return;
@@ -3613,16 +3613,9 @@ document.addEventListener('keydown', (e) => {
 document.getElementById('first-run-deepgram-key')?.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') document.getElementById('onboarding-next')?.click();
 });
-document.getElementById('onboarding-next')?.addEventListener('click', async () => {
-  // Leaving the listening step with neither engine ready shows the gentle
-  // nudge and stays put once, so it's actually read.
-  if (onboardingStep === ONBOARDING_LISTEN_STEP) {
-    await checkOnboardingSpeechSetup();
-    const warning = document.getElementById('onboarding-speech-warning');
-    if (warning && !warning.classList.contains('hidden') && !warning.dataset.seen) { warning.dataset.seen = '1'; return; }
-  }
-  goToOnboardingStep(onboardingStep + 1);
-});
+document.getElementById('onboarding-next')?.addEventListener('click', () => goToOnboardingStep(onboardingStep + 1));
+document.getElementById('first-run-deepgram-key')?.addEventListener('input', checkOnboardingSpeechSetup);
+document.getElementById('first-run-engine-toggle')?.addEventListener('click', () => setTimeout(checkOnboardingSpeechSetup, 0));
 document.getElementById('onboarding-back')?.addEventListener('click', () => goToOnboardingStep(onboardingStep - 1));
 // A step's own button finishes the tour (saving what was typed, as Finish does) and opens its place.
 function finishOnboardingThen(then) {

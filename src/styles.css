@@ -2144,7 +2144,7 @@ body > .lyric-follow-hud { position: fixed; left: 14px; bottom: 14px; z-index: 4
   box-shadow: 0 0 0 0 currentColor;
 }
 .lfh-dot.tracking { background: #35c46a; animation: lfh-pulse 1.6s ease-out infinite; color: #35c46a; }
-.lfh-dot.armed    { background: #e8a64a; color: #e8a64a; }
+.lfh-dot.armed    { background: #ff9130; color: #ff9130; }
 .lfh-dot.frozen   { background: var(--red); color: var(--red); }
 .lfh-dot.idle     { background: var(--text-3); }
 @keyframes lfh-pulse { 0% { box-shadow: 0 0 0 0 currentColor; } 70% { box-shadow: 0 0 0 5px rgba(53,196,106,0); } 100% { box-shadow: 0 0 0 0 rgba(53,196,106,0); } }
@@ -3207,7 +3207,7 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
    regardless of real connection state. */
 .bs-dot.connected { background: var(--green); box-shadow: 0 0 6px rgba(34,197,94,0.4); }
 .bs-dot.error      { background: var(--red); }
-.bs-dot.warn       { background: var(--orange, #d9a441); }
+.bs-dot.warn       { background: var(--notice); }
 
 /* Compact header-row status (dot + short text) for the plain output cards
    (External Display, OBS, Syphon, NDI) — sits between the card name and
@@ -4734,8 +4734,8 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
    operator's own card agrees with what's on the real output. */
 .timer-card-preview.is-overtime .timer-card-readout { color: var(--red); }
 .timer-card-preview.is-overtime .timer-card-status { color: var(--red); }
-.timer-card-preview.is-warning .timer-card-readout { color: #e8a64a; }
-.timer-card-preview.is-warning .timer-card-status { color: #e8a64a; }
+.timer-card-preview.is-warning .timer-card-readout { color: #ff9130; }
+.timer-card-preview.is-warning .timer-card-status { color: #ff9130; }
 .timer-card-label {
   flex: 0 1 auto;
   min-width: 3.5em;
@@ -7906,8 +7906,6 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .ob-seg { width: 96px; padding-top: 9px; border-top: 3px solid rgba(255, 255, 255, 0.12); font-size: 11px; font-weight: 600; color: var(--text-3); white-space: nowrap; transition: border-color 0.3s ease, color 0.3s ease; }
 .ob-seg.is-done { border-top-color: var(--brand); color: var(--text-2); }
 .ob-seg.is-on { border-top-color: var(--brand); color: #fff; }
-.ob-close { background: none; border: none; color: var(--text-3); font-size: 12px; font-weight: 600; cursor: pointer; padding: 6px; }
-.ob-close:hover { color: var(--text); }
 .ob-body { min-height: 380px; }
 .ob-step { animation: ob-in 0.55s cubic-bezier(0.2, 0.7, 0.2, 1) both; }
 @keyframes ob-in { from { opacity: 0; transform: translateY(14px); } }
@@ -8160,7 +8158,7 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .ob-progress-wrap { margin-top: 6px; }
 .ob-bar { height: 6px; border-radius: 3px; overflow: hidden; background: rgba(255, 255, 255, 0.08); }
 .ob-bar-fill { width: 0%; height: 100%; background: var(--accent); transition: width 0.2s; }
-.ob-warning { margin: 14px 0 0; padding: 9px 12px; border: 1px solid rgba(255, 180, 60, 0.3); border-radius: 8px; background: rgba(255, 180, 60, 0.1); font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
+.ob-warning { margin: 14px 0 0; padding: 9px 12px; border: 1px solid rgba(255, 255, 255, 0.16); border-radius: 8px; background: rgba(255, 255, 255, 0.05); font-size: 12.5px; line-height: 1.5; color: var(--text-2); }
 .ob-chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 22px; }
 .ob-chips span { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; border: 1px solid var(--border-md); border-radius: 9px; background: rgba(255, 255, 255, 0.03); font-size: 13px; font-weight: 600; color: var(--text); }
 .ob-files b { padding: 3px 6px; border-radius: 6px; background: var(--brand-dim); font-size: 11px; color: var(--brand); }

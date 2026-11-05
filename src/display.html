@@ -194,14 +194,14 @@
         /* Warning — inside the last minute, still counting down. A step
            between "normal" and "overtime" so the operator sees it coming
            rather than the color jumping straight from plain to red at 0. */
-        #timer-badge.is-warning { color: #e8a64a; text-shadow: 0 1px 6px rgba(232,166,74,0.3); }
-        #timer-badge.is-warning .badge-label { color: rgba(232, 166, 74, 0.6); }
+        #timer-badge.is-warning { color: #ff9130; text-shadow: 0 1px 6px rgba(255,145,48,0.3); }
+        #timer-badge.is-warning .badge-label { color: rgba(255, 145, 48, 0.6); }
         /* The themed on-stage timer layer keeps the THEME's own colour — a
            warning/overtime state is signalled with a glow + gentle pulse, not
            by overriding the operator's chosen colour. (The fixed corner badge
            above, which is unthemed, still recolours since it has no theme to
            respect.) */
-        [data-binding="timer"].is-warning  { text-shadow: 0 0 14px rgba(232,166,74,0.55); }
+        [data-binding="timer"].is-warning  { text-shadow: 0 0 14px rgba(255,145,48,0.55); }
         [data-binding="timer"].is-overtime { text-shadow: 0 0 16px rgba(237,28,36,0.6); animation: timer-otp 1s ease-in-out infinite; }
         @keyframes timer-otp { 50% { opacity: 0.55; } }
         /* What this output shows (outputModeMap in app_outputs.js). 'text'
@@ -231,7 +231,7 @@
         #monitor-look { display: none; position: fixed; inset: 0; z-index: 1; overflow: hidden; background: #000; }
         body[data-mode="confidence"].has-monitor-look #monitor-look { display: block; }
         body[data-mode="confidence"].has-monitor-look #confidence-view { display: none; }
-        #monitor-look [data-binding="timer"].is-warning { color: #e8a64a !important; }
+        #monitor-look [data-binding="timer"].is-warning { color: #ff9130 !important; }
         #monitor-look [data-binding="timer"].is-overtime { color: #ed1c24 !important; }
         /* Multiview (Video director mode): the input grid full screen, read-only. */
         #multiview-view { display: none; }
@@ -270,7 +270,7 @@
             color: rgba(255, 255, 255, 0.55);
         }
         .cv-timer-label { margin-bottom: 0.9vh; }
-        .cv-timer.is-warning .cv-timer-value { color: #e8a64a; }
+        .cv-timer.is-warning .cv-timer-value { color: #ff9130; }
         .cv-timer.is-overtime .cv-timer-value { color: #ed1c24; animation: timer-otp 1s ease-in-out infinite; }
         .cv-current {
             flex: 1 1 auto;
@@ -281,13 +281,13 @@
             padding-top: 2.4vh;
             border-top: 1px solid rgba(255, 255, 255, 0.16);
         }
-        .cv-ref { flex: 0 0 auto; font-size: 3.4vh; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #f5b74e; }
+        .cv-ref { flex: 0 0 auto; font-size: 3.4vh; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #ff9130; }
         .cv-text { flex: 1 1 auto; min-height: 0; overflow: hidden; font-size: 9vh; font-weight: 600; line-height: 1.22; white-space: pre-line; }
         .cv-text.is-empty { color: rgba(255, 255, 255, 0.3); font-weight: 500; font-style: italic; }
         .cv-next { flex: 0 0 auto; padding-top: 1.8vh; border-top: 1px solid rgba(255, 255, 255, 0.16); color: rgba(255, 255, 255, 0.62); }
         .cv-next[hidden] { display: none; }
         .cv-next-head { margin-bottom: 0.8vh; }
-        .cv-next-head span { margin-left: 1.2vw; letter-spacing: 0.08em; color: rgba(245, 183, 78, 0.85); }
+        .cv-next-head span { margin-left: 1.2vw; letter-spacing: 0.08em; color: rgba(255, 145, 48, 0.85); }
         .cv-next-text {
             font-size: 4vh;
             font-weight: 500;
@@ -1181,7 +1181,7 @@
                     div.dataset.baseColor     = hexOpacity(color, opacity);
                     // At the layer's own opacity, so a countdown faded back
                     // behind the copy stays faded as it turns amber/red.
-                    div.dataset.warnColor     = hexOpacity(ov.warnColor     || layer.warnColor     || '#e8a64a', opacity);
+                    div.dataset.warnColor     = hexOpacity(ov.warnColor     || layer.warnColor     || '#ff9130', opacity);
                     div.dataset.overtimeColor = hexOpacity(ov.overtimeColor || layer.overtimeColor || '#ed1c24', opacity);
                 }
 
@@ -2980,7 +2980,7 @@
         if (base) {
             el.style.color = cleared ? base
                 : overtime ? (el.dataset.overtimeColor || '#ed1c24')
-                : warning  ? (el.dataset.warnColor || '#e8a64a')
+                : warning  ? (el.dataset.warnColor || '#ff9130')
                 : base;
         }
     }
