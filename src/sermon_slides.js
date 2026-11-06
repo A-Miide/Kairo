@@ -65,11 +65,13 @@
     { id: 'royal', name: 'Royal Blue', bg: '#0136A0', bg2: '#1B62B0', text: '#FFFFFF', accent: '#8FC5F3', accentOn: ['#0141AA'],
       display: { family: 'Anton', weight: 400, width: 0.5 }, body: { family: 'Montserrat' } },
     { id: 'night', name: 'Night Worship', bg: '#031A5A', bg2: '#071664', ramp: ['#020C3A', '#031A5A', '#0B2A8C'], text: '#FAFBFD', accent: '#9DB4FF',
-      // The light comes from the right: its edges run steeply top to bottom (measured from the
-      // reference, about 61°), deep blue at the bottom-left rising to light at the right edge, the
-      // darker part of the light #061853. Straight bands, no round glows, no near-white.
-      sweep: { angle: 61, stops: [{ pos: 0, color: '#031040' }, { pos: 34, color: '#061853' }, { pos: 52, color: '#0B1D7A' },
-        { pos: 64, color: '#1E3C9E' }, { pos: 76, color: '#3157C1' }, { pos: 88, color: '#6B96E6' }, { pos: 100, color: '#88B2EA' }] },
+      // The base stays dark; depth comes from one shaft of light and visible noise. The light's edges
+      // run down to the right at about 36° (the owner's own lines over the reference): deepest navy
+      // left of the lower line, the darker part of the light (#061853) between, light beyond the upper.
+      sweep: { angle: 36, stops: [{ pos: 0, color: '#020B36' }, { pos: 40, color: '#041243' }, { pos: 54, color: '#061853' },
+        { pos: 66, color: '#0B1D7A' }, { pos: 74, color: '#1E3C9E' }, { pos: 80, color: '#3157C1' }, { pos: 90, color: '#6B96E6' },
+        { pos: 100, color: '#88B2EA' }] },
+      grain: 'strong',
       glows: [],
       display: { family: 'Inter', weight: 800, width: 0.56 }, body: { family: 'Inter' } },
     { id: 'lime', name: 'Lime Black', bg: '#000000', bg2: '#0B0B0B', text: '#FFFFFF', accent: '#D5F228',
@@ -391,7 +393,7 @@
     // Edges falling off into shadow, for depth (strength set per layout; see vignette()).
     const shade = { id: 'ss-vignette', type: 'image', name: 'Vignette', visible: true, src: 'backgrounds/vignette.svg', fit: 'fill',
       opacity: 45, pos: { x: 0, y: 0, w: W, h: H } };
-    const grain = { id: 'ss-grain', type: 'image', name: 'Grain', visible: true, src: 'backgrounds/grain.svg', fit: 'cover',
+    const grain = { id: 'ss-grain', type: 'image', name: 'Grain', visible: true, src: kit.grain === 'strong' ? 'backgrounds/grain-strong.svg' : 'backgrounds/grain.svg', fit: 'cover',
       opacity: 100, blendMode: 'Overlay', pos: { x: 0, y: 0, w: W, h: H } };
     return [bg, shade, grain];
   }
