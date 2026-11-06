@@ -3371,7 +3371,8 @@
   function textEditable(item) {
     if (!item) return false;
     if (item.type === 'song') return true;
-    if (item.type === 'slides') return !(item.blocks || []).some(b => b.image);
+    // Sermon slides are edited a slide at a time: as one document they would lose their design.
+    if (item.type === 'slides') return !(item.blocks || []).some(b => b.image || b.gen);
     return false;
   }
   const GROUP_LINE = /^\s*\[([^\]\n]{1,40})\]\s*$/;
@@ -4083,12 +4084,23 @@
       const b = item.blocks[index];
       if (b) {
         const next = lines.join('\n');
-        if (b.layers && next !== String(b.text || '')) item.blocks[index] = sceneBlockWithText({ ...b, text: next });
+        // A sermon slide is drawn again from its words, in its own look (sermon_slides.js).
+        if (b.gen && window.KairoSermonSlides && next !== String(b.text || '')) item.blocks[index] = window.KairoSermonSlides.withText(b, next);
+        else if (b.layers && next !== String(b.text || '')) item.blocks[index] = sceneBlockWithText({ ...b, text: next });
         else b.text = next;
       }
     } else if (item.type === 'scripture') {
       item.text = lines.join('\n');
     }
+    saveService();
+    renderSidebar(); renderFlowView(item);
+  }
+
+  // One part of a sermon slide (its words, label or a scripture chip) changed in the slide editor.
+  function commitSermonPart(item, index, part, value) {
+    const b = item && item.type === 'slides' ? item.blocks[index] : null;
+    if (!b || !b.gen || !window.KairoSermonSlides) return;
+    item.blocks[index] = window.KairoSermonSlides.withPart(b, part, value);
     saveService();
     renderSidebar(); renderFlowView(item);
   }
@@ -4603,6 +4615,13 @@
     // per-slide layout) — hidden in favor of one clear line saying so,
     // rather than showing two controls that quietly do nothing.
     const isSceneImport = !!(acDraft.rawBlocks && acDraft.rawBlocks.some(b => b.layers));
+    // A sermon outline offers its designed deck (only into a playlist, not the Song Library).
+    acDraft.outline = destination === 'playlist' && window.KairoSermonSlides?.openDesigner ? opts.outline || null : null;
+    document.getElementById('ac-sermon')?.classList.toggle('hidden', !acDraft.outline);
+    if (acDraft.outline) {
+      const points = acDraft.outline.items.filter(i => i.kind === 'point').length;
+      document.getElementById('ac-sermon-detail').textContent = `${points} points with their scriptures, made into designed slides you can edit.`;
+    }
     document.getElementById('ac-scene-notice')?.classList.toggle('hidden', !isSceneImport);
     // What the import left out or couldn't find (a hidden slide, media that isn't in the file).
     const noteEl = document.getElementById('ac-import-note');
@@ -6837,6 +6856,8 @@
     }, MEDIA_UPLOAD_TIMEOUT_MS);
     const d = await r.json();
     if (!r.ok || d.error) throw new Error(d.error || 'import failed');
+    // A Word file laid out like a sermon outline: read here as one too (sermon_slides.js).
+    if (/\.docx$/i.test(file.name) && window.KairoSermonSlides) d.outline = await window.KairoSermonSlides.readDocx(await file.arrayBuffer());
     return rehydrateMedia(d);
   }
 
@@ -6847,6 +6868,7 @@
     });
     const d = await r.json();
     if (d.error) throw new Error(d.error);
+    if (window.KairoSermonSlides) d.outline = window.KairoSermonSlides.readText(text);
     return rehydrateMedia(d);
   }
 
@@ -6880,7 +6902,7 @@
       if (first.author) firstItem.author = first.author;
       openAddConfirm(firstItem, { showDelimiter: true, isImportBlocks: true, rawBlocks: first.blocks, defaultKeepAsIs: keepAsIs, destination, note: d.note, warnings: d.warnings });
     } else {
-      openAddConfirm(toBlocksItem(d.blocks, fallbackTitle), { showDelimiter: true, isImportBlocks: true, rawBlocks: d.blocks, defaultKeepAsIs: keepAsIs, destination, note: d.note, warnings: d.warnings });
+      openAddConfirm(toBlocksItem(d.blocks, fallbackTitle), { showDelimiter: true, isImportBlocks: true, rawBlocks: d.blocks, defaultKeepAsIs: keepAsIs, destination, note: d.note, warnings: d.warnings, outline: d.outline });
     }
   }
 
@@ -7431,6 +7453,27 @@
     document.getElementById('ac-cancel')?.addEventListener('click', closeAddConfirm);
     document.querySelector('#add-confirm-modal .modal-overlay')?.addEventListener('click', closeAddConfirm);
     document.getElementById('ac-confirm')?.addEventListener('click', confirmAddConfirm);
+    // The outline as designed slides: the design screen, then into the chosen playlist.
+    document.getElementById('ac-sermon-make')?.addEventListener('click', () => {
+      if (!acDraft || !acDraft.outline) return;
+      const { item, outline } = acDraft;
+      const title = document.getElementById('ac-title')?.value.trim() || item.title || 'Sermon slides';
+      const target = playlists.find(p => p.id === document.getElementById('ac-playlist')?.value) || service;
+      closeAddConfirm();
+      window.KairoSermonSlides.openDesigner(outline, {
+        title,
+        onAdd: (blocks) => {
+          item.title = title;
+          item.type = 'slides';
+          item.blocks = blocks;
+          item.themeId = null;
+          delete item.linesPerSlide;
+          commitItem(target, item);
+          // Straight into the slide editor, where its words are changed on the slide (double-click).
+          if (typeof openItemStyleEditor === 'function') openItemStyleEditor(item.id, 0); else openFullEdit(item.id);
+        },
+      });
+    });
     document.getElementById('ac-structure-paragraph')?.addEventListener('click', () => setAcStructureMode('paragraph'));
     document.getElementById('ac-structure-lines')?.addEventListener('click', () => setAcStructureMode('lines'));
 
@@ -7769,6 +7812,7 @@
     // plain slide's own text — the same write-back the Flow view's
     // contentEditable already uses, not a second, separate mechanism.
     commitSlideText,
+    commitSermonPart,
     // Slide multi-select/duplicate/copy-paste — shared state lives here,
     // Full-scale edit's renderItemSlidesList (app.js) reaches in through
     // these instead of touching selectedSlideIndices directly cross-file.

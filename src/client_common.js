@@ -145,12 +145,25 @@ function sectionTypeClass(label) {
 }
 
 const loadedFonts = new Set(['Manrope', 'system-ui']);
+// Google refuses the whole request when a weight is asked for that the family doesn't have, so a
+// family with fewer than nine weights names its own (checked 2026-11-06); others ask for all nine.
+const GOOGLE_FONT_WEIGHTS = {
+  'Archivo Black': '', 'Anton': '', 'Bebas Neue': '',
+  'Cinzel': '400;500;600;700;800;900', 'Playfair Display': '400;500;600;700;800;900',
+  'Cormorant Garamond': '300;400;500;600;700', 'EB Garamond': '400;500;600;700;800',
+  'Manrope': '200;300;400;500;600;700;800', 'Open Sans': '300;400;500;600;700;800',
+};
+const fontSheets = new Map();   // family -> a promise kept once its stylesheet has arrived (or failed)
 function loadGoogleFont(family) {
-  if (!family || loadedFonts.has(family)) return;
+  if (!family || loadedFonts.has(family)) return fontSheets.get(family) || Promise.resolve();
   loadedFonts.add(family);
+  const weights = family in GOOGLE_FONT_WEIGHTS ? GOOGLE_FONT_WEIGHTS[family] : '100;200;300;400;500;600;700;800;900';
   const link = document.createElement('link');
   link.rel = 'stylesheet';
-  link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}:wght@100;200;300;400;500;600;700;800;900&display=swap`;
+  link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(family)}${weights ? `:wght@${weights}` : ''}&display=swap`;
+  const ready = new Promise((resolve) => { link.onload = resolve; link.onerror = resolve; });
+  fontSheets.set(family, ready);
   document.head.appendChild(link);
+  return ready;
 }
 

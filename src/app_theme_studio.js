@@ -2234,6 +2234,13 @@ function renderStage() {
         (layer.rotation ? `transform:rotate(${layer.rotation}deg);` : '');
       stage.appendChild(hit);
       tsDecorateLayerEl(hit, layer, true);
+      // A sermon slide's words (sermon_slides.js): double-click and type, on the slide.
+      const sermonPart = tsMode === 'item' && tsItemCtx && window.KairoSermonSlides
+        ? window.KairoSermonSlides.partOfLayer(tsItemCtx.item.blocks?.[tsItemCtx.slideIndex], layer) : '';
+      if (sermonPart) {
+        hit.title = 'Double-click to change the words';
+        hit.addEventListener('mousedown', (e) => tsHandleLayerDblClick(e, hit, layer, () => beginSermonTextEdit(hit, layer, sermonPart)));
+      }
       return;
     }
 
@@ -3549,6 +3556,41 @@ function tsHandleLayerDblClick(e, div, layer, onDouble = beginInlineTextEdit) {
     tsCancelDrag();
     onDouble(div, layer);
   }
+}
+
+// A sermon slide's words typed in place: a field over the words' own box, Enter keeps the change
+// (the slide is drawn again in its look), Esc leaves it as it was.
+function beginSermonTextEdit(hit, layer, part) {
+  const ctx = tsItemCtx;
+  if (!ctx) return;
+  const block = ctx.item.blocks[ctx.slideIndex];
+  const field = document.createElement('textarea');
+  field.className = 'ts-sermon-edit';
+  field.value = window.KairoSermonSlides.partText(block, part);
+  field.setAttribute('aria-label', part === 'lines' ? 'Words' : part === 'label' ? 'Small label' : part === 'subtitle' ? 'Subtitle' : 'Scripture reference');
+  hit.appendChild(field);
+  field.focus();
+  field.setSelectionRange(field.value.length, field.value.length);
+  let done = false;
+  const finish = (keep) => {
+    if (done) return;
+    done = true;
+    const value = field.value.replace(/\s*\n\s*/g, ' ').trim();
+    field.remove();
+    if (keep && value !== window.KairoSermonSlides.partText(block, part)) {
+      window.KairoService?.commitSermonPart?.(ctx.item, ctx.slideIndex, part, value);
+      activeLook = buildSyntheticLook(ctx.item, ctx.slideIndex);
+      renderItemSlidesList(); renderLayersList(); renderProps();
+    }
+    renderPreview();
+  };
+  field.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); finish(true); }
+    if (e.key === 'Escape') { e.preventDefault(); finish(false); }
+  });
+  field.addEventListener('mousedown', (e) => e.stopPropagation());
+  field.addEventListener('blur', () => finish(true));
 }
 
 function tsCancelDrag() {
@@ -5976,7 +6018,10 @@ function renderPPProps(panel, layer) {
   nameInp.addEventListener('input', () => { layer.name = nameInp.value; renderLayersList(); });
   const note = document.createElement('p');
   note.className = 'setting-hint';
-  note.textContent = 'Imported from ProPresenter and drawn as it was designed. Move, resize and rotate it here.';
+  const sermon = tsMode === 'item' && tsItemCtx && window.KairoSermonSlides?.partOfLayer(tsItemCtx.item.blocks?.[tsItemCtx.slideIndex], layer);
+  note.textContent = sermon
+    ? 'A sermon slide. Double-click its words on the slide to change them; move, resize and rotate it here.'
+    : 'Imported from ProPresenter and drawn as it was designed. Move, resize and rotate it here.';
   panel.appendChild(section('layout', 'Layer', prop('Name', nameInp), note));
   renderLayoutProps(panel, layer);
 }

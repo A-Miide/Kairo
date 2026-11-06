@@ -229,6 +229,8 @@
           `padding-right:${(tail < 0 ? -tail : 0) * textScale * fit}px;` +
           `font-family:${leadFont.family};font-size:${leadSize}px;font-weight:${leadFont.weight};font-style:${leadFont.italic ? 'italic' : 'normal'};` +
           `white-space:pre-wrap;overflow-wrap:break-word;word-break:normal;text-transform:${capsMode};` +
+          // Balanced lines (sermon slides): no word left alone on the last line.
+          (pr.balance ? 'text-wrap:balance;' : '') +
           (text.caps === 'small' ? 'font-variant-caps:small-caps;' : '') +
           (text.noLigatures ? 'font-variant-ligatures:none;' : '');
         let any = false;
@@ -318,6 +320,7 @@
       if (mode === 'up' && !fits(1)) { paint(1); return; }
       for (let i = 0; i < 18; i++) { const mid = (lo + hi) / 2; if (fits(mid)) lo = mid; else hi = mid; }
       fit = lo; paint(fit);
+      holder.dataset.fit = String(fit);   // how far the words were shrunk to fit (the slide checks read it)
     };
     holder.__ppFit = fitToBox;
     holder.__ppPaint = () => paint(fit);
@@ -515,9 +518,12 @@
     }
     if (opts.scale) canvas.style.transform = `scale(${opts.scale})`;
     if (textNode && document.fonts) {
+      // A web font the layer names (sermon slides' looks): its stylesheet first, then its faces.
+      const web = layer.text.font && layer.text.font.webFont && typeof loadGoogleFont === 'function'
+        ? [layer.text.font.family, ...(layer.text.font.webFonts || [])].map(f => loadGoogleFont(f)) : [];
       const faces = new Set();
       (layer.text.paragraphs || []).forEach(p => (p.runs || []).forEach(r => { const fc = fontCss(r, layer.text.font || {}); faces.add(`${fc.italic ? 'italic ' : ''}${fc.weight} 40px ${fc.family}`); }));
-      Promise.all([...faces].map(f => document.fonts.load(f).catch(() => null))).then(() => { metricCache.clear(); if (stage.isConnected) relayout(); });
+      Promise.all(web).then(() => Promise.all([...faces].map(f => document.fonts.load(f).catch(() => null)))).then(() => { metricCache.clear(); if (stage.isConnected) relayout(); });
     }
     requestAnimationFrame(() => { if (stage.isConnected) relayout(); });
     return stage;

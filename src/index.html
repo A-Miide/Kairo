@@ -876,6 +876,11 @@
                 <div class="setting-group hidden" id="ac-import-note">
                     <p class="setting-hint" id="ac-import-note-text"></p>
                 </div>
+                <!-- A document that reads as a sermon outline: its own designed deck (sermon_slides.js). -->
+                <div class="ac-sermon hidden" id="ac-sermon">
+                    <div><b>This reads as a sermon outline</b><span id="ac-sermon-detail"></span></div>
+                    <button type="button" class="modal-btn primary" id="ac-sermon-make">Make sermon slides</button>
+                </div>
                 <div class="setting-group" id="ac-theme-group">
                     <label class="setting-label">Theme</label>
                     <select id="ac-theme" class="setting-input"></select>
@@ -2578,6 +2583,8 @@
     <script src="backgrounds/backgrounds.js"></script>
     <script src="motion_graphics.js"></script>
     <script src="pp_render.js"></script>
+    <script src="sermon_slides.js"></script>
+    <script src="sermon_slides_ui.js"></script>
     <script src="announcement_pack.js"></script>
     <script src="content_browser.js"></script>
     <script src="hymns.js"></script>
