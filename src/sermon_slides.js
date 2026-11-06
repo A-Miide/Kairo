@@ -59,6 +59,19 @@
       display: { family: 'Fraunces', weight: 600, width: 0.53 }, body: { family: 'Manrope' } },
     { id: 'lavender', name: 'Lavender', bg: '#F5EBFA', bg2: '#E7DBEF', ramp: ['#F5EBFA', '#E7DBEF'], text: '#49225B', accent: '#6E3482',
       display: { family: 'Poppins', weight: 700, width: 0.6 }, body: { family: 'Inter' } },
+    // Sampled from the owner's reference slides, for the layouts made after them.
+    { id: 'redcard', name: 'Red Card', bg: '#720B0C', bg2: '#8F0505', text: '#F7F7F7', accent: '#D10203', accentOn: ['#F7F7F7'],
+      display: { family: 'Montserrat', weight: 800, width: 0.62 }, body: { family: 'Montserrat' } },
+    { id: 'royal', name: 'Royal Blue', bg: '#0141AA', bg2: '#3875C0', text: '#FFFFFF', accent: '#8FC5F3', accentOn: ['#0141AA'],
+      display: { family: 'Anton', weight: 400, width: 0.5 }, body: { family: 'Montserrat' } },
+    { id: 'night', name: 'Night Worship', bg: '#031A5A', bg2: '#071664', ramp: ['#020C3A', '#031A5A', '#0B2A8C'], text: '#FAFBFD', accent: '#9DB4FF',
+      // A diagonal sweep of light across the deep blue, brightest toward the top-right corner.
+      sweep: { angle: 120, stops: [{ pos: 0, color: '#020C3A' }, { pos: 46, color: '#06185E' }, { pos: 64, color: '#2C47B0' },
+        { pos: 70, color: '#5F7BD8' }, { pos: 76, color: '#1F37A0' }, { pos: 100, color: '#041A61' }] },
+      glows: [{ x: 100, y: 0, rx: 34, ry: 46, color: '#6E8BE6' }, { x: 0, y: 100, rx: 30, ry: 40, color: '#0B2A8C' }],
+      display: { family: 'Inter', weight: 800, width: 0.56 }, body: { family: 'Inter' } },
+    { id: 'lime', name: 'Lime Black', bg: '#000000', bg2: '#0B0B0B', text: '#FFFFFF', accent: '#D5F228',
+      display: { family: 'Anton', weight: 400, width: 0.5 }, body: { family: 'Inter' } },
   ];
   // How the background is drawn from a look's two tones. All quiet; none adds anything to look at.
   const BACKGROUNDS = [
@@ -104,7 +117,8 @@
     for (const bg of tones) {
       if (contrast(kit.text, bg) < 4.5) { out.push('The text colour is hard to read on the background.'); break; }
     }
-    for (const bg of tones) {
+    // A look whose accent only ever sits on a card (Red Card) is checked against the card.
+    for (const bg of kit.accentOn || tones) {
       if (contrast(kit.accent, bg) < 3) { out.push('The accent colour is hard to see on the background.'); break; }
     }
     return out;
@@ -373,7 +387,7 @@
       bg = { ...canvas, fill: 'solid', color: kit.bg, color2: kit.bg };
     }
     const grain = { id: 'ss-grain', type: 'image', name: 'Grain', visible: true, src: 'backgrounds/grain.svg', fit: 'cover',
-      opacity: 100, blendMode: 'overlay', pos: { x: 0, y: 0, w: W, h: H } };
+      opacity: 100, blendMode: 'Overlay', pos: { x: 0, y: 0, w: W, h: H } };
     return [bg, grain];
   }
 
@@ -569,6 +583,9 @@
       : { ...l, color: color || kit.accent, font: { ...l.font, size: 28, weight: 600, letterSpacing: 3, transform: 'uppercase' } });
   }
   const condensedKit = (kit) => ({ ...kit, display: CONDENSED });
+  // A colour part way from a to b (0..1).
+  const mix = (a, b, t) => '#' + [1, 3, 5].map(i => Math.max(0, Math.min(255, Math.round(parseInt(a.slice(i, i + 2), 16) * (1 - t) + parseInt(b.slice(i, i + 2), 16) * t)))
+    .toString(16).padStart(2, '0')).join('').toUpperCase();
 
   // Statement: the point in huge condensed caps, its first word ghosted enormous behind it, the label
   // in script over its corner, the church's name running up the left edge.
@@ -669,41 +686,52 @@
   // card, a ringed number badge on its top edge, the label in a coloured tag, and the scriptures
   // under a short rule ending in a dot.
   function badge(gen, kit, style, footer) {
-    const field = (kit.ramp && kit.ramp[kit.ramp.length - 1]) || kit.bg2;
-    const L = [{ ...backgroundLayers(kit, 'solid')[0], color: field, color2: field }, backgroundLayers(kit, style)[1]];
+    // The field: the look's deepest tone, lit a little from the middle; the ghost word in its brighter
+    // shade (as in the reference: brighter than the field, not darker).
+    const L = [{ ...backgroundLayers(kit, 'solid')[0], fill: 'gradient', color: kit.bg, color2: kit.bg,
+      gradientStops: [{ pos: 0, color: kit.bg }, { pos: 100, color: kit.bg }],
+      gradientGlows: [] }, backgroundLayers(kit, style)[1]];
     const lines = (gen.lines || []).filter(Boolean);
     const text = gen.kind === 'title' ? lines[0] || '' : lines.join(' ');
-    const ghost = ghostWord(text);
-    if (ghost) for (let i = 0; i < 4; i++) L.push(textLayer(`ss-ghost-${i}`, `Ghost word ${i + 1}`, { x: -20, y: -110 + i * 320, w: W + 600, h: 360 }, ghost,
-      { family: 'Montserrat', weight: 900, size: 360, color: kit.bg, opacity: 35, lineHeight: 1.0, spacing: -8 }));
-    const cx = 470, cy = 150, cw = W - 940, ch = 850;
-    const ink = '#1B1B1F';
-    L.push(shapeLayer('ss-card', 'Card', { x: cx, y: cy, w: cw, h: ch }, '#F7F6F4', { radius: 90 }));
+    const ghost = ghostWord(text).slice(0, 5);
+    if (ghost) for (let i = 0; i < 4; i++) L.push(textLayer(`ss-ghost-${i}`, `Ghost word ${i + 1}`, { x: 40, y: -120 + i * 330, w: W, h: 380 }, ghost,
+      { family: 'Montserrat', weight: 900, size: 380, color: mix(kit.bg2, '#FF0000', 0.12), opacity: 100, lineHeight: 1.0, spacing: -6 }));
+    const cx = 500, cy = 140, cw = W - 1000, ch = 860;
+    const paper = '#F7F7F7', ink = '#2B2B2B', body = '#3A3A3A';
+    L.push({ ...shapeLayer('ss-card', 'Card', { x: cx, y: cy, w: cw, h: ch }, paper, { radius: 96 }), lift: true });
+    // A pale ghost letter inside the card, as the reference's big "O".
+    if (ghost) L.push(textLayer('ss-card-ghost', 'Card ghost', { x: cx + cw - 470, y: cy + 210, w: 470, h: 600 }, ghost[0],
+      { family: 'Montserrat', weight: 900, size: 640, color: '#EDEDED', lineHeight: 0.9, align: 'right' }));
     const mid = W / 2;
     if (gen.kind === 'point' && gen.n) {
-      L.push(shapeLayer('ss-badge-ring', 'Badge ring', { x: mid - 95, y: cy - 95, w: 190, h: 190 }, field, { radius: 95 }));
-      L.push(shapeLayer('ss-badge', 'Badge', { x: mid - 72, y: cy - 72, w: 144, h: 144 }, '#FFFFFF', { radius: 72 }));
-      L.push(textLayer('ss-number', 'Number', { x: mid - 72, y: cy - 50, w: 144, h: 100 }, String(gen.n),
-        { family: 'Montserrat', weight: 900, size: 84, color: field, align: 'center', lineHeight: 1.0 }));
+      L.push(shapeLayer('ss-badge-ring', 'Badge ring', { x: mid - 100, y: cy - 100, w: 200, h: 200 }, kit.bg, { radius: 100 }));
+      L.push(shapeLayer('ss-badge', 'Badge', { x: mid - 74, y: cy - 74, w: 148, h: 148 }, '#FFFFFF', { radius: 74 }));
+      L.push(textLayer('ss-number', 'Number', { x: mid - 74, y: cy - 50, w: 148, h: 100 }, String(gen.n),
+        { family: 'Montserrat', weight: 900, size: 84, color: kit.bg, align: 'center', lineHeight: 1.0 }));
     }
-    const X = cx + 120, TW = cw - 240;
-    const tag = gen.kind === 'point' ? `Point ${gen.n || ''}`.trim() : gen.kind === 'title' ? (gen.label || 'This series') : gen.kind === 'story' ? 'Introduction' : '';
-    if (tag) {
-      const tw = Math.round(tag.length * 44 * 0.6 + 50);
-      L.push(shapeLayer('ss-tag', 'Tag', { x: X, y: cy + 160, w: tw, h: 70 }, field, { radius: 8 }));
-      L.push(textLayer('ss-label', 'Label', { x: X, y: cy + 168, w: tw, h: 56 }, tag,
-        { family: 'Montserrat', size: 44, weight: 800, color: '#FFFFFF', align: 'center', lineHeight: 1.1 }));
+    const X = cx + 130, TW = cw - 260;
+    // The title line: a dark bold word and its pair knocked out of an accent tag ("Ombi | langu").
+    const [lead, tagWord] = gen.kind === 'point' ? ['Point', NUMBER_WORDS[gen.n] || String(gen.n || '')]
+      : gen.kind === 'title' ? [(gen.label || 'This').split(' ')[0], (gen.label || 'series').split(' ').slice(1).join(' ') || 'series']
+      : gen.kind === 'story' ? ['The', 'story'] : ['', ''];
+    if (lead) {
+      const lw = Math.round(lead.length * 70 * 0.68);
+      L.push(textLayer('ss-label', 'Label', { x: X, y: cy + 180, w: lw + 20, h: 92 }, lead,
+        { family: 'Montserrat', size: 70, weight: 800, color: ink, lineHeight: 1.1, spacing: -1 }));
+      const tw = Math.round(tagWord.length * 62 * 0.62 + 44);
+      L.push(shapeLayer('ss-tag', 'Tag', { x: X + lw + 30, y: cy + 182, w: tw, h: 88 }, kit.accent, { radius: 8 }));
+      L.push(textLayer('ss-tag-text', 'Tag word', { x: X + lw + 30, y: cy + 190, w: tw, h: 76 }, tagWord,
+        { family: 'Montserrat', size: 62, weight: 800, color: '#FFFFFF', align: 'center', lineHeight: 1.1 }));
     }
-    L.push(headline({ ...kit, display: { family: 'Montserrat', weight: 600, width: 0.6 } }, gen, { x: X, y: cy + 270, w: TW, h: 360 }, text,
-      gen.kind === 'story' ? 56 : 84, ink, 'left', 1.18));
-    L.push(shapeLayer('ss-rule', 'Rule', { x: X, y: cy + ch - 150, w: 150, h: 4 }, field));
-    L.push(shapeLayer('ss-dot', 'Dot', { x: X + 160, y: cy + ch - 156, w: 16, h: 16 }, field, { radius: 8 }));
+    L.push(headline({ ...kit, display: { family: 'Montserrat', weight: 500, width: 0.58 } }, gen, { x: X, y: cy + 300, w: TW - 120, h: 360 }, text,
+      gen.kind === 'story' ? 48 : 58, body, 'left', 1.25));
+    L.push(shapeLayer('ss-rule', 'Rule', { x: X, y: cy + ch - 168, w: 210, h: 4 }, kit.accent));
+    L.push(shapeLayer('ss-dot', 'Dot', { x: X + 216, y: cy + ch - 175, w: 18, h: 18 }, kit.accent, { radius: 9 }));
     const refs = gen.refs || [];
-    if (refs.length) {
-      L.push(textLayer('ss-refs-label', 'Scriptures label', { x: X, y: cy + ch - 128, w: TW, h: 36 }, 'Scriptures',
-        { family: 'Montserrat', size: 28, weight: 800, color: field }));
-      L.push(...refLine(kit, refs.slice(0, 2), X, cy + ch - 92, 'left', ink).map(l => l.type === 'text' ? { ...l, font: { ...l.font, family: 'Montserrat', weight: 700, size: 30, letterSpacing: 0, transform: 'none' } } : l));
-    }
+    L.push(textLayer('ss-refs-label', 'Scriptures label', { x: X, y: cy + ch - 140, w: TW, h: 40 }, refs.length ? 'Scriptures' : (footer || ''),
+      { family: 'Montserrat', size: 32, weight: 800, color: kit.accent }));
+    if (refs.length) L.push(...refLine(kit, refs.slice(0, 2), X, cy + ch - 100, 'left', ink)
+      .map(l => l.type === 'text' ? { ...l, font: { ...l.font, family: 'Montserrat', weight: 700, size: 32, letterSpacing: 0, transform: 'none' } } : l));
     return L;
   }
 
@@ -717,19 +745,20 @@
     const text = gen.kind === 'title' ? lines[0] || '' : lines.join(' ');
     const [rest, last] = lastWord(text);
     const ghost = ghostWord(text);
-    if (ghost) L.push(textLayer('ss-ghost', 'Ghost word', { x: 120, y: 160, w: W, h: 800 }, ghost,
-      { family: SCRIPT.family, size: 520, color: kit.text, opacity: 7, lineHeight: 1.0 }));
+    if (ghost) L.push(textLayer('ss-ghost', 'Ghost word', { x: 60, y: 200, w: W + 200, h: 800 }, ghost.charAt(0) + ghost.slice(1).toLowerCase(),
+      { family: SCRIPT.family, size: 560, color: kit.bg, opacity: 50, lineHeight: 1.0, rotation: -4 }));
     if (footer) {
       L.push(textLayer('ss-footer', 'Footer', { x: 80 - 420, y: 540 - 18, w: 840, h: 36 }, String(footer),
         { family: kit.body.family, size: 22, weight: 600, color: kit.text, opacity: 70, spacing: 6, transform: 'uppercase', align: 'center', rotation: -90 }));
       L.push(textLayer('ss-footer-right', 'Footer right', { x: W - 80 - 420, y: 540 - 18, w: 840, h: 36 }, String(footer),
         { family: kit.body.family, size: 22, weight: 600, color: kit.text, opacity: 70, spacing: 6, transform: 'uppercase', align: 'center', rotation: 90 }));
     }
-    const h = headline(condensedKit(kit), gen, { x: 260, y: 200, w: W - 520, h: 470 }, gen.kind === 'story' ? text : rest, gen.kind === 'story' ? 76 : 150, kit.text, 'center', 0.95);
+    const h = headline(condensedKit(kit), gen, { x: 260, y: 200, w: W - 520, h: 470 }, gen.kind === 'story' ? text : rest, gen.kind === 'story' ? 76 : 150, gen.kind === 'story' ? kit.text : kit.accent, 'center', 0.95);
     h.font.italic = true;
     if (gen.kind !== 'story') h.font.transform = 'uppercase';
     L.push(h);
-    if (gen.kind !== 'story' && last) L.push(textLayer('ss-script', 'Script word', { x: 300, y: 560, w: W - 600, h: 260 }, last,
+    const scriptWord = last ? last.charAt(0).toUpperCase() + last.slice(1).toLowerCase() : '';
+    if (gen.kind !== 'story' && last) L.push(textLayer('ss-script', 'Script word', { x: 300, y: 560, w: W - 600, h: 260 }, scriptWord,
       { family: SCRIPT.family, size: 230, color: kit.text, align: 'center', lineHeight: 1.0, rotation: -6 }));
     const refs = gen.refs || [];
     const sub = gen.kind === 'title' ? lines.slice(1).join(' ') : refs.slice(0, 2).join('  ·  ');
@@ -744,14 +773,16 @@
     const ramp = kit.ramp && kit.ramp.length > 1 ? kit.ramp : [kit.bg, kit.bg2];
     const top = ramp[ramp.length - 1];
     const L = [{ ...backgroundLayers(kit, 'solid')[0], fill: 'gradient', color: ramp[0], color2: ramp[0],
-      gradientStops: [{ pos: 0, color: ramp[0] }, { pos: 100, color: ramp[0] }],
-      gradientGlows: [{ x: 100, y: 0, rx: 55, ry: 70, color: top }, { x: 62, y: 38, rx: 30, ry: 18, color: top }, { x: 0, y: 100, rx: 40, ry: 50, color: ramp[1] || top }] },
+      angle: kit.sweep ? kit.sweep.angle : 135,
+      gradientStops: kit.sweep ? kit.sweep.stops : [{ pos: 0, color: ramp[0] }, { pos: 100, color: ramp[0] }],
+      gradientGlows: kit.glows || [{ x: 100, y: 0, rx: 55, ry: 70, color: top }, { x: 62, y: 38, rx: 30, ry: 18, color: top }, { x: 0, y: 100, rx: 40, ry: 50, color: ramp[1] || top }] },
       backgroundLayers(kit, style)[1]];
     const lines = (gen.lines || []).filter(Boolean);
     const text = gen.kind === 'title' ? lines[0] || '' : lines.join(' ');
     const tight = { ...kit, display: { family: 'Inter', weight: 800, width: 0.56 } };
     const h = headline(tight, gen, { x: 260, y: 300, w: W - 520, h: 420 }, text, gen.kind === 'story' ? 70 : 128, kit.text, 'center', 1.0);
     h.font.letterSpacing = gen.kind === 'story' ? -1 : -4;
+    h.shadow = { enabled: true, color: kit.accent, opacity: 45, blur: 34, x: 0, y: 0 };   // the words glow a little, as in the reference
     L.push(h);
     const refs = gen.refs || [];
     const sub = gen.kind === 'title' ? lines.slice(1).join(' ') : gen.label && gen.kind !== 'story' ? `${gen.label}${refs.length ? '  ·  ' + refs[0] : ''}` : refs[0] || '';

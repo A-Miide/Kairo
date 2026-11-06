@@ -45,6 +45,11 @@ function applyShapeGeometry(div, layer, radius) {
       : (layer.radius * radius).toFixed(1) + 'px';
   }
   if (layer.glass) applyGlass(div, layer, radius);
+  // A card lifted off what's behind it: a deep soft shadow under it.
+  else if (layer.lift) {
+    const px = (n) => (typeof radius === 'function' ? radius(n) : (n * radius).toFixed(1) + 'px');
+    div.style.boxShadow = `0 ${px(36)} ${px(80)} -${px(10)} rgba(0,0,0,0.45), 0 ${px(8)} ${px(20)} rgba(0,0,0,0.18)`;
+  }
 }
 
 // Liquid glass: a shape that frosts what's behind it. Its colour becomes a faint tint (its opacity
