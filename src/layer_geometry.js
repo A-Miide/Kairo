@@ -39,6 +39,9 @@ function applyShapeGeometry(div, layer, radius) {
   } else if (shape === 'diamond') {
     div.style.borderRadius = '0';
     div.style.clipPath = 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)';
+  } else if (Array.isArray(layer.corners) && layer.corners.length === 4) {
+    // Each corner its own rounding: top-left, top-right, bottom-right, bottom-left.
+    div.style.borderRadius = layer.corners.map(r => (typeof radius === 'function' ? radius(r) : (r * radius).toFixed(1) + 'px')).join(' ');
   } else if (layer.radius) {
     div.style.borderRadius = typeof radius === 'function'
       ? radius(layer.radius)

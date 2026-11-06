@@ -386,10 +386,15 @@
     } else {
       bg = { ...canvas, fill: 'solid', color: kit.bg, color2: kit.bg };
     }
+    // Edges falling off into shadow, for depth (strength set per layout; see vignette()).
+    const shade = { id: 'ss-vignette', type: 'image', name: 'Vignette', visible: true, src: 'backgrounds/vignette.svg', fit: 'fill',
+      opacity: 45, pos: { x: 0, y: 0, w: W, h: H } };
     const grain = { id: 'ss-grain', type: 'image', name: 'Grain', visible: true, src: 'backgrounds/grain.svg', fit: 'cover',
       opacity: 100, blendMode: 'Overlay', pos: { x: 0, y: 0, w: W, h: H } };
-    return [bg, grain];
+    return [bg, shade, grain];
   }
+  // The background layers of a slide with its vignette at `opacity` (the reference layouts are darker).
+  const vignette = (layers, opacity) => layers.map(l => (l.id === 'ss-vignette' ? { ...l, opacity } : l));
 
   // The scripture chips: a tinted pill each, the reference on it in the reading face.
   function chipLayers(kit, refs, x, y, align) {
@@ -690,7 +695,7 @@
     // shade (as in the reference: brighter than the field, not darker).
     const L = [{ ...backgroundLayers(kit, 'solid')[0], fill: 'gradient', color: kit.bg, color2: kit.bg,
       gradientStops: [{ pos: 0, color: kit.bg }, { pos: 100, color: kit.bg }],
-      gradientGlows: [] }, backgroundLayers(kit, style)[1]];
+      gradientGlows: [] }, ...vignette(backgroundLayers(kit, style).slice(1), 70)];
     const lines = (gen.lines || []).filter(Boolean);
     const text = gen.kind === 'title' ? lines[0] || '' : lines.join(' ');
     const ghost = ghostWord(text).slice(0, 5);
@@ -698,7 +703,8 @@
       { family: 'Montserrat', weight: 900, size: 380, color: mix(kit.bg2, '#FF0000', 0.12), opacity: 100, lineHeight: 1.0, spacing: -6 }));
     const cx = 500, cy = 140, cw = W - 1000, ch = 860;
     const paper = '#F7F7F7', ink = '#2B2B2B', body = '#3A3A3A';
-    L.push({ ...shapeLayer('ss-card', 'Card', { x: cx, y: cy, w: cw, h: ch }, paper, { radius: 96 }), lift: true });
+    // One sweeping curve at the top-right; the other corners gently rounded, as in the reference.
+    L.push({ ...shapeLayer('ss-card', 'Card', { x: cx, y: cy, w: cw, h: ch }, paper, { radius: 70 }), corners: [70, 300, 80, 80], lift: true });
     // A pale ghost letter inside the card, as the reference's big "O".
     if (ghost) L.push(textLayer('ss-card-ghost', 'Card ghost', { x: cx + cw - 470, y: cy + 210, w: 470, h: 600 }, ghost[0],
       { family: 'Montserrat', weight: 900, size: 640, color: '#EDEDED', lineHeight: 0.9, align: 'right' }));
@@ -740,7 +746,7 @@
   function worthy(gen, kit, style, footer) {
     const field = (kit.ramp && kit.ramp[kit.ramp.length - 1]) || kit.bg2;
     const L = [{ ...backgroundLayers(kit, 'solid')[0], fill: 'gradient', color: field, color2: kit.bg,
-      gradientStops: [{ pos: 0, color: field }, { pos: 100, color: kit.bg }], angle: 150 }, backgroundLayers(kit, style)[1]];
+      gradientStops: [{ pos: 0, color: field }, { pos: 100, color: kit.bg }], angle: 150 }, ...vignette(backgroundLayers(kit, style).slice(1), 70)];
     const lines = (gen.lines || []).filter(Boolean);
     const text = gen.kind === 'title' ? lines[0] || '' : lines.join(' ');
     const [rest, last] = lastWord(text);
@@ -776,7 +782,7 @@
       angle: kit.sweep ? kit.sweep.angle : 135,
       gradientStops: kit.sweep ? kit.sweep.stops : [{ pos: 0, color: ramp[0] }, { pos: 100, color: ramp[0] }],
       gradientGlows: kit.glows || [{ x: 100, y: 0, rx: 55, ry: 70, color: top }, { x: 62, y: 38, rx: 30, ry: 18, color: top }, { x: 0, y: 100, rx: 40, ry: 50, color: ramp[1] || top }] },
-      backgroundLayers(kit, style)[1]];
+      ...vignette(backgroundLayers(kit, style).slice(1), 70)];
     const lines = (gen.lines || []).filter(Boolean);
     const text = gen.kind === 'title' ? lines[0] || '' : lines.join(' ');
     const tight = { ...kit, display: { family: 'Inter', weight: 800, width: 0.56 } };
