@@ -152,7 +152,7 @@ const GOOGLE_FONT_WEIGHTS = {
   'Cinzel': '400;500;600;700;800;900', 'Playfair Display': '400;500;600;700;800;900',
   'Cormorant Garamond': '300;400;500;600;700', 'EB Garamond': '400;500;600;700;800',
   'Manrope': '200;300;400;500;600;700;800', 'Open Sans': '300;400;500;600;700;800',
-  'DM Serif Display': '', 'Space Grotesk': '300;400;500;600;700', 'Fraunces': '400;500;600;700;800;900',
+  'DM Serif Display': '', 'Yellowtail': '', 'Space Grotesk': '300;400;500;600;700', 'Fraunces': '400;500;600;700;800;900',
 };
 const fontSheets = new Map();   // family -> a promise kept once its stylesheet has arrived (or failed)
 function loadGoogleFont(family) {

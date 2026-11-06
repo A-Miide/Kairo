@@ -109,7 +109,7 @@ test('every part of a slide is an ordinary, editable layer', () => {
   const deck = S.build(S.readText(PASTED), {});
   for (const b of deck) {
     for (const l of b.layers) {
-      assert.ok(l.type === 'text' || l.type === 'background', `${l.name} is ${l.type}`);
+      assert.ok(l.type === 'text' || l.type === 'background' || l.id === 'ss-grain', `${l.name} is ${l.type}`);
       if (l.type === 'text') assert.equal(l.binding, 'custom');
     }
   }

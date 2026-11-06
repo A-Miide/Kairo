@@ -44,6 +44,23 @@ function applyShapeGeometry(div, layer, radius) {
       ? radius(layer.radius)
       : (layer.radius * radius).toFixed(1) + 'px';
   }
+  if (layer.glass) applyGlass(div, layer, radius);
+}
+
+// Liquid glass: a shape that frosts what's behind it. Its colour becomes a faint tint (its opacity
+// is how strong), with a sheen across the top, a bright hairline edge and a soft shadow under it.
+// Shared by the editor, the previews and the output, after each has set the shape's fill.
+function applyGlass(div, layer, radius) {
+  const px = (n) => (typeof radius === 'function' ? radius(n) : (n * radius).toFixed(1) + 'px');
+  const n = parseInt(String(layer.color || '#FFFFFF').replace('#', '').slice(0, 6), 16) || 0xFFFFFF;
+  const tint = `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${Math.min(layer.opacity ?? 14, 40) / 100})`;
+  div.style.opacity = '';
+  div.style.background = `linear-gradient(160deg, rgba(255,255,255,0.32), rgba(255,255,255,0.05) 42%, rgba(255,255,255,0.10)), ${tint}`;
+  const blur = `blur(${px(layer.glassBlur ?? 34)}) saturate(1.6)`;
+  div.style.backdropFilter = blur;
+  div.style.webkitBackdropFilter = blur;
+  div.style.border = `${px(1.6)} solid rgba(255,255,255,0.42)`;
+  div.style.boxShadow = `inset 0 ${px(1.5)} 0 rgba(255,255,255,0.55), inset 0 -${px(1)} 0 rgba(255,255,255,0.12), 0 ${px(30)} ${px(70)} rgba(0,0,0,0.35)`;
 }
 
 // Reconciles a stored layer id order against the layers actually present —

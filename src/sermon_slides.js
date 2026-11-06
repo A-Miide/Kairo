@@ -40,22 +40,24 @@
       display: { family: 'Archivo Black', weight: 400, width: 0.66 }, body: { family: 'Inter' } },
     { id: 'linen', name: 'Linen', bg: '#F5EEE4', bg2: '#E8CDB7', text: '#2A1C15', accent: '#A9432A',
       display: { family: 'Cormorant Garamond', weight: 700, width: 0.44 }, body: { family: 'Manrope' } },
-    // From the owner's reference boards (their colour stories, Nov 2026).
-    { id: 'rose', name: 'Rose Dusk', bg: '#1C0920', bg2: '#70294A', text: '#FFF1EC', accent: '#EEAB85',
+    // From the owner's reference palette cards (their exact codes, Nov 2026). Each is one tonal
+    // ladder; `ramp` is the run of its steps that stays readable behind the text, which the
+    // backgrounds blend through.
+    { id: 'rose', name: 'Sunset', bg: '#1D1A39', bg2: '#662549', ramp: ['#1D1A39', '#451952', '#662549'], text: '#E8BCB9', accent: '#F39F5A',
       display: { family: 'Fraunces', weight: 700, width: 0.55 }, body: { family: 'Inter' } },
-    { id: 'crimson', name: 'Crimson Night', bg: '#0F1424', bg2: '#5E1730', text: '#FFF4F1', accent: '#F09A84',
+    { id: 'crimson', name: 'Crimson Night', bg: '#161E2F', bg2: '#384358', ramp: ['#161E2F', '#242F49', '#384358'], text: '#F6F1EE', accent: '#FFA586',
       display: { family: 'Bebas Neue', weight: 400, width: 0.42 }, body: { family: 'Inter' } },
-    { id: 'mint', name: 'Forest Mint', bg: '#06201C', bg2: '#204B40', text: '#ECF7EE', accent: '#9FD1B0',
+    { id: 'mint', name: 'Forest Mint', bg: '#051F20', bg2: '#235347', ramp: ['#051F20', '#0B2B26', '#163832', '#235347'], text: '#DAF1DE', accent: '#8EB69B',
       display: { family: 'DM Serif Display', weight: 400, width: 0.5 }, body: { family: 'Manrope' } },
-    { id: 'plum', name: 'Plum Peach', bg: '#140828', bg2: '#4F266A', text: '#FBF0FF', accent: '#ECAD70',
+    { id: 'plum', name: 'Plum Peach', bg: '#3A0353', bg2: '#804A8A', ramp: ['#2A023C', '#3A0353', '#804A8A'], text: '#FFF4E8', accent: '#F8D299',
       display: { family: 'Poppins', weight: 800, width: 0.62 }, body: { family: 'Inter' } },
-    { id: 'ocean', name: 'Deep Ocean', bg: '#03071A', bg2: '#0F3065', text: '#EAF3FF', accent: '#6AAEEA',
+    { id: 'ocean', name: 'Deep Ocean', bg: '#03071A', bg2: '#0F3065', ramp: ['#03071A', '#06163A', '#0F3065'], text: '#EAF3FF', accent: '#6AAEEA',
       display: { family: 'Space Grotesk', weight: 700, width: 0.58 }, body: { family: 'Inter' } },
-    { id: 'sky', name: 'Sky', bg: '#061D29', bg2: '#1C495D', text: '#F1FAFE', accent: '#7CC6E6',
+    { id: 'sky', name: 'Sky', bg: '#04202E', bg2: '#0A3C55', ramp: ['#04202E', '#0A3C55', '#0F5E83'], text: '#E1F2FA', accent: '#98D5EE',
       display: { family: 'Montserrat', weight: 800, width: 0.62 }, body: { family: 'Inter' } },
-    { id: 'honey', name: 'Honey', bg: '#1F160B', bg2: '#6A4E1B', text: '#FFF6E6', accent: '#F1C76A',
+    { id: 'honey', name: 'Honey', bg: '#2E2507', bg2: '#5A4A0D', ramp: ['#2E2507', '#5A4A0D', '#7A5E12'], text: '#FFF3D8', accent: '#E8B84A',
       display: { family: 'Fraunces', weight: 600, width: 0.53 }, body: { family: 'Manrope' } },
-    { id: 'lavender', name: 'Lavender', bg: '#F1E5F6', bg2: '#D9BFE6', text: '#2A1238', accent: '#7B3A93',
+    { id: 'lavender', name: 'Lavender', bg: '#F5EBFA', bg2: '#E7DBEF', ramp: ['#F5EBFA', '#E7DBEF'], text: '#49225B', accent: '#6E3482',
       display: { family: 'Poppins', weight: 700, width: 0.6 }, body: { family: 'Inter' } },
   ];
   // How the background is drawn from a look's two tones. All quiet; none adds anything to look at.
@@ -72,13 +74,19 @@
     { id: 'lower', name: 'Lower third' },
     { id: 'split', name: 'Split' },
     { id: 'editorial', name: 'Editorial' },
+    { id: 'statement', name: 'Statement' },
+    { id: 'card', name: 'Card' },
+    { id: 'quote', name: 'Quote' },
   ];
   const layoutOf = (id) => (LAYOUTS.some(l => l.id === id) ? id : 'left');
   const kitById = (id) => KITS.find(k => k.id === id) || KITS[0];
   // A look with the operator's own colours over it: { bg, bg2, text, accent }, any of them.
   function withColors(kit, colors) {
     const own = Object.fromEntries(Object.entries(colors || {}).filter(([k, v]) => ['bg', 'bg2', 'text', 'accent'].includes(k) && /^#[0-9a-f]{6}$/i.test(v)));
-    return Object.keys(own).length ? { ...kit, ...own } : kit;
+    if (!Object.keys(own).length) return kit;
+    const mixed = { ...kit, ...own };
+    if (own.bg || own.bg2) delete mixed.ramp;     // the look's own ladder no longer matches
+    return mixed;
   }
 
   // ── colour ──────────────────────────────────────────────────────────────────────────────────────
@@ -89,10 +97,11 @@
 
   function kitWarnings(kit) {
     const out = [];
-    for (const bg of [kit.bg, kit.bg2]) {
+    const tones = [kit.bg, kit.bg2, ...(kit.ramp || [])];
+    for (const bg of tones) {
       if (contrast(kit.text, bg) < 4.5) { out.push('The text colour is hard to read on the background.'); break; }
     }
-    for (const bg of [kit.bg, kit.bg2]) {
+    for (const bg of tones) {
       if (contrast(kit.accent, bg) < 3) { out.push('The accent colour is hard to see on the background.'); break; }
     }
     return out;
@@ -335,6 +344,7 @@
       shadow: { enabled: false, color: '#000000', opacity: 0, blur: 0, x: 0, y: 0 },
       outline: { enabled: false, color: '#000000', width: 0 },
       webFont: true,
+      ...(o.rotation ? { rotation: o.rotation } : {}),
     };
   }
   function shapeLayer(id, name, pos, color, o = {}) {
@@ -342,17 +352,26 @@
   }
   function backgroundLayers(kit, style) {
     // A full-size Background layer (not the canvas itself): its fill, colours and gradient are set
-    // under Style like any slide's background.
+    // under Style like any slide's background. A look with a tonal ladder (`ramp`) blends through its
+    // steps, as its palette card does; then a fine grain over it all, which ties the tones together
+    // and keeps the gradient from banding on a projector.
     const canvas = { id: 'ss-bg', type: 'background', name: 'Background', visible: true, opacity: 100, angle: 135, radius: 0, pos: { x: 0, y: 0, w: W, h: H } };
+    const ramp = kit.ramp && kit.ramp.length > 1 ? kit.ramp : [kit.bg, kit.bg2];
+    const stops = ramp.map((c, i) => ({ pos: Math.round(i / (ramp.length - 1) * 100), color: c }));
+    let bg;
     if (style === 'gradient') {
-      return [{ ...canvas, fill: 'gradient', color: kit.bg2, color2: kit.bg, gradientStops: [{ pos: 0, color: kit.bg2 }, { pos: 55, color: kit.bg }, { pos: 100, color: kit.bg }] }];
+      bg = { ...canvas, fill: 'gradient', color: ramp[ramp.length - 1], color2: ramp[0], gradientStops: [...stops].reverse() };
+    } else if (style === 'glow') {
+      // The deepest step as the ground; the next steps as soft light from the top-left corner.
+      bg = { ...canvas, fill: 'gradient', color: ramp[0], color2: ramp[0], gradientStops: [{ pos: 0, color: ramp[0] }, { pos: 100, color: ramp[0] }],
+        gradientGlows: [{ x: 4, y: 0, rx: 70, ry: 100, color: ramp[ramp.length - 1] },
+          ...(ramp.length > 2 ? [{ x: 0, y: 0, rx: 34, ry: 50, color: ramp[ramp.length - 2] }] : [])] };
+    } else {
+      bg = { ...canvas, fill: 'solid', color: kit.bg, color2: kit.bg };
     }
-    if (style === 'glow') {
-      // The second tone as a soft light from the top-left corner: the theme gradient's own glow.
-      return [{ ...canvas, fill: 'gradient', color: kit.bg, color2: kit.bg, gradientStops: [{ pos: 0, color: kit.bg }, { pos: 100, color: kit.bg }],
-        gradientGlows: [{ x: 4, y: 0, rx: 62, ry: 95, color: kit.bg2 }] }];
-    }
-    return [{ ...canvas, fill: 'solid', color: kit.bg, color2: kit.bg }];
+    const grain = { id: 'ss-grain', type: 'image', name: 'Grain', visible: true, src: 'backgrounds/grain.svg', fit: 'cover',
+      opacity: 100, blendMode: 'overlay', pos: { x: 0, y: 0, w: W, h: H } };
+    return [bg, grain];
   }
 
   // The scripture chips: a tinted pill each, the reference on it in the reading face.
@@ -418,6 +437,9 @@
     if (layout === 'lower') return lowerThird(gen, kit, style, footer);
     if (layout === 'split') return split(gen, kit, style, footer);
     if (layout === 'editorial') return editorial(gen, kit, style, footer);
+    if (layout === 'statement') return statement(gen, kit, style, footer);
+    if (layout === 'card') return card(gen, kit, style, footer);
+    if (layout === 'quote') return quote(gen, kit, style, footer);
     const L = backgroundLayers(kit, style);
     const refs = gen.refs || [];
     const lines = (gen.lines || []).filter(Boolean);
@@ -522,6 +544,111 @@
       { family: kit.body.family, size: 38, color: kit.text, opacity: 82, align: 'left' }));
     else L.push(...chipLayers(kit, refs.slice(0, 3), M, 846, 'left'));
     L.push(...footerLayer(kit, footer, { x: M, y: 990, w: 1100, h: 36 }));
+    return L;
+  }
+
+  // ── poster styles: type as texture, two voices, one loud accent ─────────────────────────────────
+  // Heavy condensed caps for the point, a script for the label, both whatever the look's own faces.
+  const CONDENSED = { family: 'Anton', weight: 400, width: 0.56 };
+  const SCRIPT = { family: 'Yellowtail', weight: 400 };
+  const NUMBER_WORDS = ['', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
+    'eleven', 'twelve', 'thirteen', 'fourteen', 'fifteen', 'sixteen', 'seventeen', 'eighteen', 'nineteen', 'twenty'];
+  // The word that becomes the ghost behind a slide: its first word of four letters or more.
+  const ghostWord = (text) => (String(text || '').match(/[A-Za-zÀ-ÿ']{4,}/) || [''])[0].replace(/'s$/i, '').toUpperCase();
+  const scriptLabel = (gen) => gen.kind === 'point' && gen.n ? `Point ${NUMBER_WORDS[gen.n] || gen.n}` : gen.kind === 'title' ? (gen.label || '') : gen.kind === 'story' ? 'Introduction' : '';
+  // The scriptures as one quiet tracked line (the chip layers, with their pills left clear).
+  function refLine(kit, refs, x, y, align, color) {
+    return chipLayers(kit, refs.slice(0, 3), x, y, align).map(l => l.type === 'background'
+      ? { ...l, opacity: 0 }
+      : { ...l, color: color || kit.accent, font: { ...l.font, size: 28, weight: 600, letterSpacing: 3, transform: 'uppercase' } });
+  }
+  const condensedKit = (kit) => ({ ...kit, display: CONDENSED });
+
+  // Statement: the point in huge condensed caps, its first word ghosted enormous behind it, the label
+  // in script over its corner, the church's name running up the left edge.
+  function statement(gen, kit, style, footer) {
+    const L = backgroundLayers(kit, style);
+    const lines = (gen.lines || []).filter(Boolean);
+    const text = gen.kind === 'title' ? lines[0] || '' : lines.join(' ');
+    const ghost = ghostWord(gen.kind === 'title' ? text : text);
+    if (ghost) L.push(textLayer('ss-ghost', 'Ghost word', { x: -60, y: 170, w: W + 600, h: 760 }, ghost,
+      { family: CONDENSED.family, size: 600, color: kit.text, opacity: 5, lineHeight: 1.0, spacing: -6 }));
+    if (footer) L.push(textLayer('ss-footer', 'Footer', { x: 70 - 420, y: 540 - 18, w: 840, h: 36 }, String(footer),
+      { family: kit.body.family, size: 20, color: kit.text, opacity: 55, spacing: 8, transform: 'uppercase', align: 'center', rotation: -90 }));
+    const X = 250;
+    const label = scriptLabel(gen);
+    if (label) L.push(textLayer('ss-label', 'Label', { x: X - 10, y: 250, w: 1200, h: 130 }, label,
+      { family: SCRIPT.family, size: 104, color: kit.accent, rotation: -4, lineHeight: 1.0 }));
+    const big = gen.kind === 'story' ? 66 : 150;
+    const h = headline(gen.kind === 'story' ? kit : condensedKit(kit), gen, { x: X, y: 360, w: W - X - 120, h: 470 }, text, big,
+      gen.kind === 'closing' ? kit.accent : kit.text, 'left', gen.kind === 'story' ? 1.2 : 0.98);
+    if (gen.kind !== 'story') h.font.transform = 'uppercase';
+    L.push(h);
+    if (gen.kind === 'title' && lines[1]) L.push(textLayer('ss-subtitle', 'Subtitle', { x: X, y: 830, w: 1300, h: 56 }, lines.slice(1).join(' '),
+      { family: kit.body.family, size: 34, color: kit.text, opacity: 80, spacing: 6, transform: 'uppercase' }));
+    else L.push(...refLine(kit, gen.refs || [], X, 850, 'left'));
+    return L;
+  }
+
+  // Card: the look's colour behind, the ghost word stacked down it; a white card with the point in the
+  // look's darkest tone, its label in an accent tag, the number in a badge breaking the card's top.
+  function card(gen, kit, style, footer) {
+    const L = backgroundLayers(kit, style);
+    const lines = (gen.lines || []).filter(Boolean);
+    const text = gen.kind === 'title' ? lines[0] || '' : lines.join(' ');
+    const ghost = ghostWord(text);
+    if (ghost) for (let i = 0; i < 3; i++) L.push(textLayer(`ss-ghost-${i}`, `Ghost word ${i + 1}`, { x: -40, y: -60 + i * 380, w: W + 400, h: 420 }, ghost,
+      { family: CONDENSED.family, size: 420, color: kit.bg2, opacity: 55, lineHeight: 1.0, spacing: -4 }));
+    const cx = 400, cy = 190, cw = W - 800, ch = 720;
+    // Liquid glass: the ghost words and the light show softly through it; the words on it in the
+    // look's own text colour (the glass is only a faint tint, so the background still decides).
+    const ink = kit.text;
+    L.push({ ...shapeLayer('ss-card', 'Card', { x: cx, y: cy, w: cw, h: ch }, '#FFFFFF', { radius: 64, opacity: 12 }), glass: true });
+    if (gen.kind === 'point' && gen.n) {
+      L.push(shapeLayer('ss-badge', 'Badge', { x: W / 2 - 80, y: cy - 80, w: 160, h: 160 }, kit.accent, { radius: 80 }));
+      L.push(textLayer('ss-number', 'Number', { x: W / 2 - 80, y: cy - 52, w: 160, h: 110 }, String(gen.n),
+        { family: CONDENSED.family, size: 92, color: kit.bg, align: 'center', lineHeight: 1.0 }));
+    }
+    const tag = gen.kind === 'point' ? 'Point' : gen.kind === 'title' ? (gen.label || 'Series') : gen.kind === 'story' ? 'Introduction' : '';
+    if (tag) {
+      const tw = Math.round(tag.length * 30 * 0.62 + 56);
+      L.push(shapeLayer('ss-tag', 'Tag', { x: W / 2 - tw / 2, y: cy + 130, w: tw, h: 58 }, kit.accent, { radius: 10 }));
+      L.push(textLayer('ss-label', 'Label', { x: W / 2 - tw / 2, y: cy + 140, w: tw, h: 44 }, tag,
+        { family: kit.body.family, size: 30, weight: 700, color: kit.bg, align: 'center', spacing: 2, transform: 'uppercase' }));
+    }
+    const h = headline(gen.kind === 'story' ? kit : condensedKit(kit), gen, { x: cx + 80, y: cy + 220, w: cw - 160, h: 380 }, text, gen.kind === 'story' ? 58 : 124, ink, 'center', gen.kind === 'story' ? 1.15 : 0.98);
+    if (gen.kind !== 'story') h.font.transform = 'uppercase';
+    L.push(h);
+    L.push(...chipLayers(kit, (gen.refs || []).slice(0, 3), 0, cy + ch - 120, 'center').map(l => l.type === 'background'
+      ? { ...l, color: kit.accent, opacity: 26 } : { ...l, color: ink }));
+    if (footer) L.push(...footerLayer(kit, footer, { x: M, y: 1000, w: W - 2 * M, h: 34 }, 'center'));
+    return L;
+  }
+
+  // Quote: oversized quote marks in the accent, cropped at the corners; the point in big condensed
+  // caps between them; the label knocked out of an accent bar.
+  function quote(gen, kit, style, footer) {
+    const L = backgroundLayers(kit, style);
+    const lines = (gen.lines || []).filter(Boolean);
+    const text = gen.kind === 'title' ? lines[0] || '' : lines.join(' ');
+    L.push(textLayer('ss-quote-open', 'Opening quote', { x: 60, y: -230, w: 700, h: 900 }, '\u201C',
+      { family: kit.display.family, size: 760, color: kit.accent, opacity: 100, lineHeight: 1.0 }));
+    L.push(textLayer('ss-quote-close', 'Closing quote', { x: W - 620, y: 640, w: 700, h: 900 }, '\u201D',
+      { family: kit.display.family, size: 760, color: kit.accent, opacity: 100, lineHeight: 1.0 }));
+    const X = 300, TW = W - 2 * X;
+    const tag = gen.label || (gen.kind === 'story' ? 'Introduction' : '');
+    if (tag) {
+      const tw = Math.round(tag.length * 28 * 0.66 + 48);
+      L.push(shapeLayer('ss-tag', 'Tag', { x: X, y: 300, w: tw, h: 54 }, kit.accent));
+      L.push(textLayer('ss-label', 'Label', { x: X, y: 309, w: tw, h: 40 }, tag,
+        { family: kit.body.family, size: 28, weight: 800, color: kit.bg, align: 'center', spacing: 3, transform: 'uppercase' }));
+    }
+    const h = headline(gen.kind === 'story' ? kit : condensedKit(kit), gen, { x: X, y: 380, w: TW, h: 420 }, text,
+      gen.kind === 'story' ? 64 : 132, kit.text, 'left', gen.kind === 'story' ? 1.2 : 0.98);
+    if (gen.kind !== 'story') h.font.transform = 'uppercase';
+    L.push(h);
+    L.push(...refLine(kit, gen.refs || [], X, 840, 'left', kit.text));
+    L.push(...footerLayer(kit, footer, { x: X, y: 990, w: 1100, h: 36 }));
     return L;
   }
 
