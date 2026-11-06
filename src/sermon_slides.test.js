@@ -157,6 +157,19 @@ test('three layouts, the lower third leaving the top of the slide clear', () => 
   for (const layer of lower.layers) assert.ok(layer.pos.y >= 700, `${layer.name} sits in the band`);
 });
 
+test('each design is a look, a layout and a background that exist, and every look and layout is offered', () => {
+  const o = S.readText(PASTED);
+  for (const d of S.DESIGNS) {
+    assert.ok(S.KITS.some(k => k.id === d.kit), d.kit);
+    assert.ok(S.LAYOUTS.some(l => l.id === d.layout), d.layout);
+    assert.ok(S.BACKGROUNDS.some(b => b.id === d.style), d.style);
+    const deck = S.newDeck(o, d).sermon;
+    assert.deepEqual([deck.kit, deck.layout, deck.style], [d.kit, d.layout, d.style]);
+  }
+  for (const k of S.KITS) assert.ok(S.DESIGNS.some(d => d.kit === k.id), `${k.id} has a design`);
+  for (const l of S.LAYOUTS) assert.ok(S.DESIGNS.some(d => d.layout === l.id), `${l.id} is used`);
+});
+
 test('any part other slides have is shared: a card change goes to later slides only, when asked', () => {
   const item = S.newDeck(S.readText(PASTED), { kit: 'redcard', layout: 'badge' });
   const at = 3;
@@ -192,4 +205,79 @@ test('a deck change asks to restyle hand-edited slides; when it does, their word
   const h = restyled[2].layers.find(l => l.id === 'ss-headline');
   assert.equal(h.customText, 'Abraham believed against all hope', 'its words stay');
   assert.equal(h.align, 'center', 'in the new layout');
+});
+
+// Layouts other than the one the pasted outline above uses: every one is read as an outline.
+const LAYOUTS_READ = {
+  'typed 1)': ['Grace Church', 'Theme: Faith', '1) Faith pleases God – Heb. 11:6', '2) Faith comes by hearing – Rom. 10:17', '3) Faith works by love – Gal. 5:6'],
+  bullets: ['Grace Church', 'Theme: Faith', '• Faith pleases God – Heb. 11:6', '• Faith comes by hearing – Rom. 10:17', '• Faith works by love – Gal. 5:6'],
+  dashes: ['Grace Church', 'Theme: Faith', '- Faith pleases God (Heb. 11:6)', '- Faith comes by hearing (Rom. 10:17)', '- Faith works by love (Gal. 5:6)'],
+  roman: ['Grace Church', 'Theme: Faith', 'I. Faith pleases God – Heb. 11:6', 'II. Faith comes by hearing – Rom. 10:17', 'III. Faith works by love – Gal. 5:6'],
+  letters: ['Grace Church', 'Theme: Faith', 'A. Faith pleases God – Heb. 11:6', 'B. Faith comes by hearing – Rom. 10:17', 'C. Faith works by love – Gal. 5:6'],
+  'Point N:': ['Grace Church', 'Theme: Faith', 'Point 1: Faith pleases God – Heb. 11:6', 'Point 2: Faith comes by hearing – Rom. 10:17', 'Point 3: Faith works by love – Gal. 5:6'],
+  'brackets': ['Grace Church', 'Theme: Faith', '1. Faith pleases God [Heb 11:6]', '2. Faith comes by hearing [Rom 10:17]', '3. Faith works by love [Gal 5:6]'],
+  'scripture on the next line': ['Grace Church', 'Theme: Faith', '1. Faith pleases God', 'Heb. 11:6', '2. Faith comes by hearing', 'Rom. 10:17', '3. Faith works by love', 'Gal. 5:6'],
+  'full book names': ['Grace Church', 'Theme: Faith', '1. Faith pleases God – Hebrews 11:6', '2. Faith comes by hearing – Romans 10:17', '3. Faith works by love – Galatians 5:6'],
+  'two points': ['Grace Church', 'Theme: Faith', '1. Faith pleases God – Heb. 11:6', '2. Faith comes by hearing – Rom. 10:17'],
+};
+for (const [name, lines] of Object.entries(LAYOUTS_READ)) {
+  test(`a sermon laid out with ${name} is read`, () => {
+    const o = S.readText(lines.join('\n'));
+    assert.ok(o, 'read');
+    assert.equal(o.how.mode, 'points');
+    const pts = o.items.filter(i => i.kind === 'point');
+    assert.equal(pts.length, lines.filter(l => /faith (pleases|comes|works)/i.test(l) && !/^(Grace|Theme)/.test(l)).length);
+    assert.equal(pts[0].text, 'Faith pleases God');
+    assert.ok(pts.every(p => p.refs.length === 1), 'each point has its scripture');
+    assert.ok(S.newDeck(o).blocks.length >= pts.length);
+  });
+}
+
+test('points without any scripture are still points, and sub-points are not slides', () => {
+  const none = S.readText(['Grace', 'Theme: X', '1. Faith pleases God', '2. Faith comes by hearing', '3. Faith works by love'].join('\n'));
+  assert.equal(none.items.filter(i => i.kind === 'point').length, 3);
+  const sub = S.readText(['Grace', 'Theme: X', '1. Faith pleases God – Heb. 11:6', 'a. without it impossible', 'b. believe He is', '2. Faith comes – Rom. 10:17', '3. Faith works – Gal. 5:6'].join('\n'));
+  assert.equal(sub.items.filter(i => i.kind === 'point').length, 3);
+  assert.ok(sub.other.includes('without it impossible'), 'a sub-point is offered, not made a slide');
+});
+
+test('headings with paragraphs under them: each heading a point, its scriptures found underneath', () => {
+  const o = S.readText(['THE POWER OF FAITH', 'Pastor John', 'FAITH PLEASES GOD', 'Without faith it is impossible to please Him. Hebrews 11:6', 'FAITH COMES BY HEARING', 'So then faith comes by hearing. Romans 10:17', 'FAITH WORKS BY LOVE', 'For in Christ neither circumcision avails anything. Galatians 5:6'].join('\n'));
+  assert.equal(o.how.mode, 'headings');
+  assert.deepEqual(o.items.map(i => i.text), ['FAITH PLEASES GOD', 'FAITH COMES BY HEARING', 'FAITH WORKS BY LOVE']);
+  assert.deepEqual(o.items.map(i => i.refs[0]), ['Hebrews 11:6', 'Romans 10:17', 'Galatians 5:6']);
+  assert.equal(o.header[0].text, 'THE POWER OF FAITH');
+  const deck = S.newDeck(o).blocks;
+  assert.equal(deck[0].gen.kind, 'title');
+  assert.ok(JSON.stringify(deck[0].layers).includes('THE POWER OF FAITH'), 'the first line is the title');
+  assert.equal(deck[0].gen.footer, 'Pastor John');
+});
+
+test('prose: read as paragraphs when it names scriptures, never for lyrics or notices', () => {
+  const prose = Array(8).fill('Faith is the substance of things hoped for, the evidence of things not seen, and Abraham believed God and it was counted to him as righteousness, as Romans 4:3 says.').join('\n');
+  const o = S.readText(prose);
+  assert.equal(o.how.mode, 'paragraphs');
+  assert.ok(o.items.every(i => i.kind === 'story' && i.refs.includes('Romans 4:3')));
+  assert.equal(S.readText('Amazing grace, how sweet the sound\nThat saved a wretch like me\nI once was lost, but now am found\nWas blind, but now I see'), null);
+  assert.equal(S.readText('Welcome everyone\nOffering is at 10\nYouth meets Friday'), null);
+});
+
+test('a scripture after a dash keeps its stray dash off, and an unknown short book still splits the line', () => {
+  const o = S.readText(['Grace', 'Theme: Isaiah 8:18 –', '1. A – Phx. 3:14', '2. B – Rom. 1:1', '3. C – Rom. 1:2'].join('\n'));
+  assert.equal(o.items.filter(i => i.kind === 'point')[0].text, 'A');
+  assert.equal(S.normaliseRef('Isa. 8:18 –'), 'Isaiah 8:18');
+  assert.equal(S.normaliseRef('Phi. 3:14'), 'Philippians 3:14');
+});
+
+test('a line the operator re-labels becomes a point, a section or an introduction, and points renumber', () => {
+  const item = S.newDeck(S.readText(PASTED), { kit: 'ember' });
+  const sect = S.partsOf(item.sermon.outline).find(p => p.kind === 'section');
+  item.sermon.include = [...new Set([...item.sermon.include, sect.id])];
+  const before = S.regenerate(item).filter(b => b.gen.kind === 'point').length;
+  item.sermon.kinds = { [sect.id]: 'point' };
+  const after = S.regenerate(item);
+  assert.equal(after.filter(b => b.gen.kind === 'point').length, before + 1);
+  assert.ok(after.every(b => b.gen.kind !== 'point' || /^Point \d+ of \d+$/.test(b.gen.label)));
+  item.sermon.kinds = { [sect.id]: 'story' };
+  assert.equal(S.regenerate(item).find(b => b.gen.part === sect.id).gen.kind, 'story');
 });

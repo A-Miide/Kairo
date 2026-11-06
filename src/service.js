@@ -502,7 +502,9 @@
             const hasRealLabel = b.label && b.label.trim().toLowerCase() !== String(item.title || '').trim().toLowerCase();
             out.push({
               label: parts.length > 1 ? (hasRealLabel ? `${b.label} · ${i + 1}` : `${i + 1}`) : (hasRealLabel ? b.label : ''),
-              lines, text: lines.join('\n'), reference: item.title,
+              // Only a real song's title belongs on the slide. Slides cut by line count are stored as a
+              // song too, and their title is usually a file name.
+              lines, text: lines.join('\n'), reference: item.songBank ? item.title : '',
               blockIndex: bi, lineStart: start, lineEnd: start + lines.length,
               themeId: (item.slideThemes && item.slideThemes[out.length]) || null,
             });
@@ -1664,6 +1666,8 @@
     const section = document.querySelector('.ls-playlist-section');
     if (!host) return;
     host.innerHTML = '';
+    // Quick edit's title is the item's name here in the playlist, so a rename shows there at once.
+    renderFullEditHeader();
 
     // Nothing to nest content INSIDE yet — the flow is create the folder
     // first, then add songs/slides/scripture into it. Hide the switcher and
@@ -1791,9 +1795,11 @@
         }
         // A plain click always narrows back to one, same as everywhere else
         // multi-select coexists with a normal click in this app.
+        const hadSelection = selectedItemIds.size > 0;
         selectedItemIds.clear();
         lastClickedItemId = item.id;
         focusInStack(item.id);
+        if (hadSelection) renderSidebar();
       });
       row.addEventListener('contextmenu', (e) => {
         if (e.target.closest('input,button')) return;
@@ -2354,10 +2360,16 @@
   // See expandOnly's own comment for why this is single-open rather than
   // additive.
   function focusInStack(id) {
-    activeItemId = id;
-    expandOnly(id);
-    openStack();
-    renderSidebar();
+    // Already the open item: nothing to redraw, only to scroll back to. Redrawing here took the title
+    // out from under a double-click's second click, so renaming from the playlist never started.
+    const stack = document.getElementById('svc-stack-view');
+    const alreadyOpen = activeItemId === id && expanded.size === 1 && expanded.has(id) && stack && !stack.classList.contains('hidden');
+    if (!alreadyOpen) {
+      activeItemId = id;
+      expandOnly(id);
+      openStack();
+      renderSidebar();
+    }
     // Confirmed root cause of the top-bar-disappearing bug: element.scrollIntoView()
     // walks up the ancestor chain to find "the" scrollable container, and in
     // WebKit that walk can still reach body/html and shift the whole page
@@ -2381,11 +2393,18 @@
     });
   }
 
-  function openFullEdit(id) {
+  function openFullEdit(id, slideIndex = 0) {
     activeItemId = id;
     showCenterView('fullscreen');
     renderFullEdit();
     renderSidebar();
+    // Opened from a slide's own menu: that slide is the one in view. Only the list scrolls
+    // (never the page, see focusInStack).
+    if (slideIndex > 0) {
+      const host = document.getElementById('svc-flow');
+      const row = host && host.querySelectorAll('.svc-flow-row')[slideIndex];
+      if (row) host.scrollTop = Math.max(0, row.getBoundingClientRect().top - host.getBoundingClientRect().top + host.scrollTop - 8);
+    }
   }
   function closeFullEdit() {
     openStack();
@@ -2464,27 +2483,12 @@
     const title = document.createElement('span');
     title.className = 'svc-card-title';
     title.textContent = item.title || '(untitled)';
+    title.title = item.title || '';   // the whole title, when the header can only show part of it
 
-    const typeTag = document.createElement('span');
-    typeTag.className = 'svc-card-type';
-    typeTag.textContent = typeLabel(item);
-
-    head.appendChild(grip);
     head.appendChild(chevron);
+    head.appendChild(grip);
     head.appendChild(num);
     head.appendChild(title);
-    head.appendChild(typeTag);
-
-    // Lines popover (songs and imported slide decks — anything the delimiter
-    // can chunk/un-chunk) and Theme popover — icon buttons, single row.
-    if (item.type === 'song' || item.type === 'slides') {
-      const linesBtn = document.createElement('button');
-      linesBtn.className = 'svc-card-icon-btn';
-      linesBtn.title = 'Lines per slide';
-      linesBtn.textContent = linesPerSlideValue(item) || 'S';
-      linesBtn.addEventListener('click', (e) => { e.stopPropagation(); openLinesPopover(linesBtn, item); });
-      head.appendChild(linesBtn);
-    }
 
     // Theme / Full-scale edit / Quick edit / Remove section used to
     // be four separate icon-only buttons crammed into this header. Right-
@@ -2589,7 +2593,7 @@
     const commit = () => {
       if (settled) return;
       settled = true;
-      item.title = input.value.trim();
+      item.title = input.value.trim() || item.title;
       saveService();
       onCommit();
     };
@@ -2738,6 +2742,7 @@
       // Edit jumps straight to THIS slide (index i), not always slide 0.
       sections.push([
         { label: 'Edit', onClick: () => window.KairoItemStyleEditor?.open?.(item.id, i) },
+        { label: 'Quick edit', onClick: () => openFullEdit(item.id, i) },
         (() => {
           // Right-clicking inside a multi-slide selection re-themes the whole
           // selection; otherwise just this slide. Songs and other items keep
@@ -2802,7 +2807,9 @@
     // list behind scrolls (it used to stay put while the card slid away: "where am I editing?").
     anchor.classList.add('is-popover-anchor');
     activePopoverAnchor = anchor;
-    activePopoverScroll = () => {
+    // The popover follows its anchor when the page behind scrolls, not when its own list does.
+    activePopoverScroll = (e) => {
+      if (e && e.target instanceof Node && pop.contains(e.target)) return;
       if (!anchor.isConnected) { closePopover(); return; }
       const a = anchor.getBoundingClientRect();
       if (a.bottom < 40 || a.top > window.innerHeight - 20) { closePopover(); return; }
@@ -2955,6 +2962,7 @@
         { label: 'Rename', onClick: () => startRenamingItemTitle(titleEl, item, () => { renderSidebar(); renderStack(); }) },
         { label: 'Duplicate', onClick: () => duplicateItem(item) },
         { label: 'Change Theme', onClick: () => openThemePopover(anchorEl, item) },
+        ...(item.type === 'song' || item.type === 'slides' ? [{ label: `Lines per slide: ${linesPerSlideValue(item)}`, onClick: () => openLinesPopover(anchorEl, item) }] : []),
         ...(onOlderTheme(item) ? [{ label: 'Update to the current theme', onClick: () => updateToCurrentTheme(item) }] : []),
         { label: 'Edit', onClick: () => window.KairoItemStyleEditor?.open?.(item.id, 0) },
         { label: 'Quick edit', onClick: () => openFullEdit(item.id) },
@@ -3563,35 +3571,34 @@
     renderFullEdit();
   }
   try { if (localStorage.getItem('kairo-quick-edit-mode') === 'text') flowMode = 'text'; } catch {}
-  document.getElementById('svc-flow-mode')?.addEventListener('click', (e) => {
-    const b = e.target.closest('button[data-mode]');
-    if (b) setFlowMode(b.dataset.mode);
-  });
-
   function renderFullEditHeader() {
     const item = activeItem();
-    const titleInp = document.getElementById('svc-fs-title');
-    const delim = document.getElementById('svc-delim-group');
-    if (titleInp) titleInp.value = item?.title || '';
-    if (delim) delim.style.display = item && (item.type === 'song' || item.type === 'slides') ? '' : 'none';
-    const mode = document.getElementById('svc-flow-mode');
-    if (mode) {
-      const can = textEditable(item);
-      mode.style.display = item && (item.type === 'song' || item.type === 'slides') ? '' : 'none';
-      const textBtn = mode.querySelector('[data-mode="text"]');
-      if (textBtn) { textBtn.disabled = !can; textBtn.title = can ? 'Edit every slide as one piece of text' : 'Not for a deck with picture or imported slides'; }
-      const on = can && flowMode === 'text' ? 'text' : 'slides';
-      mode.querySelectorAll('button[data-mode]').forEach(b => { b.classList.toggle('is-on', b.dataset.mode === on); b.setAttribute('aria-pressed', b.dataset.mode === on ? 'true' : 'false'); });
-    }
-    syncFullEditDelim();
+    const titleEl = document.getElementById('svc-fs-title');
+    if (titleEl) { titleEl.textContent = item?.title || ''; titleEl.title = item?.title || ''; }
   }
-  function syncFullEditDelim() {
+
+  // The Actions menu in Quick edit's header: how to edit (as slides or as text), lines per slide, the
+  // theme, and the design canvas, all for this item.
+  function openFullEditActions(anchor) {
     const item = activeItem();
     if (!item) return;
-    const input = document.getElementById('svc-delim-input');
-    if (input && document.activeElement !== input) {
-      input.value = linesPerSlideValue(item);
+    const multi = item.type === 'song' || item.type === 'slides';
+    const can = textEditable(item);
+    const as = can && flowMode === 'text' ? 'text' : 'slides';
+    const sections = [];
+    if (multi) {
+      sections.push([
+        { label: 'Edit as slides', selected: as === 'slides', onClick: () => setFlowMode('slides') },
+        { label: 'Edit as text', selected: as === 'text', disabled: !can, onClick: () => setFlowMode('text') },
+      ]);
     }
+    sections.push([
+      ...(multi ? [{ label: `Lines per slide: ${linesPerSlideValue(item)}`, onClick: () => openLinesPopover(anchor, item) }] : []),
+      { label: 'Theme', onClick: () => openThemePopover(anchor, item) },
+      { label: 'Edit design', onClick: () => window.KairoItemStyleEditor?.open?.(item.id, 0) },
+    ]);
+    const r = anchor.getBoundingClientRect();
+    openContextMenu(r.right, r.bottom + 2, sections);
   }
 
   // Paint a look's layers into `host` (must be position:relative and sized).
@@ -4125,7 +4132,44 @@
       item.text = lines.join('\n');
     }
     saveService();
-    renderSidebar(); renderFlowView(item);
+    renderSidebar();
+    // A deck's slide is one block: its new words change nothing else in the list. A song's lines
+    // are cut into slides by count, so its list has to be drawn again.
+    if (item.type === 'song') redrawFlowAfterEdit(item);
+  }
+
+  // Leaving a slide's words saves them, and that happens on the mouse press that lands somewhere else.
+  // Redrawing the list right then took away what was being clicked (the next slide, a Send button), so
+  // the redraw waits for the press to finish.
+  let flowPointerDown = false;
+  let flowRedrawing = false;
+  document.addEventListener('mousedown', () => { flowPointerDown = true; }, true);
+  document.addEventListener('mouseup', () => { flowPointerDown = false; }, true);
+  function redrawFlowAfterEdit(item) {
+    const redraw = () => setTimeout(() => { if (activeItem() === item) renderFlowView(item); }, 0);
+    if (flowPointerDown) document.addEventListener('mouseup', redraw, { once: true });
+    else redraw();
+  }
+
+  function caretCharOffset(el) {
+    const sel = window.getSelection();
+    if (!sel.rangeCount || !el.contains(sel.anchorNode)) return 0;
+    const range = sel.getRangeAt(0).cloneRange();
+    range.selectNodeContents(el);
+    range.setEnd(sel.anchorNode, sel.anchorOffset);
+    return range.toString().length;
+  }
+  function placeCaret(el, offset) {
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    const node = el.firstChild;
+    const range = document.createRange();
+    if (node && node.nodeType === Node.TEXT_NODE) range.setStart(node, Math.min(offset, node.length));
+    else range.selectNodeContents(el);
+    range.collapse(true);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
   }
 
   // Where the caret sits, measured in lines from the start of the editable —
@@ -4190,13 +4234,31 @@
     // to the top with nothing to restore it — the operator's position in a
     // long song/slide deck kept getting yanked out from under them.
     const outerScroll = host.scrollTop;
+    // The slide being typed in stays that way through a redraw, caret and all.
+    const typing = document.activeElement?.closest?.('#svc-flow .svc-flow-text');
+    const typingAt = typing ? [...host.querySelectorAll('.svc-flow-text')].indexOf(typing) : -1;
+    const typingCaret = typing ? caretCharOffset(typing) : 0;
+    const typedWords = typing ? typing.innerText.replace(/\n$/, '') : '';
+    const typedFrom = typing ? typing.dataset.startWords : '';
+    flowRedrawing = true;
     host.innerHTML = '';
+    flowRedrawing = false;
     const slides = slidesFor(item);
     if (!slides.length) {
       host.innerHTML = '<div class="svc-flow-hint">No slides yet.</div>';
       return;
     }
-    slides.forEach((s, i) => host.appendChild(flowRow(item, s, i, slides.length)));
+    // Every slide in one box, a single line between each.
+    const list = document.createElement('div');
+    list.className = 'svc-flow-list';
+    slides.forEach((s, i) => list.appendChild(flowRow(item, s, i, slides.length)));
+    host.appendChild(list);
+    if (typingAt >= 0) {
+      const field = host.querySelectorAll('.svc-flow-text')[typingAt];
+      // Words typed but not yet saved come along, unless the redraw moved another slide into this place.
+      if (field && field.textContent === typedFrom && typedWords !== typedFrom) field.textContent = typedWords;
+      placeCaret(field, typingCaret);
+    }
     host.scrollTop = outerScroll;
 
     if (item.type === 'slides' || item.type === 'song') {
@@ -4226,9 +4288,9 @@
     const hint = document.createElement('div');
     hint.className = 'svc-flow-hint';
     hint.textContent = item.type === 'slides'
-      ? 'Drag the grip to reorder · Shift+Enter splits at the caret · Backspace at the start joins onto the slide before · Text edits it all at once'
+      ? 'Drag the grip to reorder · Shift+Enter or ⌘Enter splits at the caret · Backspace at the start joins onto the slide before · Text edits it all at once'
       : item.type === 'song'
-      ? 'Shift+Enter splits at the caret · Backspace at the start joins onto the slide before · Text edits it all at once'
+      ? 'Shift+Enter or ⌘Enter splits at the caret · Backspace at the start joins onto the slide before · Text edits it all at once'
       : 'Click text to edit';
     host.appendChild(hint);
   }
@@ -4267,12 +4329,75 @@
   // into O(N²) work. For a real multi-hundred-slide song this was the
   // actual few-second stall between hitting send and the row/board
   // updating, not anything about the send itself.
+  // What a slide's bar says about it: a sermon slide's own label (Title, Point 3 of 26) and scriptures,
+  // any other slide's label unless it is only a number ("4", "Slide 4").
+  function flowMeta(item, slide, block) {
+    if (block && block.gen) {
+      const kinds = { title: 'Title', story: 'Introduction', section: 'Section', closing: 'Closing' };
+      return { label: block.gen.label || kinds[block.gen.kind] || '' };
+    }
+    const l = String(slide.label || '');
+    return { label: /^(?:slide\s+)?\d+$/i.test(l.trim()) ? '' : l };
+  }
+  // A designed slide's text as the deck stores it: label, words, then its scriptures.
+  function composeDesigned(gen, words) {
+    const refs = (gen.refs || []).length ? 'Scriptures: ' + gen.refs.join(' \u00b7 ') : '';
+    return [gen.label, String(words || '').replace(/\r/g, '').split('\n').map(l => l.trim()).filter(Boolean).join('\n'), refs].filter(Boolean).join('\n');
+  }
+  // A designed slide's scriptures as chips under its words; a click turns them into a field to retype
+  // them. With none there is nothing to show, and the slide's menu offers to add them (box.edit).
+  function flowRefs(item, i, slide, block) {
+    const box = document.createElement('div');
+    box.className = 'svc-flow-refs';
+    const edit = () => {
+      const input = document.createElement('input');
+      input.className = 'svc-flow-refs-input';
+      input.value = (block.gen.refs || []).join(' · ');
+      input.placeholder = 'Romans 4:16–21 · Heb. 11:17';
+      input.setAttribute('aria-label', 'Scriptures on this slide');
+      box.replaceChildren(input);
+      input.focus();
+      let done = false;
+      const commit = (keep) => {
+        if (done) return;
+        done = true;
+        if (!keep) { draw(); return; }
+        const next = input.value.split(/\s*[·|;]\s*/).map(x => x.trim()).filter(Boolean);
+        const now = item.blocks[i] || block;
+        commitSlideText(item, i, slide, composeDesigned({ ...now.gen, refs: next }, (now.gen.lines || []).join('\n')));
+        redrawFlowAfterEdit(item);
+      };
+      input.addEventListener('keydown', (ev) => {
+        if (ev.key === 'Enter') { ev.preventDefault(); commit(true); }
+        else if (ev.key === 'Escape') { ev.preventDefault(); commit(false); }
+      });
+      input.addEventListener('blur', () => commit(true));
+    };
+    const draw = () => {
+      box.replaceChildren();
+      const refs = (item.blocks[i] || block).gen.refs || [];
+      if (!refs.length) return;
+      const btn = document.createElement('button');
+      btn.className = 'svc-flow-refs-btn';
+      btn.title = 'Edit the scriptures on this slide';
+      refs.forEach(r => { const c = document.createElement('span'); c.className = 'svc-flow-chip'; c.textContent = r; btn.appendChild(c); });
+      btn.addEventListener('click', (e) => { e.stopPropagation(); edit(); });
+      box.appendChild(btn);
+    };
+    draw();
+    box.edit = edit;
+    return box;
+  }
+
   function flowRow(item, slide, i, total) {
     const canReorder = item.type === 'slides';
     // Excludes image slides — a 'slides' item can now mix text and
     // pure-image blocks (ProPresenter imports), and there's no caret/text to
     // split at on an image block.
-    const canSplit   = (item.type === 'slides' || item.type === 'song') && !slide.image;
+    // A designed slide (a sermon deck's) keeps its layout, so it isn't split or joined by text.
+    const block = item.type === 'slides' ? item.blocks[i] : null;
+    const designed = !!(block && block.gen);
+    const canSplit   = (item.type === 'slides' || item.type === 'song') && !slide.image && !designed;
     const canDelete  = total > 1 && (item.type === 'slides' || item.type === 'song');
     const isLive = liveSlideKey === `${item.id}:${i}`;
     const row = document.createElement('div');
@@ -4329,12 +4454,22 @@
       text.className = 'svc-flow-text';
       text.contentEditable = 'true';
       text.spellcheck = false;
-      text.textContent = slide.text || '';
+      // A designed slide's label and scriptures are in its bar; here are its words.
+      text.textContent = designed ? (block.gen.lines || []).join('\n') : (slide.text || '');
       text.addEventListener('mousedown', (e) => e.stopPropagation());
-      text.addEventListener('blur', () => commitSlideText(item, i, slide, text.innerText));
+      const wordsAtStart = text.textContent;
+      text.dataset.startWords = wordsAtStart;
+      text.addEventListener('blur', () => {
+        // Taken out by a redraw, or left as it was: nothing to save.
+        if (flowRedrawing || text.innerText.replace(/\n$/, '') === wordsAtStart) return;
+        // Fresh, not the block this row was drawn with: the words may have been saved since.
+        const now = item.type === 'slides' ? item.blocks[i] : null;
+        commitSlideText(item, i, slide, now && now.gen ? composeDesigned(now.gen, text.innerText) : text.innerText);
+      });
       text.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') { e.preventDefault(); text.blur(); return; }
-        if (e.key === 'Enter' && e.shiftKey && canSplit) {
+        // Shift+Enter or Cmd/Ctrl+Enter splits the slide at the caret.
+        if (e.key === 'Enter' && (e.shiftKey || e.metaKey || e.ctrlKey) && canSplit) {
           e.preventDefault();
           if (item.type === 'slides') splitFlowSlideAtCaret(item, i, text);
           else splitSlideAtCaret(item, slide, text);
@@ -4348,45 +4483,44 @@
       content = text;
     }
 
-    // Right-click: split (text slides)/Fit Mode (image slides)/Delete this
-    // slide, all via the shared context-menu primitive. The caret position
-    // is captured synchronously here, at right-click time, rather than
-    // re-derived later from a possibly-stale selection once a menu button
-    // (a separate, later click, on a detached popover) is clicked — by then
-    // the contenteditable may have already blurred.
-    if (canSplit || slide.image) {
+    let refsBox = null;
+    // The slide's menu, from a right-click on its words or the row's menu button, through the shared
+    // context-menu primitive: split (text slides), Fit Mode (image slides), Duplicate/Copy/Paste, Delete.
+    // The caret position is taken when the menu is asked for, not later from a selection that a click
+    // on a menu item (a detached popover) will have lost.
+    const openSlideMenu = (x, y, rel) => {
+      const sections = [];
+      if (canSplit && rel != null) {
+        sections.push([{ label: 'Split slide here', onClick: () =>
+          item.type === 'slides' ? splitFlowSlideAtCaretAt(item, i, content, rel) : splitSlideAtCaretAt(item, slide, content, rel) }]);
+      }
+      if (slide.image) sections.push([{ label: 'Fit Mode', submenu: fitModeMenuItems(item) }]);
+      if (refsBox) sections.push([{ label: (item.blocks[i].gen.refs || []).length ? 'Edit scriptures' : 'Add scriptures', onClick: () => refsBox.edit() }]);
+      // Duplicate/Copy/Paste are omitted (not just disabled) when they don't apply: this slide
+      // can't be duplicated, or nothing's been copied yet, or this item type can't take a paste.
+      const editGroup = [];
+      if (canDuplicateSlide(item, slide)) {
+        editGroup.push({ label: 'Duplicate', onClick: () => duplicateSlide(item, i) });
+      }
+      const selection = selectedSlideIndices.size ? selectedSlideIndices : new Set([i]);
+      if (anySlidesDuplicable(item, selection)) {
+        editGroup.push({
+          label: selection.size > 1 ? `Copy ${selection.size} slides` : 'Copy',
+          onClick: () => copySlides(item, selection),
+        });
+      }
+      if (slideClipboard && item.type === 'slides') {
+        editGroup.push({ label: 'Paste', onClick: () => pasteSlides(item, i) });
+      }
+      if (editGroup.length) sections.push(editGroup);
+      sections.push([{ label: 'Delete this slide', danger: true, disabled: !canDelete,
+        onClick: () => deleteFlowSlideOrSong(item, i, slide) }]);
+      openContextMenu(x, y, sections);
+    };
+    if (canSplit || slide.image || designed) {
       content.addEventListener('contextmenu', (e) => {
         e.preventDefault();
-        const rel = canSplit ? caretLineIndex(content) : null;
-        const sections = [];
-        if (canSplit) {
-          sections.push([{ label: 'Split slide here', onClick: () =>
-            item.type === 'slides' ? splitFlowSlideAtCaretAt(item, i, content, rel) : splitSlideAtCaretAt(item, slide, content, rel) }]);
-        }
-        if (slide.image) sections.push([{ label: 'Fit Mode', submenu: fitModeMenuItems(item) }]);
-        // Duplicate/Copy/Paste — omitted (not just disabled) when they don't
-        // apply, same convention as Split above: this slide's underlying
-        // block can't be duplicated (canDuplicateSlide), or nothing's been
-        // copied yet, or (for Paste) this item type's structure doesn't
-        // support pasting a clipboard slide into it.
-        const editGroup = [];
-        if (canDuplicateSlide(item, slide)) {
-          editGroup.push({ label: 'Duplicate', onClick: () => duplicateSlide(item, i) });
-        }
-        const selection = selectedSlideIndices.size ? selectedSlideIndices : new Set([i]);
-        if (anySlidesDuplicable(item, selection)) {
-          editGroup.push({
-            label: selection.size > 1 ? `Copy ${selection.size} slides` : 'Copy',
-            onClick: () => copySlides(item, selection),
-          });
-        }
-        if (slideClipboard && item.type === 'slides') {
-          editGroup.push({ label: 'Paste', onClick: () => pasteSlides(item, i) });
-        }
-        if (editGroup.length) sections.push(editGroup);
-        sections.push([{ label: 'Delete this slide', danger: true, disabled: !canDelete,
-          onClick: () => deleteFlowSlideOrSong(item, i, slide) }]);
-        openContextMenu(e.clientX, e.clientY, sections);
+        openSlideMenu(e.clientX, e.clientY, canSplit ? caretLineIndex(content) : null);
       });
     }
 
@@ -4399,26 +4533,56 @@
       sendSlide(item, i, { direct: true }); // an explicit Send; also refreshes Flow's "live" highlight
     });
 
-    const del = document.createElement('button');
-    del.className = 'svc-flow-del' + (canDelete ? '' : ' is-disabled');
-    del.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>`;   // icon only (owner, 2026-10-18); its name is in the tooltip
-    del.title = canDelete ? 'Delete slide' : 'A section needs at least one slide';
-    del.setAttribute('aria-label', del.title);
-    del.addEventListener('click', () => deleteFlowSlideOrSong(item, i, slide));
+    // One row: the number, the words, then Send and a menu, all level with the words' first line. What
+    // the slide is and its scriptures sit in a small line under the words. Delete lives in the menu, so
+    // a stray click can't remove a slide.
+    const meta = flowMeta(item, slide, block);
+    const gutter = document.createElement('div');
+    gutter.className = 'svc-flow-gutter';
+    gutter.append(num, grip);
+    const main = document.createElement('div');
+    main.className = 'svc-flow-main';
+    main.appendChild(content);
+    const under = document.createElement('div');
+    under.className = 'svc-flow-under';
+    if (meta.label) {
+      const label = document.createElement('span');
+      label.className = 'svc-flow-label';
+      label.textContent = meta.label;
+      under.appendChild(label);
+    }
+    // Scriptures go on a title, an introduction or a point; a section or closing line carries none.
+    if (designed && !['section', 'closing'].includes(block.gen.kind)) {
+      refsBox = flowRefs(item, i, slide, block);
+      under.appendChild(refsBox);
+    }
+    main.appendChild(under);
 
-    row.appendChild(grip);
-    row.appendChild(num);
-    row.appendChild(content);
+    const actions = document.createElement('div');
+    actions.className = 'svc-flow-actions';
     if (item.type === 'scripture') {
       const lookup = document.createElement('button');
       lookup.className = 'svc-flow-send';
       lookup.title = 'Re-look-up this verse by its reference';
       lookup.innerHTML = `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg><span>Look up</span>`;
       lookup.addEventListener('click', (e) => { e.stopPropagation(); resolveScripture(item, lookup); });
-      row.appendChild(lookup);
+      actions.appendChild(lookup);
     }
-    row.appendChild(send);
-    row.appendChild(del);
+    actions.appendChild(send);
+    const more = document.createElement('button');
+    more.className = 'svc-flow-more';
+    more.title = 'Slide options';
+    more.setAttribute('aria-label', 'Slide options');
+    more.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></svg>`;
+    let caretAtPress = null;
+    more.addEventListener('mousedown', () => { caretAtPress = canSplit && document.activeElement === content ? caretLineIndex(content) : null; });
+    more.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const r = more.getBoundingClientRect();
+      openSlideMenu(r.right, r.bottom + 2, caretAtPress);
+    });
+    actions.appendChild(more);
+    row.append(gutter, main, actions);
 
     // Reorder by dragging the grip specifically — the row itself hosts an
     // editable text area, so a drag started from anywhere else would fight
@@ -4642,8 +4806,16 @@
     acDraft.outline = destination === 'playlist' && window.KairoSermonSlides?.newDeck ? opts.outline || null : null;
     document.getElementById('ac-sermon')?.classList.toggle('hidden', !acDraft.outline);
     if (acDraft.outline) {
-      const points = acDraft.outline.items.filter(i => i.kind === 'point').length;
-      document.getElementById('ac-sermon-detail').textContent = `${points} points with their scriptures, made into designed slides you can edit.`;
+      // How the document was read, so a loose reading says so and the operator knows to check it.
+      const how = acDraft.outline.how || { mode: 'points', points: acDraft.outline.items.filter(i => i.kind === 'point').length };
+      const heading = document.querySelector('#ac-sermon .ac-sermon-head b');
+      const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
+      if (heading) heading.textContent = how.mode === 'points' ? 'This reads as a sermon outline' : 'Kairo can make this into sermon slides';
+      document.getElementById('ac-sermon-detail').textContent = how.mode === 'points'
+        ? `${plural(how.points, 'point')}${how.withRefs ? `, ${how.withRefs} with scriptures,` : ''} made into designed slides you can edit.`
+        : how.mode === 'headings'
+          ? `No numbered points, so each of the ${plural(how.points, 'heading')} became a point, with the scriptures found under it. Check them in the editor.`
+          : 'No numbered points or headings, so each paragraph became a slide. Choose what stays in the editor.';
       renderSermonLayouts(acDraft.outline);
     }
     document.getElementById('ac-scene-notice')?.classList.toggle('hidden', !isSceneImport);
@@ -4797,23 +4969,25 @@
     row.append(styleGroup, colourGroup);
     host.append(row);
 
-    // The Style button drawn for the current choices; after a pick it is drawn again, open.
-    const draw = (reopen) => {
+    // The Style button for the current choices; Apply in its pop-out updates it in place.
+    const draw = () => {
       if (!acDraft) return;
       const kit = S.withColors(S.kitById(acDraft.kit), acDraft.colors);
       inputs.forEach(([key, inp]) => { inp.value = kit[key]; inp.parentElement.style.background = kit[key]; });
-      styleSlot.replaceChildren(S.styleButton(
-        { outline, kit: acDraft.kit, colors: acDraft.colors, layout: acDraft.layout, style: acDraft.style },
+      const state = { outline, kit: acDraft.kit, colors: acDraft.colors, layout: acDraft.layout, style: acDraft.style };
+      // The same button is given the new choices, so it is drawn once.
+      if (styleSlot.firstElementChild?.update) { styleSlot.firstElementChild.update(state); return; }
+      styleSlot.replaceChildren(S.styleButton(state,
         (c) => {
           if (c.kit) { acDraft.kit = c.kit; acDraft.colors = undefined; }
           if (c.layout) acDraft.layout = c.layout;
           if (c.style) acDraft.style = c.style;
-          draw(true);
-        }, { reopen }));
+          draw();
+        }));
     };
     let timer = null;
-    const drawSoon = () => { clearTimeout(timer); timer = setTimeout(() => draw(false), 150); };
-    draw(false);
+    const drawSoon = () => { clearTimeout(timer); timer = setTimeout(draw, 150); };
+    draw();
   }
 
   function closeAddConfirm() {
@@ -7609,27 +7783,7 @@
 
     // Full-edit view
     document.getElementById('svc-back-to-stack')?.addEventListener('click', closeFullEdit);
-    document.getElementById('svc-fs-title')?.addEventListener('change', (e) => {
-      const item = activeItem();
-      if (!item) return;
-      item.title = e.target.value; saveService(); renderSidebar(); renderStack();
-    });
-    document.getElementById('svc-item-theme-btn')?.addEventListener('click', (e) => {
-      const item = activeItem();
-      if (item) openThemePopover(e.currentTarget, item);
-    });
-    document.getElementById('svc-item-fullscale-btn')?.addEventListener('click', () => {
-      const item = activeItem();
-      if (item) window.KairoItemStyleEditor?.open?.(item.id, 0);
-    });
-    document.getElementById('svc-delim-input')?.addEventListener('change', (e) => {
-      const item = activeItem();
-      if (!item) return;
-      const requested = Math.max(0, Math.floor(Number(e.target.value)) || 0);
-      setLinesPerSlide(item, requested);
-      e.target.value = linesPerSlideValue(item);
-      refreshAfterSlideEdit(item);
-    });
+    document.getElementById('svc-actions-btn')?.addEventListener('click', (e) => openFullEditActions(e.currentTarget));
     // Space / arrows advance whichever slide is currently live — works from
     // the stack (present mode) as well as full-edit, since that's where an
     // operator actually runs a service from.
@@ -7913,7 +8067,7 @@
   window.KairoService = {
     segmentDefaultLook,
     get service() { return service; },
-    slidesFor, sendSlide, slideSendBody, sendMedia: sendMediaItem, liveSlideKey: () => liveSlideKey, cycleSectionLabel, focusInStack, openFullEdit, closeStack, closeFullEdit,
+    openContextMenu, slidesFor, sendSlide, slideSendBody, sendMedia: sendMediaItem, liveSlideKey: () => liveSlideKey, cycleSectionLabel, focusInStack, openFullEdit, closeStack, closeFullEdit,
     effectiveTranslateTo, awaitTranslatedText,
     paintLookLayers, renderLookThumbnail, buildThemeTree, slideThemeIdOf, hasSlideThemes, mediaMuted: () => mediaMutedState, saveService, openContextMenu, openThemePopover, openPopover, closePopover, themeForItem,
     showMediaLibrary, onMediaStatus, onMediaFolderChanged, setMediaTransportVisible, onMediaLive,

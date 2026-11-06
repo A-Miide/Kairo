@@ -1995,28 +1995,6 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
   padding: 3px 6px;
 }
 
-/* Quick edit: Slides | Text */
-.svc-mode {
-  display: inline-flex;
-  margin-left: var(--space-4);
-  border: 1px solid var(--border-md);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
-  flex: none;
-}
-.svc-mode button {
-  padding: 4px 10px;
-  border: 0;
-  background: transparent;
-  color: var(--text-2);
-  font: inherit;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  cursor: pointer;
-}
-.svc-mode button + button { border-left: 1px solid var(--border-md); }
-.svc-mode button.is-on { background: var(--bg-input); color: var(--text); }
-.svc-mode button:disabled { opacity: .4; cursor: default; }
 .svc-text-wrap {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(160px, 240px);
@@ -2045,19 +2023,6 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
 .svc-text-first { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 @media (max-width: 900px) { .svc-text-wrap { grid-template-columns: 1fr; } .svc-text-side { max-height: 30vh; } }
 
-.svc-delim {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-left: var(--space-4);
-}
-.svc-delim-label {
-  font-size: var(--fs-xs);
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-3);
-  font-weight: 600;
-}
 .svc-delim-input {
   width: 48px;
   padding: 3px 6px;
@@ -2197,6 +2162,22 @@ body > .lyric-follow-hud { position: fixed; left: 14px; bottom: 14px; z-index: 4
 .svc-item-title {
   font-size: var(--fs-md); font-weight: 600; color: var(--text);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+/* The title while it's being renamed (startRenamingItemTitle): same words in the same place, with
+   only the text highlight and caret to show it's being edited. */
+input.svc-item-title {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-family: inherit;
+  line-height: inherit;
+  outline: none;
+  appearance: none;
 }
 .svc-item-sub { font-size: var(--fs-xs); color: var(--text-3); }
 /* a deck still on the version of its theme it had before the theme was edited */
@@ -2471,7 +2452,10 @@ body > .lyric-follow-hud { position: fixed; left: 14px; bottom: 14px; z-index: 4
   cursor: pointer;
 }
 .svc-card.open .svc-card-head { border-bottom: 1px solid var(--border); }
-.svc-card-grip { color: var(--text-3); flex: none; cursor: grab; }
+/* The grip takes the number's place while the header is pointed at. */
+.svc-card-grip { display: none; flex: none; width: 20px; height: 20px; align-items: center; justify-content: center; color: var(--text-2); cursor: grab; }
+.svc-card-head:hover .svc-card-grip { display: flex; }
+.svc-card-head:hover .svc-card-num { display: none; }
 .svc-card-chevron {
   flex: none;
   width: 20px; height: 20px;
@@ -2495,6 +2479,11 @@ body > .lyric-follow-hud { position: fixed; left: 14px; bottom: 14px; z-index: 4
 .svc-card-title {
   flex: 1;
   min-width: 0;
+  /* A long title stops at the label and buttons beside it, ending in an ellipsis. */
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   background: transparent;
   border: none;
   color: var(--text);
@@ -2504,15 +2493,6 @@ body > .lyric-follow-hud { position: fixed; left: 14px; bottom: 14px; z-index: 4
   padding: 2px 0;
 }
 .svc-card-title:focus { outline: none; }
-.svc-card-type {
-  flex: none;
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  color: var(--text-3);
-  background: var(--bg-input);
-  border-radius: 999px;
-  padding: 2px 8px;
-}
 .svc-card-icon-btn {
   flex: none;
   min-width: 22px; height: 22px;
@@ -2639,19 +2619,28 @@ body > .lyric-follow-hud { position: fixed; left: 14px; bottom: 14px; z-index: 4
 .svc-popover-item.has-submenu::after { content: '\203A'; color: var(--text-3); margin-left: 8px; }
 
 /* ── Full-scale edit ──────────────────────────────────────────────────────
-   Back button + editable title + (song-only) delimiter + theme icon, all on
-   one line; strip of slides / WYSIWYG canvas / style inspector below. */
+   Back button + title (shown, not edited) + Actions menu, all on one line; strip of slides / WYSIWYG canvas / style inspector below. */
 .svc-back-btn { flex: none; }
+/* Quick edit's header: its two buttons read at the same strength as the title beside them. */
+#svc-fullscreen .svc-header .ls-icon-btn { height: 26px; color: var(--text-2); border-color: var(--border-md); }
+#svc-fullscreen .svc-header .ls-icon-btn:hover { color: var(--text); }
 .svc-fs-title {
   flex: 1;
-  min-width: 120px;
-  max-width: 360px;
+  min-width: 0;
+  /* The name is changed in the playlist (double-click it there); here it only shows. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: var(--fs-md);
+  font-weight: 600;
 }
 .svc-theme-icon-btn { width: 28px; height: 28px; }
 
 /* Flow — every slide of the section, stacked and editable at once. The one
    editing surface for every item type (slides/song/scripture/image). */
 .svc-flow {
+  --flow-border: rgba(255, 255, 255, 0.16);
   flex: 1;
   min-height: 0;
   overflow-y: auto;
@@ -2660,76 +2649,81 @@ body > .lyric-follow-hud { position: fixed; left: 14px; bottom: 14px; z-index: 4
   flex-direction: column;
   gap: var(--space-2);
 }
-.svc-flow-row {
-  display: flex;
-  align-items: center;   /* Send and Delete sit level with the middle of the slide (owner, 2026-10-18) */
-  gap: var(--space-2);
-  padding: var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--bg-card);
-}
-.svc-flow-row.live { border-color: var(--brand); }
 .svc-flow-row.selected { outline: 2px solid var(--selected-border); outline-offset: -2px; }
-.svc-flow-grip { color: var(--text-3); flex: none; cursor: grab; padding-top: 6px; }
-.svc-flow-grip.is-disabled { cursor: default; opacity: 0.35; }
-.svc-flow-num {
+/* All the slides in one box, a single line between each. */
+.svc-flow-list {
   flex: none;
-  width: 24px; height: 24px;
-  border-radius: 50%;
-  background: var(--bg-hover);
-  color: var(--text-2);
-  font-size: 11px;
-  display: flex; align-items: center; justify-content: center;
-  margin-top: 4px;
+  border: 1px solid var(--flow-border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
 }
+/* One slide: its number, its words, and Send, level with the words' first line. */
+.svc-flow-row {
+  display: grid;
+  grid-template-columns: 40px minmax(0, 1fr) auto;
+  transition: background var(--trans);
+}
+.svc-flow-row + .svc-flow-row { border-top: 1px solid var(--flow-border); }
+.svc-flow-row:hover { background: rgba(255, 255, 255, 0.02); }
+.svc-flow-row:focus-within { background: rgba(255, 255, 255, 0.04); }
+.svc-flow-row.live { background: var(--brand-dim); }
+/* The grip takes the number's place while the row is pointed at, as on the card header. */
+.svc-flow-gutter { display: flex; justify-content: flex-end; padding-top: 12px; }
+.svc-flow-num { color: var(--text-3); font-size: var(--fs-md); font-weight: 600; line-height: 28px; }
+.svc-flow-row.live .svc-flow-num { color: var(--brand); }
+.svc-flow-grip { display: none; align-items: center; height: 28px; color: var(--text-2); cursor: grab; }
+.svc-flow-row:hover .svc-flow-grip:not(.is-disabled) { display: flex; }
+.svc-flow-row:hover:has(.svc-flow-grip:not(.is-disabled)) .svc-flow-num { display: none; }
+.svc-flow-main { min-width: 0; display: flex; flex-direction: column; padding-bottom: 12px; }
+/* The words: large, and first. */
 .svc-flow-text {
   flex: 1;
-  min-height: 1.4em;
-  padding: 6px 8px;
-  border-radius: var(--radius-sm);
-  background: var(--bg-input);
+  min-height: 28px;
+  padding: 12px 14px 0;
   color: var(--text);
+  font-size: var(--fs-xl);
+  font-weight: 500;
+  line-height: 28px;
   white-space: pre-wrap;
   outline: none;
 }
-.svc-flow-text:focus { box-shadow: inset 0 0 0 1px var(--blue); }
-.svc-flow-send {
-  flex: none;
-  min-width: 22px; height: 22px;
-  padding: 0 8px;
-  gap: 5px;
-  margin-top: 2px;
-  display: flex; align-items: center; justify-content: center;
-  background: transparent;
-  border: 1px solid var(--border-md);
+.svc-flow-under { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 6px 14px 0; color: var(--text-3); font-size: var(--fs-xs); }
+.svc-flow-under:empty { display: none; }
+.svc-flow-label { font-weight: 600; white-space: nowrap; }
+.svc-flow-refs { display: flex; min-width: 0; }
+.svc-flow-refs:empty { display: none; }
+.svc-flow-refs-btn { display: flex; flex-wrap: wrap; gap: 2px 4px; padding: 0; border: 0; background: none; color: inherit; font: inherit; cursor: pointer; text-align: left; }
+.svc-flow-chip { padding: 0 7px; border-radius: 999px; background: var(--bg-hover); color: var(--text-2); font-size: var(--fs-xs); line-height: 18px; white-space: nowrap; }
+.svc-flow-refs-btn:hover .svc-flow-chip { color: var(--text); }
+.svc-flow-refs-input {
+  width: 320px; max-width: 100%;
+  padding: 1px 8px;
+  border: 1px solid var(--text-3);
   border-radius: var(--radius-sm);
-  color: var(--text-2);
-  font-size: 11px; font-weight: 600; font-family: var(--font);
+  background: var(--bg-input);
+  color: var(--text);
+  font: inherit; font-size: var(--fs-xs);
+  outline: none;
+}
+.svc-flow-actions { display: flex; align-items: center; gap: 2px; height: 28px; margin-top: 12px; padding-right: 8px; }
+.svc-flow-send, .svc-flow-more {
+  flex: none;
+  height: 24px;
+  padding: 0 10px;
+  gap: 5px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--bg-hover);
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: var(--fs-xs); font-weight: 600; font-family: var(--font);
   cursor: pointer;
   transition: var(--trans);
 }
-.svc-flow-send:hover { color: var(--blue); border-color: var(--blue); }
-.svc-flow-del {
-  flex: none;
-  min-width: 22px; height: 22px;
-  padding: 0 8px;
-  gap: 5px;
-  margin-top: 2px;
-  display: flex; align-items: center; justify-content: center;
-  background: transparent;
-  border: 1px solid var(--border-md);
-  border-radius: var(--radius-sm);
-  color: var(--text-2);
-  font-size: 11px; font-weight: 600; font-family: var(--font);
-  cursor: pointer;
-  transition: var(--trans);
-}
-.svc-flow-del:hover { color: var(--red); border-color: var(--red); }
-.svc-flow-del.is-disabled { opacity: 0.3; cursor: default; }
-.svc-flow-del.is-disabled:hover { color: var(--text-2); border-color: var(--border-md); }
+.svc-flow-send:hover { background: var(--brand); color: #fff; }
+.svc-flow-more { padding: 0 5px; background: transparent; color: var(--text-2); }
+.svc-flow-more:hover { background: var(--bg-hover); color: var(--text); }
 .svc-flow-image {
-  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -5645,23 +5639,6 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
   min-height: 0;
 }
 
-.ts-back-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  background: transparent;
-  border: 1px solid var(--border-md);
-  border-radius: var(--radius);
-  color: var(--text-2);
-  font-family: var(--font);
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  padding: 6px 12px 6px 8px;
-  cursor: pointer;
-  transition: var(--trans);
-}
-.ts-back-btn:hover { background: var(--bg-hover); color: var(--text); }
-.ts-back-btn svg { width: 14px; height: 14px; }
 
 /* A destructive confirm button (confirmDeletePopover) — combined with
    .modal-btn.primary for its padding/layout, but only ever overrode the
@@ -5947,12 +5924,12 @@ body.ts-dragging-guide-h, body.ts-dragging-guide-h * { cursor: row-resize !impor
 .ts-layer-drop-before { box-shadow: inset 0 2px 0 0 var(--blue); }
 .ts-layer-drop-after  { box-shadow: inset 0 -2px 0 0 var(--blue); }
 
-/* Themes column header: label on its own line, actions wrap below — five
-   labeled buttons don't fit the 232px column on one row like the old
-   icon-only row did. */
-.ts-col-header-wrap { flex-direction: column; align-items: flex-start; gap: 8px; }
-.ts-col-header-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+/* Themes column header: Back at the left; New and a menu (Import, Export) at the right. */
+.ts-col-header-wrap { gap: 6px; }
+.ts-col-header-actions { display: flex; align-items: center; gap: 6px; }
 .ts-add-btn-compact { padding: 4px 8px; font-size: 10px; gap: 4px; }
+.ts-add-btn-icon { padding: 4px 6px; }
+.ts-add-btn[hidden] { display: none; }
 .ts-add-btn:disabled { opacity: 0.35; cursor: default; pointer-events: none; }
 
 /* Item-mode (Full Edit) header: replaces the themes header wholesale. */
@@ -8604,24 +8581,22 @@ body.video-director #ts-add-videozone-btn, body.video-director #ts-add-contentzo
 .monitor-message-head .cs-select-trigger { height: 24px; padding: 0 8px; font-size: 11.5px; }
 .monitor-message-head .cs-select-wrapper[hidden], .monitor-message-to[hidden] { display: none; }
 
-/* Theme Studio / item editor: Back reads as navigation, not as one of the action chips. */
+/* Back, in every editor: the header of where you are, naming where it goes. No outline: it leaves
+   the screen, while the outlined buttons beside it act on it. */
 .ts-nav-back {
-  align-self: flex-start;
-  display: inline-flex; align-items: center; gap: 4px;
-  height: 30px; padding: 0 12px 0 6px; margin: 0 0 2px -6px;
-  border: 0; border-radius: 8px; background: transparent;
-  color: var(--text-2); font: inherit; font-size: 13px; font-weight: 600; letter-spacing: .01em;
-  cursor: pointer; transition: background 120ms ease, color 120ms ease;
+  flex: none;
+  display: inline-flex; align-items: center; gap: 2px;
+  height: 26px; padding: 0 8px 0 2px; margin-left: -2px;
+  border: 0; border-radius: var(--radius-sm); background: transparent;
+  color: var(--text);
+  font-family: var(--font); font-size: var(--fs-md); font-weight: 600;
+  cursor: pointer;
+  transition: background var(--trans);
 }
-.ts-nav-back svg { flex: 0 0 auto; transition: transform 120ms ease; }
-.ts-nav-back:hover { background: var(--bg-hover); color: var(--text); }
-.ts-nav-back:hover svg { transform: translateX(-2px); }
-.ts-nav-back:active { background: var(--bg-card); }
+.ts-nav-back:hover { background: var(--bg-hover); }
 .ts-nav-back:focus-visible { outline: 2px solid var(--selected-border); outline-offset: 1px; }
+.ts-nav-back svg, .ts-item-mode-header .ts-nav-back svg { width: 16px; height: 16px; }
 
-/* Quick edit rows: Send and Delete centred on the slide, not pinned to its first line. */
-.svc-flow-row .svc-flow-send, .svc-flow-row .svc-flow-del { margin-top: 0; }
-.svc-flow-del { padding: 0 6px; }
 
 /* ── Report a problem ─────────────────────────────────────────────────────── */
 .rp-back { position: fixed; inset: 0; z-index: 3000; display: flex; align-items: center; justify-content: center; background: rgba(0,0,0,.55); padding: 24px; }
@@ -8976,7 +8951,8 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 /* A free offer, said by one big green number (owner, 2026-11-05: catches the eye, little text). */
 .free-badge { display: flex; align-items: center; gap: 14px; width: 100%; padding: 10px 14px; border: 1px solid rgba(34, 197, 94, 0.35); border-radius: 10px; background: rgba(34, 197, 94, 0.07); }
 .free-badge b { font-size: 30px; font-weight: 700; line-height: 1; color: #4ade80; font-variant-numeric: tabular-nums; }
-.free-badge span { font-size: 12.5px; line-height: 1.4; color: var(--text); }
+.free-badge span { flex: 1; min-width: 0; font-size: 12.5px; line-height: 1.4; color: var(--text); }
+.free-badge .modal-btn { flex: none; margin: 0; white-space: nowrap; }
 /* What's up on the monitors, with its own ✕ to take it down. */
 .monitor-message-live { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 6px 8px 6px 10px; border-radius: 6px; background: rgba(255, 255, 255, 0.05); font-size: 12px; }
 .monitor-message-live[hidden] { display: none; }
@@ -9008,17 +8984,6 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 /* A sermon deck's panel in the slide editor (sermon_slides_ui.js), under the Look tab. */
 .ts-sermon-pane { display: block; }
 .ts-sermon-pane[hidden] { display: none; }
-.ssp-looks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.ssp-look { display: grid; gap: 3px; padding: 0; border: 0; background: none; cursor: pointer; text-align: left; }
-.ssp-swatch { position: relative; aspect-ratio: 16 / 9; border-radius: 5px; border: 2px solid transparent; display: flex; align-items: center; justify-content: center; }
-.ssp-look.is-on .ssp-swatch { border-color: var(--brand); }
-.ssp-aa { font-size: 14px; font-weight: 700; }
-.ssp-dot { position: absolute; right: 5px; bottom: 5px; width: 6px; height: 6px; border-radius: 50%; }
-.ssp-look-name { font-size: 10.5px; color: var(--text-2); }
-.ssp-look.is-on .ssp-look-name { color: var(--text); font-weight: 600; }
-.ssp-seg { display: grid; grid-template-columns: repeat(var(--n, 3), 1fr); gap: 3px; padding: 3px; border: 1px solid var(--border-md); border-radius: 8px; }
-.ssp-seg button { padding: 5px 2px; border: 0; border-radius: 6px; background: none; color: var(--text-2); font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; }
-.ssp-seg button.is-on { background: rgba(255, 255, 255, 0.12); color: var(--text); }
 .ssp-parts { margin: 0; padding: 0; list-style: none; display: grid; gap: 1px; max-height: 360px; overflow-y: auto; }
 .ssp-part { display: flex; gap: 8px; align-items: flex-start; padding: 5px 6px; border-radius: 6px; }
 .ssp-part:hover { background: var(--bg-hover); }
@@ -9095,20 +9060,28 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 .ssp-picker:hover { border-color: var(--text-3); }
 .ssp-picker svg { flex: none; color: var(--text-3); margin-left: auto; }
 .ssp-picker-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ssp-picker-swatch, .ssp-picker-thumb { position: relative; flex: none; width: 44px; height: 25px; border-radius: 4px; overflow: hidden; display: grid; place-items: center; }
-.ssp-picker-swatch .ssp-aa { font-size: 11px; }
-.ssp-picker-swatch .ssp-dot { width: 5px; height: 5px; right: 3px; bottom: 3px; }
+.ssp-picker-thumb { position: relative; flex: none; width: 44px; height: 25px; border-radius: 4px; overflow: hidden; display: grid; place-items: center; }
 .svc-popover:has(.ssp-pop-grid) { max-width: none; width: 340px; max-height: 420px; overflow-y: auto; }
-.ssp-pop-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 4px; }
+.ssp-pop-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; padding: 4px; }
 .ssp-pop-item { display: grid; gap: 4px; padding: 4px; border: 1px solid transparent; border-radius: 8px; background: none; color: var(--text-2); font: inherit; font-size: 11px; cursor: pointer; text-align: left; }
 .ssp-pop-item:hover { background: rgba(255, 255, 255, 0.05); color: var(--text); }
 .ssp-pop-item.is-on { border-color: var(--accent); color: var(--text); }
+.ssp-layout-thumb.ssp-pop-preview { margin: 4px auto 0; width: 46%; border-radius: 6px; }
+.ssp-pop-foot { position: sticky; bottom: -8px; display: flex; justify-content: flex-end; gap: 8px; margin: 8px -8px -8px; padding: 10px 12px; background: var(--bg-card); border-top: 1px solid var(--border-md); }
+.ssp-apply:disabled { opacity: 0.45; cursor: default; }
+.ssp-switch { display: grid; grid-template-columns: 1fr 1fr; gap: 3px; margin: 10px 4px 6px; padding: 3px; border-radius: 10px; background: rgba(255, 255, 255, 0.06); }
+.ssp-kinds { grid-template-columns: repeat(3, 1fr); margin: 4px 0 0; }
+.ssp-switch-btn { display: flex; align-items: baseline; justify-content: center; gap: 6px; min-width: 0; padding: 7px 8px; border: 0; border-radius: 8px; background: none; color: var(--text-3); font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; }
+.ssp-switch-btn:hover { color: var(--text); }
+.ssp-switch-btn.is-on { background: rgba(255, 255, 255, 0.12); color: var(--text); }
+.ssp-pop-value { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 500; color: var(--text); }
+.ssp-pop-body { height: 262px; overflow-y: auto; scrollbar-gutter: stable; }
+.ssp-pop-item[hidden] { display: none; }
+.ssp-view[hidden] { display: none; }
 .ssp-pop-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ssp-layout-thumb { position: relative; display: block; width: 100%; aspect-ratio: 16 / 9; border-radius: 4px; overflow: hidden; background: #111; }
 .ssp-style-btn { width: 100%; height: 40px; }
 .ssp-style-btn .ssp-picker-thumb { width: 48px; height: 27px; }
-.svc-popover:has(.ssp-pop-grid-wrap) { max-width: none; width: 360px; max-height: min(560px, 80vh); overflow-y: auto; }
-.ssp-pop-head { margin: 6px 4px 4px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-3); }
-.ssp-pop-grid-wrap .ssp-seg { margin: 0 4px 4px; }
+.svc-popover:has(.ssp-pop-grid-wrap) { max-width: none; width: 460px; max-height: min(640px, 92vh); overflow-y: auto; }
 .ac-style-group { flex: 1; min-width: 0; }
 .ac-style-slot .ssp-style-btn { width: 100%; }

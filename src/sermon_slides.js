@@ -98,6 +98,20 @@
     { id: 'worthy', name: 'Worthy' },
     { id: 'glow', name: 'Light' },     // not "Glow": that's a background's name
   ];
+  // The designs a deck is chosen from: each a look with the layout and background that suit it, so
+  // one pick sets all three. Every look has one; the four from the owner's reference slides keep the
+  // layout made for them.
+  const DESIGNS = [
+    { kit: 'ember', layout: 'left', style: 'glow' }, { kit: 'midnight', layout: 'centred', style: 'glow' },
+    { kit: 'evergreen', layout: 'quote', style: 'gradient' }, { kit: 'lagoon', layout: 'lower', style: 'gradient' },
+    { kit: 'graphite', layout: 'split', style: 'solid' }, { kit: 'linen', layout: 'editorial', style: 'solid' },
+    { kit: 'rose', layout: 'card', style: 'gradient' }, { kit: 'crimson', layout: 'statement', style: 'glow' },
+    { kit: 'mint', layout: 'left', style: 'gradient' }, { kit: 'plum', layout: 'centred', style: 'glow' },
+    { kit: 'ocean', layout: 'split', style: 'gradient' }, { kit: 'sky', layout: 'lower', style: 'glow' },
+    { kit: 'honey', layout: 'editorial', style: 'gradient' }, { kit: 'lavender', layout: 'card', style: 'solid' },
+    { kit: 'redcard', layout: 'badge', style: 'solid' }, { kit: 'royal', layout: 'worthy', style: 'gradient' },
+    { kit: 'night', layout: 'glow', style: 'glow' }, { kit: 'lime', layout: 'statement', style: 'solid' },
+  ];
   const layoutOf = (id) => (LAYOUTS.some(l => l.id === id) ? id : 'left');
   const kitById = (id) => KITS.find(k => k.id === id) || KITS[0];
   // A look with the operator's own colours over it: { bg, bg2, text, accent }, any of them.
@@ -149,7 +163,7 @@
     eph: 'Ephesians', col: 'Colossians', ti: 'Titus', tit: 'Titus', he: 'Hebrews', heb: 'Hebrews', re: 'Revelation', rev: 'Revelation',
     rv: 'Revelation', co: 'Corinthians', cor: 'Corinthians', th: 'Thessalonians', thes: 'Thessalonians', thess: 'Thessalonians',
     ti_: 'Timothy', tim: 'Timothy', pe: 'Peter', pet: 'Peter', sa: 'Samuel', sam: 'Samuel', ki: 'Kings', kgs: 'Kings', ch: 'Chronicles',
-    chr: 'Chronicles', chron: 'Chronicles' };
+    chr: 'Chronicles', chron: 'Chronicles', phi: 'Philippians' };
   const consonants = (s) => s.replace(/[aeiou]/g, '');
   // A book as written in a document ("Rom.", "Jhn", "1 Cor", "Judg") to its full name, or null.
   function bookName(raw) {
@@ -193,6 +207,27 @@
   const decodeXml = (s) => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&apos;/g, "'")
     .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n)).replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16))).replace(/&amp;/g, '&');
 
+  // ── paragraphs ─────────────────────────────────────────────────────────────────────────────────
+  // A paragraph: { text, list, family, level, heading }. `family` is the kind of marker it began with
+  // ('num' 1. 1) (1), 'roman' II., 'alpha' B), 'word' "Point 3:", 'bullet' • or a dash, or 'list' for
+  // a Word list, whose marker isn't in the text); `level` is a Word list's depth; `heading` a line set
+  // apart as a heading (a Word heading style, a short bold line, a short line in capitals).
+  const NUMBER_NAMES = 'one two three four five six seven eight nine ten eleven twelve'.split(' ');
+  function markerOf(line) {
+    let m;
+    if ((m = /^(?:main\s+|key\s+)?(?:point|pt|step|reason|lesson|principle|truth|key)\s*(?:no\.?\s*)?(\d{1,2}|[a-z]{3,6})\s*[:.\-–—)]?\s+(\S.*)$/i.exec(line)) && (/^\d/.test(m[1]) || NUMBER_NAMES.includes(m[1].toLowerCase()))) return { family: 'word', text: m[2] };
+    if ((m = /^\(?(\d{1,2})(?:[.)]|:(?=\s))\s*(\S.*)$/.exec(line))) return { family: 'num', text: m[2] };
+    if ((m = /^\(?((?:[IVXLC]{2,6})|I)[.)]\s+(\S.*)$/.exec(line))) return { family: 'roman', text: m[2] };
+    if ((m = /^\(?([A-Za-z])[.)]\s+(\S.*)$/.exec(line))) return { family: 'alpha', text: m[2] };
+    if ((m = /^(?:[•●▪◦‣*]|[–—-])\s+(\S.*)$/.exec(line))) return { family: 'bullet', text: m[1] };
+    return null;
+  }
+  // A short line in capitals ("FAITH PLEASES GOD"): a heading, not a sentence.
+  function capsHeading(text) {
+    const letters = text.replace(/[^A-Za-z]/g, '');
+    return letters.length >= 4 && wordCount(text) <= 12 && letters === letters.toUpperCase();
+  }
+
   // The paragraphs of a Word document's XML: their words, and whether Word lists them.
   function docxParagraphs(xml) {
     const out = [];
@@ -205,41 +240,93 @@
         .replace(/<w:tab\/>/g, ' ').replace(/<w:br\/>/g, ' ')
         .replace(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>|<[^>]+>/g, (_, t) => (t != null ? decodeXml(t) : ''))
         .replace(/\s+/g, ' ').trim();
-      if (text) out.push({ text, list: /^listparagraph/i.test(style) || body.includes('<w:numPr>') });
+      if (!text) continue;
+      const list = /^listparagraph/i.test(style) || body.includes('<w:numPr>');
+      const level = +((/<w:ilvl\b[^>]*w:val="(\d+)"/.exec(body) || [])[1] || 0);
+      // Every run bold: set apart as a heading when short.
+      const runs = body.match(/<w:r\b[\s\S]*?<\/w:r>/g) || [];
+      const bold = runs.length > 0 && runs.every(r => !/<w:t[ >]/.test(r) || /<w:b\/>|<w:b w:val="(?:1|true)"\/>/.test(r));
+      const heading = /^(?:heading\d|title|subtitle)/i.test(style) || (!list && bold && wordCount(text) <= 12 && !/[.?!]$/.test(text));
+      out.push({ text, list, family: list ? 'list' : null, level, heading });
     }
     return out;
   }
 
-  // Pasted text: a line starting with "1." "2)" "•" "-" is a list paragraph (its marker taken off).
+  // Pasted text: a line that starts with a marker ("1." "2)" "II." "B)" "•" "-" "Point 3:") is a
+  // list paragraph (its marker taken off).
   function textParagraphs(text) {
     return String(text || '').replace(/\r/g, '').split(/\n/).map(l => l.trim()).filter(Boolean).map(l => {
-      const m = /^(?:\d{1,2}[.)]|[•●▪◦*–-])\s+(.*)$/.exec(l);
-      return m ? { text: m[1].trim(), list: true } : { text: l, list: false };
+      const m = markerOf(l);
+      return m ? { text: m.text.trim(), list: true, family: m.family, level: 0, heading: false }
+        : { text: l, list: false, family: null, level: 0, heading: capsHeading(l) };
     });
   }
 
+  // ── scriptures in a line ───────────────────────────────────────────────────────────────────────
   // The references written after a point's words ("Rom. 4:16-21/Heb. 11:17-19 / Gen. 22:1-18"); a bare
   // verse number after a slash ("Mak. 16:15-16/20") is a verse of the same chapter.
   function refsIn(text) {
     const out = [];
-    for (const part of String(text || '').split(/[\/;]/).map(p => p.trim()).filter(Boolean)) {
+    for (const raw of String(text || '').split(/[\/;]/)) {
+      const part = raw.replace(/[\s–—-]+$/, '').trim();
+      if (!part) continue;
       if (/^\d+(?:\s*[-–]\s*\d+)?$/.test(part) && out.length) out[out.length - 1] += ', ' + part;
       else out.push(part);
     }
     return out;
   }
-  // A statement and the references after its dash: "Daniel had to … – Dan. 6:10-23".
+  // A statement and the references after it, after a dash ("Daniel had to … – Dan. 6:10-23") or in
+  // brackets at the end ("Daniel had to … (Dan. 6:10-23)").
   function splitStatement(text) {
-    const m = /\s+[–-]\s*(?:[1-3] ?)?[A-Z][a-z]{1,4}\.? ?\d/.exec(text);
-    if (!m) return { statement: text.trim(), refs: [] };
-    const dashAt = m.index + m[0].search(/[–-]/);
-    return { statement: text.slice(0, m.index).trim(), refs: refsIn(text.slice(dashAt).replace(/^[–\-\s]+/, '')) };
+    const dash = /\s+[–—-]\s*(?=(?:[1-3] ?)?[A-Z][a-z]{1,11}(?: of [A-Z][a-z]+)?\.? ?\d)/g;
+    let m;
+    while ((m = dash.exec(text))) {
+      const rest = text.slice(m.index + m[0].length);
+      const refs = refsIn(rest);
+      if (refs.length && normaliseRef(refs[0])) return { statement: text.slice(0, m.index).trim(), refs };
+    }
+    // A dash and a short book name the reader doesn't know ("Phx. 3:14"): still the scriptures' start.
+    const loose = /\s+[–-]\s*(?:[1-3] ?)?[A-Z][a-z]{1,4}\.? ?\d/.exec(text);
+    if (loose) return { statement: text.slice(0, loose.index).trim(), refs: refsIn(text.slice(loose.index + loose[0].search(/[–-]/)).replace(/^[–\-\s]+/, '')) };
+    const br = /\s*[(\[]([^()\[\]]{3,90})[)\]]\s*[.;]?$/.exec(text);
+    if (br) {
+      const refs = refsIn(br[1]);
+      if (refs.length && refs.every(r => normaliseRef(r))) return { statement: text.slice(0, br.index).trim(), refs };
+    }
+    return { statement: text.trim(), refs: [] };
   }
   const isReferenceLine = (text) => wordCount(text) <= 12 && /^(?:[1-3] ?)?[A-Z][A-Za-z]{1,}\.? ?\d+(?::\d+)?/.test(text);
+  // Every scripture named in running text ("As Romans 10:17 says"): a book and a chapter with a verse.
+  function findRefs(text) {
+    const out = [];
+    const re = /\b((?:[1-3]\s?)?[A-Z][a-z]{1,11}(?:\s+of\s+[A-Z][a-z]+)?\.?)\s?(\d{1,3}:\d{1,3}(?:\s*[-–]\s*\d{1,3})?(?:\s*,\s*\d{1,3}(?:\s*[-–]\s*\d{1,3})?)*)/g;
+    let m;
+    while ((m = re.exec(String(text || '')))) {
+      const ref = normaliseRef(`${m[1]} ${m[2]}`);
+      if (ref && !out.includes(ref)) out.push(ref);
+    }
+    return out;
+  }
 
-  // The outline of a document's paragraphs, or null when it isn't laid out like one (fewer than
-  // three points, or most points without a reference).
-  function outlineFrom(paras) {
+  // ── reading paragraphs as an outline ───────────────────────────────────────────────────────────
+  // Three ways, tried in order, for whatever a document is laid out as:
+  //   points      numbered or bulleted points (any marker), the scriptures after each or on the line below
+  //   headings    each heading is a point, the scriptures found in the paragraphs under it
+  //   paragraphs  each paragraph a slide, its scriptures found in it
+  // `how` says which, for the import dialog. Null when the text is not a sermon (a song's words, a
+  // notice), unless `always`: a Word file the operator chose is read whatever it looks like.
+  function outlineFrom(paras, { always = false } = {}) {
+    // The kind of marker the points use: the one most lines begin with; any other is a sub-point.
+    const counts = {};
+    for (const p of paras) if (p.family && !(p.family === 'list' && p.level > 0)) counts[p.family] = (counts[p.family] || 0) + 1;
+    const top = Object.keys(counts).sort((x, y) => counts[y] - counts[x])[0];
+    const marked = top ? paras.map(p => ({ ...p, list: p.family === top && !(p.level > 0), sub: !!p.family && !(p.family === top && !(p.level > 0)) })) : paras;
+    const strict = top && counts[top] >= 2 ? pointsOutline(marked) : null;
+    if (strict) return strict;
+    return headingsOutline(paras) || paragraphsOutline(paras, always);
+  }
+  // Numbered or bulleted points.
+  function pointsOutline(paras) {
     const header = [];
     let week = null;
     const items = [];
@@ -260,21 +347,28 @@
       if (inNotes || (/^nb\b/i.test(text) && text.includes(':'))) { flush(); items.push({ kind: 'note', text }); continue; }
       if (seenPoint && /^(?:note|notes|nb)\s*:?$/i.test(text)) { flush(); inNotes = true; continue; }
       if (!text) continue;
+      if (p.sub && seenPoint) { other.push(text); continue; }   // a point's own sub-points: offered, not slides
       if (p.list) {
         flush();
         seenPoint = true;
         const { statement, refs } = splitStatement(text);
-        if (wordCount(statement) > 80) items.push({ kind: 'story', text: statement });
+        if (wordCount(statement) > 80) items.push({ kind: 'story', text: statement, refs: findRefs(statement) });
         else items.push({ kind: 'point', n: items.filter(i => i.kind === 'point').length + 1, text: statement, refs });
         continue;
       }
       if (!seenPoint) {
         if (/^week\s*\d+/i.test(text)) week = text;
         else if (/^introduction\b/i.test(text) || wordCount(text) > 30) {
-          if (wordCount(text) > 30) items.push({ kind: 'story', text });
+          if (wordCount(text) > 30) items.push({ kind: 'story', text, refs: [] });
         } else if (header.length < 6) header.push(splitStatement(text));
         else other.push(text);
         continue;
+      }
+      // Scriptures alone on the line under a point that has none are that point's.
+      const lastItem = items[items.length - 1];
+      if (isReferenceLine(text) && !verses.length && lastItem && lastItem.kind === 'point' && !lastItem.refs.length) {
+        const refs = refsIn(text);
+        if (refs.every(r => normaliseRef(r))) { lastItem.refs = refs; continue; }
       }
       if (isReferenceLine(text)) verses.push([text, []]);
       else if (/^vs\b/i.test(text) && /\d/.test(text)) other.push(text);   // "VS:10": a verse the preacher stresses
@@ -286,8 +380,50 @@
     const last = [...items].reverse().find(i => i.kind !== 'note');
     if (last && last.kind === 'section') last.kind = 'closing';
     const points = items.filter(i => i.kind === 'point');
-    if (points.length < 3 || points.filter(p => p.refs.length).length * 2 < points.length) return null;
-    return { header: header.map(h => ({ text: h.statement, refs: h.refs })), week, items, other };
+    const withRefs = points.filter(p => p.refs.length).length;
+    // Three points, or two with a scripture: an outline. Fewer is a list of something else.
+    if (!(points.length >= 3 || (points.length >= 2 && withRefs >= 1))) return null;
+    return finish({ header: header.map(h => ({ text: h.statement, refs: h.refs })), week, items, other }, 'points');
+  }
+  // Each heading a point; the scriptures named in the paragraphs under it are its own.
+  function headingsOutline(paras) {
+    // The first heading with something written under it; short lines before it are the document's own heading.
+    const first = paras.findIndex((p, i) => p.heading && !p.list && paras[i + 1] && !paras[i + 1].heading && (wordCount(paras[i + 1].text) > 6 || findRefs(paras[i + 1].text).length));
+    const heads = paras.slice(Math.max(first, 0)).filter(p => p.heading);
+    if (first < 0 || heads.length < 2) return null;
+    const header = paras.slice(0, first).filter(p => wordCount(p.text) <= 30).slice(0, 6).map(p => ({ text: p.text, refs: [] }));
+    const items = [];
+    let cur = null;
+    for (const p of paras.slice(first)) {
+      if (p.heading) {
+        cur = { kind: 'point', n: items.length + 1, text: p.text.replace(/:$/, ''), refs: [], notes: [] };
+        items.push(cur);
+      } else if (cur) { cur.notes.push(p.text); for (const r of findRefs(p.text)) if (!cur.refs.includes(r)) cur.refs.push(r); }
+    }
+    for (const it of items) { it.notes = it.notes.join('\n'); if (!it.notes) delete it.notes; }
+    const words = paras.reduce((n, p) => n + wordCount(p.text), 0);
+    if (!items.some(i => i.refs.length) && words < 120) return null;
+    return finish({ header, week: null, items, other: [], titleIndex: 0 }, 'headings');
+  }
+  // Each paragraph a slide: short lines are sections, longer ones carry the scriptures they name.
+  function paragraphsOutline(paras, always) {
+    const words = paras.reduce((n, p) => n + wordCount(p.text), 0);
+    const refs = paras.reduce((n, p) => n + findRefs(p.text).length, 0);
+    if (!paras.length || (!always && !(words >= 150 && refs >= 1))) return null;
+    const firstLong = paras.findIndex(p => wordCount(p.text) > 30);
+    const lead = firstLong < 0 ? 0 : Math.min(firstLong, 4);
+    const header = paras.slice(0, lead).map(p => ({ text: p.text, refs: [] }));
+    const items = paras.slice(lead).map(p => (wordCount(p.text) <= 10
+      ? { kind: 'section', text: p.text.replace(/:$/, '') }
+      : { kind: 'story', text: p.text, refs: findRefs(p.text) }));
+    return finish({ header, week: null, items, other: [], titleIndex: 0 }, 'paragraphs');
+  }
+  // The outline with how it was read, for the import dialog.
+  function finish(o, mode) {
+    const points = o.items.filter(i => i.kind === 'point');
+    o.how = { mode, points: points.length, slides: o.items.filter(i => i.kind !== 'note').length, sections: o.items.filter(i => i.kind === 'section').length,
+      withRefs: o.items.filter(i => i.refs && i.refs.length).length };
+    return o;
   }
 
   // ── a .docx, read in the page: a zip's word/document.xml ────────────────────────────────────────
@@ -324,7 +460,8 @@
   async function readDocx(buf) {
     try {
       const xml = await zipEntry(buf, 'word/document.xml');
-      return xml ? outlineFrom(docxParagraphs(new TextDecoder().decode(xml))) : null;
+      // A Word file the operator chose is always offered: read as points, as headings, or paragraph by paragraph.
+      return xml ? outlineFrom(docxParagraphs(new TextDecoder().decode(xml)), { always: true }) : null;
     } catch { return null; }
   }
   const readText = (text) => outlineFrom(textParagraphs(text));
@@ -845,7 +982,7 @@
   //   { id, kind: 'title'|'story'|'point'|'section'|'closing'|'note'|'verse'|'line', text, refs, on }
   function partsOf(outline) {
     const header = (outline.header || []).filter(h => h && h.text);
-    const themeLine = header.find(h => /theme/i.test(h.text)) || header[1] || header[0];
+    const themeLine = header.find(h => /theme/i.test(h.text)) || header[outline.titleIndex != null ? outline.titleIndex : 1] || header[0];
     const seriesLine = header.find(h => /series|topic|title/i.test(h.text) && h !== themeLine);
     const parts = [];
     header.forEach((h, i) => {
@@ -853,7 +990,7 @@
       else if (h !== seriesLine) parts.push({ id: `h${i}`, kind: 'line', text: h.text, refs: h.refs || [], on: false });
     });
     (outline.items || []).forEach((it, i) => {
-      parts.push({ id: `i${i}`, kind: it.kind, text: it.text, refs: it.refs || [], n: it.n, on: it.kind !== 'note' });
+      parts.push({ id: `i${i}`, kind: it.kind, text: it.text, refs: it.refs || [], n: it.n, notes: it.notes, on: it.kind !== 'note' });
       (it.verses || []).forEach((v, j) => parts.push({ id: `i${i}v${j}`, kind: 'verse', text: v.text, refs: [v.ref], on: false }));
     });
     (outline.other || []).forEach((t, i) => parts.push({ id: `o${i}`, kind: 'line', text: t, refs: [], on: false }));
@@ -862,18 +999,21 @@
 
   // The deck for an outline: the parts that are on, each in its layout. Typed verses are left out
   // unless picked (the verses go up live from Kairo's Bible); the notes go to the last slide's notes.
-  //   opts: { kit, style, footer, include: Set of part ids (default: the parts on by default) }
+  //   opts: { kit, style, footer, include: Set of part ids (default: the parts on by default),
+  //           kinds: { part id: 'point' | 'section' | 'story' } for lines the operator re-labelled }
   function build(outline, opts = {}) {
     const kit = withColors(kitById(opts.kit), opts.colors);
     const style = BACKGROUNDS.some(b => b.id === opts.style) ? opts.style : 'glow';
     const layout = layoutOf(opts.layout);
     const header = (outline.header || []).filter(h => h && h.text);
-    const footer = opts.footer != null ? opts.footer : (header[0] ? header[0].text.replace(/\.?\s*inc\.?$/i, '').trim() : '');
-    const parts = partsOf(outline);
+    const footerLine = outline.titleIndex === 0 ? header[1] : header[0];
+    const footer = opts.footer != null ? opts.footer : (footerLine ? footerLine.text.replace(/\.?\s*inc\.?$/i, '').trim() : '');
+    // What the operator said a line is, over what the reader made of it.
+    const parts = partsOf(outline).map(p => (opts.kinds && opts.kinds[p.id] ? { ...p, kind: opts.kinds[p.id] } : p));
     const on = (p) => (opts.include ? opts.include.has(p.id) : p.on);
     const blocks = [];
     const afterColon = (t) => String(t || '').replace(/^[^:]{1,40}:\s*/, '').trim();
-    const themeLine = header.find(h => /theme/i.test(h.text)) || header[1] || header[0];
+    const themeLine = header.find(h => /theme/i.test(h.text)) || header[outline.titleIndex != null ? outline.titleIndex : 1] || header[0];
     const seriesLine = header.find(h => /series|topic|title/i.test(h.text) && h !== themeLine);
     const refsOf = (list) => [...new Set(list.map(r => normaliseRef(r) || null).filter(Boolean))];
     const opening = (text, words) => { const first = String(text).split(/(?<=[.!?])\s+/)[0]; return wordCount(first) > words ? first.split(/\s+/).slice(0, words).join(' ') + '…' : first; };
@@ -890,11 +1030,11 @@
         make({ kind: 'title', label, lines: [head, sub].filter(Boolean), refs: refsOf([...(themeLine.refs || []), ...((seriesLine && seriesLine.refs) || [])]) });
       } else if (p.kind === 'story') {
         const cut = opening(p.text, 28);
-        make({ kind: 'story', label: 'Introduction', lines: [cut], refs: [], shortened: cut !== p.text }, { notes: p.text });
+        make({ kind: 'story', label: 'Introduction', lines: [cut], refs: refsOf(p.refs), shortened: cut !== p.text }, { notes: p.text });
       } else if (p.kind === 'point') {
         n += 1;
         const { text, shortened } = shortenPoint(p.text);
-        make({ kind: 'point', n, label: `Point ${n} of ${total}`, lines: [text], refs: refsOf(p.refs), shortened }, { notes: p.text });
+        make({ kind: 'point', n, label: `Point ${n} of ${total}`, lines: [text], refs: refsOf(p.refs), shortened }, { notes: p.notes || p.text });
       } else if (p.kind === 'section' || p.kind === 'closing') {
         make({ kind: p.kind, label: '', lines: [p.text], refs: [] });
       } else {
@@ -924,7 +1064,7 @@
   // `restyleEdited`: then it takes the new look and layout too, keeping its own words.
   function regenerate(item, { restyleEdited = false } = {}) {
     const d = item.sermon;
-    const fresh = build(d.outline, { kit: d.kit, style: d.style, layout: d.layout, colors: d.colors, footer: d.footer, include: new Set(d.include) });
+    const fresh = build(d.outline, { kit: d.kit, style: d.style, layout: d.layout, colors: d.colors, footer: d.footer, include: new Set(d.include), kinds: d.kinds });
     const kept = new Map((item.blocks || []).filter(b => b.gen && b.gen.edited).map(b => [b.gen.part, b]));
     const kit = withColors(kitById(d.kit), d.colors);
     return fresh.map(b => {
@@ -1007,7 +1147,7 @@
     return { ...block, gen, text: serialize(gen), label: gen.label || (gen.lines || [])[0] || block.label };
   }
 
-  const api = { W, H, KITS, BACKGROUNDS, LAYOUTS, kitById, withColors, kitWarnings, contrast, bookName, normaliseRef,
+  const api = { W, H, KITS, BACKGROUNDS, LAYOUTS, DESIGNS, kitById, withColors, kitWarnings, contrast, bookName, normaliseRef,
     docxParagraphs, textParagraphs, outlineFrom, partsOf, readDocx, readText, shortenPoint, build, newDeck, regenerate, commonChanges, applyCommon, sharedWith, withText, serialize, parse, issues };
   if (typeof window !== 'undefined') window.KairoSermonSlides = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

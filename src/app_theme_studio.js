@@ -6287,6 +6287,7 @@ const newLookBtn   = document.getElementById('new-look-btn');
 // Theme Studio is a full in-window view, not an overlay: opening it swaps the
 // dashboard out so the canvas gets the whole content region.
 function openThemeStudio() {
+  nameBackButtons();
   // The top-nav "Theme Studio" tab stays clickable even while item mode's
   // modal is showing (same modal, both reachable independent of each
   // other) — without this, tsMode would stay 'item' while the left panel
@@ -6349,7 +6350,20 @@ function closeThemeStudio() {
 // render paths. Adding new layers IS supported in item mode (per-slide custom
 // text/shape/image layers, stored on the item) — Text, Shape, Image and
 // Library all stay visible.
+// Back names where it goes: the top-bar tab whose screen is waiting behind the editor.
+function nameBackButtons() {
+  const where = document.querySelector('.tb-group .tb-studio-btn.active:not(#looks-btn) span')?.textContent.trim();
+  for (const id of ['ts-back-btn', 'ts-item-back-btn']) {
+    const btn = document.getElementById(id);
+    if (!btn) continue;
+    btn.querySelector('span').textContent = where || 'Back';
+    btn.setAttribute('aria-label', where ? `Back to ${where}` : 'Back');
+    btn.title = where ? `Back to ${where}` : 'Back';
+  }
+}
+
 function toggleItemModeChrome(isItem) {
+  nameBackButtons();
   document.querySelector('#ts-pane-themes .ts-col-header')?.classList.toggle('hidden', isItem);
   document.getElementById('ts-item-mode-header')?.classList.toggle('hidden', !isItem);
   document.getElementById('ts-item-theme-header')?.classList.toggle('hidden', !isItem);
@@ -8633,6 +8647,14 @@ const importLookFile = document.getElementById('import-look-file');
 // Back leaves Theme Studio for the dashboard (the header's Themes label made way for it).
 document.getElementById('ts-back-btn')?.addEventListener('click', () => closeThemeStudio());
 document.getElementById('import-look-btn')?.addEventListener('click', () => importLookFile?.click());
+// New stays in the header; Import and Export are used rarely, so they wait in this menu.
+document.getElementById('theme-more-btn')?.addEventListener('click', (e) => {
+  const r = e.currentTarget.getBoundingClientRect();
+  window.KairoService?.openContextMenu(r.right, r.bottom + 2, [[
+    { label: 'Import theme', onClick: () => document.getElementById('import-look-btn')?.click() },
+    { label: 'Export this theme', onClick: () => document.getElementById('export-look-btn')?.click() },
+  ]]);
+});
 importLookFile?.addEventListener('change', async () => {
   const file = importLookFile.files?.[0];
   importLookFile.value = '';

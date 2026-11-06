@@ -402,32 +402,18 @@
                  in Full-scale edit (the Theme-Studio-style canvas) instead. -->
             <div class="cs-live-queue-section cs-live-queue-main hidden" id="svc-fullscreen">
                 <div class="cs-section-header svc-header">
-                    <button id="svc-back-to-stack" class="ts-back-btn svc-back-btn">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="15 18 9 12 15 6"/></svg>
+                    <button id="svc-back-to-stack" class="ts-nav-back svc-back-btn" aria-label="Back to Slides">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
                         <span>Slides</span>
                     </button>
-                    <input type="text" id="svc-fs-title" class="ts-name-input svc-fs-title" placeholder="Section title…">
-
-                    <!-- Slides: a field per slide. Text: the whole section as one document
-                         (a blank line starts a slide, [Chorus] starts a group). -->
-                    <div class="svc-mode" id="svc-flow-mode" role="group" aria-label="Edit as">
-                        <button type="button" data-mode="slides" class="is-on" aria-pressed="true">Slides</button>
-                        <button type="button" data-mode="text" aria-pressed="false">Text</button>
-                    </div>
-
-                    <div class="svc-delim" id="svc-delim-group">
-                        <span class="svc-delim-label">Lines</span>
-                        <input type="number" id="svc-delim-input" class="svc-delim-input" min="0" value="2" title="Lines per slide — 0 keeps each slide/stanza as-is">
-                    </div>
+                    <div id="svc-fs-title" class="svc-fs-title"></div>
 
                     <div class="svc-header-right">
-                        <button id="svc-item-theme-btn" class="ls-icon-btn ls-icon-btn-labeled svc-theme-icon-btn svc-card-theme-btn" title="Theme for this section">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="13.5" r="2.5"/><circle cx="8.5" cy="13.5" r="2.5"/><path d="M12 21a9 9 0 1 1 0-18"/></svg>
-                            <span>Theme</span>
-                        </button>
-                        <button id="svc-item-fullscale-btn" class="ls-icon-btn ls-icon-btn-labeled" title="Open the layout/position canvas for this section">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9" y1="10" x2="9" y2="20"/></svg>
-                            <span>Edit</span>
+                        <!-- View (Slides: a field per slide; Text: the whole section as one document),
+                             Lines per slide, Theme and Edit are all in this one menu. -->
+                        <button id="svc-actions-btn" class="ls-icon-btn ls-icon-btn-labeled" title="View, lines per slide, theme and design for this section" aria-haspopup="menu">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+                            <span>Actions</span>
                         </button>
                     </div>
                 </div>
@@ -1081,17 +1067,18 @@
                              (and Shift+Z or Ctrl+Y for redo) already works
                              globally across both Theme Studio and Full-scale
                              edit, see the keydown handler near themeUndo. -->
-                        <button id="import-look-btn" class="ts-add-btn ts-add-btn-compact" title="Import a theme — .kairotheme, .protheme (ProPresenter), or plain .json">
+                        <button id="import-look-btn" hidden class="ts-add-btn ts-add-btn-compact" title="Import a theme — .kairotheme, .protheme (ProPresenter), or plain .json" aria-label="Import theme">
                             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                            <span>Import</span>
                         </button>
-                        <button id="export-look-btn" class="ts-add-btn ts-add-btn-compact" title="Export current theme (.kairotheme)">
+                        <button id="export-look-btn" hidden class="ts-add-btn ts-add-btn-compact" title="Export current theme (.kairotheme)" aria-label="Export theme">
                             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                            <span>Export</span>
                         </button>
                         <button id="new-look-btn" class="ts-add-btn ts-add-btn-compact" title="New theme">
                             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             <span>New</span>
+                        </button>
+                        <button id="theme-more-btn" class="ts-add-btn ts-add-btn-compact ts-add-btn-icon" title="Import or export a theme" aria-label="More theme actions" aria-haspopup="menu">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
                         </button>
                         </div>
                         <input type="file" id="import-look-file" accept="application/json,.json,.kairotheme,.protheme" style="display:none">
@@ -1340,8 +1327,7 @@
                             <div class="au-engine-body" id="deepgram-key-group">
                                 <input type="password" id="deepgram-key" class="setting-input bi-field" placeholder="Paste your Deepgram key" aria-label="Deepgram key">
                                 <div class="au-free" id="deepgram-free">
-                                    <div class="free-badge"><b>$200</b><span>free credit, no card needed<br>&asymp; 350 hours of listening</span></div>
-                                    <a class="modal-btn primary" href="https://console.deepgram.com/signup" target="_blank" rel="noopener">Get my free key</a>
+                                    <div class="free-badge"><b>$200</b><span>free credit, no card needed<br>&asymp; 350 hours of listening</span><a class="modal-btn primary" href="https://console.deepgram.com/signup" target="_blank" rel="noopener">Get my free key</a></div>
                                 </div>
                             </div>
                         </div>
@@ -1430,8 +1416,7 @@
                         <div class="bi-invite-title">Get Bibles free from API.Bible</div>
                         <!-- Spotlit like Deepgram's free credit in Audio (owner, 2026-11-05). -->
                         <div class="au-free">
-                            <div class="free-badge"><b>3</b><span>Bibles of your choice, free<br>like the NIV, NLT or the Message</span></div>
-                            <a class="modal-btn primary" href="https://api.bible/sign-up" target="_blank" rel="noopener">Get my free key</a>
+                            <div class="free-badge"><b>3</b><span>Bibles of your choice, free<br>like the NIV, NLT or the Message</span><a class="modal-btn primary" href="https://api.bible/sign-up" target="_blank" rel="noopener">Get my free key</a></div>
                         </div>
                         <div class="bi-row">
                             <input type="password" id="api-bible-key" class="setting-input bi-field" placeholder="Paste your API key" autocomplete="off" spellcheck="false" aria-label="API.Bible key">
@@ -1666,7 +1651,7 @@
                                 </ul>
                                 <p>Use <strong>+ New</strong> in the sidebar to create additional named playlists (e.g. one per service) — Default is just the one that's there from the start.</p>
                                 <p>Click any slide in an item to send it live; the currently-live slide is highlighted. Right-click a slide for more options (duplicate, delete, split, etc.).</p>
-                                <p><strong>Quick edit</strong> (right-click a song or deck) has two ways to edit. <strong>Slides</strong> gives a text field per slide: Shift+Enter splits a slide at the caret, and Backspace at the very start joins it onto the one before. <strong>Text</strong> shows the whole song or deck as one piece of writing, the easiest way to paste in or rework lyrics: a blank line starts a new slide, and a line like <code>[Chorus]</code> or <code>[Verse 2]</code> starts a part (in a deck, it names the next slide). The slides it makes are listed beside the text as you type, and each slide keeps its own theme.</p>
+                                <p><strong>Quick edit</strong> (right-click a song or deck, then Quick edit, or right-click one slide to open it at that slide) shows every slide as one line of its text, large, with the slide's number at the left and <strong>Send</strong> and a menu (⋯) at the right. A sermon slide also shows what it is (Title, Point 2 of 26, Section) and its scriptures under the words; click the scriptures to retype them, or choose <strong>Add scriptures</strong> in its menu. Shift+Enter or ⌘Enter splits a slide at the caret, and Backspace at the very start joins it onto the one before. The menu also duplicates, copies and deletes a slide. <strong>Actions</strong> at the top holds <strong>Edit as text</strong> (the whole song or deck as one piece of writing: a blank line starts a new slide, and a line like <code>[Chorus]</code> starts a part), <strong>Lines per slide</strong>, <strong>Theme</strong> and <strong>Edit design</strong>. To rename an item, double-click its name in the playlist.</p>
                                 <p>While Kairo is listening, slides follow along by themselves: a live song or sermon deck advances as it's sung or preached (the bar under the playlist shows <strong>Following</strong> and where it is), and a slide deck in the playlist comes up on its own when its first slide is said. When the slides move on while a scripture is on screen, the slide takes the screen back — the preacher has moved on. A slide that is itself scripture (the sermon's verses put on slides) is left to Bible detection, which puts the verse up as it's read. Click any slide to take over — following carries on from there. Stop listening and it stops.</p>
                                 <p><strong>Media Bin.</strong> Drag the Media Bin's top edge to make it taller or shorter; it keeps that height. Double-click the edge to line it up with the Live Transcript box again.</p>
                             </div>
@@ -1682,12 +1667,9 @@
                                 </ul>
                                 <p><strong>ProPresenter files are handled specially.</strong> Kairo auto-detects them and preserves the file's own design exactly as authored — fonts, colors, positions, images, layer structure — instead of reformatting it into a Kairo theme. The Add dialog shows a notice confirming this rather than asking you to pick a theme, since none is needed. A playlist file with several presentations imports all of them at once, each keeping its own original layout.</p>
                                 <p>A plain text/Word import instead asks how to split it into slides (by paragraph, or a fixed number of lines each) and which theme to render it with, since there's no original design to preserve.</p>
-                                <p><strong>Sermon slides.</strong> A Word or text file laid out as a sermon outline (numbered points with their scriptures) offers <strong>Make sermon slides</strong>. Before making them, choose:</p>
-                                <ul>
-                                    <li><strong>Look</strong> — the deck's colours and fonts. <strong>Colours</strong> beside it shows the four it uses (background, second tone, text, accent): click one to open the colour picker, where you can also type its hex code.</li>
-                                    <li><strong>Layout</strong> — Left, Centred, Lower third, Split, Editorial, Statement, Card, Quote, Badge card, Worthy or Light, each shown on one of your own points.</li>
-                                </ul>
-                                <p>The deck opens in the slide editor. Under <strong>Look</strong>, the <strong>Style</strong> button opens the deck's layouts (each shown with the slide's own words), its looks and its background; it stays open while you try them. <strong>Colours</strong> sets the deck's four colours, and <strong>In the deck</strong> lists everything the document holds, so you choose what becomes a slide (typed verses and notes start off; tick them to add them). Every word is ordinary text: double-click it on the slide to change it, and its font and colour stay as they are. A slide you change by hand keeps its styling when the deck's look changes.</p>
+                                <p><strong>Sermon slides.</strong> A Word file always offers <strong>Make sermon slides</strong>, and so does pasted text that reads like a sermon. Kairo reads numbered or lettered points (<code>1.</code> <code>1)</code> <code>I.</code> <code>A.</code> <code>Point 1:</code>), bullets and dashes, with the scriptures after a dash, in brackets or on the line below. A document with headings and no points becomes one point per heading, and a plain document becomes one slide per paragraph. The import window says how it was read; check the result in the slide editor, where <strong>In the deck</strong> lists every line (tick one to add it) and <strong>This slide</strong> can treat a line as a Point, Section or Introduction. Before making the deck, choose its <strong>Style</strong> and, beside it, its four <strong>Colours</strong> (background, second tone, text, accent: click one to open the colour picker, where you can also type its hex code).</p>
+                                <p><strong>Style</strong> opens one panel with a preview of your first point. Switch between <strong>Look</strong> (colours, fonts and background) and <strong>Layout</strong> (Left, Centred, Lower third, Split, Editorial, Statement, Card, Quote, Badge card, Worthy or Light); each is shown on your own words. What you pick is only tried out until you press <strong>Apply</strong>.</p>
+                                <p>The deck opens in the slide editor, where <strong>Style</strong> sits under <strong>Look</strong>. Every word is ordinary text: double-click it on the slide to change it, and its font and colour stay as they are. A slide you change by hand keeps its styling when the deck's look changes.</p>
                                 <p>Change a part that other slides have too (the footer, the card, a label, a ghost word, the background...) and Kairo asks where else it goes: <strong>Just this slide</strong>, <strong>This and later slides</strong>, or <strong>All slides</strong>. Its look and place carry; each slide keeps its own words (except the footer, the same everywhere). Sent to all slides, the change also stays when the deck's look changes. A slide whose words run past their box is tagged <strong>Cut off</strong> on its thumbnail, in the editor and in Edit; ghost words and quote marks are cropped on purpose and never tagged.</p>
                             </div>
                         </details>
