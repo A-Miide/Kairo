@@ -954,11 +954,14 @@ function monitorResolution(o) {
 // A scaled live copy of one output. Rebuilt only when the output (or its
 // resolution) changes, so it isn't reloaded on every refresh.
 const _monitorScaleObservers = new WeakMap();
+// The copy fits the room its tile has, width and height, keeping the output's shape: the grid
+// keeps the single preview's footprint whatever the number of outputs (owner, 2026-11-05).
 function buildMonitorFrame(o) {
   const { w, h } = monitorResolution(o);
+  const fit = document.createElement('div');
+  fit.className = 'monitor-frame-fit';
   const box = document.createElement('div');
   box.className = 'monitor-frame';
-  box.style.aspectRatio = `${w} / ${h}`;
   box.dataset.key = `${o.id}|${w}x${h}`;
   const frame = document.createElement('iframe');
   frame.src = `/display.html?output=${encodeURIComponent(o.type === 'main' ? 'main' : o.id)}&monitor=1`;
@@ -967,10 +970,16 @@ function buildMonitorFrame(o) {
   frame.style.width = `${w}px`;
   frame.style.height = `${h}px`;
   box.appendChild(frame);
-  const ro = new ResizeObserver(() => { frame.style.transform = `scale(${box.clientWidth / w})`; });
-  ro.observe(box);
+  fit.appendChild(box);
+  const ro = new ResizeObserver(() => {
+    const scale = Math.min(fit.clientWidth / w, fit.clientHeight / h) || 0;
+    box.style.width = `${Math.floor(w * scale)}px`;
+    box.style.height = `${Math.floor(h * scale)}px`;
+    frame.style.transform = `scale(${scale})`;
+  });
+  ro.observe(fit);
   _monitorScaleObservers.set(box, ro);
-  return box;
+  return fit;
 }
 
 // Keeps the Monitor in step with the configured outputs (a screen assigned or
@@ -986,10 +995,23 @@ function disposeMonitorFrames(container) {
 
 // Grid: Main plus every output that's on, each a live copy.
 let monitorGridActive = false;
+// One row fills the box; with three outputs or more each row is half of it and the rest scroll.
+function sizeMonitorGridRows(host) {
+  const gap = parseFloat(getComputedStyle(host).rowGap) || 0;
+  host.style.gridAutoRows = host.dataset.rows === 'two' ? `${Math.max(0, (host.clientHeight - gap) / 2)}px` : `${host.clientHeight}px`;
+}
 function renderMonitorGrid() {
   const host = document.getElementById('outputs-monitor-grid');
   if (!host) return;
   const targets = monitorTargets();
+  // The same box as the single preview (owner, 2026-11-05): two tiles across at most, two rows
+  // filling it, and more outputs scroll inside the box rather than shrinking the tiles.
+  const preview = document.getElementById('slide-preview');
+  if (preview) host.style.aspectRatio = getComputedStyle(preview).aspectRatio;
+  host.style.gridTemplateColumns = targets.length > 1 ? 'repeat(2, minmax(0, 1fr))' : 'minmax(0, 1fr)';
+  host.dataset.rows = targets.length > 2 ? 'two' : 'one';
+  sizeMonitorGridRows(host);
+  if (!host._rowsObserver) { host._rowsObserver = new ResizeObserver(() => sizeMonitorGridRows(host)); host._rowsObserver.observe(host); }
   const existing = new Map([...host.children].map(tile => [tile.dataset.key, tile]));
   const tiles = targets.map(t => {
     const { w, h } = monitorResolution(t);

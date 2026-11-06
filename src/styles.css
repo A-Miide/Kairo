@@ -1089,9 +1089,14 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
    app.js), shown instead of the single .live-screen preview above. */
 .outputs-monitor-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 8px;
+  aspect-ratio: var(--kairo-output-aspect, 16 / 9);   /* columns, rows and the exact shape: renderMonitorGrid */
+  flex-shrink: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
+.monitor-grid-tile { min-width: 0; min-height: 0; }
+.monitor-frame-fit { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; }
 .monitor-grid-tile {
   border: 1px solid var(--border-md);
   border-radius: var(--radius);
@@ -1106,7 +1111,7 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
    output's real resolution and scaled down to fit — see buildMonitorFrame. */
 .monitor-frame {
   position: relative;
-  width: 100%;
+  flex: none;
   overflow: hidden;
   border-radius: var(--radius-sm);
   background: #000;
@@ -4930,17 +4935,9 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
   gap: 10px;
   padding: 10px 12px 8px;
 }
-.media-bin-hint {
-  font-size: 10.5px;
-  color: var(--text-3);
-  flex: 1;
-  min-width: 0;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
 .media-bin-header .cs-section-label { white-space: nowrap; flex: none; }
 .media-bin-size, .media-bin-folder, #media-bin-hide-btn { flex: none; }
+#media-bin-transition { margin-left: auto; } /* the folder on the left, everything else on the right */
 .media-bin-strip {
   flex: 1;
   min-height: 0;
