@@ -23,7 +23,7 @@
   const MIN_HEADLINE_PX = 60;          // readable from the back row on a 1080p slide
   const POINT_WORDS = 12;              // a point line aims for this many words or fewer
 
-  // ── the looks: six colour sets made by hand ─────────────────────────────────────────────────────
+  // ── the looks: colour sets made by hand ─────────────────────────────────────────────────────────
   // Each is one colour world: a deep background and a second tone of the same hue for gradients,
   // one text colour and one accent, a display face and a reading face. Colours are chosen so text
   // clears 4.5:1 and the accent 3:1 on both background tones (checked by kitWarnings and the tests).
@@ -40,6 +40,23 @@
       display: { family: 'Archivo Black', weight: 400, width: 0.66 }, body: { family: 'Inter' } },
     { id: 'linen', name: 'Linen', bg: '#F5EEE4', bg2: '#E8CDB7', text: '#2A1C15', accent: '#A9432A',
       display: { family: 'Cormorant Garamond', weight: 700, width: 0.44 }, body: { family: 'Manrope' } },
+    // From the owner's reference boards (their colour stories, Nov 2026).
+    { id: 'rose', name: 'Rose Dusk', bg: '#1C0920', bg2: '#70294A', text: '#FFF1EC', accent: '#EEAB85',
+      display: { family: 'Fraunces', weight: 700, width: 0.55 }, body: { family: 'Inter' } },
+    { id: 'crimson', name: 'Crimson Night', bg: '#0F1424', bg2: '#5E1730', text: '#FFF4F1', accent: '#F09A84',
+      display: { family: 'Bebas Neue', weight: 400, width: 0.42 }, body: { family: 'Inter' } },
+    { id: 'mint', name: 'Forest Mint', bg: '#06201C', bg2: '#204B40', text: '#ECF7EE', accent: '#9FD1B0',
+      display: { family: 'DM Serif Display', weight: 400, width: 0.5 }, body: { family: 'Manrope' } },
+    { id: 'plum', name: 'Plum Peach', bg: '#140828', bg2: '#4F266A', text: '#FBF0FF', accent: '#ECAD70',
+      display: { family: 'Poppins', weight: 800, width: 0.62 }, body: { family: 'Inter' } },
+    { id: 'ocean', name: 'Deep Ocean', bg: '#03071A', bg2: '#0F3065', text: '#EAF3FF', accent: '#6AAEEA',
+      display: { family: 'Space Grotesk', weight: 700, width: 0.58 }, body: { family: 'Inter' } },
+    { id: 'sky', name: 'Sky', bg: '#061D29', bg2: '#1C495D', text: '#F1FAFE', accent: '#7CC6E6',
+      display: { family: 'Montserrat', weight: 800, width: 0.62 }, body: { family: 'Inter' } },
+    { id: 'honey', name: 'Honey', bg: '#1F160B', bg2: '#6A4E1B', text: '#FFF6E6', accent: '#F1C76A',
+      display: { family: 'Fraunces', weight: 600, width: 0.53 }, body: { family: 'Manrope' } },
+    { id: 'lavender', name: 'Lavender', bg: '#F1E5F6', bg2: '#D9BFE6', text: '#2A1238', accent: '#7B3A93',
+      display: { family: 'Poppins', weight: 700, width: 0.6 }, body: { family: 'Inter' } },
   ];
   // How the background is drawn from a look's two tones. All quiet; none adds anything to look at.
   const BACKGROUNDS = [
@@ -53,6 +70,8 @@
     { id: 'left', name: 'Left' },
     { id: 'centred', name: 'Centred' },
     { id: 'lower', name: 'Lower third' },
+    { id: 'split', name: 'Split' },
+    { id: 'editorial', name: 'Editorial' },
   ];
   const layoutOf = (id) => (LAYOUTS.some(l => l.id === id) ? id : 'left');
   const kitById = (id) => KITS.find(k => k.id === id) || KITS[0];
@@ -397,6 +416,8 @@
   function layersFor(gen, kit, style, footer) {
     const layout = layoutOf(gen.layout);
     if (layout === 'lower') return lowerThird(gen, kit, style, footer);
+    if (layout === 'split') return split(gen, kit, style, footer);
+    if (layout === 'editorial') return editorial(gen, kit, style, footer);
     const L = backgroundLayers(kit, style);
     const refs = gen.refs || [];
     const lines = (gen.lines || []).filter(Boolean);
@@ -455,6 +476,52 @@
     L.push(headline(kit, gen, { x: M, y: top + 112, w: W - 2 * M, h: 196 }, text, gen.kind === 'story' ? 60 : 76,
       gen.kind === 'closing' ? kit.accent : kit.text, 'left', 1.1));
     L.push(...footerLayer(kit, footer, { x: M, y: H - 52, w: 1100, h: 32 }));
+    return L;
+  }
+
+  // A panel of the second tone down the left third holds the number (or the label); the words sit
+  // beside it on the background.
+  function split(gen, kit, style, footer) {
+    const P = 640;                                   // the panel's width
+    const L = backgroundLayers(kit, style);
+    L.push(shapeLayer('ss-panel', 'Panel', { x: 0, y: 0, w: P, h: H }, kit.bg2));
+    const refs = gen.refs || [];
+    const lines = (gen.lines || []).filter(Boolean);
+    const X = P + 110, TW = W - X - M;
+    if (gen.kind === 'point' && gen.n) {
+      L.push(textLayer('ss-number', 'Number', { x: 0, y: 300, w: P, h: 420 }, String(gen.n).padStart(2, '0'),
+        { ...display(kit, 360, kit.text, 'center', { lineHeight: 1.0 }), opacity: 92 }));
+    } else if (gen.label) {
+      L.push(labelLayer(kit, gen.label, { x: 80, y: 500, w: P - 160, h: 48 }, 'center'));
+    }
+    if (gen.kind === 'point' && gen.label) L.push(labelLayer(kit, gen.label, { x: X, y: 250, w: TW, h: 48 }, 'left'));
+    const text = gen.kind === 'title' ? lines[0] || '' : lines.join(' ');
+    const size = gen.kind === 'story' ? 64 : 96;
+    L.push(headline(kit, gen, { x: X, y: 320, w: TW, h: 440 }, text, size, gen.kind === 'closing' ? kit.accent : kit.text, 'left', 1.08));
+    if (gen.kind === 'title' && lines[1]) L.push(textLayer('ss-subtitle', 'Subtitle', { x: X, y: 780, w: TW, h: 60 }, lines.slice(1).join(' '),
+      { family: kit.body.family, size: 40, color: kit.text, opacity: 82, align: 'left' }));
+    L.push(...chipLayers(kit, refs.slice(0, 2), X, 850, 'left'));
+    L.push(...footerLayer(kit, footer, { x: X, y: 990, w: TW, h: 36 }));
+    return L;
+  }
+
+  // A magazine page: the number large in the top corner in the accent, the label opposite, then the
+  // headline set low and wide over a long fine rule, the scriptures under it.
+  function editorial(gen, kit, style, footer) {
+    const L = backgroundLayers(kit, style);
+    const refs = gen.refs || [];
+    const lines = (gen.lines || []).filter(Boolean);
+    if (gen.kind === 'point' && gen.n) L.push(textLayer('ss-number', 'Number', { x: M, y: 70, w: 520, h: 250 }, String(gen.n).padStart(2, '0'),
+      { ...display(kit, 230, kit.accent, 'left', { lineHeight: 1.0 }), opacity: 100 }));
+    if (gen.label) L.push(labelLayer(kit, gen.label, { x: W - M - 900, y: 110, w: 900, h: 48 }, 'right'));
+    const text = gen.kind === 'title' ? lines[0] || '' : lines.join(' ');
+    const size = gen.kind === 'story' ? 64 : 104;
+    L.push(headline(kit, gen, { x: M, y: 420, w: W - 2 * M - 160, h: 360 }, text, size, gen.kind === 'closing' ? kit.accent : kit.text, 'left', 1.02));
+    L.push({ ...ruleLayer(kit, M, 812, W - 2 * M), opacity: 70, pos: { x: M, y: 812, w: W - 2 * M, h: 3 } });
+    if (gen.kind === 'title' && lines[1]) L.push(textLayer('ss-subtitle', 'Subtitle', { x: M, y: 846, w: 1200, h: 56 }, lines.slice(1).join(' '),
+      { family: kit.body.family, size: 38, color: kit.text, opacity: 82, align: 'left' }));
+    else L.push(...chipLayers(kit, refs.slice(0, 3), M, 846, 'left'));
+    L.push(...footerLayer(kit, footer, { x: M, y: 990, w: 1100, h: 36 }));
     return L;
   }
 
@@ -593,6 +660,7 @@
     'ss-number': { name: 'point number', props: TEXT_STYLE },
     'ss-rule': { name: 'accent rule', props: [...FILL, 'pos'] },
     'ss-bg': { name: 'background', props: FILL },
+    'ss-panel': { name: 'side panel', props: FILL },
   };
   // A slide's shared parts that changed: [{ id, name, props }] with the new values to carry.
   function commonChanges(before, after) {

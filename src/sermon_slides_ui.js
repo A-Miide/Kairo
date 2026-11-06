@@ -139,7 +139,7 @@
     const seg = el('div', 'ssp-seg');
     seg.setAttribute('role', 'group');
     if (label) seg.setAttribute('aria-label', label);
-    seg.style.setProperty('--n', options.length);
+    seg.style.setProperty('--n', Math.min(options.length, 3));   // more than three wrap to a second row
     for (const o of options) {
       const b = el('button', o.id === current ? 'is-on' : '', o.name);
       b.type = 'button';
