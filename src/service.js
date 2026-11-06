@@ -4765,44 +4765,64 @@
     acDraft.colors = choice.colors && Object.keys(choice.colors).length ? { ...choice.colors } : undefined;
     host.replaceChildren();
 
-    // Colours: the six looks, then the four colours themselves to make them the church's own.
+    // Two controls: the Look (one button, its list of looks in a popover, like the Theme button)
+    // and the Colours it uses (one strip of four swatches, each changed on its own).
     const colours = document.createElement('div');
     colours.className = 'ac-colours';
-    const looksRow = document.createElement('div');
-    looksRow.className = 'ac-looks';
-    looksRow.setAttribute('role', 'radiogroup');
-    looksRow.setAttribute('aria-label', 'Colours');
-    const lookBtns = S.KITS.map(k => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'ac-look';
-      b.title = k.name;
-      b.setAttribute('aria-label', k.name);
-      b.setAttribute('role', 'radio');
-      b.style.background = `radial-gradient(circle at 20% 15%, ${k.bg2} 0%, ${k.bg} 75%)`;
-      const dot = document.createElement('span');
-      dot.style.background = k.accent;
-      b.appendChild(dot);
-      b.addEventListener('click', () => { acDraft.kit = k.id; acDraft.colors = undefined; refresh(); });
-      b.dataset.kit = k.id;
-      return b;
-    });
-    looksRow.append(...lookBtns);
-    const own = document.createElement('div');
-    own.className = 'ac-own-colours';
+    const lookBtn = document.createElement('button');
+    lookBtn.type = 'button';
+    lookBtn.className = 'ac-look-pick';
+    lookBtn.setAttribute('aria-haspopup', 'listbox');
+    const lookSwatch = document.createElement('span');
+    lookSwatch.className = 'ac-look-swatch';
+    const lookName = document.createElement('span');
+    lookBtn.append(lookSwatch, lookName);
+    lookBtn.insertAdjacentHTML('beforeend', '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>');
+    const swatchBg = (k) => `radial-gradient(circle at 20% 15%, ${k.bg2} 0%, ${k.bg} 75%)`;
+    lookBtn.addEventListener('click', () => openPopover(lookBtn, (pop) => {
+      const list = document.createElement('div');
+      list.className = 'svc-popover-list';
+      for (const k of S.KITS) {
+        const row = document.createElement('button');
+        row.type = 'button';
+        row.className = 'svc-popover-item has-thumb' + (k.id === acDraft?.kit && !acDraft?.colors ? ' active' : '');
+        const sw = document.createElement('span');
+        sw.className = 'ac-look-swatch';
+        sw.style.background = swatchBg(k);
+        sw.style.setProperty('--dot', k.accent);
+        const name = document.createElement('span');
+        name.textContent = k.name;
+        row.append(sw, name);
+        row.addEventListener('click', () => { acDraft.kit = k.id; acDraft.colors = undefined; closePopover(); refresh(); });
+        list.appendChild(row);
+      }
+      pop.appendChild(list);
+    }));
+    const lookGroup = document.createElement('div');
+    lookGroup.className = 'ac-choice';
+    lookGroup.append(Object.assign(document.createElement('span'), { className: 'ac-choice-label', textContent: 'Look' }), lookBtn);
+
+    const palette = document.createElement('div');
+    palette.className = 'ac-palette';
+    palette.setAttribute('role', 'group');
+    palette.setAttribute('aria-label', 'Colours');
     const KEYS = [['bg', 'Background'], ['bg2', 'Second tone'], ['text', 'Text'], ['accent', 'Accent']];
     const inputs = KEYS.map(([key, name]) => {
       const lab = document.createElement('label');
-      lab.className = 'ac-own-colour';
+      lab.className = 'ac-palette-swatch';
+      lab.title = name;
       const inp = document.createElement('input');
       inp.type = 'color';
       inp.setAttribute('aria-label', name);
       inp.addEventListener('input', () => { acDraft.colors = { ...(acDraft.colors || {}), [key]: inp.value }; refreshSoon(); });
-      lab.append(inp, document.createTextNode(name));
-      own.appendChild(lab);
+      lab.appendChild(inp);
+      palette.appendChild(lab);
       return [key, inp];
     });
-    colours.append(looksRow, own);
+    const colourGroup = document.createElement('div');
+    colourGroup.className = 'ac-choice';
+    colourGroup.append(Object.assign(document.createElement('span'), { className: 'ac-choice-label', textContent: 'Colours' }), palette);
+    colours.append(lookGroup, colourGroup);
 
     const cards = S.LAYOUTS.map(lay => {
       const card = document.createElement('button');
@@ -4831,18 +4851,17 @@
         c.classList.toggle('is-on', on);
         c.setAttribute('aria-checked', String(on));
       });
-      lookBtns.forEach(b => {
-        const on = b.dataset.kit === acDraft?.kit && !acDraft?.colors;
-        b.classList.toggle('is-on', on);
-        b.setAttribute('aria-checked', String(on));
-      });
     };
     // Each layout's preview in the chosen colours, painted once the cards are laid out (the painter
     // scales to the card's width).
     const refresh = () => {
       if (!acDraft) return;
       const kit = S.withColors(S.kitById(acDraft.kit), acDraft.colors);
-      inputs.forEach(([key, inp]) => { inp.value = kit[key]; });
+      inputs.forEach(([key, inp]) => { inp.value = kit[key]; inp.parentElement.style.background = kit[key]; });
+      const base = S.kitById(acDraft.kit);
+      lookSwatch.style.background = swatchBg(kit);
+      lookSwatch.style.setProperty('--dot', kit.accent);
+      lookName.textContent = acDraft.colors ? `${base.name}, own colours` : base.name;
       if (typeof loadGoogleFont === 'function') { loadGoogleFont(kit.display.family); loadGoogleFont(kit.body.family); }
       mark();
       requestAnimationFrame(() => cards.forEach(card => {
