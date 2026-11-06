@@ -8249,31 +8249,20 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .settings-section-head .settings-section-label { border-bottom: 0; margin: 0 auto 0 0; padding-bottom: 0; }
 .settings-section-head .modal-btn { padding: 6px 14px; font-size: var(--fs-xs); margin: 0; }
 
-/* Output theme picker: a dropdown with a tiny preview beside each theme. */
-.theme-pick { position: relative; min-width: 0; flex: 1; }
-.theme-pick-trigger {
-  display: flex; align-items: center; gap: 10px; width: 100%;
-  text-align: left; cursor: pointer; padding-top: 6px; padding-bottom: 6px;
-}
-.theme-pick-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.theme-pick-chev { color: var(--text-3); flex: none; display: grid; place-items: center; }
-.theme-pick-menu { z-index: 2000; }
-.theme-pick-menu {
-  position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px);
-  max-height: 320px; overflow-y: auto; padding: 4px;
-  background: var(--bg-input); border: 1px solid var(--border-md); border-radius: var(--radius);
-  box-shadow: 0 10px 28px rgba(0,0,0,.45);
-}
-.theme-pick-menu[hidden] { display: none; }
-.theme-pick-item {
-  display: flex; align-items: center; gap: 10px; width: 100%;
-  padding: 6px 8px; border: none; border-radius: var(--radius-sm);
-  background: transparent; color: var(--text-2); font: inherit; text-align: left; cursor: pointer;
-}
-.theme-pick-item:hover { background: var(--bg-hover); color: var(--text); }
-.theme-pick-item.active { background: var(--selected-dim); color: var(--selected-text); font-weight: 600; }
-.theme-pick-item span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-
+/* Every theme picker is the Bible bar's Theme button (buildThemeDropdown in app_outputs.js); in a
+   form row it matches the row's 34px fields and shows the chosen theme's name. */
+.theme-pick { height: 34px; padding: 0 6px 0 12px; border-radius: var(--radius); flex: none; }
+.theme-pick .theme-pick-chosen { margin-left: 4px; zoom: 0.62; flex: none; }
+.outputs-theme-row .setting-label { margin-left: 8px !important; }
+.theme-pick .theme-pick-chosen[hidden] { display: none; }
+.ac-title-row { display: flex; align-items: center; gap: 8px; }
+.ac-title-row .setting-input { flex: 1; min-width: 0; }
+.ac-theme-slot.hidden, .ac-theme-slot select, .ac-theme-slot .cs-select-wrapper { display: none; }
+.svc-popover.over-modal { z-index: 1100; }
+.ts-tool-theme { display: inline-flex; align-items: center; gap: 4px; }
+.ts-tool-theme.hidden { display: none; }
+.ts-tool-theme-btn { height: 32px; padding: 0 11px; border-radius: 7px; max-width: 200px; }
+.ts-tool-theme-btn span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* Grouped theme tree shared by every theme picker: a parent row with a chevron opens its themes. */
 .thm-tree { display: flex; flex-direction: column; gap: 2px; }
@@ -8994,63 +8983,66 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 
 /* ── Sermon slides (sermon_slides.js, sermon_slides_ui.js) ── */
 /* The import dialog's offer, when a document reads as a sermon outline. */
-.ac-sermon { display: flex; align-items: center; gap: 14px; margin: 4px 0 12px; padding: 12px 14px; border: 1px solid rgba(245, 48, 26, 0.45); border-radius: 10px; background: rgba(245, 48, 26, 0.06); }
+.ac-sermon { display: grid; gap: 12px; margin: 4px 0 12px; padding: 12px 14px; border: 1px solid rgba(245, 48, 26, 0.45); border-radius: 10px; background: rgba(245, 48, 26, 0.06); }
 .ac-sermon.hidden { display: none; }
-.ac-sermon > div { display: grid; gap: 2px; flex: 1; min-width: 0; font-size: 12px; color: var(--text-2); }
+.ac-sermon-head { display: flex; align-items: center; gap: 14px; }
+.ac-sermon-head > div { display: grid; gap: 2px; flex: 1; min-width: 0; font-size: 12px; color: var(--text-2); }
 .ac-sermon b { font-size: 13px; color: var(--text); }
 .ac-sermon .modal-btn { flex: none; }
+/* The deck's layout, picked before it's made: a point slide drawn in each. */
+.ac-layouts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; min-width: 0; }
+.ac-layout { display: grid; gap: 6px; padding: 5px; border: 1px solid var(--border-md); border-radius: 9px; background: none; color: var(--text-2); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; }
+.ac-layout:hover { border-color: var(--text-3); color: var(--text); }
+.ac-layout.is-on { border-color: var(--accent); color: var(--text); box-shadow: 0 0 0 1px var(--accent); }
+.ac-layout-thumb { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 5px; background: repeating-conic-gradient(#2a2a2e 0 25%, #222225 0 50%) 0 0 / 12px 12px; }
 
-/* The design screen: the slide large, every slide below, the choices on the right. */
-.ssd-overlay { position: fixed; inset: 0; z-index: 3500; display: flex; align-items: center; justify-content: center; padding: 24px; background: rgba(0, 0, 0, 0.72); }
-.ssd { width: min(1320px, 100%); height: min(860px, 100%); display: flex; flex-direction: column; border: 1px solid var(--border-md); border-radius: 14px; background: var(--bg); box-shadow: 0 24px 80px rgba(0, 0, 0, 0.6); overflow: hidden; }
-.ssd-head { display: flex; align-items: center; gap: 12px; padding: 12px 16px; border-bottom: 1px solid var(--border); }
-.ssd-title { display: flex; align-items: baseline; gap: 10px; flex: 1; min-width: 0; }
-.ssd-title b { font-size: 14px; }
-.ssd-title span { font-size: 12.5px; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ssd-main { flex: 1; min-height: 0; display: grid; grid-template-columns: 260px minmax(0, 1fr) 300px; }
-.ssd-stage-wrap { min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 14px; padding: 16px; }
-.ssd-stage { position: relative; height: 56%; width: auto; max-width: 100%; aspect-ratio: 16 / 9; margin: 0 auto; border-radius: 8px; overflow: hidden; flex: none; box-shadow: 0 8px 28px rgba(0, 0, 0, 0.5); }
-.ssd-grid { flex: 1; min-height: 0; overflow-y: auto; display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; align-content: start; padding: 2px; }
-.ssd-thumb { position: relative; padding: 0; border: 2px solid transparent; border-radius: 7px; background: none; cursor: pointer; }
-.ssd-thumb.is-on { border-color: var(--brand); }
-.ssd-thumb-art { position: relative; aspect-ratio: 16 / 9; border-radius: 5px; overflow: hidden; pointer-events: none; }
-.ssd-thumb-n { position: absolute; left: 6px; bottom: 5px; font-size: 10px; font-weight: 700; color: rgba(255, 255, 255, 0.75); text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7); }
-.ssd-badge { position: absolute; right: 5px; top: 5px; width: 18px; height: 18px; border-radius: 50%; background: #fff; color: #111; font-size: 11px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
-.ssd-badge[hidden] { display: none; }
-.ssd-side { min-height: 0; overflow-y: auto; display: grid; align-content: start; gap: 12px; padding: 16px; border-left: 1px solid var(--border); }
-.ssd-panel { display: grid; gap: 8px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; }
-.ssd-panel-title { font-size: 10px; font-weight: 800; letter-spacing: 1.2px; text-transform: uppercase; color: var(--brand); margin-bottom: 2px; }
-.ssd-label { font-size: 12px; font-weight: 600; color: var(--text-2); margin-top: 4px; }
-.ssd-looks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.ssd-look { display: grid; gap: 4px; padding: 0; border: 0; background: none; cursor: pointer; text-align: left; }
-.ssd-swatch { position: relative; aspect-ratio: 16 / 9; border-radius: 6px; border: 2px solid transparent; display: flex; align-items: center; justify-content: center; }
-.ssd-look.is-on .ssd-swatch { border-color: var(--brand); }
-.ssd-swatch-aa { font-size: 17px; font-weight: 700; }
-.ssd-swatch-dot { position: absolute; right: 6px; bottom: 6px; width: 7px; height: 7px; border-radius: 50%; }
-.ssd-look-name { font-size: 11px; color: var(--text-2); }
-.ssd-look.is-on .ssd-look-name { color: var(--text); font-weight: 600; }
-.ssd-seg { display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px; padding: 3px; border: 1px solid var(--border-md); border-radius: 8px; }
-.ssd-seg button { padding: 6px 4px; border: 0; border-radius: 6px; background: none; color: var(--text-2); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; }
-.ssd-seg button.is-on { background: rgba(255, 255, 255, 0.12); color: var(--text); }
-.ssd-hint { margin: 0; font-size: 11.5px; color: var(--text-3); line-height: 1.45; }
-.ssd-checks { margin: 2px 0 0; padding: 8px 10px 8px 26px; border-radius: 8px; background: rgba(255, 255, 255, 0.05); font-size: 12px; line-height: 1.5; color: var(--text); }
-.ssd-checks[hidden], .ssd-notes[hidden] { display: none; }
-.ssd-notes { font-size: 12px; color: var(--text-2); line-height: 1.5; }
-.ssd-notes b { display: block; color: var(--text); font-size: 11.5px; margin-bottom: 2px; }
-.ssd-notes p { margin: 0; }
-.ssd-foot { display: flex; align-items: center; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--border); }
-.ssd-summary { margin-right: auto; font-size: 12.5px; color: var(--text-2); }
-.ssd-seg-4 { grid-template-columns: repeat(4, 1fr); }
-/* Contents: every part of the document, ticked when it's a slide. */
-.ssd-contents { min-height: 0; display: flex; flex-direction: column; gap: 6px; padding: 16px 12px 16px 16px; border-right: 1px solid var(--border); }
-.ssd-parts { flex: 1; min-height: 0; overflow-y: auto; margin: 4px 0 0; padding: 0; list-style: none; display: grid; align-content: start; gap: 2px; }
-.ssd-part { display: flex; gap: 8px; align-items: flex-start; padding: 6px 6px; border-radius: 7px; }
-.ssd-part:hover { background: var(--bg-hover); }
-.ssd-part.is-current { background: rgba(245, 48, 26, 0.10); box-shadow: inset 0 0 0 1px rgba(245, 48, 26, 0.4); }
-.ssd-part input { margin: 2px 0 0; accent-color: var(--brand); flex: none; }
-.ssd-part label { display: grid; gap: 1px; min-width: 0; cursor: pointer; }
-.ssd-part-tag { font-size: 10.5px; font-weight: 700; color: var(--text-2); }
-.ssd-part-text { font-size: 12px; line-height: 1.35; color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.ssd-part.is-off .ssd-part-text, .ssd-part.is-off .ssd-part-tag { color: var(--text-3); }
-/* Typing a sermon slide's words in the slide editor: a field over the words' own box. */
-.ts-sermon-edit { position: absolute; inset: 0; width: 100%; height: 100%; resize: none; padding: 10px 12px; border: 2px solid var(--brand); border-radius: 4px; background: #121214; color: #fff; font: 600 20px/1.45 var(--font); outline: none; z-index: 5; }
+/* A sermon deck's panel in the slide editor (sermon_slides_ui.js), under the Look tab. */
+.ts-sermon-pane { display: block; }
+.ts-sermon-pane[hidden] { display: none; }
+.ssp-looks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.ssp-look { display: grid; gap: 3px; padding: 0; border: 0; background: none; cursor: pointer; text-align: left; }
+.ssp-swatch { position: relative; aspect-ratio: 16 / 9; border-radius: 5px; border: 2px solid transparent; display: flex; align-items: center; justify-content: center; }
+.ssp-look.is-on .ssp-swatch { border-color: var(--brand); }
+.ssp-aa { font-size: 14px; font-weight: 700; }
+.ssp-dot { position: absolute; right: 5px; bottom: 5px; width: 6px; height: 6px; border-radius: 50%; }
+.ssp-look-name { font-size: 10.5px; color: var(--text-2); }
+.ssp-look.is-on .ssp-look-name { color: var(--text); font-weight: 600; }
+.ssp-seg { display: grid; grid-template-columns: repeat(var(--n, 3), 1fr); gap: 3px; padding: 3px; border: 1px solid var(--border-md); border-radius: 8px; }
+.ssp-seg button { padding: 5px 2px; border: 0; border-radius: 6px; background: none; color: var(--text-2); font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; }
+.ssp-seg button.is-on { background: rgba(255, 255, 255, 0.12); color: var(--text); }
+.ssp-parts { margin: 0; padding: 0; list-style: none; display: grid; gap: 1px; max-height: 360px; overflow-y: auto; }
+.ssp-part { display: flex; gap: 8px; align-items: flex-start; padding: 5px 6px; border-radius: 6px; }
+.ssp-part:hover { background: var(--bg-hover); }
+.ssp-part.is-current { background: rgba(245, 48, 26, 0.10); box-shadow: inset 0 0 0 1px rgba(245, 48, 26, 0.4); }
+.ssp-part input { margin: 2px 0 0; accent-color: var(--brand); flex: none; }
+.ssp-part label { display: grid; gap: 1px; min-width: 0; cursor: pointer; }
+.ssp-part-tag { font-size: 10.5px; font-weight: 700; color: var(--text-2); }
+.ssp-part-text { font-size: 11.5px; line-height: 1.35; color: var(--text); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ssp-part.is-off .ssp-part-text, .ssp-part.is-off .ssp-part-tag { color: var(--text-3); }
+.ssp-sec { display: grid; gap: 8px; }
+.ssp-cut { font-size: 11.5px; color: var(--text-2); }
+.ssp-cut summary { cursor: pointer; color: var(--text); }
+.ssp-cut p { margin: 6px 0 0; line-height: 1.45; }
+.ssp-flag { margin: 0; font-size: 11.5px; color: var(--text); }
+/* A sermon deck's shared part changed: offer it to every slide (app_theme_studio.js offerApplyToAll). */
+.ts-apply-all { position: absolute; left: 50%; bottom: 28px; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: 10px; padding: 10px 12px 10px 16px; border: 1px solid var(--border-md); border-radius: 12px; background: #1d1d20; box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5); font-size: 13px; color: var(--text); white-space: nowrap; }
+.ts-apply-all .modal-btn { padding: 6px 14px; font-size: 12px; }
+/* A slide thumbnail whose text runs past its box (service.js markClipped): a small dark tag, the
+   icon in the brand colour; no frame around the slide. */
+.clip-tag { position: absolute; top: 6px; right: 6px; z-index: 3; display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px 2px 6px; border-radius: 999px; background: rgba(12, 12, 14, 0.82); color: #fff; font: 600 10px/1.5 var(--font); pointer-events: auto; }
+.clip-tag svg { color: var(--accent); flex: none; }
+.ssp-colors { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
+.ssp-color { display: grid; gap: 4px; min-width: 0; }
+.ssp-color-name { font-size: 11px; color: var(--text-2); }
+/* The sermon deck's colours on the import step: six looks, then the four colours themselves. */
+.ac-sermon-choices { display: grid; gap: 12px; min-width: 0; }
+.ac-colours { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.ac-looks { display: flex; gap: 6px; }
+.ac-look { position: relative; width: 30px; height: 30px; padding: 0; border: 1px solid var(--border-md); border-radius: 7px; cursor: pointer; }
+.ac-look span { position: absolute; right: 4px; bottom: 4px; width: 7px; height: 7px; border-radius: 50%; }
+.ac-look.is-on { box-shadow: 0 0 0 2px var(--accent); border-color: transparent; }
+.ac-own-colours { display: flex; gap: 10px; }
+.ac-own-colour { display: grid; justify-items: center; gap: 3px; font-size: 10px; color: var(--text-2); cursor: pointer; }
+.ac-own-colour input { width: 26px; height: 26px; padding: 0; border: 1px solid var(--border-md); border-radius: 6px; background: none; cursor: pointer; }
+.ac-own-colour input::-webkit-color-swatch-wrapper { padding: 2px; }
+.ac-own-colour input::-webkit-color-swatch { border: 0; border-radius: 4px; }

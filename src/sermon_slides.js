@@ -5,11 +5,11 @@
 //     fills them with the sermon's words. It never invents a layout, a colour, a font or a word.
 //   - The preacher's words, never Kairo's. A long point is cut at a natural break, marked
 //     "shortened" for review, and its whole sentence kept in the slide's notes.
-//   - Every word is a real text layer (pp_render.js draws them), so editing a word or changing the
-//     look draws the slide again.
 //   - Scripture appears as reference chips written out the same way ("Romans 4:16–21"); the verses
 //     go up live from Kairo's Bible when they're read.
-//   - Restraint: one accent word at most per slide, two fonts, 5% safe margins.
+//   - Restraint: one accent colour (label, rule, chips), two fonts, 5% safe margins.
+//   - Every slide is made of the slide editor's own layers (text and shapes), so it is edited exactly
+//     like one built by hand: retype, restyle, move.
 //
 // Reading: a Word file (.docx is a zip of XML; read here, in the page) or pasted text becomes an
 // outline: header lines, points (list paragraphs) with the references after their dash, the typed
@@ -29,17 +29,17 @@
   // clears 4.5:1 and the accent 3:1 on both background tones (checked by kitWarnings and the tests).
   const KITS = [
     { id: 'ember', name: 'Ember', bg: '#160A08', bg2: '#6B2313', text: '#FBF1E6', accent: '#F4A85F',
-      display: { family: 'Montserrat', face: 'Montserrat-ExtraBold' }, body: { family: 'Inter', face: 'Inter-Regular' } },
+      display: { family: 'Montserrat', weight: 800, width: 0.62 }, body: { family: 'Inter' } },
     { id: 'midnight', name: 'Midnight', bg: '#090C21', bg2: '#2A2878', text: '#EEF0FF', accent: '#9CCBFF',
-      display: { family: 'Playfair Display', face: 'PlayfairDisplay-Bold' }, body: { family: 'Inter', face: 'Inter-Regular' } },
+      display: { family: 'Playfair Display', weight: 700, width: 0.52 }, body: { family: 'Inter' } },
     { id: 'evergreen', name: 'Evergreen', bg: '#0A1712', bg2: '#22503A', text: '#F2EFE3', accent: '#DCC27A',
-      display: { family: 'EB Garamond', face: 'EBGaramond-SemiBold' }, body: { family: 'Manrope', face: 'Manrope-Regular' } },
+      display: { family: 'EB Garamond', weight: 600, width: 0.46 }, body: { family: 'Manrope' } },
     { id: 'lagoon', name: 'Lagoon', bg: '#041B21', bg2: '#0C5560', text: '#EAFAF7', accent: '#F3CA6E',
-      display: { family: 'Raleway', face: 'Raleway-ExtraBold' }, body: { family: 'Inter', face: 'Inter-Regular' } },
+      display: { family: 'Raleway', weight: 800, width: 0.58 }, body: { family: 'Inter' } },
     { id: 'graphite', name: 'Graphite', bg: '#0E0E10', bg2: '#2C2C31', text: '#FFFFFF', accent: '#FF8A65',
-      display: { family: 'Archivo Black', face: 'ArchivoBlack-Regular' }, body: { family: 'Inter', face: 'Inter-Regular' } },
+      display: { family: 'Archivo Black', weight: 400, width: 0.66 }, body: { family: 'Inter' } },
     { id: 'linen', name: 'Linen', bg: '#F5EEE4', bg2: '#E8CDB7', text: '#2A1C15', accent: '#A9432A',
-      display: { family: 'Cormorant Garamond', face: 'CormorantGaramond-Bold' }, body: { family: 'Manrope', face: 'Manrope-Regular' } },
+      display: { family: 'Cormorant Garamond', weight: 700, width: 0.44 }, body: { family: 'Manrope' } },
   ];
   // How the background is drawn from a look's two tones. All quiet; none adds anything to look at.
   const BACKGROUNDS = [
@@ -47,13 +47,24 @@
     { id: 'gradient', name: 'Gradient' }, // the two tones, corner to corner
     { id: 'solid', name: 'Solid' },
   ];
+  // Where the words sit: at the left with the point's number quiet on the right; centred; or in a
+  // band along the bottom over whatever is behind (a camera, a video).
+  const LAYOUTS = [
+    { id: 'left', name: 'Left' },
+    { id: 'centred', name: 'Centred' },
+    { id: 'lower', name: 'Lower third' },
+  ];
+  const layoutOf = (id) => (LAYOUTS.some(l => l.id === id) ? id : 'left');
   const kitById = (id) => KITS.find(k => k.id === id) || KITS[0];
-  const FONT_FAMILIES = [...new Set(KITS.flatMap(k => [k.display.family, k.body.family]))];
+  // A look with the operator's own colours over it: { bg, bg2, text, accent }, any of them.
+  function withColors(kit, colors) {
+    const own = Object.fromEntries(Object.entries(colors || {}).filter(([k, v]) => ['bg', 'bg2', 'text', 'accent'].includes(k) && /^#[0-9a-f]{6}$/i.test(v)));
+    return Object.keys(own).length ? { ...kit, ...own } : kit;
+  }
 
   // ── colour ──────────────────────────────────────────────────────────────────────────────────────
   const HEX = /^#?([0-9a-f]{6})$/i;
   const rgb = (hex) => { const m = HEX.exec(String(hex || '')); const n = m ? parseInt(m[1], 16) : 0; return [(n >> 16 & 255) / 255, (n >> 8 & 255) / 255, (n & 255) / 255]; };
-  const rgba = (hex, a = 1) => { const [r, g, b] = rgb(hex); return [r, g, b, a]; };
   const luminance = (hex) => { const f = (c) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4)); const [r, g, b] = rgb(hex).map(f); return 0.2126 * r + 0.7152 * g + 0.0722 * b; };
   const contrast = (a, b) => { const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
 
@@ -290,145 +301,160 @@
     if (cut < 0) return { text: t, shortened: false };
     return { text: t.slice(0, cut).replace(/[,;:–—\s]+$/, ''), shortened: true };
   }
-  // The one word shown in the accent colour: the point's most telling word (the longest that isn't
-  // a common word or a name already in a heading). One per slide at most, so it keeps meaning.
-  function accentWord(text) {
-    // Not a name (capitalised) and not a shouted word: an ordinary word the point turns on.
-    const words = (String(text || '').match(/[A-Za-z’']+/g) || []).filter(w => !STOP.has(w.toLowerCase()) && w.length >= 6 && /^[a-z]/.test(w));
-    if (!words.length) return '';
-    return words.sort((a, b) => b.length - a.length)[0];
-  }
 
   // ── layers ──────────────────────────────────────────────────────────────────────────────────────
-  let counter = 0;
-  const lid = (p) => `${p}-${Date.now().toString(36)}${(counter++).toString(36)}`;
-  function ppLayer(name, pos, extra) {
+  // The slide editor's own layers (the ones a theme is made of): a text layer of custom text with its
+  // own font, size and colour, and shapes (background layers with a box). So a sermon slide is
+  // edited exactly like one built by hand: retype, restyle, move; nothing is drawn again over it.
+  const hex2 = (n) => Math.round(n).toString(16).padStart(2, '0');
+  const withAlpha = (hex, a) => `#${String(hex).replace('#', '').slice(0, 6)}${hex2(a * 255)}`;
+  function textLayer(id, name, pos, text, o) {
     return {
-      type: 'pp', id: lid('ss'), name, binding: 'none', visible: true, opacity: 1, rotation: 0, flip: 'none', slideSize: { w: W, h: H },
-      pos, shape: { type: 'rectangle' }, fill: { enable: false }, stroke: { enable: false }, shadow: { enable: false }, feather: { enable: false },
-      ...extra,
+      id, type: 'text', name, visible: true, binding: 'custom', customText: text, pos,
+      font: { family: o.family, size: o.size, weight: o.weight || 400, italic: false, lineHeight: o.lineHeight || 1.15, letterSpacing: o.spacing || 0, transform: o.transform || 'none' },
+      color: o.color, opacity: o.opacity || 100, align: o.align || 'left',
+      shadow: { enabled: false, color: '#000000', opacity: 0, blur: 0, x: 0, y: 0 },
+      outline: { enabled: false, color: '#000000', width: 0 },
+      webFont: true,
     };
   }
-  const run = (t, size, color, face, extra) => ({ t, size, color, font: face, ...extra });
-  function textSpec(face, family, size, paragraphs, o = {}) {
-    return {
-      font: { name: face, family, size, bold: false, webFont: true, webFonts: o.webFonts || [] },
-      paragraphs,
-      margins: { l: 0, t: 0, r: 0, b: 0 },
-      valign: o.valign || 'middle',
-      scale: o.scale || 'down',
-      caps: 'none', delimiter: '', kerning: 0, noLigatures: false, transform: 'none', superscript: 0,
-      paragraph: { align: o.align || 'left', lineMult: o.lineMult || 1, balance: true },
-      shadow: { enable: false },
-    };
+  function shapeLayer(id, name, pos, color, o = {}) {
+    return { id, type: 'background', name, visible: true, fill: 'solid', color, color2: color, opacity: o.opacity || 100, angle: 0, radius: o.radius || 0, pos };
   }
-  const para = (runs, align) => ({ align, runs });
-  function roundedRect(w, h, r) {
-    const rx = r / w, ry = r / h;
-    const pt = (x, y, q0, q1) => ({ p: [x, y], q0: q0 || [x, y], q1: q1 || [x, y], curved: false });
-    return { type: 'custom', closed: true, points: [
-      pt(rx, 0), pt(1 - rx, 0, null, [1, 0]), pt(1, ry, [1, 0]), pt(1, 1 - ry, null, [1, 1]),
-      pt(1 - rx, 1, [1, 1]), pt(rx, 1, null, [0, 1]), pt(0, 1 - ry, [0, 1]), pt(0, ry, null, [0, 0]),
-    ] };
-  }
-
   function backgroundLayers(kit, style) {
-    const L = [{ type: 'background', id: lid('bg'), name: 'Canvas', color: kit.bg, fill: 'transparent', opacity: 100, visible: true },
-      ppLayer('Background', { x: 0, y: 0, w: W, h: H }, { fill: { enable: true, color: rgba(kit.bg) } })];
+    // A full-size Background layer (not the canvas itself): its fill, colours and gradient are set
+    // under Style like any slide's background.
+    const canvas = { id: 'ss-bg', type: 'background', name: 'Background', visible: true, opacity: 100, angle: 135, radius: 0, pos: { x: 0, y: 0, w: W, h: H } };
     if (style === 'gradient') {
-      L.push(ppLayer('Gradient', { x: 0, y: 0, w: W, h: H }, {
-        fill: { enable: true, gradient: { type: 'linear', angle: -35, stops: [{ pos: 0, color: rgba(kit.bg2) }, { pos: 0.55, color: rgba(kit.bg, 0.6) }, { pos: 1, color: rgba(kit.bg) }] } },
-      }));
-    } else if (style === 'glow') {
-      // A large soft circle of the second tone, its centre off the top-left corner.
-      // Square and much larger than the slide, so the light has faded out well before any edge.
-      L.push(ppLayer('Glow', { x: -1800, y: -1850, w: 3400, h: 3400 }, {
-        fill: { enable: true, gradient: { type: 'radial', angle: 0, stops: [{ pos: 0, color: rgba(kit.bg2, 0.95) }, { pos: 0.22, color: rgba(kit.bg2, 0.55) }, { pos: 0.5, color: rgba(kit.bg2, 0) }, { pos: 1, color: rgba(kit.bg2, 0) }] } },
-      }));
+      return [{ ...canvas, fill: 'gradient', color: kit.bg2, color2: kit.bg, gradientStops: [{ pos: 0, color: kit.bg2 }, { pos: 55, color: kit.bg }, { pos: 100, color: kit.bg }] }];
     }
-    return L;
+    if (style === 'glow') {
+      // The second tone as a soft light from the top-left corner: the theme gradient's own glow.
+      return [{ ...canvas, fill: 'gradient', color: kit.bg, color2: kit.bg, gradientStops: [{ pos: 0, color: kit.bg }, { pos: 100, color: kit.bg }],
+        gradientGlows: [{ x: 4, y: 0, rx: 62, ry: 95, color: kit.bg2 }] }];
+    }
+    return [{ ...canvas, fill: 'solid', color: kit.bg, color2: kit.bg }];
   }
 
-  // The scripture chips: outlined pills in the accent, the reference in the reading face.
+  // The scripture chips: a tinted pill each, the reference on it in the reading face.
   function chipLayers(kit, refs, x, y, align) {
     const size = 32, h = 62, padX = 30, gap = 18;
-    const widths = refs.map(r => Math.round(r.length * size * 0.54 + 2 * padX));
     const chips = [];
     let used = 0;
-    for (let i = 0; i < refs.length; i++) {
-      if (used + widths[i] > W - 2 * M) break;
-      chips.push({ ref: refs[i], w: widths[i] });
-      used += widths[i] + gap;
+    for (const ref of refs) {
+      const w = Math.round(ref.length * size * 0.54 + 2 * padX);
+      if (used + w > W - 2 * M) break;
+      chips.push({ ref, w });
+      used += w + gap;
     }
     used -= gap;
-    let cx = align === 'center' ? Math.round((W - used) / 2) : x;
-    return chips.map(c => {
-      const l = ppLayer(`Scripture ${c.ref}`, { x: cx, y, w: c.w, h }, {
-        shape: roundedRect(c.w, h, h / 2),
-        stroke: { enable: true, width: 2.5, color: rgba(kit.accent, 0.85), style: 'solid' },
-        text: textSpec(kit.body.face, kit.body.family, size, [para([run(c.ref, size, rgba(kit.text), kit.body.face)], 'center')], { align: 'center', scale: 'none' }),
-      });
+    let cx = align === 'center' ? Math.round((W - used) / 2) : align === 'right' ? W - M - used : x;
+    const out = [];
+    chips.forEach((c, i) => {
+      out.push(shapeLayer(`ss-chip-${i}`, `Scripture ${i + 1}`, { x: cx, y, w: c.w, h }, kit.accent, { radius: h / 2, opacity: 22 }));
+      out.push(textLayer(`ss-chip-${i}-text`, `Scripture ${i + 1} text`, { x: cx, y: y + 12, w: c.w, h: h - 18 }, c.ref,
+        { family: kit.body.family, size, weight: 500, color: kit.text, align: 'center', lineHeight: 1.1 }));
       cx += c.w + gap;
-      return l;
     });
+    return out;
   }
-  const labelLayer = (kit, label, pos, align) => ppLayer('Label', pos, {
-    text: textSpec(kit.body.face, kit.body.family, 30, [para([run(String(label).toUpperCase(), 30, rgba(kit.accent), kit.body.face.replace(/-Regular$/, '-SemiBold'), { kern: 6 })], align)], { align, scale: 'none' }),
-  });
-  const ruleLayer = (kit, x, y, w) => ppLayer('Rule', { x, y, w, h: 5 }, { fill: { enable: true, color: rgba(kit.accent) } });
-  const footerLayer = (kit, footer) => !footer ? [] : [ppLayer('Footer', { x: M, y: 990, w: 1100, h: 36 }, {
-    text: textSpec(kit.body.face, kit.body.family, 22, [para([run(String(footer).toUpperCase(), 22, rgba(kit.text, 0.55), kit.body.face, { kern: 5 })], 'left')], { scale: 'none' }),
-  })];
-  // A headline's runs: the slide's one accent word in the accent colour, the rest in the text colour.
-  function headlineRuns(text, size, kit, accent) {
-    if (!accent) return [run(text, size, rgba(kit.text), kit.display.face)];
-    const at = text.indexOf(accent);
-    if (at < 0) return [run(text, size, rgba(kit.text), kit.display.face)];
-    return [run(text.slice(0, at), size, rgba(kit.text), kit.display.face), run(accent, size, rgba(kit.accent), kit.display.face), run(text.slice(at + accent.length), size, rgba(kit.text), kit.display.face)]
-      .filter(r => r.t);
+  const labelLayer = (kit, label, pos, align) => textLayer('ss-label', 'Label', pos, String(label),
+    { family: kit.body.family, size: 30, weight: 600, color: kit.accent, align, spacing: 6, transform: 'uppercase' });
+  const ruleLayer = (kit, x, y, w) => shapeLayer('ss-rule', 'Rule', { x, y, w, h: 5 }, kit.accent);
+  const footerLayer = (kit, footer, pos = { x: M, y: 990, w: 1100, h: 36 }, align = 'left') => !footer ? [] : [textLayer('ss-footer', 'Footer', pos, String(footer),
+    { family: kit.body.family, size: 22, color: kit.text, opacity: 55, spacing: 5, transform: 'uppercase', align })];
+  const display = (kit, size, color, align, o = {}) => ({ family: kit.display.family, size, weight: kit.display.weight, color, align, lineHeight: o.lineHeight || 1.08 });
+  // The largest size up to `size` at which `text` fits a box `w` × `h` in the look's display face
+  // (an estimate from the face's average letter width; capitals run wider). A plain text layer
+  // doesn't shrink itself, so the slide is made at a size that fits. Never below the readable
+  // minimum: past that the slide is flagged instead (issues).
+  function fitSize(kit, text, w, h, size, lineHeight) {
+    const t = String(text || '');
+    const caps = t.replace(/[^A-Za-z]/g, '').length && t === t.toUpperCase() ? 1.22 : 1;
+    const em = (kit.display.width || 0.55) * caps;
+    let s = size;
+    const lines = (px) => {
+      const perLine = Math.max(1, Math.floor(w / (px * em)));
+      let n = 0, cur = 0;
+      for (const word of t.split(/\s+/)) { const len = word.length + (cur ? 1 : 0); if (cur && cur + len > perLine) { n += 1; cur = word.length; } else cur += len; }
+      return n + 1;
+    };
+    while (s > MIN_HEADLINE_PX && lines(s) * s * lineHeight > h) s -= 4;
+    return Math.max(MIN_HEADLINE_PX, s);
+  }
+  // A headline layer at the size that fits its box; `gen.tooLong` when even the minimum doesn't.
+  function headline(kit, gen, pos, text, size, color, align, lineHeight) {
+    const px = fitSize(kit, text, pos.w, pos.h, size, lineHeight);
+    if (px === MIN_HEADLINE_PX && fitSize(kit, text, pos.w, pos.h, MIN_HEADLINE_PX + 4, lineHeight) === MIN_HEADLINE_PX) {
+      const em = (kit.display.width || 0.55);
+      const perLine = Math.floor(pos.w / (px * em));
+      if (Math.ceil(text.length / Math.max(1, perLine)) * px * lineHeight > pos.h) gen.tooLong = true;
+    }
+    return textLayer('ss-headline', 'Headline', pos, text, display(kit, px, color, align, { lineHeight }));
   }
 
   // ── the five layouts ────────────────────────────────────────────────────────────────────────────
   function layersFor(gen, kit, style, footer) {
+    const layout = layoutOf(gen.layout);
+    if (layout === 'lower') return lowerThird(gen, kit, style, footer);
     const L = backgroundLayers(kit, style);
     const refs = gen.refs || [];
     const lines = (gen.lines || []).filter(Boolean);
-    const display = (size, align, accent) => lines.map(l => para(headlineRuns(l, size, kit, accent), align));
+    if (layout === 'centred' && (gen.kind === 'point' || gen.kind === 'story')) {
+      if (gen.kind === 'point' && gen.n) L.push(textLayer('ss-number', 'Number', { x: (W - 740) / 2, y: 190, w: 740, h: 640 }, String(gen.n).padStart(2, '0'),
+        { ...display(kit, 520, kit.text, 'center', { lineHeight: 1.0 }), opacity: 7 }));
+      if (gen.kind === 'story') L.push(ruleLayer(kit, (W - 96) / 2, 300, 96));
+      if (gen.label) L.push(labelLayer(kit, gen.label, { x: M, y: gen.kind === 'story' ? 330 : 230, w: W - 2 * M, h: 48 }, 'center'));
+      if (gen.kind === 'point') {
+        L.push(headline(kit, gen, { x: 200, y: 300, w: W - 400, h: 500 }, lines.join(' '), 104, kit.text, 'center', 1.08));
+        L.push(...chipLayers(kit, refs, 0, 840, 'center'));
+      } else {
+        L.push(headline(kit, gen, { x: 240, y: 400, w: W - 480, h: 460 }, lines.join(' '), 76, kit.text, 'center', 1.2));
+      }
+      L.push(...footerLayer(kit, footer, { x: M, y: 990, w: W - 2 * M, h: 36 }, 'center'));
+      return L;
+    }
     if (gen.kind === 'title') {
       if (gen.label) L.push(labelLayer(kit, gen.label, { x: M, y: 250, w: W - 2 * M, h: 50 }, 'center'));
       const [head, ...rest] = lines;
-      L.push(ppLayer('Headline', { x: 200, y: 320, w: W - 400, h: 330 }, {
-        text: textSpec(kit.display.face, kit.display.family, 132, [para(headlineRuns(head || '', 132, kit, ''), 'center')], { align: 'center', lineMult: 0.95 }),
-      }));
-      if (rest.length) L.push(ppLayer('Subtitle', { x: 200, y: 670, w: W - 400, h: 110 }, {
-        text: textSpec(kit.body.face, kit.body.family, 44, rest.map(l => para([run(l, 44, rgba(kit.text, 0.82), kit.body.face)], 'center')), { align: 'center', valign: 'top' }),
-      }));
+      L.push(headline(kit, gen, { x: 200, y: 320, w: W - 400, h: 330 }, head || '', 132, kit.text, 'center', 1.0));
+      if (rest.length) L.push(textLayer('ss-subtitle', 'Subtitle', { x: 200, y: 670, w: W - 400, h: 110 }, rest.join(' '),
+        { family: kit.body.family, size: 44, color: kit.text, opacity: 82, align: 'center' }));
       L.push(...chipLayers(kit, refs, 0, 830, 'center'));
     } else if (gen.kind === 'point') {
       // The point at the left; its number, very large and quiet, balances the right.
-      if (gen.n) L.push(ppLayer('Number', { x: 1080, y: 160, w: 740, h: 760 }, {
-        text: textSpec(kit.display.face, kit.display.family, 480, [para([run(String(gen.n).padStart(2, '0'), 480, rgba(kit.text, 0.07), kit.display.face)], 'right')], { align: 'right', scale: 'down' }),
-      }));
+      if (gen.n) L.push(textLayer('ss-number', 'Number', { x: 1080, y: 250, w: 740, h: 580 }, String(gen.n).padStart(2, '0'),
+        { ...display(kit, 480, kit.text, 'right', { lineHeight: 1.0 }), opacity: 7 }));
       if (gen.label) L.push(labelLayer(kit, gen.label, { x: M, y: 230, w: 900, h: 48 }, 'left'));
-      L.push(ppLayer('Headline', { x: M, y: 300, w: 1180, h: 480 }, {
-        text: textSpec(kit.display.face, kit.display.family, 104, display(104, 'left', gen.accent), { valign: 'top', lineMult: 1.0 }),
-      }));
+      L.push(headline(kit, gen, { x: M, y: 300, w: 1180, h: 500 }, lines.join(' '), 104, kit.text, 'left', 1.08));
       L.push(...chipLayers(kit, refs, M, 840, 'left'));
     } else if (gen.kind === 'story') {
       L.push(ruleLayer(kit, M, 300, 96));
       if (gen.label) L.push(labelLayer(kit, gen.label, { x: M, y: 330, w: 900, h: 48 }, 'left'));
-      L.push(ppLayer('Headline', { x: M, y: 400, w: 1380, h: 460 }, {
-        text: textSpec(kit.display.face, kit.display.family, 76, display(76, 'left', ''), { valign: 'top', lineMult: 1.1 }),
-      }));
+      L.push(headline(kit, gen, { x: M, y: 400, w: 1380, h: 460 }, lines.join(' '), 76, kit.text, 'left', 1.2));
     } else {
       // section / closing: one line, centred, with a short accent rule above
-      const size = gen.kind === 'closing' ? 120 : 128;
       L.push(ruleLayer(kit, (W - 120) / 2, 340, 120));
-      L.push(ppLayer('Headline', { x: 200, y: 380, w: W - 400, h: 400 }, {
-        text: textSpec(kit.display.face, kit.display.family, size, lines.map(l => para([run(l, size, rgba(gen.kind === 'closing' ? kit.accent : kit.text), kit.display.face)], 'center')), { align: 'center', lineMult: 0.95 }),
-      }));
+      L.push(headline(kit, gen, { x: 200, y: 380, w: W - 400, h: 400 }, lines.join(' '), gen.kind === 'closing' ? 120 : 128, gen.kind === 'closing' ? kit.accent : kit.text, 'center', 1.0));
     }
     L.push(...footerLayer(kit, footer));
+    return L;
+  }
+
+  // The words in a band along the bottom third; above it the slide is clear, so what is behind
+  // (the camera, a video) shows. Every kind of slide takes the same band.
+  function lowerThird(gen, kit, style, footer) {
+    const top = 700;
+    const L = backgroundLayers(kit, style).map(b => ({ ...b, pos: { x: 0, y: top, w: W, h: H - top }, opacity: 94 }));
+    const refs = gen.refs || [];
+    const lines = (gen.lines || []).filter(Boolean);
+    if (gen.kind === 'section' || gen.kind === 'closing') L.push(ruleLayer(kit, M, top + 60, 96));
+    else if (gen.label) L.push(labelLayer(kit, gen.label, { x: M, y: top + 52, w: 900, h: 44 }, 'left'));
+    L.push(...chipLayers(kit, refs.slice(0, 3), 0, top + 42, 'right'));
+    const text = gen.kind === 'title' ? lines[0] || '' : lines.join(' ');
+    L.push(headline(kit, gen, { x: M, y: top + 112, w: W - 2 * M, h: 196 }, text, gen.kind === 'story' ? 60 : 76,
+      gen.kind === 'closing' ? kit.accent : kit.text, 'left', 1.1));
+    L.push(...footerLayer(kit, footer, { x: M, y: H - 52, w: 1100, h: 32 }));
     return L;
   }
 
@@ -444,20 +470,15 @@
       refs = lines.pop().replace(/^scriptures?\s*:/i, '').split(/\s*[·|;]\s*/).map(r => normaliseRef(r) || r.trim()).filter(Boolean);
     }
     const label = gen.label && lines.length > 1 ? lines.shift() : (gen.label ? gen.label : '');
-    return { ...gen, label, lines: lines.length ? lines : gen.lines, refs, accent: gen.kind === 'point' ? accentWord(lines.join(' ')) : '', shortened: false };
+    return { ...gen, label, lines: lines.length ? lines : gen.lines, refs, shortened: false };
   }
   // The slide's words checked against the rules (fit is checked after drawing: see checkFit).
   function issues(gen, kit) {
     const out = kitWarnings(kit);
     if (gen.shortened) out.push('Shortened: check the cut. The whole sentence is in the notes.');
+    if (gen.tooLong) out.push('Too long to fit at a readable size: shorten the words.');
     if ((gen.refs || []).some(r => !normaliseRef(r))) out.push('A scripture reference isn’t recognised.');
     return out;
-  }
-  // A slide drawn again keeps its layers' ids (by name), so what the slide editor stored for a layer
-  // (a nudge, a resize) still applies after its words change.
-  function keepIds(oldLayers, newLayers) {
-    const byName = new Map((oldLayers || []).map(l => [l.name, l.id]));
-    return newLayers.map(l => (byName.has(l.name) ? { ...l, id: byName.get(l.name) } : l));
   }
   function makeBlock(gen, kit, style, footer, extra = {}) {
     const g = { ...gen, kit: kit.id, style, footer };
@@ -490,8 +511,9 @@
   // unless picked (the verses go up live from Kairo's Bible); the notes go to the last slide's notes.
   //   opts: { kit, style, footer, include: Set of part ids (default: the parts on by default) }
   function build(outline, opts = {}) {
-    const kit = kitById(opts.kit);
+    const kit = withColors(kitById(opts.kit), opts.colors);
     const style = BACKGROUNDS.some(b => b.id === opts.style) ? opts.style : 'glow';
+    const layout = layoutOf(opts.layout);
     const header = (outline.header || []).filter(h => h && h.text);
     const footer = opts.footer != null ? opts.footer : (header[0] ? header[0].text.replace(/\.?\s*inc\.?$/i, '').trim() : '');
     const parts = partsOf(outline);
@@ -506,7 +528,7 @@
     let n = 0;
     for (const p of parts) {
       if (!on(p)) continue;
-      const make = (gen, extra) => blocks.push(makeBlock({ ...gen, part: p.id }, kit, style, footer, extra));
+      const make = (gen, extra) => blocks.push(makeBlock({ ...gen, part: p.id, layout }, kit, style, footer, extra));
       if (p.kind === 'title') {
         const head = /:/.test(themeLine.text) ? afterColon(themeLine.text) : themeLine.text;
         const sub = seriesLine ? afterColon(seriesLine.text) || seriesLine.text : '';
@@ -519,7 +541,7 @@
       } else if (p.kind === 'point') {
         n += 1;
         const { text, shortened } = shortenPoint(p.text);
-        make({ kind: 'point', n, label: `Point ${n} of ${total}`, lines: [text], refs: refsOf(p.refs), accent: accentWord(text), shortened }, { notes: p.text });
+        make({ kind: 'point', n, label: `Point ${n} of ${total}`, lines: [text], refs: refsOf(p.refs), shortened }, { notes: p.text });
       } else if (p.kind === 'section' || p.kind === 'closing') {
         make({ kind: p.kind, label: '', lines: [p.text], refs: [] });
       } else {
@@ -533,58 +555,86 @@
     if (notes.length && blocks.length) blocks[blocks.length - 1].presenterNote = notes.join('\n');
     return blocks;
   }
-  // A slide with its words edited in the slide editor: its content from the text, drawn again.
+  // A sermon deck made new from its choices (item.sermon: outline, include, kit, style, footer).
+  // A slide the operator edited by hand (gen.edited) is kept as it is, so a look or contents change
+  // never undoes their work; every other slide is drawn afresh.
+  function newDeck(outline, { kit, style, layout, colors, footer } = {}) {
+    const include = partsOf(outline).filter(p => p.on).map(p => p.id);
+    const k = kitById(kit).id;
+    const st = BACKGROUNDS.some(b => b.id === style) ? style : 'glow';
+    const lay = layoutOf(layout);
+    const own = colors && Object.keys(colors).length ? { ...colors } : undefined;
+    const blocks = build(outline, { kit: k, style: st, layout: lay, colors: own, footer, include: new Set(include) });
+    return { sermon: { outline, include, kit: k, style: st, layout: lay, colors: own, footer: blocks[0] ? blocks[0].gen.footer : (footer || '') }, blocks };
+  }
+  function regenerate(item) {
+    const d = item.sermon;
+    const fresh = build(d.outline, { kit: d.kit, style: d.style, layout: d.layout, colors: d.colors, footer: d.footer, include: new Set(d.include) });
+    const kept = new Map((item.blocks || []).filter(b => b.gen && b.gen.edited).map(b => [b.gen.part, b]));
+    return fresh.map(b => {
+      if (kept.has(b.gen.part)) return kept.get(b.gen.part);
+      // What the operator applied to every slide stays on every new slide too.
+      for (const [id, props] of Object.entries(d.common || {})) {
+        const l = b.layers.find(x => x.id === id);
+        if (l) Object.assign(l, JSON.parse(JSON.stringify(props)));
+      }
+      return b;
+    });
+  }
+
+  // The parts every slide shares, and what of each a change carries to the others: the footer's
+  // words and style; the label's and number's style (their words differ per slide); the rule's and
+  // background's fill.
+  const TEXT_STYLE = ['font', 'color', 'opacity', 'align', 'pos', 'shadow', 'outline'];
+  const FILL = ['fill', 'color', 'color2', 'gradientStops', 'gradientGlows', 'angle', 'opacity', 'radius', 'src'];
+  const COMMON = {
+    'ss-footer': { name: 'footer', props: ['customText', ...TEXT_STYLE] },
+    'ss-label': { name: 'label', props: TEXT_STYLE },
+    'ss-number': { name: 'point number', props: TEXT_STYLE },
+    'ss-rule': { name: 'accent rule', props: [...FILL, 'pos'] },
+    'ss-bg': { name: 'background', props: FILL },
+  };
+  // A slide's shared parts that changed: [{ id, name, props }] with the new values to carry.
+  function commonChanges(before, after) {
+    const out = [];
+    for (const [id, spec] of Object.entries(COMMON)) {
+      const a = (before || []).find(l => l.id === id), b = (after || []).find(l => l.id === id);
+      if (!a || !b) continue;
+      const props = {};
+      for (const k of spec.props) if (JSON.stringify(a[k]) !== JSON.stringify(b[k]) && b[k] !== undefined) props[k] = JSON.parse(JSON.stringify(b[k]));
+      if (Object.keys(props).length) out.push({ id, name: spec.name, props });
+    }
+    return out;
+  }
+  // Those changes onto every other slide of the deck, and into the deck's own style.
+  function applyCommon(item, changes, fromIndex) {
+    const d = item.sermon;
+    d.common = { ...(d.common || {}) };
+    for (const c of changes) {
+      d.common[c.id] = { ...(d.common[c.id] || {}), ...c.props };
+      (item.blocks || []).forEach((b, i) => {
+        if (i === fromIndex) return;
+        const l = (b.layers || []).find(x => x.id === c.id);
+        if (l) Object.assign(l, JSON.parse(JSON.stringify(c.props)));
+      });
+    }
+  }
+
+  // A slide's words changed in the playlist's slide list: written into its text layers in place,
+  // so any font, size or colour the operator set stays as it is.
   function withText(block, text) {
     if (!block || !block.gen) return block;
     const gen = parse(text, block.gen);
-    return { ...block, gen, text: serialize(gen), label: gen.label || (gen.lines || [])[0] || block.label, layers: keepIds(block.layers, layersFor(gen, deckKit(gen), gen.style, gen.footer)) };
-  }
-  // Which part of a slide a layer shows ('label', 'lines', 'subtitle', 'ref:N'), or '' when it isn't words.
-  function partOfLayer(block, layer) {
-    if (!block || !block.gen || !layer) return '';
-    if (layer.name === 'Label') return 'label';
-    if (layer.name === 'Headline') return 'lines';
-    if (layer.name === 'Subtitle') return 'subtitle';
-    const m = /^Scripture (.+)$/.exec(layer.name || '');
-    if (m) { const i = (block.gen.refs || []).indexOf(m[1]); return i >= 0 ? `ref:${i}` : ''; }
-    return '';
-  }
-  // The words a part shows now (for the editor's field).
-  function partText(block, part) {
-    const g = (block && block.gen) || {};
-    if (part === 'label') return g.label || '';
-    if (part === 'lines') return (g.lines || [])[0] || '';
-    if (part === 'subtitle') return (g.lines || [])[1] || '';
-    const chip = /^ref:(\d+)$/.exec(part);
-    return chip ? (g.refs || [])[+chip[1]] || '' : '';
-  }
-  // The same slide in another look, background or footer.
-  // `own: true` sets this slide's background apart from the deck's; a deck-wide change leaves it be.
-  function restyle(block, { kit, style, footer, own } = {}) {
-    if (!block || !block.gen) return block;
-    const keep = block.gen.ownStyle && own == null;
-    const gen = { ...block.gen, ...(kit ? { kit } : {}), ...(style && !keep ? { style } : {}), ...(footer != null ? { footer } : {}), ...(own != null ? { ownStyle: own } : {}) };
-    return { ...block, gen, layers: keepIds(block.layers, layersFor(gen, deckKit(gen), gen.style, gen.footer)) };
+    const set = (id, value) => { const l = block.layers.find(x => x.id === id); if (l && value != null) l.customText = value; };
+    set('ss-label', gen.label);
+    if (gen.kind === 'title') { set('ss-headline', (gen.lines || [])[0] || ''); set('ss-subtitle', (gen.lines || []).slice(1).join(' ')); }
+    else set('ss-headline', (gen.lines || []).join(' '));
+    (gen.refs || []).forEach((r, i) => set(`ss-chip-${i}-text`, r));
+    return { ...block, gen, text: serialize(gen), label: gen.label || (gen.lines || [])[0] || block.label };
   }
 
-  // One part of a slide edited in place: 'label', 'lines' (the headline, one line per entry),
-  // 'subtitle' (a title slide's second line) or 'refs'.
-  function withPart(block, part, value) {
-    if (!block || !block.gen) return block;
-    const gen = { ...block.gen };
-    if (part === 'label') gen.label = String(value || '').trim();
-    if (part === 'lines') gen.lines = [String(value || '').replace(/\s*\n\s*/g, ' ').trim()].filter(Boolean).concat(gen.kind === 'title' ? (gen.lines || []).slice(1) : []);
-    if (part === 'subtitle') gen.lines = [(gen.lines || [])[0] || '', String(value || '').trim()].filter(Boolean);
-    if (part === 'refs') gen.refs = (Array.isArray(value) ? value : String(value || '').split(/\s*[·;\n]\s*/)).map(r => normaliseRef(r) || String(r).trim()).filter(Boolean);
-    // One chip ('ref:2'): that reference changed, or gone when emptied.
-    const chip = /^ref:(\d+)$/.exec(part);
-    if (chip) { const refs = [...(gen.refs || [])]; const v = String(value || '').trim(); if (v) refs[+chip[1]] = normaliseRef(v) || v; else refs.splice(+chip[1], 1); gen.refs = refs; }
-    if (part === 'lines' && gen.kind === 'point') { gen.accent = accentWord(gen.lines[0] || ''); gen.shortened = false; }
-    return { ...block, gen, text: serialize(gen), label: gen.label || (gen.lines || [])[0] || block.label, layers: keepIds(block.layers, layersFor(gen, deckKit(gen), gen.style, gen.footer)) };
-  }
-
-  const api = { W, H, KITS, BACKGROUNDS, FONT_FAMILIES, MIN_HEADLINE_PX, kitById, kitWarnings, contrast, bookName, normaliseRef,
-    docxParagraphs, textParagraphs, outlineFrom, partsOf, readDocx, readText, shortenPoint, accentWord, build, withText, withPart, partOfLayer, partText, restyle, serialize, parse, issues };
+  const api = { W, H, KITS, BACKGROUNDS, LAYOUTS, kitById, withColors, kitWarnings, contrast, bookName, normaliseRef,
+    docxParagraphs, textParagraphs, outlineFrom, partsOf, readDocx, readText, shortenPoint, build, newDeck, regenerate, commonChanges, applyCommon, withText, serialize, parse, issues };
   if (typeof window !== 'undefined') window.KairoSermonSlides = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();

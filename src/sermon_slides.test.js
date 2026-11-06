@@ -59,11 +59,6 @@ test('a long point is cut at a natural break, never mid-thought, and marked', ()
   assert.equal(S.shortenPoint('But the knowledge of who we are is what determines what we can do in life today').shortened, false);
 });
 
-test('one accent word, never a name', () => {
-  assert.equal(S.accentWord('Abraham had to suspend his natural senses'), 'suspend');
-  assert.equal(S.accentWord('Not just any Word, but the right Word'), '');
-});
-
 test('the deck: a title, the story, a slide per point with chips, the section and the closing', () => {
   const deck = S.build(S.readText(PASTED), { kit: 'midnight', style: 'gradient' });
   assert.deepEqual(deck.map(b => b.gen.kind), ['title', 'story', 'point', 'point', 'point', 'section', 'point', 'closing']);
@@ -71,12 +66,12 @@ test('the deck: a title, the story, a slide per point with chips, the section an
   assert.equal(p1.label, 'Point 1 of 4');
   assert.deepEqual(p1.refs, ['Romans 4:16–21', 'Hebrews 11:17–19']);
   assert.equal(p1.shortened, true);
+  assert.equal(deck[2].layers.find(l => l.id === 'ss-headline').customText, p1.lines[0]);
   assert.match(deck[2].notes, /against hope/);
   assert.deepEqual(deck[0].gen.refs, ['Isaiah 8:18', 'John 3:8']);
   // The note is the presenter's, not a slide.
   assert.match(deck[deck.length - 1].presenterNote, /Next Sunday/);
-  // Every word is a real text layer.
-  assert.ok(deck[2].layers.some(l => l.name === 'Headline' && l.text));
+
 });
 
 test('the operator chooses the parts: leave a point out, put a typed verse in', () => {
@@ -96,19 +91,68 @@ test('the operator chooses the parts: leave a point out, put a typed verse in', 
   assert.ok(deck.some(b => b.gen.part === verse.id && b.gen.label === 'Romans 4:16–21'));
 });
 
-test('a part changed in place redraws the slide and keeps its layers', () => {
-  const deck = S.build(S.readText(PASTED), {});
+test('words changed in the slide list go into the text layers, styling kept', () => {
+  const deck = S.build(S.readText(PASTED), { kit: 'ember' });
   const b = deck[2];
-  const edited = S.withPart(b, 'lines', 'Abraham believed against all hope');
-  assert.equal(edited.gen.lines[0], 'Abraham believed against all hope');
-  assert.equal(edited.gen.shortened, false);
-  const headline = (blk) => blk.layers.find(l => l.name === 'Headline');
-  assert.equal(headline(edited).id, headline(b).id, 'the layer keeps its id, so a move made in the editor stays');
-  const chip = S.withPart(b, 'ref:1', 'Heb 11:1');
-  assert.deepEqual(chip.gen.refs, ['Romans 4:16–21', 'Hebrews 11:1']);
-  assert.equal(S.partOfLayer(b, headline(b)), 'lines');
+  const head = b.layers.find(l => l.id === 'ss-headline');
+  head.font.size = 90;          // the operator restyled it
+  head.color = '#FFFFFF';
+  const edited = S.withText(b, 'Point 1 of 4\nAbraham believed against all hope\nScriptures: Romans 4:18');
+  const h2 = edited.layers.find(l => l.id === 'ss-headline');
+  assert.equal(h2.customText, 'Abraham believed against all hope');
+  assert.equal(h2.font.size, 90);
+  assert.equal(h2.color, '#FFFFFF');
+  assert.equal(edited.layers.find(l => l.id === 'ss-chip-0-text').customText, 'Romans 4:18');
+});
+
+test('every part of a slide is an ordinary, editable layer', () => {
+  const deck = S.build(S.readText(PASTED), {});
+  for (const b of deck) {
+    for (const l of b.layers) {
+      assert.ok(l.type === 'text' || l.type === 'background', `${l.name} is ${l.type}`);
+      if (l.type === 'text') assert.equal(l.binding, 'custom');
+    }
+  }
 });
 
 test('every look reads: text 4.5:1 and the accent 3:1 on both background tones', () => {
   for (const k of S.KITS) assert.deepEqual(S.kitWarnings(k), [], k.name);
+});
+
+test('a change to a shared part is found, and applied to every slide and later decks', () => {
+  const item = S.newDeck(S.readText(PASTED), { kit: 'ember' });
+  const before = item.blocks[2].layers;
+  const after = JSON.parse(JSON.stringify(before));
+  after.find(l => l.id === 'ss-footer').customText = 'Grace Chapel · November';
+  after.find(l => l.id === 'ss-headline').customText = 'Only this slide';
+  const changes = S.commonChanges(before, after);
+  assert.deepEqual(changes.map(c => c.id), ['ss-footer']);
+  item.blocks[2].layers = after;
+  S.applyCommon(item, changes, 2);
+  for (const b of item.blocks) {
+    const f = b.layers.find(l => l.id === 'ss-footer');
+    if (f) assert.equal(f.customText, 'Grace Chapel · November');
+  }
+  item.sermon.kit = 'graphite';
+  const again = S.regenerate(item);
+  assert.equal(again[0].layers.find(l => l.id === 'ss-footer')?.customText ?? 'Grace Chapel · November', 'Grace Chapel · November');
+  assert.ok(again.some(b => b.layers.find(l => l.id === 'ss-footer')?.customText === 'Grace Chapel · November'));
+});
+
+test('the operator’s own colours go on every slide, and a look brings its own back', () => {
+  const o = S.readText(PASTED);
+  const item = S.newDeck(o, { kit: 'ember', colors: { bg: '#102030', accent: '#33CC88' } });
+  const bg = item.blocks[2].layers.find(l => l.id === 'ss-bg');
+  assert.ok(JSON.stringify(bg).includes('#102030'));
+  assert.equal(item.blocks[2].layers.find(l => l.id === 'ss-label').color, '#33CC88');
+  delete item.sermon.colors;
+  item.blocks = S.regenerate(item);
+  assert.ok(!JSON.stringify(item.blocks[2].layers).includes('#102030'));
+});
+
+test('three layouts, the lower third leaving the top of the slide clear', () => {
+  const o = S.readText(PASTED);
+  for (const l of S.LAYOUTS) assert.ok(S.newDeck(o, { layout: l.id }).blocks.length > 0, l.id);
+  const lower = S.newDeck(o, { layout: 'lower' }).blocks.find(b => b.gen.kind === 'point');
+  for (const layer of lower.layers) assert.ok(layer.pos.y >= 700, `${layer.name} sits in the band`);
 });

@@ -2234,13 +2234,6 @@ function renderStage() {
         (layer.rotation ? `transform:rotate(${layer.rotation}deg);` : '');
       stage.appendChild(hit);
       tsDecorateLayerEl(hit, layer, true);
-      // A sermon slide's words (sermon_slides.js): double-click and type, on the slide.
-      const sermonPart = tsMode === 'item' && tsItemCtx && window.KairoSermonSlides
-        ? window.KairoSermonSlides.partOfLayer(tsItemCtx.item.blocks?.[tsItemCtx.slideIndex], layer) : '';
-      if (sermonPart) {
-        hit.title = 'Double-click to change the words';
-        hit.addEventListener('mousedown', (e) => tsHandleLayerDblClick(e, hit, layer, () => beginSermonTextEdit(hit, layer, sermonPart)));
-      }
       return;
     }
 
@@ -3558,41 +3551,6 @@ function tsHandleLayerDblClick(e, div, layer, onDouble = beginInlineTextEdit) {
   }
 }
 
-// A sermon slide's words typed in place: a field over the words' own box, Enter keeps the change
-// (the slide is drawn again in its look), Esc leaves it as it was.
-function beginSermonTextEdit(hit, layer, part) {
-  const ctx = tsItemCtx;
-  if (!ctx) return;
-  const block = ctx.item.blocks[ctx.slideIndex];
-  const field = document.createElement('textarea');
-  field.className = 'ts-sermon-edit';
-  field.value = window.KairoSermonSlides.partText(block, part);
-  field.setAttribute('aria-label', part === 'lines' ? 'Words' : part === 'label' ? 'Small label' : part === 'subtitle' ? 'Subtitle' : 'Scripture reference');
-  hit.appendChild(field);
-  field.focus();
-  field.setSelectionRange(field.value.length, field.value.length);
-  let done = false;
-  const finish = (keep) => {
-    if (done) return;
-    done = true;
-    const value = field.value.replace(/\s*\n\s*/g, ' ').trim();
-    field.remove();
-    if (keep && value !== window.KairoSermonSlides.partText(block, part)) {
-      window.KairoService?.commitSermonPart?.(ctx.item, ctx.slideIndex, part, value);
-      activeLook = buildSyntheticLook(ctx.item, ctx.slideIndex);
-      renderItemSlidesList(); renderLayersList(); renderProps();
-    }
-    renderPreview();
-  };
-  field.addEventListener('keydown', (e) => {
-    e.stopPropagation();
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); finish(true); }
-    if (e.key === 'Escape') { e.preventDefault(); finish(false); }
-  });
-  field.addEventListener('mousedown', (e) => e.stopPropagation());
-  field.addEventListener('blur', () => finish(true));
-}
-
 function tsCancelDrag() {
   document.removeEventListener('mousemove', tsDragMove);
   document.removeEventListener('mouseup', tsDragEnd);
@@ -4616,7 +4574,16 @@ function writeItemSlideStyleFromSynthetic() {
   // no sense for a slide with no base theme to diff against — the real
   // imported layers would silently never actually update.
   if (item.type === 'slides' && item.blocks?.[slideIndex]?.layers) {
-    item.blocks[slideIndex].layers = deepClone(activeLook.layers || []);
+    const block = item.blocks[slideIndex];
+    const next = deepClone(activeLook.layers || []);
+    // A sermon slide changed by hand keeps its own styling when its deck's look changes; a change
+    // to a part every slide shares (footer, label, number, rule, background) offers to go on all.
+    if (block.gen && JSON.stringify(next) !== JSON.stringify(block.layers)) {
+      block.gen.edited = true;
+      const changes = item.sermon && window.KairoSermonSlides ? window.KairoSermonSlides.commonChanges(block.layers, next) : [];
+      if (changes.length) offerApplyToAll(item, slideIndex, changes);
+    }
+    block.layers = next;
     window.KairoService?.saveService?.();
     return;
   }
@@ -6018,10 +5985,7 @@ function renderPPProps(panel, layer) {
   nameInp.addEventListener('input', () => { layer.name = nameInp.value; renderLayersList(); });
   const note = document.createElement('p');
   note.className = 'setting-hint';
-  const sermon = tsMode === 'item' && tsItemCtx && window.KairoSermonSlides?.partOfLayer(tsItemCtx.item.blocks?.[tsItemCtx.slideIndex], layer);
-  note.textContent = sermon
-    ? 'A sermon slide. Double-click its words on the slide to change them; move, resize and rotate it here.'
-    : 'Imported from ProPresenter and drawn as it was designed. Move, resize and rotate it here.';
+  note.textContent = 'Imported from ProPresenter and drawn as it was designed. Move, resize and rotate it here.';
   panel.appendChild(section('layout', 'Layer', prop('Name', nameInp), note));
   renderLayoutProps(panel, layer);
 }
@@ -6266,6 +6230,7 @@ function toggleItemModeChrome(isItem) {
   document.querySelector('#ts-pane-themes .ts-col-header')?.classList.toggle('hidden', isItem);
   document.getElementById('ts-item-mode-header')?.classList.toggle('hidden', !isItem);
   document.getElementById('ts-item-theme-header')?.classList.toggle('hidden', !isItem);
+  refreshSermonPane();
   // Canvas Size is a whole-theme concern too, same as Layout — both are
   // renderSlideLayout's, which (like the rest of the "nothing selected"
   // panel) only ever renders outside item mode; nothing to toggle here now
@@ -6608,6 +6573,7 @@ function buildSyntheticLook(item, slideIndex) {
 function renderItemSlidesList() {
   const el = document.getElementById('looks-list');
   if (!el || !tsItemCtx || !window.KairoService) return;
+  refreshSermonPane();
   el.innerHTML = '';
   const { item, slideIndex, baseLook } = tsItemCtx;
   const slides = window.KairoService.slidesFor(item);
@@ -6772,6 +6738,8 @@ function renderItemSlidesList() {
     label.textContent = String(i + 1) + '.';
     thumb.appendChild(label);
   });
+  // A slide whose words run past a text box is tagged (service.js markClipped).
+  el.querySelectorAll('.ts-item-slide-thumb').forEach(t => window.KairoService.markClipped(t));
 
   // "+ Add Slide" — a Timer segment's own affordance for building a
   // storyboard, right where the slides it creates will actually show up.
@@ -6865,10 +6833,74 @@ function duplicateTimerScene(item, index) {
 // Mirrors selectLook()'s fan-out (swap the data-source, reset history, then
 // the same five renders) — the established idiom in this file for "point
 // the whole engine at something else."
+// "Apply this change to all slides?" for a sermon deck's shared parts: a bar over the canvas until
+// answered or another slide is opened. Changes made while it's up gather into one offer.
+let tsApplyAll = null;   // { item, slideIndex, changes, bar }
+function offerApplyToAll(item, slideIndex, changes) {
+  if (tsApplyAll && (tsApplyAll.item !== item || tsApplyAll.slideIndex !== slideIndex)) hideApplyToAll();
+  if (!tsApplyAll) {
+    const host = document.querySelector('.ts-tool-float')?.parentElement;
+    if (!host) return;
+    const bar = document.createElement('div');
+    bar.className = 'ts-apply-all';
+    bar.setAttribute('role', 'status');
+    const text = document.createElement('span');
+    const all = document.createElement('button');
+    all.type = 'button'; all.className = 'modal-btn primary';
+    const one = document.createElement('button');
+    one.type = 'button'; one.className = 'modal-btn secondary'; one.textContent = 'Just this slide';
+    bar.append(text, one, all);
+    host.appendChild(bar);
+    tsApplyAll = { item, slideIndex, changes: [], bar, text, all };
+    all.addEventListener('click', () => {
+      const { item: it, slideIndex: at, changes: ch } = tsApplyAll;
+      window.KairoSermonSlides.applyCommon(it, ch, at);
+      window.KairoService?.saveService?.();
+      hideApplyToAll();
+      renderItemSlidesList();
+    });
+    one.addEventListener('click', hideApplyToAll);
+  }
+  // The latest value of each part wins.
+  for (const c of changes) {
+    const had = tsApplyAll.changes.find(x => x.id === c.id);
+    if (had) Object.assign(had.props, c.props); else tsApplyAll.changes.push({ ...c, props: { ...c.props } });
+  }
+  const names = tsApplyAll.changes.map(c => c.name);
+  const what = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
+  tsApplyAll.text.textContent = `Apply this ${what} change to all ${item.blocks.length} slides?`;
+  tsApplyAll.all.textContent = 'Apply to all';
+}
+function hideApplyToAll() {
+  tsApplyAll?.bar.remove();
+  tsApplyAll = null;
+}
+
+// A sermon deck's own panel under the Look tab (sermon_slides_ui.js): its look, background, footer
+// and contents, and this slide's background. A change there makes the deck's slides anew (slides
+// edited by hand are kept), so the editor is pointed at the new slides without saving the old one.
+function refreshSermonPane() {
+  const host = document.getElementById('ts-sermon-pane');
+  if (!host) return;
+  const item = tsMode === 'item' && tsItemCtx ? tsItemCtx.item : null;
+  // A sermon deck has its own look; the item's theme picker means nothing for it.
+  document.getElementById('ts-item-theme-header')?.classList.toggle('hidden', tsMode !== 'item' || !!item?.sermon);
+  if (!item?.sermon || !window.KairoSermonSlides?.mountPanel) { host.hidden = true; host.replaceChildren(); return; }
+  window.KairoSermonSlides.mountPanel(host, tsItemCtx, (index) => {
+    window.KairoService?.saveService?.();
+    tsItemCtx.slideIndex = index;
+    resetItemHistory();
+    activeLayer = null; multiSelectedLayerIds.clear();
+    activeLook = buildSyntheticLook(tsItemCtx.item, index);
+    renderItemSlidesList(); renderLayersList(); renderPreview(); renderProps();
+  });
+}
+
 function selectItemSlide(index) {
   if (!tsItemCtx) return;
   tsCommitActiveEdit(null);
   settleItemEdits();   // the slide being left keeps its last edit
+  hideApplyToAll();
   tsItemCtx.slideIndex = index;
   resetItemHistory();
   activeLayer = null; multiSelectedLayerIds.clear();

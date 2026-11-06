@@ -2766,6 +2766,8 @@
     activePopoverAnchor?.classList.remove('is-popover-anchor');
     pop.innerHTML = '';
     build(pop);
+    // Opened from inside a dialog, it shows over that dialog.
+    pop.classList.toggle('over-modal', !!anchor.closest('.modal'));
     pop.classList.remove('hidden');
     // The thing being edited stays marked while its popover is open, and the popover moves with it when the
     // list behind scrolls (it used to stay put while the card slid away: "where am I editing?").
@@ -4085,22 +4087,13 @@
       if (b) {
         const next = lines.join('\n');
         // A sermon slide is drawn again from its words, in its own look (sermon_slides.js).
-        if (b.gen && window.KairoSermonSlides && next !== String(b.text || '')) item.blocks[index] = window.KairoSermonSlides.withText(b, next);
+        if (b.gen && window.KairoSermonSlides && next !== String(b.text || '')) { item.blocks[index] = window.KairoSermonSlides.withText(b, next); item.blocks[index].gen.edited = true; }
         else if (b.layers && next !== String(b.text || '')) item.blocks[index] = sceneBlockWithText({ ...b, text: next });
         else b.text = next;
       }
     } else if (item.type === 'scripture') {
       item.text = lines.join('\n');
     }
-    saveService();
-    renderSidebar(); renderFlowView(item);
-  }
-
-  // One part of a sermon slide (its words, label or a scripture chip) changed in the slide editor.
-  function commitSermonPart(item, index, part, value) {
-    const b = item && item.type === 'slides' ? item.blocks[index] : null;
-    if (!b || !b.gen || !window.KairoSermonSlides) return;
-    item.blocks[index] = window.KairoSermonSlides.withPart(b, part, value);
     saveService();
     renderSidebar(); renderFlowView(item);
   }
@@ -4616,11 +4609,12 @@
     // rather than showing two controls that quietly do nothing.
     const isSceneImport = !!(acDraft.rawBlocks && acDraft.rawBlocks.some(b => b.layers));
     // A sermon outline offers its designed deck (only into a playlist, not the Song Library).
-    acDraft.outline = destination === 'playlist' && window.KairoSermonSlides?.openDesigner ? opts.outline || null : null;
+    acDraft.outline = destination === 'playlist' && window.KairoSermonSlides?.newDeck ? opts.outline || null : null;
     document.getElementById('ac-sermon')?.classList.toggle('hidden', !acDraft.outline);
     if (acDraft.outline) {
       const points = acDraft.outline.items.filter(i => i.kind === 'point').length;
       document.getElementById('ac-sermon-detail').textContent = `${points} points with their scriptures, made into designed slides you can edit.`;
+      renderSermonLayouts(acDraft.outline);
     }
     document.getElementById('ac-scene-notice')?.classList.toggle('hidden', !isSceneImport);
     // What the import left out or couldn't find (a hidden slide, media that isn't in the file).
@@ -4728,6 +4722,109 @@
       : (opts.isImportBlocks ? 'Import into playlist' : 'Add to playlist');
     document.getElementById('add-confirm-modal')?.classList.remove('hidden');
     titleInp?.focus();
+  }
+
+  // The sermon deck's colours and layout, chosen before it's made: a look's colours (or the
+  // operator's own), and one of its point slides drawn in each layout in those colours.
+  function renderSermonLayouts(outline) {
+    const host = document.getElementById('ac-sermon-layouts');
+    const S = window.KairoSermonSlides;
+    if (!host || !S?.LAYOUTS) return;
+    const choice = S.lastChoice();
+    acDraft.layout = S.LAYOUTS.some(l => l.id === choice.layout) ? choice.layout : 'left';
+    acDraft.kit = S.kitById(choice.kit).id;
+    acDraft.colors = choice.colors && Object.keys(choice.colors).length ? { ...choice.colors } : undefined;
+    host.replaceChildren();
+
+    // Colours: the six looks, then the four colours themselves to make them the church's own.
+    const colours = document.createElement('div');
+    colours.className = 'ac-colours';
+    const looksRow = document.createElement('div');
+    looksRow.className = 'ac-looks';
+    looksRow.setAttribute('role', 'radiogroup');
+    looksRow.setAttribute('aria-label', 'Colours');
+    const lookBtns = S.KITS.map(k => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'ac-look';
+      b.title = k.name;
+      b.setAttribute('aria-label', k.name);
+      b.setAttribute('role', 'radio');
+      b.style.background = `radial-gradient(circle at 20% 15%, ${k.bg2} 0%, ${k.bg} 75%)`;
+      const dot = document.createElement('span');
+      dot.style.background = k.accent;
+      b.appendChild(dot);
+      b.addEventListener('click', () => { acDraft.kit = k.id; acDraft.colors = undefined; refresh(); });
+      b.dataset.kit = k.id;
+      return b;
+    });
+    looksRow.append(...lookBtns);
+    const own = document.createElement('div');
+    own.className = 'ac-own-colours';
+    const KEYS = [['bg', 'Background'], ['bg2', 'Second tone'], ['text', 'Text'], ['accent', 'Accent']];
+    const inputs = KEYS.map(([key, name]) => {
+      const lab = document.createElement('label');
+      lab.className = 'ac-own-colour';
+      const inp = document.createElement('input');
+      inp.type = 'color';
+      inp.setAttribute('aria-label', name);
+      inp.addEventListener('input', () => { acDraft.colors = { ...(acDraft.colors || {}), [key]: inp.value }; refreshSoon(); });
+      lab.append(inp, document.createTextNode(name));
+      own.appendChild(lab);
+      return [key, inp];
+    });
+    colours.append(looksRow, own);
+
+    const cards = S.LAYOUTS.map(lay => {
+      const card = document.createElement('button');
+      card.type = 'button';
+      card.className = 'ac-layout';
+      card.setAttribute('role', 'radio');
+      card.dataset.layout = lay.id;
+      const thumb = document.createElement('div');
+      thumb.className = 'ac-layout-thumb';
+      const name = document.createElement('span');
+      name.textContent = lay.name;
+      card.append(thumb, name);
+      card.addEventListener('click', () => { acDraft.layout = lay.id; mark(); });
+      return card;
+    });
+    const layouts = document.createElement('div');
+    layouts.className = 'ac-layouts';
+    layouts.setAttribute('role', 'radiogroup');
+    layouts.setAttribute('aria-label', 'Slide layout');
+    layouts.append(...cards);
+    host.append(colours, layouts);
+
+    const mark = () => {
+      cards.forEach(c => {
+        const on = c.dataset.layout === acDraft?.layout;
+        c.classList.toggle('is-on', on);
+        c.setAttribute('aria-checked', String(on));
+      });
+      lookBtns.forEach(b => {
+        const on = b.dataset.kit === acDraft?.kit && !acDraft?.colors;
+        b.classList.toggle('is-on', on);
+        b.setAttribute('aria-checked', String(on));
+      });
+    };
+    // Each layout's preview in the chosen colours, painted once the cards are laid out (the painter
+    // scales to the card's width).
+    const refresh = () => {
+      if (!acDraft) return;
+      const kit = S.withColors(S.kitById(acDraft.kit), acDraft.colors);
+      inputs.forEach(([key, inp]) => { inp.value = kit[key]; });
+      if (typeof loadGoogleFont === 'function') { loadGoogleFont(kit.display.family); loadGoogleFont(kit.body.family); }
+      mark();
+      requestAnimationFrame(() => cards.forEach(card => {
+        const deck = S.newDeck(outline, { kit: acDraft.kit, style: choice.style, colors: acDraft.colors, layout: card.dataset.layout }).blocks;
+        const block = deck.find(b => b.gen.kind === 'point') || deck[0];
+        if (block) paintLookLayers(card.firstElementChild, { layers: block.layers }, {}, {});
+      }));
+    };
+    let timer = null;
+    const refreshSoon = () => { clearTimeout(timer); timer = setTimeout(refresh, 120); };
+    refresh();
   }
 
   function closeAddConfirm() {
@@ -7100,8 +7197,42 @@
         translatedText: getTranslatedText(item, s, () => repaintSlidePreviews()),
       }, { hideReference: true });
       if (label) preview.appendChild(label);
+      markClipped(preview);
     });
   }
+
+  // A slide thumbnail whose words run past a text box's edges (cut off on screen) gets a small
+  // "Cut off" tag. Measured once drawn and again when fonts have loaded (a late font changes the fit).
+  const CLIP_ICON = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h7"/><path d="M17 15v6M14.5 18.5 17 21l2.5-2.5"/></svg>';
+  function clipCheck(host) {
+    // Not laid out yet (a collapsed section, a card still sizing): nothing to measure.
+    if (!host.isConnected || !host.clientWidth) return;
+    const over = [...host.querySelectorAll('.svc-canvas-text')].some(t =>
+      t.style.height && t.clientHeight > 0 && (t.scrollHeight > t.clientHeight + 1 || t.scrollWidth > t.clientWidth + 1));
+    let tag = host.querySelector(':scope > .clip-tag');
+    if (over && !tag) {
+      tag = document.createElement('span');
+      tag.className = 'clip-tag';
+      tag.title = 'Some words run past their text box and are cut off';
+      tag.innerHTML = CLIP_ICON + '<span>Cut off</span>';
+      host.appendChild(tag);
+    } else if (!over) tag?.remove();
+  }
+  // Measured again whenever the thumbnail is shown or resized (a grid hidden behind the editor has
+  // no size to measure until it is back).
+  const clipSizes = typeof ResizeObserver === 'function' ? new ResizeObserver(entries => entries.forEach(e => {
+    if (!e.target.isConnected) clipSizes.unobserve(e.target); else clipCheck(e.target);
+  })) : null;
+  function markClipped(host) {
+    host.classList.add('clip-checked');
+    clipSizes?.observe(host);
+    requestAnimationFrame(() => clipCheck(host));
+    // Again while the slide's fonts settle (a web font arriving late changes the fit).
+    for (const ms of [600, 2000]) setTimeout(() => clipCheck(host), ms);
+  }
+  // A web font that arrives after the slides were drawn changes how the words fit: check again.
+  document.fonts?.addEventListener?.('loadingdone', () => requestAnimationFrame(() =>
+    document.querySelectorAll('.clip-checked').forEach(clipCheck)));
 
   // One slide painted the way the slide grid paints it (the same look, per-slide
   // styles and layers), for any host that is attached and sized. Used by
@@ -7453,26 +7584,24 @@
     document.getElementById('ac-cancel')?.addEventListener('click', closeAddConfirm);
     document.querySelector('#add-confirm-modal .modal-overlay')?.addEventListener('click', closeAddConfirm);
     document.getElementById('ac-confirm')?.addEventListener('click', confirmAddConfirm);
-    // The outline as designed slides: the design screen, then into the chosen playlist.
+    // The outline as a sermon deck, into the chosen playlist and straight into the slide editor:
+    // its slides on the left, its look and contents under the Look tab (sermon_slides_ui.js).
     document.getElementById('ac-sermon-make')?.addEventListener('click', () => {
       if (!acDraft || !acDraft.outline) return;
-      const { item, outline } = acDraft;
+      const { item, outline, layout, kit, colors } = acDraft;
       const title = document.getElementById('ac-title')?.value.trim() || item.title || 'Sermon slides';
       const target = playlists.find(p => p.id === document.getElementById('ac-playlist')?.value) || service;
       closeAddConfirm();
-      window.KairoSermonSlides.openDesigner(outline, {
-        title,
-        onAdd: (blocks) => {
-          item.title = title;
-          item.type = 'slides';
-          item.blocks = blocks;
-          item.themeId = null;
-          delete item.linesPerSlide;
-          commitItem(target, item);
-          // Straight into the slide editor, where its words are changed on the slide (double-click).
-          if (typeof openItemStyleEditor === 'function') openItemStyleEditor(item.id, 0); else openFullEdit(item.id);
-        },
-      });
+      const { sermon, blocks } = window.KairoSermonSlides.newDeck(outline, { ...window.KairoSermonSlides.lastChoice(), layout, kit, colors });
+      window.KairoSermonSlides.remember?.(sermon);
+      item.title = title;
+      item.type = 'slides';
+      item.blocks = blocks;
+      item.sermon = sermon;
+      item.themeId = null;
+      delete item.linesPerSlide;
+      commitItem(target, item);
+      if (typeof openItemStyleEditor === 'function') openItemStyleEditor(item.id, 0); else openFullEdit(item.id);
     });
     document.getElementById('ac-structure-paragraph')?.addEventListener('click', () => setAcStructureMode('paragraph'));
     document.getElementById('ac-structure-lines')?.addEventListener('click', () => setAcStructureMode('lines'));
@@ -7797,7 +7926,7 @@
     get service() { return service; },
     slidesFor, sendSlide, slideSendBody, sendMedia: sendMediaItem, liveSlideKey: () => liveSlideKey, cycleSectionLabel, focusInStack, openFullEdit, closeStack, closeFullEdit,
     effectiveTranslateTo, awaitTranslatedText,
-    paintLookLayers, renderLookThumbnail, buildThemeTree, slideThemeIdOf, hasSlideThemes, mediaMuted: () => mediaMutedState, saveService, openContextMenu, openThemePopover, themeForItem,
+    paintLookLayers, renderLookThumbnail, buildThemeTree, slideThemeIdOf, hasSlideThemes, mediaMuted: () => mediaMutedState, saveService, openContextMenu, openThemePopover, openPopover, closePopover, themeForItem,
     showMediaLibrary, onMediaStatus, onMediaFolderChanged, setMediaTransportVisible, onMediaLive,
     openAddContent: (anchor) => openAddContentPopover(anchor),
     hasLiveTimer: () => segmentList.some(x => x.status === 'live'),
@@ -7812,7 +7941,6 @@
     // plain slide's own text — the same write-back the Flow view's
     // contentEditable already uses, not a second, separate mechanism.
     commitSlideText,
-    commitSermonPart,
     // Slide multi-select/duplicate/copy-paste — shared state lives here,
     // Full-scale edit's renderItemSlidesList (app.js) reaches in through
     // these instead of touching selectedSlideIndices directly cross-file.
@@ -7826,7 +7954,7 @@
     // already use, rather than a second implementation of clipboard import.
     quickImportClipboard,
     advanceLiveSlide,
-    paintSlideThumb, slideCard, buildMediaBinCard, loadMediaBinItems: fetchAllMediaItemsForBin,
+    paintSlideThumb, markClipped, slideCard, buildMediaBinCard, loadMediaBinItems: fetchAllMediaItemsForBin,
     quickImportFile,
     // The global search overlay (global_search.js).
     prefetchForSearch, searchContent, openFound,

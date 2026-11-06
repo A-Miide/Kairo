@@ -845,9 +845,13 @@
                 </button>
             </div>
             <div class="modal-body" style="display:block;padding:16px 20px;">
+                <!-- The theme sits beside the title, the same Theme button as the Bible bar's. -->
                 <div class="setting-group">
-                    <label class="setting-label">Title</label>
-                    <input type="text" id="ac-title" class="setting-input">
+                    <label class="setting-label" for="ac-title">Title</label>
+                    <div class="ac-title-row">
+                        <input type="text" id="ac-title" class="setting-input">
+                        <span id="ac-theme-group" class="ac-theme-slot"><select id="ac-theme" class="setting-input" aria-label="Theme" hidden></select></span>
+                    </div>
                 </div>
                 <div class="setting-group" id="ac-playlist-group">
                     <label class="setting-label">Playlist</label>
@@ -878,12 +882,11 @@
                 </div>
                 <!-- A document that reads as a sermon outline: its own designed deck (sermon_slides.js). -->
                 <div class="ac-sermon hidden" id="ac-sermon">
-                    <div><b>This reads as a sermon outline</b><span id="ac-sermon-detail"></span></div>
-                    <button type="button" class="modal-btn primary" id="ac-sermon-make">Make sermon slides</button>
-                </div>
-                <div class="setting-group" id="ac-theme-group">
-                    <label class="setting-label">Theme</label>
-                    <select id="ac-theme" class="setting-input"></select>
+                    <div class="ac-sermon-head">
+                        <div><b>This reads as a sermon outline</b><span id="ac-sermon-detail"></span></div>
+                        <button type="button" class="modal-btn primary" id="ac-sermon-make">Make sermon slides</button>
+                    </div>
+                    <div class="ac-sermon-choices" id="ac-sermon-layouts"></div>
                 </div>
                 <div class="setting-group" id="ac-delim-group">
                     <label class="setting-label">Slide structure</label>
@@ -1165,6 +1168,14 @@
                                 <button class="ts-tool-btn" id="ts-add-qr-btn" data-tool-name="QR code" title="Add a QR code — type a link, and it goes on the slide as a picture" aria-label="Add a QR code">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="14" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="3.5" y="14" width="6.5" height="6.5" rx="1"/><path d="M14 14h2.5v2.5H14zM18 18h2.5v2.5H18zM14 18.5v2M18.5 14h2"/></svg><span class="ts-tool-label">QR</span>
                                 </button>
+                                <!-- Editing a playlist item: its theme, the same Theme button as the Bible bar's. -->
+                                <span class="ts-tool-theme hidden" id="ts-item-theme-header">
+                                    <span class="ts-tool-sep" aria-hidden="true"></span>
+                                    <button id="ts-item-theme-picker-btn" class="ls-icon-btn ls-icon-btn-labeled svc-card-theme-btn ts-tool-theme-btn" title="Choose the theme this slide uses" aria-haspopup="listbox">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="13.5" r="2.5"/><circle cx="8.5" cy="13.5" r="2.5"/><path d="M12 21a9 9 0 1 1 0-18"/></svg>
+                                        <span id="ts-item-theme-picker-label">Theme</span>
+                                    </button>
+                                </span>
                             </div>
                             <div class="ts-tool-tooltip" id="ts-tool-tooltip"></div>
                         </div>
@@ -1197,16 +1208,8 @@
                          base theme without leaving Full-scale edit. Hidden in
                          normal Theme Studio (theme picking lives in the
                          Themes list instead). -->
-                    <div class="ts-item-mode-header ts-props-section hidden" id="ts-item-theme-header">
-                        <div class="ts-field-row" style="--cols: 1">
-                            <label class="ts-field ts-labeled-field">
-                                <span class="ts-field-label">Theme</span>
-                                <button id="ts-item-theme-picker-btn" class="ts-select-btn" title="Choose the theme this item uses">
-                                    <span id="ts-item-theme-picker-label">Theme</span>
-                                </button>
-                            </label>
-                        </div>
-                    </div>
+                    <!-- A sermon deck's own choices (sermon_slides_ui.js): look, background, contents. -->
+                    <div class="ts-sermon-pane" id="ts-sermon-pane" hidden></div>
 
                     <!-- Timer segments only (item.type === 'timer', see
                          renderItemTimerControls in app.js) — the countdown's

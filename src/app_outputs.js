@@ -1080,6 +1080,14 @@ function detailTitle(text, statusEl, toggleEl) {
   return wrap;
 }
 
+// An output's Theme button on its own row, over the output's layers (NDI, DeckLink).
+function themeRow(outputId) {
+  const row = document.createElement('div');
+  row.className = 'outputs-detail-inline-row outputs-theme-row';
+  row.appendChild(buildThemeSelect(outputId));
+  return row;
+}
+
 // The theme picker for an output: a dropdown whose rows carry a tiny preview
 // of each theme (the same thumbnail the Slides/Bible theme picker and Theme
 // Studio draw), which a native <select> can't show.
@@ -1097,114 +1105,62 @@ function buildThemeSelect(outputId) {
   });
 }
 
-// Shared thumbnail theme dropdown (grouped like every other theme picker).
-// `value()` returns the current theme id; `onPick(id)` applies a choice;
-// `defaultLabel` adds a first row meaning "no theme of its own" (id '').
-// The returned element's refresh() repaints after the value changes outside.
-function buildThemeDropdown({ value, onPick, defaultLabel, monitor = false }) {
-  const wrap = document.createElement('div');
-  wrap.className = 'theme-pick';
+// The theme picker everywhere a theme is chosen: the Bible bar's Theme button (palette icon, the
+// chosen theme's name) opening the same grouped list with previews. `value()` returns the current
+// theme id; `onPick(id)` applies a choice; `defaultLabel` adds a first row meaning "no theme of its
+// own" (id ''). The button's refresh() repaints it after the value changes elsewhere.
+const THEME_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="13.5" r="2.5"/><circle cx="8.5" cy="13.5" r="2.5"/><path d="M12 21a9 9 0 1 1 0-18"/></svg>';
+function buildThemeDropdown({ value, onPick, defaultLabel, monitor = false, label = 'Theme' }) {
   const trigger = document.createElement('button');
   trigger.type = 'button';
-  trigger.className = 'setting-input theme-pick-trigger';
+  trigger.className = 'ls-icon-btn ls-icon-btn-labeled svc-card-theme-btn theme-pick';
   trigger.setAttribute('aria-haspopup', 'listbox');
-  trigger.setAttribute('aria-expanded', 'false');
-  const menu = document.createElement('div');
-  menu.className = 'theme-pick-menu';
-  menu.setAttribute('role', 'listbox');
-  menu.hidden = true;
-  wrap.appendChild(trigger);
-  wrap.appendChild(menu);
-
-  const thumbFor = (look) => {
-    const t = document.createElement('div');
-    t.className = 'ts-theme-thumb';
-    if (look) window.KairoService?.renderLookThumbnail(t, look);
-    else t.classList.add('theme-pick-thumb-none');
-    return t;
-  };
+  trigger.innerHTML = THEME_ICON;
+  const name = document.createElement('span');
+  name.textContent = label;
+  const chosen = document.createElement('span');
+  chosen.className = 'ts-theme-thumb theme-pick-chosen';
+  chosen.setAttribute('aria-hidden', 'true');
+  trigger.append(name, chosen);
   const currentLook = () => looks.find(l => l.id === value()) || null;
-  const paintTrigger = () => {
+  // The chosen theme shows as a small preview on the button; its name is in the tooltip.
+  const paint = () => {
     const look = currentLook();
-    trigger.innerHTML = '';
-    if (look || defaultLabel) {
-      trigger.appendChild(thumbFor(look));
-      const name = document.createElement('span');
-      name.className = 'theme-pick-name';
-      name.textContent = look ? look.name : defaultLabel;
-      trigger.appendChild(name);
-    }
-    const chev = document.createElement('span');
-    chev.className = 'theme-pick-chev';
-    chev.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
-    chev.setAttribute('aria-hidden', 'true');
-    trigger.appendChild(chev);
+    chosen.hidden = !look;
+    if (look) window.KairoService?.renderLookThumbnail(chosen, look);
+    const label = look ? look.name : (defaultLabel || name.textContent);
+    const said = `${name.textContent}: ${label}`;
+    trigger.title = said;
+    trigger.setAttribute('aria-label', said);
   };
-  const close = () => {
-    menu.hidden = true;
-    trigger.setAttribute('aria-expanded', 'false');
-    document.removeEventListener('mousedown', onOutside, true);
-    document.removeEventListener('keydown', onKey, true);
-    document.removeEventListener('scroll', onScroll, true);
+  const row = (look, label, id, active) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'svc-popover-item has-thumb' + (active ? ' active' : '');
+    const thumb = document.createElement('div');
+    thumb.className = 'ts-theme-thumb';
+    if (look) window.KairoService.renderLookThumbnail(thumb, look);
+    else thumb.classList.add('theme-pick-thumb-none');
+    const lbl = document.createElement('span');
+    lbl.textContent = label;
+    b.append(thumb, lbl);
+    b.addEventListener('click', () => { onPick(id); paint(); window.KairoService.closePopover(); });
+    return b;
   };
-  const onOutside = (e) => { if (!wrap.contains(e.target)) close(); };
-  const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); trigger.focus(); } };
-  const onScroll = (e) => { if (!menu.contains(e.target)) close(); };
-  const pick = (id) => { onPick(id); paintTrigger(); close(); };
-  // Fixed to the viewport so a dialog or scrolling panel can't clip it;
-  // opens upward when there's more room above.
-  const placeMenu = () => {
-    const r = trigger.getBoundingClientRect();
-    const below = window.innerHeight - r.bottom - 12, above = r.top - 12;
-    const up = below < 220 && above > below;
-    menu.style.position = 'fixed';
-    menu.style.left = r.left + 'px';
-    menu.style.width = r.width + 'px';
-    menu.style.right = 'auto';
-    menu.style.maxHeight = Math.max(160, Math.min(360, up ? above : below)) + 'px';
-    menu.style.top = up ? 'auto' : (r.bottom + 4) + 'px';
-    menu.style.bottom = up ? (window.innerHeight - r.top + 4) + 'px' : 'auto';
-  };
-  const open = () => {
-    menu.innerHTML = '';
-    const current = currentLook();
-    const buildRow = (l) => {
-      const row = document.createElement('button');
-      row.type = 'button';
-      row.setAttribute('role', 'option');
-      row.className = 'theme-pick-item' + (current && l.id === current.id ? ' active' : '');
-      row.appendChild(thumbFor(l));
-      const name = document.createElement('span');
-      name.textContent = l.name;
-      row.appendChild(name);
-      row.addEventListener('click', () => pick(l.id));
-      return row;
-    };
-    if (defaultLabel) {
-      const row = document.createElement('button');
-      row.type = 'button';
-      row.setAttribute('role', 'option');
-      row.className = 'theme-pick-item' + (current ? '' : ' active');
-      row.appendChild(thumbFor(null));
-      const name = document.createElement('span');
-      name.textContent = defaultLabel;
-      row.appendChild(name);
-      row.addEventListener('click', () => pick(''));
-      menu.appendChild(row);
-    }
-    menu.appendChild(window.KairoService.buildThemeTree(looks, buildRow, current && current.id, { monitor }));
-    menu.hidden = false;
-    placeMenu();
-    trigger.setAttribute('aria-expanded', 'true');
-    menu.querySelector('.active')?.scrollIntoView({ block: 'nearest' });
-    document.addEventListener('mousedown', onOutside, true);
-    document.addEventListener('keydown', onKey, true);
-    document.addEventListener('scroll', onScroll, true);
-  };
-  trigger.addEventListener('click', () => (menu.hidden ? open() : close()));
-  paintTrigger();
-  wrap.refresh = paintTrigger;
-  return wrap;
+  trigger.addEventListener('click', () => {
+    const S = window.KairoService;
+    S.openPopover(trigger, (pop) => {
+      const current = currentLook();
+      const list = document.createElement('div');
+      list.className = 'svc-popover-list';
+      if (defaultLabel) list.appendChild(row(null, defaultLabel, '', !current));
+      list.appendChild(S.buildThemeTree(looks, (l) => row(l, l.name, l.id, !!current && l.id === current.id), current && current.id, { monitor }));
+      pop.appendChild(list);
+    });
+  });
+  paint();
+  trigger.refresh = paint;
+  return trigger;
 }
 
 function renderDisplayDetail(host, o) {
@@ -1286,7 +1242,10 @@ function renderDisplayDetail(host, o) {
     about.textContent = 'For whoever is up front: what’s on screen now with the next slide right under it, the time, the segment countdown, and any message you send from Monitor message under the preview. A single scripture called out shows on its own.';
     host.appendChild(about);
     // Its layout: the built-in one, or a Monitor layout made in Theme Studio.
-    host.appendChild(detailInlineGroup('Layout', buildThemeDropdown({
+    const layoutRow = document.createElement('div');
+    layoutRow.className = 'outputs-detail-inline-row outputs-theme-row';
+    host.appendChild(layoutRow);
+    layoutRow.appendChild(buildThemeDropdown({
       value: () => (settings.monitorLooks || {})[o.id] || '',
       onPick: (id) => {
         settings.monitorLooks = { ...(settings.monitorLooks || {}), [o.id]: id || null };
@@ -1295,14 +1254,18 @@ function renderDisplayDetail(host, o) {
       },
       defaultLabel: 'Built-in',
       monitor: true,
-    })));
+      label: 'Layout',
+    }));
     const how = document.createElement('p');
     how.className = 'setting-hint';
     how.textContent = 'Make your own in Theme Studio: New → New monitor layout.';
     host.appendChild(how);
   } else {
-    host.appendChild(detailInlineGroup('Theme', buildThemeSelect(o.id)));
-    host.appendChild(detailInlineGroup('Keying', buildKeyingSelect(o.id)));
+    // The Theme button (it says Theme itself) on the keying row.
+    const looksRow = detailInlineGroup('Keying', buildKeyingSelect(o.id));
+    looksRow.prepend(buildThemeSelect(o.id));
+    looksRow.classList.add('outputs-theme-row');
+    host.appendChild(looksRow);
   }
   appendOutputLayersSection(host, o.id);
 
@@ -1564,7 +1527,7 @@ function renderNativeOutputDetail(host, o) {
   wInput.addEventListener('change', scheduleRestart);
   hInput.addEventListener('change', scheduleRestart);
 
-  host.appendChild(detailInlineGroup('Theme', buildThemeSelect(o.id)));
+  host.appendChild(themeRow(o.id));
 
   appendOutputLayersSection(host, o.id);
 
@@ -1707,7 +1670,7 @@ function renderDeckLinkDetail(host, o) {
     keyBox.addEventListener('change', () => { updateNativeOutput('decklink', o.id, { keying: keyBox.checked }); restartIfLive(); });
   });
 
-  host.appendChild(detailInlineGroup('Theme', buildThemeSelect(o.id)));
+  host.appendChild(themeRow(o.id));
   appendOutputLayersSection(host, o.id);
 
   const del = document.createElement('button');
