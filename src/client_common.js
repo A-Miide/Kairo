@@ -155,44 +155,6 @@ const GOOGLE_FONT_WEIGHTS = {
   'DM Serif Display': '', 'Yellowtail': '', 'Space Grotesk': '300;400;500;600;700', 'Fraunces': '400;500;600;700;800;900',
 };
 const fontSheets = new Map();   // family -> a promise kept once its stylesheet has arrived (or failed)
-// A colour's code, typed: a small text field paired with a colour picker. Typing a valid code
-// (#RGB or #RRGGBB, the # optional) sets the picker and fires its own input and change events, so
-// whatever listens to the picker applies it; picking a colour updates the code. One for every
-// colour picker in the app.
-function hexField(picker, { className = 'hex-field' } = {}) {
-  const field = document.createElement('input');
-  field.type = 'text';
-  field.className = className;
-  field.maxLength = 7;
-  field.spellcheck = false;
-  field.autocomplete = 'off';
-  field.setAttribute('aria-label', `${picker.getAttribute('aria-label') || picker.title || 'Colour'} code`);
-  const show = () => { field.value = String(picker.value || '').replace('#', '').toUpperCase(); };
-  const parse = (v) => {
-    const m = String(v || '').trim().replace(/^#/, '').match(/^([0-9a-f]{3}|[0-9a-f]{6})$/i);
-    if (!m) return null;
-    const h = m[1].length === 3 ? m[1].split('').map(c => c + c).join('') : m[1];
-    return '#' + h.toLowerCase();
-  };
-  const apply = (final) => {
-    const hex = parse(field.value);
-    field.classList.toggle('is-invalid', !hex && final && field.value.trim() !== '');
-    if (!hex) { if (final) show(); return; }
-    if (hex === picker.value.toLowerCase()) return;
-    picker.value = hex;
-    picker.dispatchEvent(new Event('input', { bubbles: true }));
-    picker.dispatchEvent(new Event('change', { bubbles: true }));
-  };
-  field.addEventListener('input', () => { if (field.value.replace('#', '').length === 6) apply(false); });
-  field.addEventListener('change', () => apply(true));
-  field.addEventListener('keydown', (e) => { if (e.key === 'Enter') { apply(true); field.blur(); } e.stopPropagation(); });
-  field.addEventListener('click', (e) => e.stopPropagation());   // inside a label, typing must not open the picker
-  picker.addEventListener('input', show);
-  picker.addEventListener('change', show);
-  show();
-  return field;
-}
-
 function loadGoogleFont(family) {
   if (!family || loadedFonts.has(family)) return fontSheets.get(family) || Promise.resolve();
   loadedFonts.add(family);

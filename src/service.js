@@ -4804,9 +4804,6 @@
 
     const palette = document.createElement('div');
     palette.className = 'ac-palette';
-    // Under the strip, each colour's code, to type one in.
-    const codes = document.createElement('div');
-    codes.className = 'ac-palette-codes';
     palette.setAttribute('role', 'group');
     palette.setAttribute('aria-label', 'Colours');
     const KEYS = [['bg', 'Background'], ['bg2', 'Second tone'], ['text', 'Text'], ['accent', 'Accent']];
@@ -4820,12 +4817,11 @@
       inp.addEventListener('input', () => { acDraft.colors = { ...(acDraft.colors || {}), [key]: inp.value }; refreshSoon(); });
       lab.appendChild(inp);
       palette.appendChild(lab);
-      codes.appendChild(hexField(inp, { className: 'hex-field ac-palette-code' }));
       return [key, inp];
     });
     const colourGroup = document.createElement('div');
     colourGroup.className = 'ac-choice';
-    colourGroup.append(Object.assign(document.createElement('span'), { className: 'ac-choice-label', textContent: 'Colours' }), palette, codes);
+    colourGroup.append(Object.assign(document.createElement('span'), { className: 'ac-choice-label', textContent: 'Colours' }), palette);
     colours.append(lookGroup, colourGroup);
 
     const cards = S.LAYOUTS.map(lay => {
@@ -4861,8 +4857,7 @@
     const refresh = () => {
       if (!acDraft) return;
       const kit = S.withColors(S.kitById(acDraft.kit), acDraft.colors);
-      // Set in code, so the paired code field is told (it updates on change).
-      inputs.forEach(([key, inp]) => { inp.value = kit[key]; inp.parentElement.style.background = kit[key]; inp.dispatchEvent(new Event('change')); });
+      inputs.forEach(([key, inp]) => { inp.value = kit[key]; inp.parentElement.style.background = kit[key]; });
       const base = S.kitById(acDraft.kit);
       lookSwatch.style.background = swatchBg(kit);
       lookSwatch.style.setProperty('--dot', kit.accent);

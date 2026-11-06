@@ -4071,8 +4071,7 @@ function swatchField(label, color, onChange, title = '') {
   l.textContent = label;
   const c = makeColor(color, onChange);
   c.className = 'ts-swatch-mini';
-  c.setAttribute('aria-label', label);
-  wrap.append(l, c, hexField(c, { className: 'ts-hex' }));
+  wrap.append(l, c);
   return wrap;
 }
 // A switch with its name, field-sized ("Finale ●").
@@ -4104,10 +4103,13 @@ function colorField(color, onChange, title = '') {
   const f = document.createElement('label');
   f.className = 'ts-field ts-color-field';
   if (title) f.title = title;
-  const c = makeColor(color, v => onChange(v));
+  const hex = document.createElement('span');
+  hex.className = 'ts-hex';
+  const show = (v) => { hex.textContent = String(v || '').replace('#', '').toUpperCase(); };
+  const c = makeColor(color, v => { show(v); onChange(v); });
   c.className = 'ts-swatch-mini';
-  if (title) c.setAttribute('aria-label', title);
-  f.append(c, hexField(c, { className: 'ts-hex' }));
+  show(color);
+  f.append(c, hex);
   return f;
 }
 // A colour, and its opacity beside it — a design tool's fill line.
@@ -5277,7 +5279,7 @@ function gradientEditorRows(layer, onChange) {
       });
       sw.className = 'ts-swatch-mini';
       sw.title = 'This glow\'s colour';
-      glowsRow.append(sw, hexField(sw, { className: 'ts-hex' }));
+      glowsRow.appendChild(sw);
     });
     const off = document.createElement('button');
     off.type = 'button';
@@ -5709,9 +5711,7 @@ function renderMotionProps(panel, layer) {
   g.colors.forEach((c, i) => {
     const cell = document.createElement('div');
     cell.className = 'ts-motion-color';
-    const sw = makeColor(c, v => { g.colors[i] = v; changed(); });
-    sw.setAttribute('aria-label', kind.colors.labels?.[i] || `Color ${i + 1}`);
-    cell.append(sw, hexField(sw, { className: 'ts-hex' }));
+    cell.appendChild(makeColor(c, v => { g.colors[i] = v; changed(); }));
     const lbl = document.createElement('span');
     lbl.textContent = kind.colors.labels?.[i] || `Color ${i + 1}`;
     cell.appendChild(lbl);
@@ -8336,7 +8336,6 @@ function openQrDialog(layer = null) {
   const close = () => modal.remove();
   modal.querySelectorAll('[data-close], .modal-overlay').forEach(el => el.addEventListener('click', close));
   $('ts-qr-text').value = design.text;
-  modal.querySelectorAll('input[type="color"]').forEach(p => p.after(hexField(p, { className: 'ts-hex hex-field-boxed' })));
 
   let made = null, timer = null;
   const sync = () => {

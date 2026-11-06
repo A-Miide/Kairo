@@ -9050,13 +9050,32 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 .ac-palette-swatch + .ac-palette-swatch { border-left: 1px solid rgba(0, 0, 0, 0.35); }
 .ac-palette-swatch:hover { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.6); }
 .ac-palette-swatch input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
-/* A colour's typed code beside its picker (client_common.js hexField). */
-.hex-field, input.ts-hex { width: 7ch; min-width: 0; padding: 2px 4px; border: 1px solid transparent; border-radius: 4px; background: transparent;
-  color: var(--text); font: 500 11px/1.4 var(--mono); letter-spacing: 0.3px; text-transform: uppercase; }
-.hex-field:hover, input.ts-hex:hover { border-color: var(--border-md); }
-.hex-field:focus, input.ts-hex:focus { outline: none; border-color: var(--accent); background: var(--bg-input); }
-.hex-field.is-invalid, input.ts-hex.is-invalid { border-color: #ff4d3d; }
-.hex-field-boxed { border-color: var(--border-md); background: var(--bg-input); padding: 5px 6px; }
-.ac-palette-codes { display: flex; }
-.ac-palette-code { width: 38px; padding: 2px 0; text-align: center; font-size: 9.5px; }
-.ssp-color .hex-field { width: 100%; }
+/* The colour picker every swatch opens (color_picker.js): shade square, hue bar, hex and RGB, recents. */
+.kcp { position: fixed; z-index: 4000; width: 248px; padding: 12px; border: 1px solid var(--border-md); border-radius: 12px;
+  background: #1c1c1f; box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55); display: grid; gap: 10px; color: var(--text); }
+.kcp[hidden] { display: none; }
+.kcp-sv { position: relative; height: 150px; border-radius: 8px; cursor: crosshair; touch-action: none; }
+.kcp-sv:focus-visible, .kcp-hue:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.kcp-thumb { position: absolute; width: 14px; height: 14px; margin: -7px 0 0 -7px; border: 2px solid #fff; border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4), 0 2px 6px rgba(0, 0, 0, 0.4); pointer-events: none; }
+.kcp-row { display: flex; align-items: center; gap: 10px; }
+.kcp-preview { flex: none; width: 26px; height: 26px; border-radius: 50%; border: 1px solid rgba(255, 255, 255, 0.18); }
+.kcp-hue { position: relative; flex: 1; height: 12px; border-radius: 6px; cursor: pointer; touch-action: none;
+  background: linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00); }
+.kcp-hue-thumb { position: absolute; top: 50%; width: 14px; height: 14px; margin: -7px 0 0 -7px; border: 2px solid #fff; border-radius: 50%;
+  background: transparent; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4); pointer-events: none; }
+.kcp-dropper { flex: none; display: grid; place-items: center; width: 28px; height: 28px; border: 1px solid var(--border-md); border-radius: 7px;
+  background: none; color: var(--text-2); cursor: pointer; }
+.kcp-dropper:hover { color: var(--text); border-color: var(--text-3); }
+.kcp-fields { display: grid; grid-template-columns: 2.2fr 1fr 1fr 1fr; gap: 6px; }
+.kcp-field { display: flex; align-items: center; height: 28px; padding: 0 6px; border: 1px solid var(--border-md); border-radius: 6px; background: var(--bg-input); }
+.kcp-field:focus-within { border-color: var(--accent); }
+.kcp-field span { color: var(--text-3); font: 500 12px var(--mono); }
+.kcp-field input { width: 100%; min-width: 0; border: 0; background: none; color: var(--text); font: 500 12px var(--mono); text-transform: uppercase; outline: none; text-align: center; }
+.kcp-hex input { text-align: left; padding-left: 2px; }
+.kcp-field input.is-invalid { color: #ff6b5e; }
+.kcp-labels { display: grid; grid-template-columns: 2.2fr 1fr 1fr 1fr; gap: 6px; margin-top: -6px; font-size: 10.5px; color: var(--text-3); text-align: center; }
+.kcp-recent { display: flex; flex-wrap: wrap; gap: 6px; padding-top: 8px; border-top: 1px solid var(--border); }
+.kcp-recent[hidden] { display: none; }
+.kcp-recent-swatch { width: 18px; height: 18px; padding: 0; border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 4px; cursor: pointer; }
+.kcp-recent-swatch:hover { transform: none; outline: 2px solid var(--text-2); outline-offset: 1px; }
