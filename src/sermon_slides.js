@@ -65,10 +65,11 @@
     { id: 'royal', name: 'Royal Blue', bg: '#0136A0', bg2: '#1B62B0', text: '#FFFFFF', accent: '#8FC5F3', accentOn: ['#0141AA'],
       display: { family: 'Anton', weight: 400, width: 0.5 }, body: { family: 'Montserrat' } },
     { id: 'night', name: 'Night Worship', bg: '#031A5A', bg2: '#071664', ramp: ['#020C3A', '#031A5A', '#0B2A8C'], text: '#FAFBFD', accent: '#9DB4FF',
-      // The light as diagonal streaks (not round glows) over the deep blue, its darker part #061853.
-      sweep: { angle: 135, stops: [{ pos: 0, color: '#041243' }, { pos: 40, color: '#0B146B' }, { pos: 62, color: '#061853' },
-        { pos: 68, color: '#2447AE' }, { pos: 73, color: '#5A84DC' }, { pos: 78, color: '#2447AE' }, { pos: 83, color: '#061853' },
-        { pos: 88, color: '#2F55BE' }, { pos: 91, color: '#061853' }, { pos: 100, color: '#061853' }] },
+      // The light comes from the right: its edges run steeply top to bottom (measured from the
+      // reference, about 61°), deep blue at the bottom-left rising to light at the right edge, the
+      // darker part of the light #061853. Straight bands, no round glows, no near-white.
+      sweep: { angle: 61, stops: [{ pos: 0, color: '#031040' }, { pos: 34, color: '#061853' }, { pos: 52, color: '#0B1D7A' },
+        { pos: 64, color: '#1E3C9E' }, { pos: 76, color: '#3157C1' }, { pos: 88, color: '#6B96E6' }, { pos: 100, color: '#88B2EA' }] },
       glows: [],
       display: { family: 'Inter', weight: 800, width: 0.56 }, body: { family: 'Inter' } },
     { id: 'lime', name: 'Lime Black', bg: '#000000', bg2: '#0B0B0B', text: '#FFFFFF', accent: '#D5F228',
@@ -783,7 +784,7 @@
       angle: kit.sweep ? kit.sweep.angle : 135,
       gradientStops: kit.sweep ? kit.sweep.stops : [{ pos: 0, color: ramp[0] }, { pos: 100, color: ramp[0] }],
       gradientGlows: kit.glows || [{ x: 100, y: 0, rx: 55, ry: 70, color: top }, { x: 62, y: 38, rx: 30, ry: 18, color: top }, { x: 0, y: 100, rx: 40, ry: 50, color: ramp[1] || top }] },
-      ...vignette(backgroundLayers(kit, style).slice(1), 70)];
+      ...vignette(backgroundLayers(kit, style).slice(1), kit.sweep ? 0 : 70)]  // light at the edge stays bright;
     const lines = (gen.lines || []).filter(Boolean);
     const text = gen.kind === 'title' ? lines[0] || '' : lines.join(' ');
     const tight = { ...kit, display: { family: 'Inter', weight: 800, width: 0.56 } };
