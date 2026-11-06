@@ -73,7 +73,12 @@ fn n32(v: i64) -> u32 {
 }
 
 impl PartialResolver<'_> {
+    /// "verse N" against the passage in play, numbered as the KJV numbers it.
     pub fn resolve(&self, text: &str, active: Active, allow_bare_number: bool) -> Option<Partial> {
+        self.resolve_as_said(text, active, allow_bare_number).map(|p| Partial { citation: p.citation.in_kjv_numbering(self.lang), ..p })
+    }
+
+    fn resolve_as_said(&self, text: &str, active: Active, allow_bare_number: bool) -> Option<Partial> {
         static CLOCK: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?-u:\b)[0-9]{1,2}:[0-9]{2}(?-u:\b)"));
         let book = active.book?;
         let text = CLOCK.replace_all(text, " ");
@@ -86,7 +91,15 @@ impl PartialResolver<'_> {
                 continue;
             }
             let Some(ch) = consume_number(&w, i + 1, None) else { continue };
-            let j = i + 1 + ch.consumed;
+            // A word or two may come between: "chapter 12 … in verse 1" ("Er geht im Kapitel 12 los, in
+            // Vers 1", de-reger-roemer12), never a number or a book.
+            let mut j = i + 1 + ch.consumed;
+            let gap = |x: &str| consume_number(&[x], 0, None).is_none() && self.books.alias(x).is_none() && x != "chapter";
+            for _ in 0..2 {
+                if !is_verse_word(get(&w, j)) && j < w.len() && gap(w[j]) {
+                    j += 1;
+                }
+            }
             if !is_verse_word(get(&w, j)) {
                 continue;
             }

@@ -2,6 +2,8 @@
 
 use kairo_bible::{Book, Corpus};
 
+use super::i18n::{psalm_title_verses, Lang};
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Verses {
     /// A chapter with no verse ("Romans chapter 8").
@@ -30,6 +32,26 @@ pub struct Citation {
 impl Citation {
     pub(crate) fn new(book: Book, chapter: u32, verses: Verses) -> Citation {
         Citation { book, chapter, verses, alternatives: Vec::new(), alt_chapter: None }
+    }
+
+    /// The verse numbers as the KJV has them, for a citation said in `lang`'s numbering: a French
+    /// Psalm's verse 2 is the KJV's verse 1 when its title counts as verse 1 (i18n::psalm_title_verses).
+    pub(crate) fn in_kjv_numbering(mut self, lang: Lang) -> Citation {
+        // German Bibles number Genesis 32 as the Hebrew does: their 32:2 is the KJV's 32:1 (Jacob at
+        // Peniel, "1. Mose 32,26" is the KJV's 32:25; de-malgo-johannes15).
+        let genesis_32 = lang == Lang::De && self.book == Book::from_name("Genesis").expect("Genesis") && self.chapter == 32;
+        let d = if self.book == Book::from_name("Psalms").expect("Psalms") { psalm_title_verses(lang, self.chapter) } else if genesis_32 { 1 } else { 0 };
+        if d == 0 {
+            return self;
+        }
+        let shift = |v: u32| v.saturating_sub(d).max(1);
+        self.verses = match self.verses {
+            Verses::Chapter => Verses::Chapter,
+            Verses::One(v) => Verses::One(shift(v)),
+            Verses::Span(a, b) => Verses::Span(shift(a), shift(b)),
+            Verses::Spans(s) => Verses::Spans(s.into_iter().map(|(a, b)| (shift(a), shift(b))).collect()),
+        };
+        self
     }
 }
 

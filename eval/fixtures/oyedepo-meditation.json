@@ -2502,6 +2502,14 @@
       "startMs": 3151000
     },
     {
+      "book": "Psalms",
+      "chapter": 19,
+      "verse": 2,
+      "kind": "quote",
+      "startMs": 3382000,
+      "note": "2026-11-05 owner confirmed: real quote missing from the key: \"day onto day utter speech ... and night onto night showeth knowledge\""
+    },
+    {
       "book": "Isaiah",
       "chapter": 26,
       "verse": 9,
@@ -2511,18 +2519,10 @@
     {
       "book": "Proverbs",
       "chapter": 3,
-      "ranges": [
-        {
-          "verseStart": 2,
-          "verseEnd": 2
-        },
-        {
-          "verseStart": 7,
-          "verseEnd": 7
-        }
-      ],
       "kind": "citation",
-      "startMs": 3722000
+      "startMs": 3738000,
+      "verse": 27,
+      "note": "2026-11-05 owner review of the misses list: \"in Proverbs 3:2 7\" is 3:27 said as \"2 7\"; what follows is 3:27-28 (\"in your power to do it\", \"don't ask him to come back tomorrow\"). Was keyed 3:2 and 3:7"
     },
     {
       "book": "Proverbs",
@@ -2531,6 +2531,22 @@
       "kind": "citation",
       "startMs": 3738000,
       "note": "2026-09-26 audit: bootstrapped entry checked by hand against the transcript and KJV text — was \"Proverbs 3:2\""
+    },
+    {
+      "book": "Proverbs",
+      "chapter": 3,
+      "verse": 28,
+      "kind": "quote",
+      "startMs": 3747000,
+      "note": "2026-11-05 owner review of the misses list: \"if your neighbor come asking you for help ... don't ask him to come back tomorrow\""
+    },
+    {
+      "book": "John",
+      "chapter": 11,
+      "verse": 40,
+      "kind": "quote",
+      "startMs": 3876000,
+      "note": "2026-11-05 owner confirmed: real quote missing from the key: \"Jesus said if you believe you see the glory of God\""
     },
     {
       "book": "Proverbs",
@@ -2564,6 +2580,14 @@
       "similarity": 0.4854313309663743
     },
     {
+      "book": "Joshua",
+      "chapter": 18,
+      "verse": 3,
+      "kind": "quote",
+      "startMs": 4114000,
+      "note": "2026-11-05 owner confirmed: real quote missing from the key: \"why are you slack in possessing the land which the Lord has given you\""
+    },
+    {
       "book": "Psalms",
       "chapter": 34,
       "verse": 10,
@@ -2583,10 +2607,14 @@
     {
       "book": "Mark",
       "chapter": 7,
-      "verse": 26,
+      "verse": 27,
       "kind": "quote",
       "startMs": 4277000,
-      "bootstrapped": true
+      "bootstrapped": true,
+      "note": "2026-11-05 owner review of the misses list: \"Let the children first be filled\" is Mark 7:27 (was keyed 7:26)"
     }
+  ],
+  "keyCorrections": [
+    "2026-11-05 owner review of the misses list: Mark 7:26 → 7:27; Proverbs 3:2 and 3:7 → 3:27, with 3:28 added."
   ]
 }

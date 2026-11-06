@@ -71,7 +71,35 @@ struct GroundTruth {
     at_ms: i64,
     /// Said in the preacher's own words: right as an offer, not counted as found or missed.
     paraphrase: bool,
+    /// "citation", "quote" or "paraphrase", as the answer key marks it.
+    kind: String,
 }
+
+/// Every marked verse, by what happened to it.
+#[derive(Default, Clone, Copy)]
+struct Outcomes {
+    total: usize,
+    /// Sent to the screen within 30 s of being said.
+    found: usize,
+    /// Not sent again, but already the verse on screen (sent before and still up).
+    on_screen: usize,
+    /// Only offered in Possible Matches.
+    offered: usize,
+    missed: usize,
+}
+
+impl Outcomes {
+    fn add(&mut self, o: Outcomes) {
+        self.total += o.total;
+        self.found += o.found;
+        self.on_screen += o.on_screen;
+        self.offered += o.offered;
+        self.missed += o.missed;
+    }
+}
+
+/// A verse sent this long ago and not replaced since is still the one on screen.
+const STILL_UP_MS: i64 = 180_000;
 
 #[derive(Default)]
 struct Score {
@@ -99,6 +127,12 @@ struct Score {
     /// Of the suggestions, those Possible Matches shows; of them, right; of them, noise.
     shown: (usize, usize, usize),
     noise_list: Vec<String>,
+    /// Missed (or only offered) marked verses with what was said then.
+    missed_list_said: Vec<String>,
+    /// Kind ("citation", "quote", "paraphrase") → what happened to its marked verses.
+    outcomes: std::collections::BTreeMap<String, Outcomes>,
+    /// Marked verses not sent but already up when said.
+    on_screen_list: Vec<String>,
 }
 
 /// "1 John 5:4", "Psalms 23:1-3" → its first verse.
@@ -134,12 +168,12 @@ fn ground_truth(k: &Knowledge, fixture: &Value) -> Vec<GroundTruth> {
             Vec::new()
         };
         let bare = keys.is_empty().then_some((book, ch));
-        out.push(GroundTruth { keys, bare, at_ms, paraphrase: g["kind"] == "paraphrase" });
+        out.push(GroundTruth { keys, bare, at_ms, paraphrase: g["kind"] == "paraphrase", kind: g["kind"].as_str().unwrap_or("citation").to_string() });
     }
     out
 }
 
-fn score(k: &Knowledge, gt: &[GroundTruth], decisions: &[Decision], last_ms: i64) -> Score {
+fn score(k: &Knowledge, gt: &[GroundTruth], decisions: &[Decision], last_ms: i64, said: &dyn Fn(i64) -> String) -> Score {
     let screen: Vec<&Decision> = decisions.iter().filter(|d| d.target == Target::Screen).collect();
     let mut s = Score { hours: (last_ms.max(1) as f64 / 3_600_000.0).max(1.0), ..Default::default() };
     let mut used: HashSet<usize> = HashSet::new();
@@ -217,7 +251,67 @@ fn score(k: &Knowledge, gt: &[GroundTruth], decisions: &[Decision], last_ms: i64
         }
         s.missed_list.push(format!("{:>6.1}m {}{}", g.at_ms as f64 / 60_000.0, label(k, g.keys[0]), if offered { " (offered)" } else { "" }));
     }
+
+    // The breakdown by kind. A marked verse is found (sent within 30 s), else already on screen (the
+    // last send before it was said is that verse, and recent), else offered, else missed. Paraphrases
+    // are counted here too, though they're only expected as offers.
+    let up_when = |at: i64| screen.iter().rev().find(|d| d.at_ms <= at + 1_000).filter(|d| at - d.at_ms <= STILL_UP_MS);
+    for g in gt.iter().filter(|g| !g.keys.is_empty()) {
+        let o = s.outcomes.entry(g.kind.clone()).or_default();
+        o.total += 1;
+        let when = format!("{:>6.1}m {} [{}]", g.at_ms as f64 / 60_000.0, label(k, g.keys[0]), g.kind);
+        let found = if g.paraphrase {
+            screen.iter().any(|d| g.keys.contains(&d.verses[0]) && (d.at_ms - g.at_ms).abs() <= MATCH_WINDOW_MS)
+        } else {
+            !missed.iter().any(|m| std::ptr::eq(*m, g))
+        };
+        if found {
+            o.found += 1;
+        } else if up_when(g.at_ms).is_some_and(|d| g.keys.contains(&d.verses[0])) {
+            o.on_screen += 1;
+            s.on_screen_list.push(when);
+        } else if suggestions.iter().any(|d| g.keys.contains(&d.verses[0]) && (d.at_ms - g.at_ms).abs() <= MATCH_WINDOW_MS) {
+            o.offered += 1;
+            if !g.paraphrase {
+                s.missed_list_said.push(format!("{when} (offered) «{}»", said(g.at_ms)));
+            }
+        } else {
+            o.missed += 1;
+            if !g.paraphrase {
+                s.missed_list_said.push(format!("{when} «{}»", said(g.at_ms)));
+            }
+        }
+    }
     s
+}
+
+/// The breakdown, one line per outcome, split by kind.
+fn print_breakdown(indent: &str, s: &Score) {
+    let kinds = ["citation", "quote", "paraphrase"];
+    let get = |k: &str| s.outcomes.get(k).copied().unwrap_or_default();
+    let mut all = Outcomes::default();
+    for k in kinds {
+        all.add(get(k));
+    }
+    let line = |what: &str, f: &dyn Fn(Outcomes) -> usize| {
+        println!("{indent}{what:<22} {:>5}   {}", f(all), kinds.iter().map(|k| format!("{k} {}", f(get(k)))).collect::<Vec<_>>().join(", "));
+    };
+    line("marked verses", &|o| o.total);
+    line("found and sent", &|o| o.found);
+    line("already on screen", &|o| o.on_screen);
+    line("offered, not sent", &|o| o.offered);
+    line("missed", &|o| o.missed);
+    let (cq, cqt) = (get("citation").found + get("citation").on_screen + get("quote").found + get("quote").on_screen, get("citation").total + get("quote").total);
+    println!(
+        "{indent}{:<22} {:>5}   covered (found or already up) {cq}/{cqt} citations and quotes ({:.1}%)",
+        "wrong sends",
+        s.wrong,
+        if cqt == 0 { 0.0 } else { cq as f64 * 100.0 / cqt as f64 }
+    );
+    let wrong_by: Vec<String> = s.by_method.iter().filter(|(_, (_, w))| *w > 0).map(|(m, (_, w))| format!("{m} {w}")).collect();
+    if !wrong_by.is_empty() {
+        println!("{indent}{:<22}         by method: {}", "", wrong_by.join(", "));
+    }
 }
 
 /// Each recorded input at its time on the chosen clock.
@@ -491,7 +585,13 @@ fn main() {
         match &fixture {
             Some(f) => {
                 let gt = ground_truth(&k, f);
-                let (r, n) = (score(&k, &gt, &decisions, last_ms), score(&k, &gt, &node, last_ms));
+                // The transcript around a time: the cue it falls in and the next.
+                let cues = golden["cues"].as_array().cloned().unwrap_or_default();
+                let said = |at: i64| {
+                    let i = cue_at.iter().rposition(|t| *t <= at + 50).unwrap_or(0);
+                    cues.iter().skip(i).take(2).filter_map(|c| c["text"].as_str()).collect::<Vec<_>>().join(" | ")
+                };
+                let (r, n) = (score(&k, &gt, &decisions, last_ms, &said), score(&k, &gt, &node, last_ms, &said));
                 println!(
                     "{:<34} {:>6}/{:<6} {:>9} {:>9} {:>9.0}   {:>6}/{:<6} {:>9} {:>9} {:>9.0}   ({:.2}s)",
                     name, r.found, r.total, format!("{}/{}", r.wrong, r.sent), r.offered, r.suggestions as f64 / r.hours, n.found, n.total, format!("{}/{}", n.wrong, n.sent), n.offered, n.suggestions as f64 / n.hours, secs
@@ -502,6 +602,13 @@ fn main() {
                     }
                     for m in &r.missed_list {
                         println!("    missed  {m}");
+                    }
+                    print_breakdown("    | ", &r);
+                    for m in &r.on_screen_list {
+                        println!("    | already up  {m}");
+                    }
+                    for m in &r.missed_list_said {
+                        println!("    | missed      {m}");
                     }
                     if args.iter().any(|a| a == "--noise") {
                         for n in &r.noise_list {
@@ -522,6 +629,9 @@ fn main() {
                     t.shown.0 += s.shown.0;
                     t.shown.1 += s.shown.1;
                     t.shown.2 += s.shown.2;
+                    for (kind, o) in s.outcomes {
+                        t.outcomes.entry(kind).or_default().add(o);
+                    }
                     for (m, (n, r)) in s.offered_by {
                         let e = t.offered_by.entry(m).or_default();
                         e.0 += n;
@@ -612,6 +722,8 @@ fn main() {
             s.suggestions as f64 / s.hours.max(1e-9)
         );
     }
+    println!("Rust breakdown:");
+    print_breakdown("  ", &rust_total);
     for (who, s) in [("Rust", &rust_total), ("Node", &node_total)] {
         println!("{who} by method (found/wrong): {}", s.by_method.iter().map(|(m, (f, w))| format!("{m} {f}/{w}")).collect::<Vec<_>>().join(", "));
         println!(

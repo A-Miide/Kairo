@@ -67,7 +67,7 @@ pub async fn terms(app: &Shared, lang: &str) -> Vec<String> {
         push(w.to_string());
     }
     if let Some((bible, _)) = app.ready() {
-        for n in bible.k.frequent_names(NAMES) {
+        for n in bible.k().frequent_names(NAMES) {
             let mut c = n.chars();
             push(c.next().map(|f| f.to_uppercase().collect::<String>() + c.as_str()).unwrap_or_default());
         }
@@ -159,7 +159,7 @@ pub fn forget(app: &Shared, term: &str) {
 /// sentence that the Bible doesn't use count — a church's own names.
 pub fn observe(app: &Shared, text: &str, service: u64) {
     let Some((bible, _)) = app.ready() else { return };
-    let biblical = |w: &str| bible.k.lexicon.idf_of(&w.to_lowercase()) > 0.0 || bible.k.is_name(&w.to_lowercase());
+    let biblical = |w: &str| bible.k().lexicon.idf_of(&w.to_lowercase()) > 0.0 || bible.k().is_name(&w.to_lowercase());
     let names = names_in(text, &biblical);
     if names.is_empty() {
         return;

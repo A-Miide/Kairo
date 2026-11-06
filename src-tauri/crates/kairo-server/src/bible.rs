@@ -16,7 +16,8 @@ type Pack = Option<Arc<HashMap<String, String>>>;
 const PACK_NAME: &str = "\u{1}name";
 
 pub struct Bible {
-    pub k: Arc<Knowledge>,
+    /// What detection knows, rebuilt when the service's spoken language changes (service_bible.rs).
+    k: std::sync::RwLock<Arc<Knowledge>>,
     /// The modern wording matched beside the KJV (the BSB; the KJV again when its file is missing).
     pub modern: Translation,
     pub(crate) db_dir: PathBuf,
@@ -31,25 +32,35 @@ pub struct Bible {
 impl Bible {
     pub fn new(k: Arc<Knowledge>, modern: Translation, db_dir: PathBuf, user_packs: PathBuf) -> Bible {
         let user_translations = user_packs.parent().unwrap_or(&user_packs).join("translations");
-        Bible { k, modern, db_dir, user_packs, user_translations, translations: Mutex::new(HashMap::new()), languages: Mutex::new(HashMap::new()) }
+        Bible { k: std::sync::RwLock::new(k), modern, db_dir, user_packs, user_translations, translations: Mutex::new(HashMap::new()), languages: Mutex::new(HashMap::new()) }
+    }
+
+    /// The engine's knowledge as it is now.
+    pub fn k(&self) -> Arc<Knowledge> {
+        self.k.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone()
+    }
+
+    /// Knowledge built for another service language takes the place of the old.
+    pub fn set_k(&self, k: Arc<Knowledge>) {
+        *self.k.write().unwrap_or_else(std::sync::PoisonError::into_inner) = k;
     }
 
     pub fn reference(&self, v: VerseId) -> String {
-        let r = self.k.verse_ref(v);
+        let r = self.k().verse_ref(v);
         format!("{} {}:{}", r.book.name(), r.chapter, r.verse)
     }
 
     /// A verse by book name, chapter and verse.
     pub fn find(&self, book: &str, chapter: u64, verse: u64) -> Option<VerseId> {
         let b = Book::from_name(book)?;
-        self.k.id(VerseRef::new(b, u16::try_from(chapter).ok()?, u16::try_from(verse).ok()?))
+        self.k().id(VerseRef::new(b, u16::try_from(chapter).ok()?, u16::try_from(verse).ok()?))
     }
 
     pub fn chapter(&self, book: &str, chapter: u64) -> Vec<VerseId> {
         let Some(b) = Book::from_name(book) else { return Vec::new() };
         let Ok(c) = u16::try_from(chapter) else { return Vec::new() };
-        let n = self.k.corpus.verse_count(b, c).unwrap_or(0);
-        (1..=n).filter_map(|v| self.k.id(VerseRef::new(b, c, v))).collect()
+        let n = self.k().corpus.verse_count(b, c).unwrap_or(0);
+        (1..=n).filter_map(|v| self.k().id(VerseRef::new(b, c, v))).collect()
     }
 
     pub fn range(&self, book: &str, chapter: u64, from: u64, to: u64) -> Vec<VerseId> {
@@ -58,10 +69,10 @@ impl Bible {
 
     /// The verse as the UI knows it, in KJV text.
     pub fn verse_json(&self, v: VerseId, similarity: f32, method: &str) -> Value {
-        let r = self.k.verse_ref(v);
+        let r = self.k().verse_ref(v);
         json!({
             "reference": self.reference(v),
-            "text": self.k.corpus.kjv().text(v).unwrap_or(""),
+            "text": self.k().corpus.kjv().text(v).unwrap_or(""),
             "book": r.book.name(),
             "chapter": r.chapter,
             "verse": r.verse,
@@ -205,9 +216,10 @@ impl Bible {
         if q.is_empty() {
             return Vec::new();
         }
-        let lex = &self.k.lexicon;
+        let k = self.k();
+        let lex = &k.lexicon;
         let has = |w: &kairo_detect::lexical::lexicon::Wording, v: VerseId| w.text(v).is_some_and(|t| kairo_detect::lexical::text::norm(t).contains(&q));
-        self.k.corpus.ids().filter(|v| has(lex.kjv(), *v) || lex.others().iter().any(|o| has(o, *v))).take(limit).collect()
+        k.corpus.ids().filter(|v| has(lex.kjv(), *v) || lex.others().iter().any(|o| has(o, *v))).take(limit).collect()
     }
 }
 

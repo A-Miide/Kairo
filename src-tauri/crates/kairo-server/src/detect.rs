@@ -10,6 +10,8 @@ use std::time::Instant;
 
 use kairo_bible::VerseId;
 use kairo_detect::engine::{Answer, Config, Effect, Engine, Event, MeaningHit, Output, Request, Segment, Target};
+use kairo_detect::knowledge::Knowledge;
+use kairo_detect::reference::Lang;
 use kairo_semantic::MeaningService;
 use serde_json::{json, Value};
 
@@ -22,6 +24,8 @@ pub enum Command {
     Configure(Box<dyn FnOnce(&mut Config) + Send>),
     /// The meaning models are ready (or replaced).
     Meaning(Arc<MeaningService>),
+    /// Knowledge built for the service's spoken language, and that language (service_bible.rs).
+    Knowledge(Arc<Knowledge>, Lang),
 }
 
 /// How the church shows scripture, read from settings on each decision.
@@ -114,6 +118,12 @@ impl Detector {
         let _ = self.tx.send(Command::Configure(Box::new(f)));
     }
 
+    /// The engine starts again on knowledge built for another service language: what it was
+    /// following belongs to the old one.
+    pub fn relearn(&self, k: Arc<Knowledge>, lang: Lang) {
+        let _ = self.tx.send(Command::Knowledge(k, lang));
+    }
+
     pub fn meaning_ready(&self, m: Arc<MeaningService>) {
         let _ = self.tx.send(Command::Meaning(m));
     }
@@ -202,7 +212,7 @@ fn run(
     on_translation: Arc<std::sync::OnceLock<Box<dyn Fn(&'static str, String) + Send + Sync>>>,
 ) {
     let started = Instant::now();
-    let mut engine = Engine::new(bible.k.clone(), cfg);
+    let mut engine = Engine::new(bible.k(), cfg);
     let mut meaning: Option<Arc<MeaningService>> = None;
     let mut range = RangeMirror::default();
     let (mtx, mrx) = mpsc::channel::<Request>();
@@ -244,13 +254,19 @@ fn run(
                         let cfg = engine.config().clone();
                         crate::routes::write_debug_global("server:detection-panic", json!({ "message": panic_text(&p) }));
                         eprintln!("[Detect] the engine panicked and was restarted: {}", panic_text(&p));
-                        engine = Engine::new(bible.k.clone(), cfg);
+                        engine = Engine::new(bible.k(), cfg);
                         continue;
                     }
                 }
             }
             Command::Configure(f) => {
                 f(engine.config_mut());
+                continue;
+            }
+            Command::Knowledge(k, lang) => {
+                let mut cfg = engine.config().clone();
+                cfg.lang = lang;
+                engine = Engine::new(k, cfg);
                 continue;
             }
             Command::Meaning(m) => {
@@ -408,7 +424,7 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
                 range_state(bible, hub, range);
             }
             Effect::ReadingMode { active, chapter } => {
-                let r = chapter.map(|v| bible.k.verse_ref(v));
+                let r = chapter.map(|v| bible.k().verse_ref(v));
                 hub.broadcast(json!({
                     "type": "reading-mode",
                     "active": active,
