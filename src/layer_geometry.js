@@ -47,6 +47,11 @@ function applyShapeGeometry(div, layer, radius) {
       ? radius(layer.radius)
       : (layer.radius * radius).toFixed(1) + 'px';
   }
+  // A shape cut to its own outline: points as [x%, y%] of its box (a fold of light, a corner plane).
+  if (Array.isArray(layer.clip) && layer.clip.length >= 3) {
+    div.style.borderRadius = '0';
+    div.style.clipPath = `polygon(${layer.clip.map(([x, y]) => `${x}% ${y}%`).join(', ')})`;
+  }
   if (layer.glass) applyGlass(div, layer, radius);
   // A card lifted off what's behind it: a deep soft shadow under it.
   else if (layer.lift) {

@@ -62,13 +62,20 @@
     // Sampled from the owner's reference slides, for the layouts made after them.
     { id: 'redcard', name: 'Red Card', bg: '#720B0C', bg2: '#8F0505', text: '#F7F7F7', accent: '#D10203', accentOn: ['#F7F7F7'],
       display: { family: 'Montserrat', weight: 800, width: 0.62 }, body: { family: 'Montserrat' } },
-    { id: 'royal', name: 'Royal Blue', bg: '#0141AA', bg2: '#3875C0', text: '#FFFFFF', accent: '#8FC5F3', accentOn: ['#0141AA'],
+    { id: 'royal', name: 'Royal Blue', bg: '#0136A0', bg2: '#1B62B0', text: '#FFFFFF', accent: '#8FC5F3', accentOn: ['#0141AA'],
       display: { family: 'Anton', weight: 400, width: 0.5 }, body: { family: 'Montserrat' } },
     { id: 'night', name: 'Night Worship', bg: '#031A5A', bg2: '#071664', ramp: ['#020C3A', '#031A5A', '#0B2A8C'], text: '#FAFBFD', accent: '#9DB4FF',
       // A diagonal sweep of light across the deep blue, brightest toward the top-right corner.
-      sweep: { angle: 120, stops: [{ pos: 0, color: '#020C3A' }, { pos: 46, color: '#06185E' }, { pos: 64, color: '#2C47B0' },
-        { pos: 70, color: '#5F7BD8' }, { pos: 76, color: '#1F37A0' }, { pos: 100, color: '#041A61' }] },
-      glows: [{ x: 100, y: 0, rx: 34, ry: 46, color: '#6E8BE6' }, { x: 0, y: 100, rx: 30, ry: 40, color: '#0B2A8C' }],
+      sweep: { angle: 100, stops: [{ pos: 0, color: '#041243' }, { pos: 30, color: '#060E54' }, { pos: 52, color: '#0F1D7A' },
+        { pos: 70, color: '#3157C1' }, { pos: 86, color: '#6B96E6' }, { pos: 100, color: '#88B2EA' }] },
+      glows: [{ x: 96, y: 58, rx: 22, ry: 26, color: '#A8CCED' }, { x: 50, y: 50, rx: 30, ry: 30, color: '#0B146B' },
+        { x: 80, y: 90, rx: 26, ry: 9, color: '#4F78DA' }],
+      // Light the reference has on top of the gradient: a dark crease across the lower right, and a
+      // hard-edged plane of pale light cut into the top-right corner.
+      folds: [
+        { id: 'ss-plane', name: 'Light plane', clip: [[82, 0], [100, 0], [100, 40]], angle: 210, top: true,
+          stops: [{ pos: 0, color: '#B4CCF5' }, { pos: 55, color: '#86A6EE' }, { pos: 100, color: '#6A8EE6' }], opacity: 100 },
+      ],
       display: { family: 'Inter', weight: 800, width: 0.56 }, body: { family: 'Inter' } },
     { id: 'lime', name: 'Lime Black', bg: '#000000', bg2: '#0B0B0B', text: '#FFFFFF', accent: '#D5F228',
       display: { family: 'Anton', weight: 400, width: 0.5 }, body: { family: 'Inter' } },
@@ -746,7 +753,7 @@
   function worthy(gen, kit, style, footer) {
     const field = (kit.ramp && kit.ramp[kit.ramp.length - 1]) || kit.bg2;
     const L = [{ ...backgroundLayers(kit, 'solid')[0], fill: 'gradient', color: field, color2: kit.bg,
-      gradientStops: [{ pos: 0, color: field }, { pos: 100, color: kit.bg }], angle: 150 }, ...vignette(backgroundLayers(kit, style).slice(1), 70)];
+      gradientStops: [{ pos: 0, color: field }, { pos: 100, color: kit.bg }], angle: 150 }, ...vignette(backgroundLayers(kit, style).slice(1), 88)];
     const lines = (gen.lines || []).filter(Boolean);
     const text = gen.kind === 'title' ? lines[0] || '' : lines.join(' ');
     const [rest, last] = lastWord(text);
@@ -789,6 +796,11 @@
     const h = headline(tight, gen, { x: 260, y: 300, w: W - 520, h: 420 }, text, gen.kind === 'story' ? 70 : 128, kit.text, 'center', 1.0);
     h.font.letterSpacing = gen.kind === 'story' ? -1 : -4;
     h.shadow = { enabled: true, color: kit.accent, opacity: 45, blur: 34, x: 0, y: 0 };   // the words glow a little, as in the reference
+    // The look's own folds of light, over the background and under the grain.
+    // Folds marked `top` go over the vignette (a plane of light isn't shaded by it), the rest under.
+    (kit.folds || []).forEach((f) => L.splice(f.top ? L.findIndex(l => l.id === 'ss-grain') : 1, 0, { id: f.id, type: 'background', name: f.name, visible: true, fill: 'gradient',
+      color: f.stops[0].color, color2: f.stops[f.stops.length - 1].color, gradientStops: f.stops, angle: f.angle, opacity: f.opacity,
+      radius: 0, clip: f.clip, pos: { x: 0, y: 0, w: W, h: H } }));
     L.push(h);
     const refs = gen.refs || [];
     const sub = gen.kind === 'title' ? lines.slice(1).join(' ') : gen.label && gen.kind !== 'story' ? `${gen.label}${refs.length ? '  ·  ' + refs[0] : ''}` : refs[0] || '';
