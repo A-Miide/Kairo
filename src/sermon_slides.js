@@ -609,7 +609,7 @@
     // Liquid glass: the ghost words and the light show softly through it; the words on it in the
     // look's own text colour (the glass is only a faint tint, so the background still decides).
     const ink = kit.text;
-    L.push({ ...shapeLayer('ss-card', 'Card', { x: cx, y: cy, w: cw, h: ch }, '#FFFFFF', { radius: 64, opacity: 12 }), glass: true });
+    L.push({ ...shapeLayer('ss-card', 'Card', { x: cx, y: cy, w: cw, h: ch }, '#FFFFFF', { radius: 64, opacity: 10 }), glass: true });
     if (gen.kind === 'point' && gen.n) {
       L.push(shapeLayer('ss-badge', 'Badge', { x: W / 2 - 80, y: cy - 80, w: 160, h: 160 }, kit.accent, { radius: 80 }));
       L.push(textLayer('ss-number', 'Number', { x: W / 2 - 80, y: cy - 52, w: 160, h: 110 }, String(gen.n),

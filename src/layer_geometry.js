@@ -48,19 +48,29 @@ function applyShapeGeometry(div, layer, radius) {
 }
 
 // Liquid glass: a shape that frosts what's behind it. Its colour becomes a faint tint (its opacity
-// is how strong), with a sheen across the top, a bright hairline edge and a soft shadow under it.
-// Shared by the editor, the previews and the output, after each has set the shape's fill.
+// is how strong). The light follows the owner's CleanFrame glass: a top-left light catch and a 135°
+// sheen, a bright refractive top rim over a fine all-round rim, a soft bounce along the bottom, an
+// inner glow, and a faint cool halo. A light blur keeps words on it readable. Shared by the editor,
+// the previews and the output, after each has set the shape's fill.
 function applyGlass(div, layer, radius) {
   const px = (n) => (typeof radius === 'function' ? radius(n) : (n * radius).toFixed(1) + 'px');
   const n = parseInt(String(layer.color || '#FFFFFF').replace('#', '').slice(0, 6), 16) || 0xFFFFFF;
-  const tint = `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${Math.min(layer.opacity ?? 14, 40) / 100})`;
+  const tint = `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${Math.min(layer.opacity ?? 10, 40) / 100})`;
   div.style.opacity = '';
-  div.style.background = `linear-gradient(160deg, rgba(255,255,255,0.32), rgba(255,255,255,0.05) 42%, rgba(255,255,255,0.10)), ${tint}`;
-  const blur = `blur(${px(layer.glassBlur ?? 34)}) saturate(1.6)`;
+  div.style.background = 'linear-gradient(135deg, rgba(255,255,255,0.38), rgba(255,255,255,0) 42%), '
+    + 'radial-gradient(120% 80% at 20% -10%, rgba(255,255,255,0.28), rgba(255,255,255,0) 55%), ' + tint;
+  const blur = `blur(${px(layer.glassBlur ?? 22)}) saturate(1.5)`;
   div.style.backdropFilter = blur;
   div.style.webkitBackdropFilter = blur;
-  div.style.border = `${px(1.6)} solid rgba(255,255,255,0.42)`;
-  div.style.boxShadow = `inset 0 ${px(1.5)} 0 rgba(255,255,255,0.55), inset 0 -${px(1)} 0 rgba(255,255,255,0.12), 0 ${px(30)} ${px(70)} rgba(0,0,0,0.35)`;
+  div.style.border = '0';
+  div.style.boxShadow = [
+    `inset 0 ${px(2)} ${px(1)} rgba(255,255,255,0.78)`,
+    `inset 0 0 0 ${px(1.5)} rgba(255,255,255,0.32)`,
+    `inset 0 -${px(3)} ${px(6)} rgba(255,255,255,0.2)`,
+    `inset 0 ${px(10)} ${px(22)} rgba(255,255,255,0.07)`,
+    `0 ${px(3)} ${px(22)} rgba(150,190,255,0.18)`,
+    `0 ${px(26)} ${px(64)} -${px(24)} rgba(6,10,14,0.5)`,
+  ].join(', ');
 }
 
 // Reconciles a stored layer id order against the layers actually present —
