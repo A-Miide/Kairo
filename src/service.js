@@ -6718,7 +6718,7 @@
     host.innerHTML = '';
     host.classList.remove('hidden');
     // A themed timer with a solid background reads as "on screen" — don't
-    // let the "Nothing on display" placeholder show through beneath it.
+    // let the empty-preview placeholder show through beneath it.
     plain?.classList.add('hidden');
     paintLookLayers(host, look, msg.style || {}, {
       verseText: '', referenceText: '', translatedText: '', timerText: t ? t.text : (msg.timerText || '0:00'),

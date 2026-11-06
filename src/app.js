@@ -918,6 +918,24 @@ function primaryOutputLook() {
 // Shapes the Live preview box to Main's screen — its assigned physical
 // screen's aspect ratio if one's been set (see outputScreenMap), otherwise
 // the shared fixed 16:9 default.
+// What the preview says with nothing up: the same words as the bar under it.
+const PREVIEW_EMPTY = 'Nothing on screen';
+
+// The preview says LIVE only while something is on screen: a verse or slide, media, a timer
+// or an overlay. One watcher on the whole preview, whatever puts content there.
+(function watchPreviewLive() {
+  const el = document.getElementById('slide-preview');
+  if (!el) return;
+  const shown = (id) => { const n = document.getElementById(id); return !!n && !n.classList.contains('hidden') && !n.classList.contains('empty'); };
+  const update = () => {
+    const text = (document.getElementById('preview-verse-text')?.textContent || '').trim();
+    const live = (text && text !== PREVIEW_EMPTY) || shown('slide-preview-themed') || shown('slide-preview-media') || shown('slide-preview-timer') || shown('slide-preview-overlays');
+    el.classList.toggle('is-empty', !live);
+  };
+  new MutationObserver(update).observe(el, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ['class'] });
+  update();
+})();
+
 function applyLivePreviewAspect() {
   const el = document.getElementById('slide-preview');
   if (!el) return;
@@ -1325,14 +1343,14 @@ function renderMediaPreviewNow(src, kind, fit) {
     host.classList.add('hidden');
     // Restore the placeholder only if there's no real verse text either —
     // it's a stand-in for "nothing at all", not just "no media".
-    if (previewVerseText && !previewVerseText.textContent) previewVerseText.textContent = 'Nothing on display';
+    if (previewVerseText && !previewVerseText.textContent) previewVerseText.textContent = PREVIEW_EMPTY;
     return;
   }
   host.classList.remove('hidden');
   // The placeholder was only ever covering for "nothing sent yet" — with
   // real media now showing, it would just sit as stray text over the
   // image/video. Actual verse text (if any is genuinely live) is untouched.
-  if (previewVerseText?.textContent === 'Nothing on display') previewVerseText.textContent = '';
+  if (previewVerseText?.textContent === PREVIEW_EMPTY) previewVerseText.textContent = '';
   // .live-screen-media's CSS hardcodes object-fit:contain — this mirror
   // never carried the actual chosen Fit Mode at all, so picking Cover or
   // Stretch (Fit Mode's fill) sent correctly to the real output (see
@@ -4042,7 +4060,7 @@ clearLockedBtn?.addEventListener('click', async () => {
   }
   rangeRefs = new Set();
   finishedRangeRefs = new Set();
-  renderPreviewScreen('Nothing on display', '', null);
+  renderPreviewScreen(PREVIEW_EMPTY, '', null);
 });
 
 clearSuggestionsBtn?.addEventListener('click', () => {
@@ -4057,7 +4075,7 @@ clearSuggestionsBtn?.addEventListener('click', () => {
 // A genuine clear, not "nothing sent yet" — renderPreviewScreen(text, ref,
 // null) falls back to the output's own assigned theme (primaryOutputLook()),
 // so the operator's status card kept showing that theme's background/layout
-// behind "Nothing on display" instead of reading as unambiguously blank.
+// behind the empty placeholder instead of reading as unambiguously blank.
 // This bypasses that fallback entirely: plain text, theme layer hidden, full
 // stop — matching what "cleared" is supposed to communicate.
 function clearPreviewScreen() {
@@ -4069,7 +4087,7 @@ function clearPreviewScreen() {
   // Only show the placeholder if media isn't covering for it — otherwise
   // it'd sit as stray text over whatever image/video is currently showing.
   const mediaShowing = !document.getElementById('slide-preview-media')?.classList.contains('hidden');
-  if (previewVerseText) previewVerseText.textContent = mediaShowing ? '' : 'Nothing on display';
+  if (previewVerseText) previewVerseText.textContent = mediaShowing ? '' : PREVIEW_EMPTY;
   if (previewVerseRef)  previewVerseRef.textContent  = '';
   lastPreviewKey = ' ';
   lastPreviewArgs = null;
