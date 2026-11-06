@@ -156,3 +156,24 @@ test('three layouts, the lower third leaving the top of the slide clear', () => 
   const lower = S.newDeck(o, { layout: 'lower' }).blocks.find(b => b.gen.kind === 'point');
   for (const layer of lower.layers) assert.ok(layer.pos.y >= 700, `${layer.name} sits in the band`);
 });
+
+test('any part other slides have is shared: a card change goes to later slides only, when asked', () => {
+  const item = S.newDeck(S.readText(PASTED), { kit: 'redcard', layout: 'badge' });
+  const at = 3;
+  const before = item.blocks[at].layers;
+  const after = JSON.parse(JSON.stringify(before));
+  const card = after.find(l => l.id === 'ss-card');
+  card.corners = [10, 10, 10, 10];
+  card.stroke = { enabled: true, color: '#FFFFFF', width: 6 };
+  after.find(l => l.id === 'ss-headline').customText = 'Only this slide';
+  const changes = S.commonChanges(before, after);
+  assert.deepEqual(changes.map(c => c.id), ['ss-card'], 'the headline words are each slide\'s own');
+  assert.ok(S.sharedWith(item, 'ss-card', at) > 0);
+  item.blocks[at].layers = after;
+  S.applyCommon(item, changes, at, 'after');
+  const cardOf = (i) => item.blocks[i].layers.find(l => l.id === 'ss-card');
+  assert.deepEqual(cardOf(at + 1).corners, [10, 10, 10, 10]);
+  assert.equal(cardOf(at + 1).stroke.width, 6);
+  assert.deepEqual(cardOf(1).corners, [70, 300, 80, 80], 'earlier slides keep theirs');
+  assert.ok(!item.sermon.common || !item.sermon.common['ss-card'], '"later" is not the deck\'s own style');
+});

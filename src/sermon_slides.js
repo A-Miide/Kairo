@@ -366,6 +366,7 @@
       outline: { enabled: false, color: '#000000', width: 0 },
       webFont: true,
       ...(o.rotation ? { rotation: o.rotation } : {}),
+      ...(o.decor ? { decor: true } : {}),   // cropped on purpose (a ghost word): not "cut off"
     };
   }
   function shapeLayer(id, name, pos, color, o = {}) {
@@ -443,8 +444,9 @@
       for (const word of t.split(/\s+/)) { const len = word.length + (cur ? 1 : 0); if (cur && cur + len > perLine) { n += 1; cur = word.length; } else cur += len; }
       return n + 1;
     };
-    while (s > MIN_HEADLINE_PX && lines(s) * s * lineHeight > h) s -= 4;
-    return Math.max(MIN_HEADLINE_PX, s);
+    const floor = Math.min(MIN_HEADLINE_PX, size);
+    while (s > floor && lines(s) * s * lineHeight > h) s -= 4;
+    return Math.max(Math.min(MIN_HEADLINE_PX, size), s);   // never bigger than the slide asked for
   }
   // A headline layer at the size that fits its box; `gen.tooLong` when even the minimum doesn't.
   function headline(kit, gen, pos, text, size, color, align, lineHeight) {
@@ -604,7 +606,7 @@
     const text = gen.kind === 'title' ? lines[0] || '' : lines.join(' ');
     const ghost = ghostWord(gen.kind === 'title' ? text : text);
     if (ghost) L.push(textLayer('ss-ghost', 'Ghost word', { x: -60, y: 170, w: W + 600, h: 760 }, ghost,
-      { family: CONDENSED.family, size: 600, color: kit.text, opacity: 5, lineHeight: 1.0, spacing: -6 }));
+      { decor: true, family: CONDENSED.family, size: 600, color: kit.text, opacity: 5, lineHeight: 1.0, spacing: -6 }));
     if (footer) L.push(textLayer('ss-footer', 'Footer', { x: 70 - 420, y: 540 - 18, w: 840, h: 36 }, String(footer),
       { family: kit.body.family, size: 20, color: kit.text, opacity: 55, spacing: 8, transform: 'uppercase', align: 'center', rotation: -90 }));
     const X = 250;
@@ -630,7 +632,7 @@
     const text = gen.kind === 'title' ? lines[0] || '' : lines.join(' ');
     const ghost = ghostWord(text);
     if (ghost) for (let i = 0; i < 3; i++) L.push(textLayer(`ss-ghost-${i}`, `Ghost word ${i + 1}`, { x: -40, y: -60 + i * 380, w: W + 400, h: 420 }, ghost,
-      { family: CONDENSED.family, size: 420, color: kit.bg2, opacity: 55, lineHeight: 1.0, spacing: -4 }));
+      { decor: true, family: CONDENSED.family, size: 420, color: kit.bg2, opacity: 55, lineHeight: 1.0, spacing: -4 }));
     const cx = 400, cy = 190, cw = W - 800, ch = 720;
     // Liquid glass: the ghost words and the light show softly through it; the words on it in the
     // look's own text colour (the glass is only a faint tint, so the background still decides).
@@ -664,9 +666,9 @@
     const lines = (gen.lines || []).filter(Boolean);
     const text = gen.kind === 'title' ? lines[0] || '' : lines.join(' ');
     L.push(textLayer('ss-quote-open', 'Opening quote', { x: 250, y: 40, w: 400, h: 420 }, '\u201C',
-      { family: CONDENSED.family, size: 420, color: kit.accent, opacity: 100, lineHeight: 1.0 }));
+      { decor: true, family: CONDENSED.family, size: 420, color: kit.accent, opacity: 100, lineHeight: 1.0 }));
     L.push(textLayer('ss-quote-close', 'Closing quote', { x: W - 560, y: 700, w: 400, h: 420 }, '\u201D',
-      { family: CONDENSED.family, size: 420, color: kit.accent, opacity: 100, lineHeight: 1.0, align: 'right' }));
+      { decor: true, family: CONDENSED.family, size: 420, color: kit.accent, opacity: 100, lineHeight: 1.0, align: 'right' }));
     const X = 300, TW = W - 2 * X;
     const tag = gen.label || (gen.kind === 'story' ? 'Introduction' : '');
     if (tag) {
@@ -704,14 +706,15 @@
     const text = gen.kind === 'title' ? lines[0] || '' : lines.join(' ');
     const ghost = ghostWord(text).slice(0, 5);
     if (ghost) for (let i = 0; i < 4; i++) L.push(textLayer(`ss-ghost-${i}`, `Ghost word ${i + 1}`, { x: 40, y: -120 + i * 330, w: W, h: 380 }, ghost,
-      { family: 'Montserrat', weight: 900, size: 380, color: mix(kit.bg2, '#FF0000', 0.12), opacity: 100, lineHeight: 1.0, spacing: -6 }));
+      { decor: true, family: 'Montserrat', weight: 900, size: 380, color: mix(kit.bg2, '#FF0000', 0.12), opacity: 100, lineHeight: 1.0, spacing: -6 }));
     const cx = 500, cy = 140, cw = W - 1000, ch = 860;
     const paper = '#F7F7F7', ink = '#2B2B2B', body = '#3A3A3A';
     // One sweeping curve at the top-right; the other corners gently rounded, as in the reference.
     L.push({ ...shapeLayer('ss-card', 'Card', { x: cx, y: cy, w: cw, h: ch }, paper, { radius: 70 }), corners: [70, 300, 80, 80], lift: true });
     // A pale ghost letter inside the card, as the reference's big "O".
-    if (ghost) L.push(textLayer('ss-card-ghost', 'Card ghost', { x: cx + cw - 470, y: cy + 210, w: 470, h: 600 }, ghost[0],
-      { family: 'Montserrat', weight: 900, size: 640, color: '#EDEDED', lineHeight: 0.9, align: 'right' }));
+    // Wide enough for the widest capital, so the letter is never cut and the editor never resizes it.
+    if (ghost) L.push(textLayer('ss-card-ghost', 'Card ghost', { x: cx + cw - 760, y: cy + 210, w: 760, h: 600 }, ghost[0],
+      { decor: true, family: 'Montserrat', weight: 900, size: 640, color: '#EDEDED', lineHeight: 0.9, align: 'right' }));
     const mid = W / 2;
     if (gen.kind === 'point' && gen.n) {
       L.push(shapeLayer('ss-badge-ring', 'Badge ring', { x: mid - 100, y: cy - 100, w: 200, h: 200 }, kit.bg, { radius: 100 }));
@@ -733,7 +736,7 @@
       L.push(textLayer('ss-tag-text', 'Tag word', { x: X + lw + 30, y: cy + 190, w: tw, h: 76 }, tagWord,
         { family: 'Montserrat', size: 62, weight: 800, color: '#FFFFFF', align: 'center', lineHeight: 1.1 }));
     }
-    L.push(headline({ ...kit, display: { family: 'Montserrat', weight: 500, width: 0.58 } }, gen, { x: X, y: cy + 300, w: TW - 120, h: 360 }, text,
+    L.push(headline({ ...kit, display: { family: 'Montserrat', weight: 500, width: 0.66 } }, gen, { x: X, y: cy + 300, w: TW - 120, h: 360 }, text,
       gen.kind === 'story' ? 48 : 58, body, 'left', 1.25));
     L.push(shapeLayer('ss-rule', 'Rule', { x: X, y: cy + ch - 168, w: 210, h: 4 }, kit.accent));
     L.push(shapeLayer('ss-dot', 'Dot', { x: X + 216, y: cy + ch - 175, w: 18, h: 18 }, kit.accent, { radius: 9 }));
@@ -756,7 +759,7 @@
     const [rest, last] = lastWord(text);
     const ghost = ghostWord(text);
     if (ghost) L.push(textLayer('ss-ghost', 'Ghost word', { x: 60, y: 200, w: W + 200, h: 800 }, ghost.charAt(0) + ghost.slice(1).toLowerCase(),
-      { family: SCRIPT.family, size: 560, color: kit.bg, opacity: 50, lineHeight: 1.0, rotation: -4 }));
+      { decor: true, family: SCRIPT.family, size: 560, color: kit.bg, opacity: 50, lineHeight: 1.0, rotation: -4 }));
     if (footer) {
       L.push(textLayer('ss-footer', 'Footer', { x: 80 - 420, y: 540 - 18, w: 840, h: 36 }, String(footer),
         { family: kit.body.family, size: 22, weight: 600, color: kit.text, opacity: 70, spacing: 6, transform: 'uppercase', align: 'center', rotation: -90 }));
@@ -925,50 +928,57 @@
       // What the operator applied to every slide stays on every new slide too.
       for (const [id, props] of Object.entries(d.common || {})) {
         const l = b.layers.find(x => x.id === id);
-        if (l) Object.assign(l, JSON.parse(JSON.stringify(props)));
+        if (l) for (const [k, v] of Object.entries(props)) { if (v === null) delete l[k]; else l[k] = JSON.parse(JSON.stringify(v)); }
       }
       return b;
     });
   }
 
-  // The parts every slide shares, and what of each a change carries to the others: the footer's
-  // words and style; the label's and number's style (their words differ per slide); the rule's and
-  // background's fill.
-  const TEXT_STYLE = ['font', 'color', 'opacity', 'align', 'pos', 'shadow', 'outline'];
-  const FILL = ['fill', 'color', 'color2', 'gradientStops', 'gradientGlows', 'angle', 'opacity', 'radius', 'src'];
-  const COMMON = {
-    'ss-footer': { name: 'footer', props: ['customText', ...TEXT_STYLE] },
-    'ss-label': { name: 'label', props: TEXT_STYLE },
-    'ss-number': { name: 'point number', props: TEXT_STYLE },
-    'ss-rule': { name: 'accent rule', props: [...FILL, 'pos'] },
-    'ss-bg': { name: 'background', props: FILL },
-    'ss-panel': { name: 'side panel', props: FILL },
-  };
-  // A slide's shared parts that changed: [{ id, name, props }] with the new values to carry.
+  // What a change to a part carries to the same part on other slides. A part is shared when the same
+  // layer (by id) is on other slides too: the footer, the label, the card, a ghost word, a scripture
+  // chip... Its words stay each slide's own (only the footer's words are the same everywhere); its look
+  // and place carry.
+  const TEXT_STYLE = ['font', 'color', 'opacity', 'align', 'pos', 'shadow', 'outline', 'rotation', 'gradient', 'fill', 'color2', 'gradientStops', 'angle'];
+  const FILL = ['fill', 'color', 'color2', 'gradientStops', 'gradientGlows', 'angle', 'opacity', 'radius', 'src', 'corners', 'clip',
+    'stroke', 'drop', 'glass', 'glassBlur', 'lift', 'shape', 'rotation', 'dim'];
+  const OWN_WORDS = { 'ss-footer': true };
+  function carried(layer) {
+    if (!layer) return [];
+    if (layer.type === 'text') return OWN_WORDS[layer.id] ? ['customText', ...TEXT_STYLE] : TEXT_STYLE;
+    if (layer.type === 'background') return [...FILL, ...(layer.pos ? ['pos'] : [])];
+    return ['opacity', 'pos', 'fit', 'rotation', 'blendMode'];
+  }
+  // A slide's parts that changed: [{ id, name, props }] with the new values to carry.
   function commonChanges(before, after) {
     const out = [];
-    for (const [id, spec] of Object.entries(COMMON)) {
-      const a = (before || []).find(l => l.id === id), b = (after || []).find(l => l.id === id);
-      if (!a || !b) continue;
+    for (const b of after || []) {
+      const a = (before || []).find(l => l.id === b.id);
+      if (!a || !b.id) continue;
       const props = {};
-      for (const k of spec.props) if (JSON.stringify(a[k]) !== JSON.stringify(b[k]) && b[k] !== undefined) props[k] = JSON.parse(JSON.stringify(b[k]));
-      if (Object.keys(props).length) out.push({ id, name: spec.name, props });
+      for (const k of carried(b)) if (JSON.stringify(a[k]) !== JSON.stringify(b[k])) props[k] = b[k] === undefined ? null : JSON.parse(JSON.stringify(b[k]));
+      if (Object.keys(props).length) out.push({ id: b.id, name: String(b.name || 'part').toLowerCase(), props });
     }
     return out;
   }
-  // Those changes onto every other slide of the deck, and into the deck's own style.
-  function applyCommon(item, changes, fromIndex) {
+  // How many other slides of the deck have this part.
+  const sharedWith = (item, id, fromIndex) => (item.blocks || []).filter((b, i) => i !== fromIndex && (b.layers || []).some(l => l.id === id)).length;
+  // Those changes onto the same part of other slides: every slide ('all'), or only the slides after
+  // this one ('after'). Applied to all, a change also becomes the deck's own, so slides made later
+  // (a look or contents change) keep it.
+  function applyCommon(item, changes, fromIndex, scope = 'all') {
     const d = item.sermon;
-    d.common = { ...(d.common || {}) };
+    if (scope === 'all') d.common = { ...(d.common || {}) };
     for (const c of changes) {
-      d.common[c.id] = { ...(d.common[c.id] || {}), ...c.props };
+      if (scope === 'all') d.common[c.id] = { ...(d.common[c.id] || {}), ...c.props };
       (item.blocks || []).forEach((b, i) => {
-        if (i === fromIndex) return;
+        if (i === fromIndex || (scope === 'after' && i < fromIndex)) return;
         const l = (b.layers || []).find(x => x.id === c.id);
-        if (l) Object.assign(l, JSON.parse(JSON.stringify(c.props)));
+        if (!l) return;
+        for (const [k, v] of Object.entries(c.props)) { if (v === null) delete l[k]; else l[k] = JSON.parse(JSON.stringify(v)); }
       });
     }
   }
+
 
   // A slide's words changed in the playlist's slide list: written into its text layers in place,
   // so any font, size or colour the operator set stays as it is.
@@ -989,7 +999,7 @@
   }
 
   const api = { W, H, KITS, BACKGROUNDS, LAYOUTS, kitById, withColors, kitWarnings, contrast, bookName, normaliseRef,
-    docxParagraphs, textParagraphs, outlineFrom, partsOf, readDocx, readText, shortenPoint, build, newDeck, regenerate, commonChanges, applyCommon, withText, serialize, parse, issues };
+    docxParagraphs, textParagraphs, outlineFrom, partsOf, readDocx, readText, shortenPoint, build, newDeck, regenerate, commonChanges, applyCommon, sharedWith, withText, serialize, parse, issues };
   if (typeof window !== 'undefined') window.KairoSermonSlides = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();

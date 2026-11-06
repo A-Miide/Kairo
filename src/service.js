@@ -3870,6 +3870,7 @@
       // [data-binding="timer"], mirroring display.html's real output.
       if (layer.binding) d.dataset.binding = layer.binding;
       d.dataset.layerId = layer.id || '';
+      if (layer.decor) d.dataset.decor = '1';   // cropped on purpose: markClipped skips it
       if (layer.follows) d.dataset.follows = layer.follows; // stackFollowers, below
       const p = layer.pos || { x: 100, y: 400, w: DESIGN_W - 200, h: 0 };
       const box = ov.pos || p;
@@ -7255,7 +7256,7 @@
   function clipCheck(host) {
     // Not laid out yet (a collapsed section, a card still sizing): nothing to measure.
     if (!host.isConnected || !host.clientWidth) return;
-    const over = [...host.querySelectorAll('.svc-canvas-text')].some(t =>
+    const over = [...host.querySelectorAll('.svc-canvas-text:not([data-decor])')].some(t =>
       t.style.height && t.clientHeight > 0 && (t.scrollHeight > t.clientHeight + 1 || t.scrollWidth > t.clientWidth + 1));
     let tag = host.querySelector(':scope > .clip-tag');
     if (over && !tag) {

@@ -52,11 +52,22 @@ function applyShapeGeometry(div, layer, radius) {
     div.style.borderRadius = '0';
     div.style.clipPath = `polygon(${layer.clip.map(([x, y]) => `${x}% ${y}%`).join(', ')})`;
   }
+  const px = (n) => (typeof radius === 'function' ? radius(n) : (n * radius).toFixed(1) + 'px');
   if (layer.glass) applyGlass(div, layer, radius);
-  // A card lifted off what's behind it: a deep soft shadow under it.
-  else if (layer.lift) {
-    const px = (n) => (typeof radius === 'function' ? radius(n) : (n * radius).toFixed(1) + 'px');
-    div.style.boxShadow = `0 ${px(36)} ${px(80)} -${px(10)} rgba(0,0,0,0.45), 0 ${px(8)} ${px(20)} rgba(0,0,0,0.18)`;
+  // Shadows under the shape: its own drop shadow (Style → Shadow), and a lifted card's.
+  const shadows = [];
+  const d = layer.drop;
+  if (d && d.enabled) {
+    const n = parseInt(String(d.color || '#000000').replace('#', '').slice(0, 6), 16) || 0;
+    shadows.push(`${px(d.x || 0)} ${px(d.y || 0)} ${px(d.blur || 0)} rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${(d.opacity ?? 45) / 100})`);
+  }
+  if (layer.lift) shadows.push(`0 ${px(36)} ${px(80)} -${px(10)} rgba(0,0,0,0.45)`, `0 ${px(8)} ${px(20)} rgba(0,0,0,0.18)`);
+  if (shadows.length) div.style.boxShadow = [div.style.boxShadow, ...shadows].filter(Boolean).join(', ');
+  // A stroke: a line around the shape, inside its edge.
+  const st = layer.stroke;
+  if (st && st.enabled && st.width > 0) {
+    div.style.boxSizing = 'border-box';
+    div.style.border = `${px(st.width)} solid ${st.color || '#FFFFFF'}`;
   }
 }
 

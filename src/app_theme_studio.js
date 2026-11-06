@@ -4580,7 +4580,9 @@ function writeItemSlideStyleFromSynthetic() {
     // to a part every slide shares (footer, label, number, rule, background) offers to go on all.
     if (block.gen && JSON.stringify(next) !== JSON.stringify(block.layers)) {
       block.gen.edited = true;
-      const changes = item.sermon && window.KairoSermonSlides ? window.KairoSermonSlides.commonChanges(block.layers, next) : [];
+      const S = window.KairoSermonSlides;
+      // Only parts that other slides have too are offered.
+      const changes = item.sermon && S ? S.commonChanges(block.layers, next).filter(c => S.sharedWith(item, c.id, slideIndex) > 0) : [];
       if (changes.length) offerApplyToAll(item, slideIndex, changes);
     }
     block.layers = next;
@@ -5025,10 +5027,21 @@ function renderBgProps(panel, layer) {
   // radius (the other shapes have their own edges and ignore it).
   if (layer.pos) {
     const isRect = (layer.shape || 'rect') === 'rect';
-    panel.appendChild(section('style', 'Shape', fieldRow([
+    const each = Array.isArray(layer.corners);
+    const rows = [fieldRow([
       shapeKindPicker(layer.shape || 'rect', v => { layer.shape = v; up(); renderProps(); }),
-      isRect && numField('Corners', layer.radius || 0, { min: 0, max: 200, unit: 'px', onChange: v => { layer.radius = v ?? 0; up(); } }),
-    ])));
+      isRect && !each && numField('Corners', layer.radius || 0, { min: 0, max: 400, unit: 'px', onChange: v => { layer.radius = v ?? 0; up(); } }),
+    ])];
+    if (isRect) {
+      rows.push(fieldRow([toggleField('Each corner', each, on => {
+        if (on) layer.corners = [0, 1, 2, 3].map(() => layer.radius || 0); else { layer.radius = Math.max(...layer.corners); delete layer.corners; }
+        up(); renderProps();
+      }, 'Round each corner by its own amount')]));
+      if (each) rows.push(fieldRow(['Top left', 'Top right', 'Bottom right', 'Bottom left'].map((name, i) =>
+        numField(name.split(' ').map(w => w[0].toUpperCase()).join(''), layer.corners[i] || 0, { min: 0, max: 400, title: name,
+          onChange: v => { layer.corners = layer.corners.map((c, j) => (j === i ? (v ?? 0) : c)); up(); } }))));
+    }
+    panel.appendChild(section('style', 'Shape', ...rows));
   }
 
   // Fill: its kind, then what that kind needs — a colour and its opacity; a
@@ -5055,6 +5068,35 @@ function renderBgProps(panel, layer) {
     rows.push(fieldRow([colorField(layer.color, v => { layer.color = v; up(); })], { cols: 2 }));
   }
   panel.appendChild(section('style', 'Fill', ...rows));
+  if (!layer.pos) return;
+
+  // Stroke: a line around the shape, its colour and width.
+  const stroke = layer.stroke || { enabled: false, color: '#FFFFFF', width: 4 };
+  panel.appendChild(section('style', 'Stroke', ...[
+    fieldRow([toggleField('Stroke', !!stroke.enabled, on => { layer.stroke = { ...stroke, enabled: on }; up(); renderProps(); })]),
+    stroke.enabled && fieldRow([
+      colorField(stroke.color, v => { layer.stroke = { ...(layer.stroke || stroke), color: v }; up(); }, 'Stroke colour'),
+      numField('Width', stroke.width, { min: 1, max: 60, unit: 'px', onChange: v => { layer.stroke = { ...(layer.stroke || stroke), width: v ?? 1 }; up(); } }),
+    ])].filter(Boolean)));
+
+  // Shadow: a drop shadow under the shape — colour and strength, then blur and offset.
+  const drop = layer.drop || { enabled: false, color: '#000000', opacity: 45, blur: 40, x: 0, y: 20 };
+  const setDrop = (patch) => { layer.drop = { ...(layer.drop || drop), ...patch }; up(); };
+  panel.appendChild(section('style', 'Shadow', ...[
+    fieldRow([toggleField('Shadow', !!drop.enabled, on => { layer.drop = { ...drop, enabled: on }; up(); renderProps(); })]),
+    drop.enabled && colorOpacityRow(drop.color, v => setDrop({ color: v }), drop.opacity, v => setDrop({ opacity: v })),
+    drop.enabled && fieldRow([
+      numField('Blur', drop.blur, { min: 0, max: 200, onChange: v => setDrop({ blur: v ?? 0 }) }),
+      numField('X', drop.x, { min: -200, max: 200, title: 'Horizontal offset', onChange: v => setDrop({ x: v ?? 0 }) }),
+      numField('Y', drop.y, { min: -200, max: 200, title: 'Vertical offset', onChange: v => setDrop({ y: v ?? 0 }) }),
+    ])].filter(Boolean)));
+
+  // Liquid glass: what's behind shows frosted through the shape (its fill becomes a faint tint).
+  panel.appendChild(section('style', 'Glass', ...[
+    fieldRow([toggleField('Liquid glass', !!layer.glass, on => { if (on) layer.glass = true; else delete layer.glass; up(); renderProps(); },
+      'Frost what is behind the shape, with a bright edge and sheen')]),
+    layer.glass && fieldRow([numField('Frost', layer.glassBlur ?? 22, { min: 0, max: 80, unit: 'px', title: 'How much what is behind is blurred',
+      onChange: v => { layer.glassBlur = v ?? 0; up(); } })], { cols: 2 })].filter(Boolean)));
 }
 
 // The Canvas isn't text, so its Style tab shows Text/Color inert rather than
@@ -6894,20 +6936,22 @@ function offerApplyToAll(item, slideIndex, changes) {
     bar.className = 'ts-apply-all';
     bar.setAttribute('role', 'status');
     const text = document.createElement('span');
-    const all = document.createElement('button');
-    all.type = 'button'; all.className = 'modal-btn primary';
-    const one = document.createElement('button');
-    one.type = 'button'; one.className = 'modal-btn secondary'; one.textContent = 'Just this slide';
-    bar.append(text, one, all);
+    const btn = (label, cls) => Object.assign(document.createElement('button'), { type: 'button', className: `modal-btn ${cls}`, textContent: label });
+    const one = btn('Just this slide', 'secondary');
+    const later = btn('This and later slides', 'secondary');
+    const all = btn('All slides', 'primary');
+    bar.append(text, one, later, all);
     host.appendChild(bar);
-    tsApplyAll = { item, slideIndex, changes: [], bar, text, all };
-    all.addEventListener('click', () => {
+    tsApplyAll = { item, slideIndex, changes: [], bar, text, all, later };
+    const apply = (scope) => {
       const { item: it, slideIndex: at, changes: ch } = tsApplyAll;
-      window.KairoSermonSlides.applyCommon(it, ch, at);
+      window.KairoSermonSlides.applyCommon(it, ch, at, scope);
       window.KairoService?.saveService?.();
       hideApplyToAll();
       renderItemSlidesList();
-    });
+    };
+    all.addEventListener('click', () => apply('all'));
+    later.addEventListener('click', () => apply('after'));
     one.addEventListener('click', hideApplyToAll);
   }
   // The latest value of each part wins.
@@ -6915,10 +6959,11 @@ function offerApplyToAll(item, slideIndex, changes) {
     const had = tsApplyAll.changes.find(x => x.id === c.id);
     if (had) Object.assign(had.props, c.props); else tsApplyAll.changes.push({ ...c, props: { ...c.props } });
   }
-  const names = tsApplyAll.changes.map(c => c.name);
-  const what = names.length > 1 ? `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}` : names[0];
-  tsApplyAll.text.textContent = `Apply this ${what} change to all ${item.blocks.length} slides?`;
-  tsApplyAll.all.textContent = 'Apply to all';
+  const names = [...new Set(tsApplyAll.changes.map(c => c.name))];
+  const what = names.length > 2 ? `${names.length} parts` : names.length > 1 ? `${names[0]} and ${names[1]}` : names[0];
+  tsApplyAll.text.textContent = `Use this ${what} change on other slides too?`;
+  // Nothing comes after the last slide.
+  tsApplyAll.later.hidden = slideIndex >= item.blocks.length - 1;
 }
 function hideApplyToAll() {
   tsApplyAll?.bar.remove();
