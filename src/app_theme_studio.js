@@ -5990,11 +5990,55 @@ function renderPPProps(panel, layer) {
   renderLayoutProps(panel, layer);
 }
 
+// A second way to bind a theme's text to scripture: by the layer's name. A text layer named
+// "Verse" shows the verse, "Reference" its reference, "Translation" the verse translated (and
+// "Countdown" the timer), the same as choosing it under Shows. Renaming it to anything else makes
+// it typed text again, if its name was what bound it. Themes only: a slide's own layers keep theirs.
+const NAME_BINDINGS = [
+  [/^(verse|verses|scripture|scripture text|bible|bible text|bible verse|lyrics|words)$/i, 'verse'],
+  [/^(reference|ref|scripture reference|verse reference|bible reference)$/i, 'reference'],
+  [/^(translation|translated|translated verse|verse translated|second language)$/i, 'verse_translated'],
+  [/^(countdown|timer)$/i, 'timer'],
+];
+function bindingForName(name) {
+  const n = String(name || '').trim();
+  return (NAME_BINDINGS.find(([re]) => re.test(n)) || [])[1] || null;
+}
+function applyNameBinding(layer) {
+  if (tsMode === 'item' || layer.type !== 'text') return false;
+  const b = bindingForName(layer.name);
+  if (b && layer.binding !== b) { layer.binding = b; layer.boundByName = true; return true; }
+  if (!b && layer.boundByName) { layer.binding = 'custom'; delete layer.boundByName; return true; }
+  return false;
+}
+// Under the name of a theme's typed-text layer: name it to show scripture there.
+function nameBindingPrompt(layer, onPick) {
+  const row = document.createElement('div');
+  row.className = 'ts-name-bind';
+  row.append(Object.assign(document.createElement('span'), { textContent: 'Show scripture here? Name it' }));
+  for (const name of ['Verse', 'Reference', 'Translation']) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'ts-name-bind-chip';
+    b.textContent = name;
+    b.addEventListener('click', () => onPick(name));
+    row.appendChild(b);
+  }
+  return row;
+}
+
 function renderTextProps(panel, layer) {
   const nameInp = document.createElement('input');
   nameInp.type = 'text'; nameInp.className = 'ts-prop-input';
   nameInp.value = layer.name; nameInp.placeholder = 'Layer name';
-  nameInp.addEventListener('input', () => { layer.name = nameInp.value; renderLayersList(); });
+  nameInp.addEventListener('input', () => {
+    layer.name = nameInp.value;
+    if (applyNameBinding(layer)) up();
+    renderLayersList();
+  });
+  // The panel shows the new binding once the name is finished (redrawing it while typing would
+  // take the field away from under the cursor).
+  nameInp.addEventListener('change', () => renderProps());
 
   const customInp = document.createElement('input');
   customInp.type = 'text'; customInp.className = 'ts-prop-input';
@@ -6005,6 +6049,11 @@ function renderTextProps(panel, layer) {
 
   panel.appendChild(section('layout', 'Layer', ...[
     prop('Name', nameInp),
+    tsMode !== 'item' && layer.binding === 'custom' && nameBindingPrompt(layer, (name) => {
+      layer.name = name;
+      applyNameBinding(layer);
+      up(); renderLayersList(); renderProps();
+    }),
     prop('Shows', makeSelect([
       { label: 'The verse or lyrics', value: 'verse' },
       { label: 'The reference', value: 'reference' },
@@ -6027,7 +6076,7 @@ function renderTextProps(panel, layer) {
         { label: 'The message from the booth', value: 'mon-message' },
       ] : []),
       { label: 'Text you type', value: 'custom' },
-    ], layer.binding, v => { layer.binding = v; up(); renderProps(); })),
+    ], layer.binding, v => { layer.binding = v; delete layer.boundByName; up(); renderProps(); })),
     customRow,
     // The language a translated verse shows in — the theme's, set on the
     // layer that shows it (a playlist item or the Bible tab can still pick

@@ -4906,7 +4906,7 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
   background: var(--bg-card);
 }
 .media-bin-splitter {
-  display: none; /* the bin follows the transcript box's height; nothing to drag */
+  display: block; /* the bin's own top edge: drag to resize, double-click to line up with the transcript again */
   flex: none;
   height: 9px;
   background: transparent;
@@ -9046,3 +9046,7 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 .ac-own-colour input { width: 26px; height: 26px; padding: 0; border: 1px solid var(--border-md); border-radius: 6px; background: none; cursor: pointer; }
 .ac-own-colour input::-webkit-color-swatch-wrapper { padding: 2px; }
 .ac-own-colour input::-webkit-color-swatch { border: 0; border-radius: 4px; }
+/* Naming a theme's text layer to show scripture (app_theme_studio.js nameBindingPrompt). */
+.ts-name-bind { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin: -2px 0 8px; font-size: 11px; color: var(--text-2); }
+.ts-name-bind-chip { padding: 3px 9px; border: 1px solid var(--border-md); border-radius: 999px; background: none; color: var(--text); font: inherit; font-weight: 600; cursor: pointer; }
+.ts-name-bind-chip:hover { border-color: var(--accent); }

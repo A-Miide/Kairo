@@ -2295,19 +2295,48 @@
   // relationship — dragging UP (mouse Y decreasing) has to grow it, and the
   // element being resized (.media-bin) IS the splitter's own parent, not a
   // separate sibling pane.
-  // The bin is as tall as the Live Transcript box beside it, so the two
-  // shelves line up along the bottom of the window; the splitter between the
-  // playlist and the transcript (left column) is the one control for both.
+  // The bin starts as tall as the Live Transcript box beside it, so the two shelves line up along
+  // the bottom of the window. Its own top edge drags it taller or shorter (dragging up grows it);
+  // once dragged, the bin keeps that height, also after a restart.
+  const MEDIA_BIN_H_KEY = 'kairo-media-bin-h';
   function initMediaBinResize() {
     const bin = document.getElementById('media-bin');
+    const splitter = document.getElementById('media-bin-splitter');
     const transcript = document.querySelector('.ls-transcript-section');
     if (!bin || !transcript) return;
+    let own = parseInt(readPref(MEDIA_BIN_H_KEY) || '', 10) || 0;
     const match = () => {
+      if (own) { bin.style.height = own + 'px'; return; }
       const h = Math.round(transcript.getBoundingClientRect().height);
       if (h > 0) bin.style.height = h + 'px';
     };
     new ResizeObserver(match).observe(transcript);
     match();
+    if (!splitter) return;
+    let startY = 0, startH = 0;
+    const onMove = (e) => {
+      const room = bin.parentElement.clientHeight - 160;   // the view above keeps some room
+      own = Math.round(Math.max(90, Math.min(room, startH - (e.clientY - startY))));
+      bin.style.height = own + 'px';
+    };
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove);
+      document.removeEventListener('mouseup', onUp);
+      splitter.classList.remove('dragging');
+      document.body.style.userSelect = '';
+      writePref(MEDIA_BIN_H_KEY, String(own));
+    };
+    splitter.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      startY = e.clientY;
+      startH = bin.offsetHeight;
+      splitter.classList.add('dragging');
+      document.body.style.userSelect = 'none';
+      document.addEventListener('mousemove', onMove);
+      document.addEventListener('mouseup', onUp);
+    });
+    // Double-click: back to lining up with the transcript.
+    splitter.addEventListener('dblclick', () => { own = 0; writePref(MEDIA_BIN_H_KEY, ''); match(); });
   }
   initMediaBinResize();
 
