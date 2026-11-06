@@ -4754,55 +4754,21 @@
     titleInp?.focus();
   }
 
-  // The sermon deck's colours and layout, chosen before it's made: a look's colours (or the
-  // operator's own), and one of its point slides drawn in each layout in those colours.
+  // The sermon deck's style and colours, chosen before it's made: the same Style button and
+  // pop-out as the slide editor (look, then layout, then background), and the four colours.
   function renderSermonLayouts(outline) {
     const host = document.getElementById('ac-sermon-layouts');
     const S = window.KairoSermonSlides;
-    if (!host || !S?.LAYOUTS) return;
+    if (!host || !S?.styleButton) return;
     const choice = S.lastChoice();
     acDraft.layout = S.LAYOUTS.some(l => l.id === choice.layout) ? choice.layout : 'left';
     acDraft.kit = S.kitById(choice.kit).id;
+    acDraft.style = S.BACKGROUNDS.some(b => b.id === choice.style) ? choice.style : 'glow';
     acDraft.colors = choice.colors && Object.keys(choice.colors).length ? { ...choice.colors } : undefined;
     host.replaceChildren();
 
-    // Two controls: the Look (one button, its list of looks in a popover, like the Theme button)
-    // and the Colours it uses (one strip of four swatches, each changed on its own).
-    const colours = document.createElement('div');
-    colours.className = 'ac-colours';
-    const lookBtn = document.createElement('button');
-    lookBtn.type = 'button';
-    lookBtn.className = 'ac-look-pick';
-    lookBtn.setAttribute('aria-haspopup', 'listbox');
-    const lookSwatch = document.createElement('span');
-    lookSwatch.className = 'ac-look-swatch';
-    const lookName = document.createElement('span');
-    lookBtn.append(lookSwatch, lookName);
-    lookBtn.insertAdjacentHTML('beforeend', '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>');
-    const swatchBg = (k) => `radial-gradient(circle at 20% 15%, ${k.bg2} 0%, ${k.bg} 75%)`;
-    lookBtn.addEventListener('click', () => openPopover(lookBtn, (pop) => {
-      const list = document.createElement('div');
-      list.className = 'svc-popover-list';
-      for (const k of S.KITS) {
-        const row = document.createElement('button');
-        row.type = 'button';
-        row.className = 'svc-popover-item has-thumb' + (k.id === acDraft?.kit && !acDraft?.colors ? ' active' : '');
-        const sw = document.createElement('span');
-        sw.className = 'ac-look-swatch';
-        sw.style.background = swatchBg(k);
-        sw.style.setProperty('--dot', k.accent);
-        const name = document.createElement('span');
-        name.textContent = k.name;
-        row.append(sw, name);
-        row.addEventListener('click', () => { acDraft.kit = k.id; acDraft.colors = undefined; closePopover(); refresh(); });
-        list.appendChild(row);
-      }
-      pop.appendChild(list);
-    }));
-    const lookGroup = document.createElement('div');
-    lookGroup.className = 'ac-choice';
-    lookGroup.append(Object.assign(document.createElement('span'), { className: 'ac-choice-label', textContent: 'Look' }), lookBtn);
-
+    const styleSlot = document.createElement('div');
+    styleSlot.className = 'ac-style-slot';
     const palette = document.createElement('div');
     palette.className = 'ac-palette';
     palette.setAttribute('role', 'group');
@@ -4815,7 +4781,7 @@
       const inp = document.createElement('input');
       inp.type = 'color';
       inp.setAttribute('aria-label', name);
-      inp.addEventListener('input', () => { acDraft.colors = { ...(acDraft.colors || {}), [key]: inp.value }; refreshSoon(); });
+      inp.addEventListener('input', () => { acDraft.colors = { ...(acDraft.colors || {}), [key]: inp.value }; drawSoon(); });
       lab.appendChild(inp);
       palette.appendChild(lab);
       return [key, inp];
@@ -4823,57 +4789,31 @@
     const colourGroup = document.createElement('div');
     colourGroup.className = 'ac-choice';
     colourGroup.append(Object.assign(document.createElement('span'), { className: 'ac-choice-label', textContent: 'Colours' }), palette);
-    colours.append(lookGroup, colourGroup);
+    const styleGroup = document.createElement('div');
+    styleGroup.className = 'ac-choice ac-style-group';
+    styleGroup.append(Object.assign(document.createElement('span'), { className: 'ac-choice-label', textContent: 'Style' }), styleSlot);
+    const row = document.createElement('div');
+    row.className = 'ac-colours';
+    row.append(styleGroup, colourGroup);
+    host.append(row);
 
-    const cards = S.LAYOUTS.map(lay => {
-      const card = document.createElement('button');
-      card.type = 'button';
-      card.className = 'ac-layout';
-      card.setAttribute('role', 'radio');
-      card.dataset.layout = lay.id;
-      const thumb = document.createElement('div');
-      thumb.className = 'ac-layout-thumb';
-      const name = document.createElement('span');
-      name.textContent = lay.name;
-      card.append(thumb, name);
-      card.addEventListener('click', () => { acDraft.layout = lay.id; mark(); });
-      return card;
-    });
-    const layouts = document.createElement('div');
-    layouts.className = 'ac-layouts';
-    layouts.setAttribute('role', 'radiogroup');
-    layouts.setAttribute('aria-label', 'Slide layout');
-    layouts.append(...cards);
-    host.append(colours, layouts);
-
-    const mark = () => {
-      cards.forEach(c => {
-        const on = c.dataset.layout === acDraft?.layout;
-        c.classList.toggle('is-on', on);
-        c.setAttribute('aria-checked', String(on));
-      });
-    };
-    // Each layout's preview in the chosen colours, painted once the cards are laid out (the painter
-    // scales to the card's width).
-    const refresh = () => {
+    // The Style button drawn for the current choices; after a pick it is drawn again, open.
+    const draw = (reopen) => {
       if (!acDraft) return;
       const kit = S.withColors(S.kitById(acDraft.kit), acDraft.colors);
       inputs.forEach(([key, inp]) => { inp.value = kit[key]; inp.parentElement.style.background = kit[key]; });
-      const base = S.kitById(acDraft.kit);
-      lookSwatch.style.background = swatchBg(kit);
-      lookSwatch.style.setProperty('--dot', kit.accent);
-      lookName.textContent = acDraft.colors ? `${base.name}, own colours` : base.name;
-      if (typeof loadGoogleFont === 'function') { loadGoogleFont(kit.display.family); loadGoogleFont(kit.body.family); }
-      mark();
-      requestAnimationFrame(() => cards.forEach(card => {
-        const deck = S.newDeck(outline, { kit: acDraft.kit, style: choice.style, colors: acDraft.colors, layout: card.dataset.layout }).blocks;
-        const block = deck.find(b => b.gen.kind === 'point') || deck[0];
-        if (block) paintLookLayers(card.firstElementChild, { layers: block.layers }, {}, {});
-      }));
+      styleSlot.replaceChildren(S.styleButton(
+        { outline, kit: acDraft.kit, colors: acDraft.colors, layout: acDraft.layout, style: acDraft.style },
+        (c) => {
+          if (c.kit) { acDraft.kit = c.kit; acDraft.colors = undefined; }
+          if (c.layout) acDraft.layout = c.layout;
+          if (c.style) acDraft.style = c.style;
+          draw(true);
+        }, { reopen }));
     };
     let timer = null;
-    const refreshSoon = () => { clearTimeout(timer); timer = setTimeout(refresh, 120); };
-    refresh();
+    const drawSoon = () => { clearTimeout(timer); timer = setTimeout(() => draw(false), 150); };
+    draw(false);
   }
 
   function closeAddConfirm() {
@@ -7637,11 +7577,11 @@
     // its slides on the left, its look and contents under the Look tab (sermon_slides_ui.js).
     document.getElementById('ac-sermon-make')?.addEventListener('click', () => {
       if (!acDraft || !acDraft.outline) return;
-      const { item, outline, layout, kit, colors } = acDraft;
+      const { item, outline, layout, kit, colors, style } = acDraft;
       const title = document.getElementById('ac-title')?.value.trim() || item.title || 'Sermon slides';
       const target = playlists.find(p => p.id === document.getElementById('ac-playlist')?.value) || service;
       closeAddConfirm();
-      const { sermon, blocks } = window.KairoSermonSlides.newDeck(outline, { ...window.KairoSermonSlides.lastChoice(), layout, kit, colors });
+      const { sermon, blocks } = window.KairoSermonSlides.newDeck(outline, { ...window.KairoSermonSlides.lastChoice(), layout, kit, colors, style });
       window.KairoSermonSlides.remember?.(sermon);
       item.title = title;
       item.type = 'slides';
