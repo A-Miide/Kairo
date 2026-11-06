@@ -1958,8 +1958,20 @@ function renderLayersList() {
       ? `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`
       : `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/></svg>`;
 
+    // The padlock: shown on a locked layer, and on hover for the rest.
+    const lockBtn = document.createElement('button');
+    lockBtn.type = 'button';
+    lockBtn.className = 'ts-layer-lock' + (layer.locked ? ' is-on' : '');
+    lockBtn.title = layer.locked ? 'Unlock (⇧⌘L)' : 'Lock: the canvas leaves it alone (⇧⌘L)';
+    lockBtn.setAttribute('aria-label', `${layer.locked ? 'Unlock' : 'Lock'} ${layer.name || 'layer'}`);
+    lockBtn.setAttribute('aria-pressed', String(!!layer.locked));
+    lockBtn.innerHTML = layer.locked ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>' : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>';
+    if (isBg) lockBtn.style.visibility = 'hidden';
+    lockBtn.addEventListener('click', e => { e.stopPropagation(); if (!isBg) setLayersLocked([layer], !layer.locked); });
+
     row.appendChild(grip);
     row.appendChild(visBtn);
+    row.appendChild(lockBtn);
     row.appendChild(typeIcon);
     row.appendChild(name);
     row.appendChild(delBtn);
@@ -2019,13 +2031,14 @@ function renderLayersList() {
     // counterpart on the base theme to diff into item.slideStyles.
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      if (tsMode === 'item') return;
-      const sections = [[
+      const lockItem = isBg ? [] : [{ label: layer.locked ? 'Unlock' : 'Lock', onClick: () => setLayersLocked([layer], !layer.locked) }];
+      if (tsMode === 'item') { if (lockItem.length) window.KairoService.openContextMenu(e.clientX, e.clientY, [lockItem]); return; }
+      const sections = [lockItem, [
         { label: 'Select All', onClick: selectAllLayers },
         { label: 'Copy', onClick: () => { activeLayer = layer; copyLayers(); } },
       ]];
-      if (layerClipboard.length) sections[0].push({ label: 'Paste', onClick: pasteLayers });
-      window.KairoService.openContextMenu(e.clientX, e.clientY, sections);
+      if (layerClipboard.length) sections[1].push({ label: 'Paste', onClick: pasteLayers });
+      window.KairoService.openContextMenu(e.clientX, e.clientY, sections.filter(s => s.length));
     });
 
     el.appendChild(row);
@@ -2791,13 +2804,13 @@ function tsMarqueeEnd() {
   if (!m) return;
   if (!m.armed) {
     // Just a click on the background: select it, as before.
-    if (m.bgLayer && activeLayer !== m.bgLayer) { activeLayer = m.bgLayer; multiSelectedLayerIds = new Set(); renderLayersList(); renderProps(); }
+    if (m.bgLayer && !m.bgLayer.locked && activeLayer !== m.bgLayer) { activeLayer = m.bgLayer; multiSelectedLayerIds = new Set(); renderLayersList(); renderProps(); }
     renderPreview();
     return;
   }
   const b = m.box;
   const hit = (activeLook?.layers || []).filter(l => {
-    if (l.visible === false || (l.type === 'background' && !l.pos) || tsCoversCanvas(l)) return false;
+    if (l.visible === false || l.locked || (l.type === 'background' && !l.pos) || tsCoversCanvas(l)) return false;
     const p = l.pos || measurePos(l);
     const h = p.h > 0 ? p.h : tsEffectiveH(l, p);
     return p.x < b.x + b.w && p.x + p.w > b.x && p.y < b.y + b.h && p.y + h > b.y;
@@ -3315,6 +3328,13 @@ function tsSyncPosInputs(layer) {
 // Selection outline + drag/resize wiring for a rendered preview element.
 function tsDecorateLayerEl(div, layer, draggable) {
   div.dataset.layerId = layer.id;
+  // Locked: the canvas can't select, drag or resize it; clicks go through to what's under it. It
+  // can still be chosen in Layers (shown with a dashed outline, no handles) and changed in the panel.
+  if (layer.locked) {
+    div.style.pointerEvents = 'none';
+    if (activeLayer === layer || multiSelectedLayerIds.has(layer.id)) div.classList.add('ts-el-locked');
+    return;
+  }
   div.style.cursor = draggable ? 'move' : 'pointer';
   div.addEventListener('mousedown', (e) => {
     if (e.target.classList && e.target.classList.contains('ts-handle')) return;
@@ -3455,10 +3475,18 @@ function tsToggleMultiSelect(layer) {
 // and the Align toolbar. multiSelectedLayerIds is the complete selection
 // whenever 2+ are selected; otherwise it's just activeLayer alone.
 function tsSelectedLayers() {
+  // Locked layers are never moved, nudged, resized or aligned.
   if (multiSelectedLayerIds.size) {
-    return (activeLook.layers || []).filter(l => multiSelectedLayerIds.has(l.id));
+    return (activeLook.layers || []).filter(l => multiSelectedLayerIds.has(l.id) && !l.locked);
   }
-  return activeLayer ? [activeLayer] : [];
+  return activeLayer && !activeLayer.locked ? [activeLayer] : [];
+}
+// Lock or unlock layers (the Layers row's padlock, its menu, ⇧⌘L).
+function setLayersLocked(layers, locked) {
+  layers.filter(l => l && l !== baseBgLayer()).forEach(l => { if (locked) l.locked = true; else delete l.locked; });
+  up();
+  renderLayersList();
+  renderProps();
 }
 
 // Lines up every selected layer against the OUTER bounding box of the
@@ -4536,6 +4564,7 @@ function diffLayerOverride(baseLayer, curLayer) {
     if (JSON.stringify(cur) !== JSON.stringify(base)) ov[k] = cur ? deepClone(cur) : null;
   });
   if (curLayer.visible === false) ov.visible = false; // only the hidden case is ever stored; visible is the assumed default
+  if (curLayer.locked) ov.locked = true;              // likewise a lock on this slide's copy of a theme layer
   return ov;
 }
 function sameGraphic(a, b) {
@@ -6649,6 +6678,7 @@ function buildSyntheticLook(item, slideIndex) {
       else if (ov[k] !== undefined) layer[k] = deepClone(ov[k]);
     });
     if (ov.visible === false) layer.visible = false;
+    if (ov.locked) layer.locked = true;
   });
   // Item/slide-specific layers the operator added in Full-scale edit — not
   // part of the theme, so they're stored whole (see writeItemSlideStyleFromSynthetic)
@@ -7135,7 +7165,7 @@ document.addEventListener('keydown', (e) => {
 // the layer row's right-click menu (renderLayersList) call one
 // implementation each, not two.
 function selectAllLayers() {
-  multiSelectedLayerIds = new Set(activeLook.layers.map(l => l.id));
+  multiSelectedLayerIds = new Set(activeLook.layers.filter(l => !l.locked).map(l => l.id));
   renderLayersList();
 }
 function copyLayers() {
@@ -7192,6 +7222,18 @@ function duplicateLayers() {
   up(); renderProps(); renderThemeCanvasSizeSelect();
 }
 
+// ⇧⌘L / Shift+Ctrl+L locks or unlocks the selection (Figma's shortcut); in item mode too.
+document.addEventListener('keydown', (e) => {
+  if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.key.toLowerCase() !== 'l') return;
+  if (looksModal?.classList.contains('hidden') || !activeLook) return;
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+  const layers = multiSelectedLayerIds.size ? activeLook.layers.filter(l => multiSelectedLayerIds.has(l.id)) : (activeLayer ? [activeLayer] : []);
+  if (!layers.length) return;
+  e.preventDefault();
+  setLayersLocked(layers, !layers.every(l => l.locked));
+});
+
 // Delete/Backspace for the selected layer(s) — same gesture as removing a
 // file in Finder or a shape in Figma. Not folded into the Cmd/Ctrl block
 // above since this needs no modifier key, and (unlike select-all/copy/paste)
@@ -7205,11 +7247,11 @@ document.addEventListener('keydown', (e) => {
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
   if (multiSelectedLayerIds.size) {
     e.preventDefault();
-    const ids = [...multiSelectedLayerIds];
+    const ids = [...multiSelectedLayerIds].filter(id => !activeLook.layers.find(l => l.id === id)?.locked);   // locked layers stay
     multiSelectedLayerIds = new Set();
     activeLayer = null;
     ids.forEach(id => deleteLayer(activeLook.layers.find(l => l.id === id)));
-  } else if (activeLayer) {
+  } else if (activeLayer && !activeLayer.locked) {
     e.preventDefault();
     deleteLayer(activeLayer);
   }

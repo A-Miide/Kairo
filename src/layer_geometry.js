@@ -240,7 +240,7 @@ function imageFillCss(layer, opts = {}) {
 // end colours — without them a gradient changed on one slide or timer segment
 // went back to the theme's as soon as it was saved (owner, 2026-10-01: "when
 // you change the gradient, it doesn't save").
-const FILL_OVERRIDE_KEYS = ['fill', 'color', 'color2', 'angle', 'opacity', 'src', 'dim', 'gradientStops', 'gradientGlows'];
+const FILL_OVERRIDE_KEYS = ['fill', 'color', 'color2', 'angle', 'opacity', 'src', 'dim', 'gradientStops', 'gradientGlows', 'corners', 'stroke', 'drop', 'glass', 'glassBlur', 'lift', 'clip'];  // incl. a shape's corners, stroke, shadow and glass
 const LAYER_OVERRIDE_KEYS = ['rotation', 'accentColor', 'grayscale', 'fade', 'blendMode'];
 function withLayerOverride(layer, ov, keys = LAYER_OVERRIDE_KEYS) {
   if (!ov) return layer;

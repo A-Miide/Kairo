@@ -6577,6 +6577,14 @@ body.ts-dragging-guide-h, body.ts-dragging-guide-h * { cursor: row-resize !impor
 .ts-layer-vis.is-off { opacity: 0.3; }
 .ts-layer-vis.is-locked { opacity: 0.45; cursor: default; }
 .ts-layer-vis.is-locked:hover { color: inherit; }
+/* The padlock beside the eye: always shown when locked, on hover otherwise. */
+.ts-layer-lock { flex-shrink: 0; display: flex; align-items: center; padding: 0; border: 0; background: none; color: var(--text-3); cursor: pointer; opacity: 0; transition: opacity var(--trans), color var(--trans); }
+.ts-layer-row:hover .ts-layer-lock, .ts-layer-lock:focus-visible { opacity: 1; }
+.ts-layer-lock:hover { color: var(--text); }
+.ts-layer-lock.is-on { opacity: 1; color: var(--text-2); }
+.ts-layer-row:has(.ts-layer-lock.is-on) .ts-layer-name { color: var(--text-2); }
+/* A locked layer chosen in Layers: outlined, without handles (nothing on the canvas can move it). */
+.ts-el-locked { outline: 1.5px dashed rgba(255, 255, 255, 0.55); outline-offset: 2px; }
 
 .ts-layer-type-icon {
   width: 18px; height: 18px;
