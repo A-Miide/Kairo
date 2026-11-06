@@ -77,6 +77,9 @@
     { id: 'statement', name: 'Statement' },
     { id: 'card', name: 'Card' },
     { id: 'quote', name: 'Quote' },
+    { id: 'badge', name: 'Badge card' },
+    { id: 'worthy', name: 'Worthy' },
+    { id: 'glow', name: 'Glow' },
   ];
   const layoutOf = (id) => (LAYOUTS.some(l => l.id === id) ? id : 'left');
   const kitById = (id) => KITS.find(k => k.id === id) || KITS[0];
@@ -440,6 +443,9 @@
     if (layout === 'statement') return statement(gen, kit, style, footer);
     if (layout === 'card') return card(gen, kit, style, footer);
     if (layout === 'quote') return quote(gen, kit, style, footer);
+    if (layout === 'badge') return badge(gen, kit, style, footer);
+    if (layout === 'worthy') return worthy(gen, kit, style, footer);
+    if (layout === 'glow') return glow(gen, kit, style, footer);
     const L = backgroundLayers(kit, style);
     const refs = gen.refs || [];
     const lines = (gen.lines || []).filter(Boolean);
@@ -631,10 +637,10 @@
     const L = backgroundLayers(kit, style);
     const lines = (gen.lines || []).filter(Boolean);
     const text = gen.kind === 'title' ? lines[0] || '' : lines.join(' ');
-    L.push(textLayer('ss-quote-open', 'Opening quote', { x: 60, y: -230, w: 700, h: 900 }, '\u201C',
-      { family: kit.display.family, size: 760, color: kit.accent, opacity: 100, lineHeight: 1.0 }));
-    L.push(textLayer('ss-quote-close', 'Closing quote', { x: W - 620, y: 640, w: 700, h: 900 }, '\u201D',
-      { family: kit.display.family, size: 760, color: kit.accent, opacity: 100, lineHeight: 1.0 }));
+    L.push(textLayer('ss-quote-open', 'Opening quote', { x: 250, y: 40, w: 400, h: 420 }, '\u201C',
+      { family: CONDENSED.family, size: 420, color: kit.accent, opacity: 100, lineHeight: 1.0 }));
+    L.push(textLayer('ss-quote-close', 'Closing quote', { x: W - 560, y: 700, w: 400, h: 420 }, '\u201D',
+      { family: CONDENSED.family, size: 420, color: kit.accent, opacity: 100, lineHeight: 1.0, align: 'right' }));
     const X = 300, TW = W - 2 * X;
     const tag = gen.label || (gen.kind === 'story' ? 'Introduction' : '');
     if (tag) {
@@ -644,11 +650,114 @@
         { family: kit.body.family, size: 28, weight: 800, color: kit.bg, align: 'center', spacing: 3, transform: 'uppercase' }));
     }
     const h = headline(gen.kind === 'story' ? kit : condensedKit(kit), gen, { x: X, y: 380, w: TW, h: 420 }, text,
-      gen.kind === 'story' ? 64 : 132, kit.text, 'left', gen.kind === 'story' ? 1.2 : 0.98);
+      gen.kind === 'story' ? 64 : 150, kit.text, 'left', gen.kind === 'story' ? 1.2 : 0.95);
     if (gen.kind !== 'story') h.font.transform = 'uppercase';
     L.push(h);
     L.push(...refLine(kit, gen.refs || [], X, 840, 'left', kit.text));
     L.push(...footerLayer(kit, footer, { x: X, y: 990, w: 1100, h: 36 }));
+    return L;
+  }
+
+  // ── after the owner's references (their composition, Kairo's fonts and the deck's own words) ──
+  const lastWord = (text) => {
+    const words = String(text || '').trim().split(/\s+/);
+    if (words.length < 3) return [words.join(' '), ''];
+    return [words.slice(0, -1).join(' '), words[words.length - 1].replace(/[.,;:!?]+$/, '')];
+  };
+
+  // Badge card: a solid colour field with the ghost word stacked down it in a deeper shade; a white
+  // card, a ringed number badge on its top edge, the label in a coloured tag, and the scriptures
+  // under a short rule ending in a dot.
+  function badge(gen, kit, style, footer) {
+    const field = (kit.ramp && kit.ramp[kit.ramp.length - 1]) || kit.bg2;
+    const L = [{ ...backgroundLayers(kit, 'solid')[0], color: field, color2: field }, backgroundLayers(kit, style)[1]];
+    const lines = (gen.lines || []).filter(Boolean);
+    const text = gen.kind === 'title' ? lines[0] || '' : lines.join(' ');
+    const ghost = ghostWord(text);
+    if (ghost) for (let i = 0; i < 4; i++) L.push(textLayer(`ss-ghost-${i}`, `Ghost word ${i + 1}`, { x: -20, y: -110 + i * 320, w: W + 600, h: 360 }, ghost,
+      { family: 'Montserrat', weight: 900, size: 360, color: kit.bg, opacity: 35, lineHeight: 1.0, spacing: -8 }));
+    const cx = 470, cy = 150, cw = W - 940, ch = 850;
+    const ink = '#1B1B1F';
+    L.push(shapeLayer('ss-card', 'Card', { x: cx, y: cy, w: cw, h: ch }, '#F7F6F4', { radius: 90 }));
+    const mid = W / 2;
+    if (gen.kind === 'point' && gen.n) {
+      L.push(shapeLayer('ss-badge-ring', 'Badge ring', { x: mid - 95, y: cy - 95, w: 190, h: 190 }, field, { radius: 95 }));
+      L.push(shapeLayer('ss-badge', 'Badge', { x: mid - 72, y: cy - 72, w: 144, h: 144 }, '#FFFFFF', { radius: 72 }));
+      L.push(textLayer('ss-number', 'Number', { x: mid - 72, y: cy - 50, w: 144, h: 100 }, String(gen.n),
+        { family: 'Montserrat', weight: 900, size: 84, color: field, align: 'center', lineHeight: 1.0 }));
+    }
+    const X = cx + 120, TW = cw - 240;
+    const tag = gen.kind === 'point' ? `Point ${gen.n || ''}`.trim() : gen.kind === 'title' ? (gen.label || 'This series') : gen.kind === 'story' ? 'Introduction' : '';
+    if (tag) {
+      const tw = Math.round(tag.length * 44 * 0.6 + 50);
+      L.push(shapeLayer('ss-tag', 'Tag', { x: X, y: cy + 160, w: tw, h: 70 }, field, { radius: 8 }));
+      L.push(textLayer('ss-label', 'Label', { x: X, y: cy + 168, w: tw, h: 56 }, tag,
+        { family: 'Montserrat', size: 44, weight: 800, color: '#FFFFFF', align: 'center', lineHeight: 1.1 }));
+    }
+    L.push(headline({ ...kit, display: { family: 'Montserrat', weight: 600, width: 0.6 } }, gen, { x: X, y: cy + 270, w: TW, h: 360 }, text,
+      gen.kind === 'story' ? 56 : 84, ink, 'left', 1.18));
+    L.push(shapeLayer('ss-rule', 'Rule', { x: X, y: cy + ch - 150, w: 150, h: 4 }, field));
+    L.push(shapeLayer('ss-dot', 'Dot', { x: X + 160, y: cy + ch - 156, w: 16, h: 16 }, field, { radius: 8 }));
+    const refs = gen.refs || [];
+    if (refs.length) {
+      L.push(textLayer('ss-refs-label', 'Scriptures label', { x: X, y: cy + ch - 128, w: TW, h: 36 }, 'Scriptures',
+        { family: 'Montserrat', size: 28, weight: 800, color: field }));
+      L.push(...refLine(kit, refs.slice(0, 2), X, cy + ch - 92, 'left', ink).map(l => l.type === 'text' ? { ...l, font: { ...l.font, family: 'Montserrat', weight: 700, size: 30, letterSpacing: 0, transform: 'none' } } : l));
+    }
+    return L;
+  }
+
+  // Worthy: the words in heavy slanted condensed caps, the last word in a big script across their
+  // corner, the words ghosted large behind, and the church's name running up both edges.
+  function worthy(gen, kit, style, footer) {
+    const field = (kit.ramp && kit.ramp[kit.ramp.length - 1]) || kit.bg2;
+    const L = [{ ...backgroundLayers(kit, 'solid')[0], fill: 'gradient', color: field, color2: kit.bg,
+      gradientStops: [{ pos: 0, color: field }, { pos: 100, color: kit.bg }], angle: 150 }, backgroundLayers(kit, style)[1]];
+    const lines = (gen.lines || []).filter(Boolean);
+    const text = gen.kind === 'title' ? lines[0] || '' : lines.join(' ');
+    const [rest, last] = lastWord(text);
+    const ghost = ghostWord(text);
+    if (ghost) L.push(textLayer('ss-ghost', 'Ghost word', { x: 120, y: 160, w: W, h: 800 }, ghost,
+      { family: SCRIPT.family, size: 520, color: kit.text, opacity: 7, lineHeight: 1.0 }));
+    if (footer) {
+      L.push(textLayer('ss-footer', 'Footer', { x: 80 - 420, y: 540 - 18, w: 840, h: 36 }, String(footer),
+        { family: kit.body.family, size: 22, weight: 600, color: kit.text, opacity: 70, spacing: 6, transform: 'uppercase', align: 'center', rotation: -90 }));
+      L.push(textLayer('ss-footer-right', 'Footer right', { x: W - 80 - 420, y: 540 - 18, w: 840, h: 36 }, String(footer),
+        { family: kit.body.family, size: 22, weight: 600, color: kit.text, opacity: 70, spacing: 6, transform: 'uppercase', align: 'center', rotation: 90 }));
+    }
+    const h = headline(condensedKit(kit), gen, { x: 260, y: 200, w: W - 520, h: 470 }, gen.kind === 'story' ? text : rest, gen.kind === 'story' ? 76 : 150, kit.text, 'center', 0.95);
+    h.font.italic = true;
+    if (gen.kind !== 'story') h.font.transform = 'uppercase';
+    L.push(h);
+    if (gen.kind !== 'story' && last) L.push(textLayer('ss-script', 'Script word', { x: 300, y: 560, w: W - 600, h: 260 }, last,
+      { family: SCRIPT.family, size: 230, color: kit.text, align: 'center', lineHeight: 1.0, rotation: -6 }));
+    const refs = gen.refs || [];
+    const sub = gen.kind === 'title' ? lines.slice(1).join(' ') : refs.slice(0, 2).join('  ·  ');
+    if (sub) L.push(textLayer('ss-subtitle', 'Subtitle', { x: 300, y: 860, w: W - 600, h: 50 }, sub,
+      { family: kit.body.family, size: 34, weight: 600, color: kit.text, opacity: 90, align: 'center' }));
+    return L;
+  }
+
+  // Glow: a deep ladder with a diagonal sweep of light and grain; the words tight, heavy and centred,
+  // one small line under them.
+  function glow(gen, kit, style, footer) {
+    const ramp = kit.ramp && kit.ramp.length > 1 ? kit.ramp : [kit.bg, kit.bg2];
+    const top = ramp[ramp.length - 1];
+    const L = [{ ...backgroundLayers(kit, 'solid')[0], fill: 'gradient', color: ramp[0], color2: ramp[0],
+      gradientStops: [{ pos: 0, color: ramp[0] }, { pos: 100, color: ramp[0] }],
+      gradientGlows: [{ x: 100, y: 0, rx: 55, ry: 70, color: top }, { x: 62, y: 38, rx: 30, ry: 18, color: top }, { x: 0, y: 100, rx: 40, ry: 50, color: ramp[1] || top }] },
+      backgroundLayers(kit, style)[1]];
+    const lines = (gen.lines || []).filter(Boolean);
+    const text = gen.kind === 'title' ? lines[0] || '' : lines.join(' ');
+    const tight = { ...kit, display: { family: 'Inter', weight: 800, width: 0.56 } };
+    const h = headline(tight, gen, { x: 260, y: 300, w: W - 520, h: 420 }, text, gen.kind === 'story' ? 70 : 128, kit.text, 'center', 1.0);
+    h.font.letterSpacing = gen.kind === 'story' ? -1 : -4;
+    L.push(h);
+    const refs = gen.refs || [];
+    const sub = gen.kind === 'title' ? lines.slice(1).join(' ') : gen.label && gen.kind !== 'story' ? `${gen.label}${refs.length ? '  ·  ' + refs[0] : ''}` : refs[0] || '';
+    if (sub) L.push(textLayer('ss-subtitle', 'Subtitle', { x: 300, y: 760, w: W - 600, h: 44 }, sub,
+      { family: 'Inter', size: 30, weight: 600, color: kit.text, opacity: 85, align: 'center' }));
+    L.push(...footerLayer(kit, footer, { x: M, y: 990, w: W - 2 * M, h: 36 }, 'center'));
     return L;
   }
 
@@ -824,6 +933,11 @@
     set('ss-label', gen.label);
     if (gen.kind === 'title') { set('ss-headline', (gen.lines || [])[0] || ''); set('ss-subtitle', (gen.lines || []).slice(1).join(' ')); }
     else set('ss-headline', (gen.lines || []).join(' '));
+    // A layout that sets the last word apart in script (Worthy) keeps the split.
+    if (block.layers.some(l => l.id === 'ss-script')) {
+      const [rest, last] = lastWord(gen.kind === 'title' ? (gen.lines || [])[0] : (gen.lines || []).join(' '));
+      set('ss-headline', rest); set('ss-script', last);
+    }
     (gen.refs || []).forEach((r, i) => set(`ss-chip-${i}-text`, r));
     return { ...block, gen, text: serialize(gen), label: gen.label || (gen.lines || [])[0] || block.label };
   }
