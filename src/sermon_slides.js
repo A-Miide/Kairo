@@ -444,9 +444,10 @@
       for (const word of t.split(/\s+/)) { const len = word.length + (cur ? 1 : 0); if (cur && cur + len > perLine) { n += 1; cur = word.length; } else cur += len; }
       return n + 1;
     };
-    const floor = Math.min(MIN_HEADLINE_PX, size);
-    while (s > floor && lines(s) * s * lineHeight > h) s -= 4;
-    return Math.max(Math.min(MIN_HEADLINE_PX, size), s);   // never bigger than the slide asked for
+    // Body copy (kit.display.floor) may go smaller than a headline would.
+    const floor = Math.min(kit.display.floor || MIN_HEADLINE_PX, size);
+    while (s > floor && lines(s) * s * lineHeight > h) s -= 2;
+    return Math.max(floor, s);   // never bigger than the slide asked for
   }
   // A headline layer at the size that fits its box; `gen.tooLong` when even the minimum doesn't.
   function headline(kit, gen, pos, text, size, color, align, lineHeight) {
@@ -736,7 +737,7 @@
       L.push(textLayer('ss-tag-text', 'Tag word', { x: X + lw + 30, y: cy + 190, w: tw, h: 76 }, tagWord,
         { family: 'Montserrat', size: 62, weight: 800, color: '#FFFFFF', align: 'center', lineHeight: 1.1 }));
     }
-    L.push(headline({ ...kit, display: { family: 'Montserrat', weight: 500, width: 0.66 } }, gen, { x: X, y: cy + 300, w: TW - 120, h: 360 }, text,
+    L.push(headline({ ...kit, display: { family: 'Montserrat', weight: 500, width: 0.66, floor: 34 } }, gen, { x: X, y: cy + 300, w: TW - 120, h: 360 }, text,
       gen.kind === 'story' ? 48 : 58, body, 'left', 1.25));
     L.push(shapeLayer('ss-rule', 'Rule', { x: X, y: cy + ch - 168, w: 210, h: 4 }, kit.accent));
     L.push(shapeLayer('ss-dot', 'Dot', { x: X + 216, y: cy + ch - 175, w: 18, h: 18 }, kit.accent, { radius: 9 }));
@@ -919,12 +920,20 @@
     const blocks = build(outline, { kit: k, style: st, layout: lay, colors: own, footer, include: new Set(include) });
     return { sermon: { outline, include, kit: k, style: st, layout: lay, colors: own, footer: blocks[0] ? blocks[0].gen.footer : (footer || '') }, blocks };
   }
-  function regenerate(item) {
+  // The deck made again from its choices. A slide changed by hand is kept as it is, unless
+  // `restyleEdited`: then it takes the new look and layout too, keeping its own words.
+  function regenerate(item, { restyleEdited = false } = {}) {
     const d = item.sermon;
     const fresh = build(d.outline, { kit: d.kit, style: d.style, layout: d.layout, colors: d.colors, footer: d.footer, include: new Set(d.include) });
     const kept = new Map((item.blocks || []).filter(b => b.gen && b.gen.edited).map(b => [b.gen.part, b]));
+    const kit = withColors(kitById(d.kit), d.colors);
     return fresh.map(b => {
-      if (kept.has(b.gen.part)) return kept.get(b.gen.part);
+      const k = kept.get(b.gen.part);
+      if (k && !restyleEdited) return k;
+      if (k) {
+        const gen = { ...b.gen, label: k.gen.label, lines: k.gen.lines, refs: k.gen.refs, shortened: k.gen.shortened, tooLong: false };
+        b = makeBlock(gen, kit, d.style, d.footer, { notes: k.notes ?? b.notes, presenterNote: k.presenterNote ?? b.presenterNote });
+      }
       // What the operator applied to every slide stays on every new slide too.
       for (const [id, props] of Object.entries(d.common || {})) {
         const l = b.layers.find(x => x.id === id);

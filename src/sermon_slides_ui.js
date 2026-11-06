@@ -20,8 +20,21 @@
     if (!deck) { host.hidden = true; return; }
     host.hidden = false;
     const block = item.blocks[ctx.slideIndex];
-    const apply = (keepPart) => {
-      item.blocks = api.regenerate(item);
+    // A look, layout, background or colour change (`restyle`) asks, once per deck, whether slides
+    // changed by hand take it too (their words are kept either way); a contents change never restyles.
+    const apply = async (keepPart, restyle = true) => {
+      const edited = (item.blocks || []).filter(b => b.gen?.edited).length;
+      let restyleEdited = false;
+      if (restyle && edited) {
+        if (!restyleAnswers.has(item)) {
+          const ask = typeof confirmDialog === 'function' ? confirmDialog : async () => true;
+          const yes = await ask(`${edited} slide${edited === 1 ? ' was' : 's were'} changed by hand and ${edited === 1 ? 'keeps its' : 'keep their'} own style. Change ${edited === 1 ? 'it' : 'them'} to the new look too? Your words stay.`,
+            { title: 'Slides you changed', confirmLabel: edited === 1 ? 'Change it too' : 'Change them too', cancelLabel: 'Keep my changes' });
+          restyleAnswers.set(item, yes);
+        }
+        restyleEdited = restyleAnswers.get(item);
+      }
+      item.blocks = api.regenerate(item, { restyleEdited });
       const at = keepPart ? item.blocks.findIndex(b => b.gen?.part === keepPart) : -1;
       onChange(at >= 0 ? at : Math.min(ctx.slideIndex, item.blocks.length - 1));
     };
@@ -100,7 +113,7 @@
       box.addEventListener('change', () => {
         if (box.checked) include.add(p.id); else include.delete(p.id);
         deck.include = [...include];
-        apply(box.checked ? p.id : block?.gen?.part);
+        apply(box.checked ? p.id : block?.gen?.part, false);
       });
       // The words open that part's slide.
       lab.addEventListener('click', (e) => {
@@ -134,6 +147,9 @@
     }
     return [grid];
   }
+
+  // Each deck's answer to "change the slides you edited too?", asked once while it's open.
+  const restyleAnswers = new WeakMap();
 
   function segment(options, current, onPick, label) {
     const seg = el('div', 'ssp-seg');

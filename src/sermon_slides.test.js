@@ -177,3 +177,19 @@ test('any part other slides have is shared: a card change goes to later slides o
   assert.deepEqual(cardOf(1).corners, [70, 300, 80, 80], 'earlier slides keep theirs');
   assert.ok(!item.sermon.common || !item.sermon.common['ss-card'], '"later" is not the deck\'s own style');
 });
+
+test('a deck change asks to restyle hand-edited slides; when it does, their words stay', () => {
+  const item = S.newDeck(S.readText(PASTED), { kit: 'ember', layout: 'left' });
+  const b = item.blocks[2];
+  const edited = S.withText(b, 'Point 1 of 4\nAbraham believed against all hope\nScriptures: Romans 4:18');
+  edited.gen.edited = true;
+  edited.layers.find(l => l.id === 'ss-headline').font.size = 90;
+  item.blocks[2] = edited;
+  item.sermon.layout = 'centred';
+  const kept = S.regenerate(item);
+  assert.equal(kept[2].layers.find(l => l.id === 'ss-headline').font.size, 90, 'kept as it was');
+  const restyled = S.regenerate(item, { restyleEdited: true });
+  const h = restyled[2].layers.find(l => l.id === 'ss-headline');
+  assert.equal(h.customText, 'Abraham believed against all hope', 'its words stay');
+  assert.equal(h.align, 'center', 'in the new layout');
+});
