@@ -5071,7 +5071,10 @@ function renderBgProps(panel, layer) {
   if (!layer.pos) return;
 
   // Stroke: a line around the shape, its colour and width.
-  const stroke = layer.stroke || { enabled: false, color: '#FFFFFF', width: 4 };
+  // A new stroke starts in a colour that shows against the fill (dark on a light shape, white on a dark one).
+  const fillHex = /^#[0-9a-f]{6}$/i.test(layer.color || '') ? layer.color : '#000000';
+  const fillLight = (parseInt(fillHex.slice(1, 3), 16) * 299 + parseInt(fillHex.slice(3, 5), 16) * 587 + parseInt(fillHex.slice(5, 7), 16) * 114) / 1000 > 150;
+  const stroke = layer.stroke || { enabled: false, color: fillLight ? '#1B1B1F' : '#FFFFFF', width: 4 };
   panel.appendChild(section('style', 'Stroke', ...[
     fieldRow([toggleField('Stroke', !!stroke.enabled, on => { layer.stroke = { ...stroke, enabled: on }; up(); renderProps(); })]),
     stroke.enabled && fieldRow([
