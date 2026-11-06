@@ -215,6 +215,7 @@ impl Engine {
     /// outline's "number two?" isn't a verse).
     pub(crate) fn interim_partial(&mut self, text: &str, now: u64) {
         let Some(p) = self.k.partials(self.cfg.lang).resolve(text, self.verse_call_context(now), false) else { return };
+        let p = self.chapter_said_before(p, text, now);
         let p = self.announced_instead(p, text);
         let Verses::One(verse) = p.citation.verses else { return };
         // A complete number ("verse twenty four") needn't be heard twice: the offline engine's next
@@ -381,6 +382,9 @@ impl Engine {
         if p.chapter_given || self.in_announced_passage(p.citation.book, n16(p.citation.chapter)) {
             return p;
         }
+        if let Some(q) = self.sermon_passage_instead(&p, n, false) {
+            return q;
+        }
         let spoken = format!("{} {text}", self.recent_speech_seconds(20).join(" "));
         let here = self.k.id(VerseRef::new(p.citation.book, n16(p.citation.chapter), n16(n))).map_or(0.0, |h| self.shared_weight(h, &spoken).0);
         let best = self
@@ -396,6 +400,57 @@ impl Engine {
             }
         }
         p
+    }
+
+    /// "verse N" said while a chapter only quoted in passing is in play: the sermon's own passage instead
+    /// (the chapter waiting for its verse, the announced passage, or the chapter named last). After the
+    /// reading has lapsed (`lapsed`), only when the number points back before the verses of it put up.
+    fn sermon_passage_instead(&self, p: &Partial, n: u32, lapsed: bool) -> Option<Partial> {
+        // The sermon's own passage stays, wherever in it the number points ("in Vers 4" after 2:13 in an
+        // Ephesians 2 sermon, de-dalinger-epheser2).
+        if self.in_announced_passage(p.citation.book, n16(p.citation.chapter)) {
+            return None;
+        }
+        // A chapter in play only because a verse of it was matched on its wording, never named: a verse
+        // number said now belongs to the sermon's announced passage. "Escondidas con Cristo en Dios"
+        // matched Colossians 3:3 in a Romans 8 sermon, and "noten el versículo 2" went up as Colossians
+        // 3:2 (es-michelen-romanos8; also Romans 10:8, pt Ephesians 1:17).
+        // Being read (two of its verses up lately) is not in passing: "verse 12 … verse 14" in Isaiah 58,
+        // matched on its words, never named (oyedepo-kingdomlaw).
+        let named = self.sermon.iter().any(|c| c.named && c.book == p.citation.book && c.chapter == Some(n16(p.citation.chapter)))
+            || self.chapter_pending.as_ref().is_some_and(|c| (c.book, c.chapter) == (p.citation.book, n16(p.citation.chapter)));
+        // Its verses up lately.
+        let up: Vec<u32> = self
+            .screen
+            .recent_detections
+            .iter()
+            .filter(|(v, at)| self.last_now.saturating_sub(**at) <= super::core::CONTEXT_WINDOW_MS && (self.r(**v).book, self.r(**v).chapter as u32) == (p.citation.book, p.citation.chapter))
+            .map(|(v, _)| self.r(*v).verse as u32)
+            .collect();
+        let (up_lately, lowest_up) = (up.len(), up.iter().min().copied());
+        // …or, named or not, only a verse or two of it up, and the number points back before them: the
+        // preacher has left it ("1 Corintios 6:19-20" in a Romans 8 sermon, then "vean el versículo 11"
+        // is Romans 8:11; es-michelen-romanos8). A reading going on moves forward.
+        let left_behind = up_lately <= 2 && lowest_up.is_some_and(|low| n < low);
+        if (!lapsed && !named && up_lately <= 1) || left_behind {
+            // The chapter named and waiting for its verse, else the announced passage, else the chapter
+            // named last ("Pablo nos dice también en romanos capítulo 8…").
+            let here = (p.citation.book, n16(p.citation.chapter));
+            let waiting = self.chapter_pending.as_ref().map(|c| (c.book, c.chapter)).filter(|bc| *bc != here);
+            let announced = || self.announced.iter().rev().find(|(b, c, _)| self.in_announced_passage(*b, *c) && (*b, *c) != here).map(|(b, c, _)| (*b, *c));
+            let named_last = || {
+                self.sermon.iter().rev().filter(|c| c.named && self.last_now.saturating_sub(c.at) <= super::core::CONTEXT_WINDOW_MS).find_map(|c| c.chapter.map(|ch| (c.book, ch))).filter(|bc| *bc != here)
+            };
+            if let Some((b, c)) = waiting.or_else(announced).or_else(named_last) {
+                if self.k.id(VerseRef::new(b, c, n16(n))).is_some() {
+                    let mut q = p.clone();
+                    q.citation.book = b;
+                    q.citation.chapter = c as u32;
+                    return Some(q);
+                }
+            }
+        }
+        None
     }
 
     /// An identifying word of one of the verses in what was just said, not two everyday ones
@@ -477,6 +532,12 @@ impl Engine {
         let r = self.r(up);
         let active = Active { book: Some(r.book), chapter: Some(r.chapter as u32) };
         let Some(p) = self.k.partials(self.cfg.lang).resolve(text, active, false) else { return false };
+        // A number pointing back before the verse or two of a passage quoted in passing is the sermon's
+        // passage again (1 Corinthians 6:19-20 up, then "vean el versículo 11" in a Romans 8 sermon).
+        let p = match p.citation.verses {
+            Verses::One(n) if !p.chapter_given => self.sermon_passage_instead(&p, n, true).unwrap_or(p),
+            _ => p,
+        };
         let verses = self.citation_verses(&p.citation);
         if verses.is_empty() || verses.contains(&up) {
             return false;
@@ -510,6 +571,7 @@ impl Engine {
             && opens_with_number(text);
         let query = if carried { format!("verse {text}") } else { text.to_string() };
         let Some(p) = self.k.partials(self.cfg.lang).resolve(&query, self.verse_call_context(now), true) else { return false };
+        let p = self.chapter_said_before(p, &query, now);
         let p = self.announced_instead(p, &query);
         let verses = self.citation_verses(&p.citation);
         if verses.is_empty() {
@@ -535,6 +597,27 @@ impl Engine {
         }
         self.partial_confirms_context(sent, verses[0], &p, now);
         true
+    }
+
+    /// "verse N" whose chapter was said in the finals just before: "Er geht im Kapitel 12" | "los," |
+    /// "in Vers 1 und Vers 2" is Romans 12:1, not verse 1 of the chapter being read (de-reger-roemer12).
+    fn chapter_said_before(&self, p: Partial, text: &str, now: u64) -> Partial {
+        if p.chapter_given {
+            return p;
+        }
+        let n = self.t.finals.len();
+        let before: Vec<&str> = self.t.finals.iter().take(n.saturating_sub(1)).skip(n.saturating_sub(3))
+            .filter(|f| now.saturating_sub(f.at) < super::citations::PREV_FINAL_JOIN_WINDOW_MS)
+            .map(|f| f.text.as_str())
+            .collect();
+        if before.is_empty() {
+            return p;
+        }
+        let joined = format!("{} {text}", before.join(" "));
+        match self.k.partials(self.cfg.lang).resolve(&joined, self.verse_call_context(now), true) {
+            Some(q) if q.chapter_given && q.citation.book == p.citation.book && q.citation.verses == p.citation.verses => q,
+            _ => p,
+        }
     }
 
     fn partial_confirms_context(&mut self, sent: Target, v: VerseId, p: &Partial, now: u64) {
@@ -570,10 +653,16 @@ impl Engine {
     /// A verse called out for the chapter named and waiting for it ("go to Ezekiel twelve", then "go
     /// from verse twenty one") is a citation said in two parts, not a guess from context.
     fn partial_method(&self, p: &Partial) -> Method {
-        if self.chapter_pending.as_ref().is_some_and(|c| c.book == p.citation.book && c.chapter as u32 == p.citation.chapter) {
+        // In another language, "el versículo 5" in the sermon's announced passage is the preacher citing
+        // it: a reading in an old translation's words can't confirm it as English readings do
+        // (es-michelen-romanos8, pt-elizeu-romanos1). Once the words have settled: "versículo 23, Juan
+        // 14" names its book after the number.
+        let announced_elsewhere_lang = self.cfg.lang != crate::reference::Lang::En && self.t.interim.is_empty() && self.in_announced_passage(p.citation.book, n16(p.citation.chapter));
+        if announced_elsewhere_lang || self.chapter_pending.as_ref().is_some_and(|c| c.book == p.citation.book && c.chapter as u32 == p.citation.chapter) {
             Method::ContextCitation
         } else {
             partial_method(p)
         }
     }
+
 }

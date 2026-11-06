@@ -3905,66 +3905,72 @@
    "chapter": 7,
    "kind": "citation",
    "startMs": 2290015,
-   "note": "chapter only: 'Le psaume chapitre 7 dit ceci', then reads vv 2-8 (LSG numbering, v1 is the title)"
+   "note": "chapter only: 'Le psaume chapitre 7 dit ceci', then reads vv 2-8 (LSG numbering, v1 is the title); KJV numbering (said in Segond numbering, title = verse 1)"
+  },
+  {
+   "book": "Psalms",
+   "chapter": 7,
+   "verse": 1,
+   "kind": "quote",
+   "startMs": 2296990,
+   "note": "KJV numbering (said in Segond numbering, title = verse 1)"
   },
   {
    "book": "Psalms",
    "chapter": 7,
    "verse": 2,
    "kind": "quote",
-   "startMs": 2296990
+   "startMs": 2306270,
+   "note": "KJV numbering (said in Segond numbering, title = verse 1)"
   },
   {
    "book": "Psalms",
    "chapter": 7,
    "verse": 3,
    "kind": "quote",
-   "startMs": 2306270
+   "startMs": 2313685,
+   "note": "KJV numbering (said in Segond numbering, title = verse 1)"
   },
   {
    "book": "Psalms",
    "chapter": 7,
    "verse": 4,
    "kind": "quote",
-   "startMs": 2313685
+   "startMs": 2318565,
+   "note": "starts mid-cue: 'si j'ai rendu le mal...'; KJV numbering (said in Segond numbering, title = verse 1)"
   },
   {
    "book": "Psalms",
    "chapter": 7,
    "verse": 5,
    "kind": "quote",
-   "startMs": 2318565,
-   "note": "starts mid-cue: 'si j'ai rendu le mal...'"
+   "startMs": 2329000,
+   "note": "KJV numbering (said in Segond numbering, title = verse 1)"
   },
   {
    "book": "Psalms",
    "chapter": 7,
    "verse": 6,
    "kind": "quote",
-   "startMs": 2329000
+   "startMs": 2337400,
+   "note": "KJV numbering (said in Segond numbering, title = verse 1)"
   },
   {
    "book": "Psalms",
    "chapter": 7,
    "verse": 7,
    "kind": "quote",
-   "startMs": 2337400
-  },
-  {
-   "book": "Psalms",
-   "chapter": 7,
-   "verse": 8,
-   "kind": "quote",
-   "startMs": 2349145
+   "startMs": 2349145,
+   "note": "KJV numbering (said in Segond numbering, title = verse 1)"
   },
   {
    "book": "Psalms",
    "chapter": 59,
-   "verseStart": 2,
-   "verseEnd": 3,
+   "verseStart": 1,
+   "verseEnd": 2,
    "kind": "citation",
    "startMs": 2558075,
-   "note": "'dans les psaumes 52,' (2553515) 'pardon 59' (2556795) 'les versets 2 et 3' here, repeated 'psaume 59 2 et 3' at 2560470; Psalm 52 is a self-corrected slip, not recorded"
+   "note": "'dans les psaumes 52,' (2553515) 'pardon 59' (2556795) 'les versets 2 et 3' here, repeated 'psaume 59 2 et 3' at 2560470; Psalm 52 is a self-corrected slip, not recorded; KJV numbering (said in Segond numbering, title = verse 1)"
   },
   {
    "book": "Psalms",

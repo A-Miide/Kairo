@@ -8,6 +8,12 @@
 //!    words found in the speech.
 //! 3. What share of the verse's 4-word phrases occur anywhere in the speech —
 //!    survives a substituted word or two, scored below the first two tiers.
+//! 4. The verse's words in the verse's order, with gaps: an in-order alignment
+//!    (a weighted longest common subsequence over stems) that survives a word
+//!    skipped, added, swapped or misheard mid-phrase ("Cast not therefore away
+//!    your confidence" for "Cast not away therefore your confidence"). The
+//!    matched words must sit close together in the speech. A verse keeps the
+//!    best score any tier gives it (owner review 2026-11-05).
 //!
 //! A match is scored by the identifying weight it carries (IDF), not its word
 //! count: missing "for" costs almost nothing, missing the verse's one rare
@@ -25,12 +31,22 @@ const MAX_WINDOW: usize = 12;
 const LONG_VERSE_SCAN_MAX: usize = 45;
 const CANDIDATES: usize = 300;
 const NGRAM_MIN_COVERAGE: f32 = 0.40;
+/// An in-order match's words fill at least this share of the stretch of speech they span…
+const ORDERED_MIN_DENSITY: f32 = 0.6;
+/// …and at least this many of them are identifying words (this weight or more), not filler.
+const ORDERED_MIN_TELLING: usize = 3;
+const ORDERED_TELLING_IDF: f32 = 2.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tier {
     Phrase,
     LongVerse,
     Phrases4,
+    /// The verse's words in its order, with gaps.
+    Ordered,
+    /// The verse's words in its order, the only gaps filler words ("the same yesterday today and
+    /// forever" for "the same yesterday, and to day, and for ever"): an unbroken run but for those.
+    NearRun,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -43,6 +59,17 @@ pub struct VerbatimHit {
 }
 
 pub fn verbatim(lex: &Lexicon, text: &str, min_words: usize, limit: usize) -> Vec<VerbatimHit> {
+    search(lex, text, min_words, limit, false)
+}
+
+/// `verbatim`, and tier 4: the verse's words in its order with gaps. For the search box, and for a
+/// settled stretch of speech that the first three tiers found nothing certain in (engine unique_phrase):
+/// it adds weight up from scattered words, so it is kept out of the paths tuned on tiers 1-3.
+pub fn verbatim_in_order(lex: &Lexicon, text: &str, min_words: usize, limit: usize) -> Vec<VerbatimHit> {
+    search(lex, text, min_words, limit, true)
+}
+
+fn search(lex: &Lexicon, text: &str, min_words: usize, limit: usize, in_order: bool) -> Vec<VerbatimHit> {
     let speech = lex.speech(text);
     if speech.len() < min_words {
         return Vec::new();
@@ -148,9 +175,85 @@ pub fn verbatim(lex: &Lexicon, text: &str, min_words: usize, limit: usize) -> Ve
         }
     }
 
+    // 4. In the verse's order, with gaps: kept where it beats what the tiers above found.
+    for &v in candidates.iter().filter(|_| in_order) {
+        let sources = std::iter::once((lex.kjv().stems(v), lex.kjv().words(v))).chain(lex.others().iter().map(|o| (o.stems(v), o.words(v))));
+        let mut best: Option<VerbatimHit> = None;
+        for (verse_stems, verse_words) in sources {
+            let (Some(vs), Some(vw)) = (verse_stems, verse_words) else { continue };
+            let Some((matched, filler_gaps)) = ordered_match(lex, vs, vw, &stems, min_words) else { continue };
+            let tier = if filler_gaps { Tier::NearRun } else { Tier::Ordered };
+            let hit = VerbatimHit { verse: v, score: score(matched, lex.idf_total(vw)), tier, matched_idf: Some(matched) };
+            if best.is_none_or(|b| hit.score > b.score) {
+                best = Some(hit);
+            }
+        }
+        let Some(hit) = best else { continue };
+        match results.iter().position(|r| r.verse == v) {
+            Some(i) if results[i].score >= hit.score => {}
+            Some(i) => results[i] = hit,
+            None => results.push(hit),
+        }
+    }
+
     results.sort_by(|a, b| b.score.total_cmp(&a.score));
+    results.truncate(limit);
     prefer_what_was_said(&mut results);
     results
+}
+
+/// The identifying weight of the verse's words found in the speech in the verse's order (gaps allowed
+/// on both sides), when at least `min_words` match and they sit close together in the speech; and
+/// whether every gap between the matched words, in the speech and in the verse, is filler.
+fn ordered_match(lex: &Lexicon, verse_stems: &[WordId], verse_words: &[WordId], speech: &[Option<WordId>], min_words: usize) -> Option<(f32, bool)> {
+    let (n, m) = (speech.len(), verse_stems.len());
+    if n == 0 || m == 0 {
+        return None;
+    }
+    let weight: Vec<f32> = verse_words.iter().map(|w| lex.idf(*w)).collect();
+    // dp[i][j]: the best weight aligning speech[..i] with verse[..j].
+    let mut dp = vec![0f32; (n + 1) * (m + 1)];
+    let at = |i: usize, j: usize| i * (m + 1) + j;
+    for i in 1..=n {
+        for j in 1..=m {
+            let mut best = dp[at(i - 1, j)].max(dp[at(i, j - 1)]);
+            if speech[i - 1] == Some(verse_stems[j - 1]) {
+                best = best.max(dp[at(i - 1, j - 1)] + weight.get(j - 1).copied().unwrap_or(0.0).max(0.01));
+            }
+            dp[at(i, j)] = best;
+        }
+    }
+    // Back through the table: which spoken words matched.
+    let (mut i, mut j) = (n, m);
+    let (mut count, mut telling, mut first, mut last) = (0usize, 0usize, usize::MAX, 0usize);
+    let filler = |w: f32| w < ORDERED_TELLING_IDF;
+    // Whether every word skipped between matches, either side, is filler.
+    let mut filler_gaps = true;
+    let mut prev: Option<(usize, usize)> = None;
+    while i > 0 && j > 0 {
+        if speech[i - 1] == Some(verse_stems[j - 1]) && (dp[at(i, j)] - dp[at(i - 1, j - 1)] - weight.get(j - 1).copied().unwrap_or(0.0).max(0.01)).abs() < 1e-4 {
+            if let Some((pi, pj)) = prev {
+                let speech_gap = speech[i..pi].iter().all(|s| s.is_some_and(|s| filler(lex.idf(s))));
+                let verse_gap = weight[j..pj].iter().all(|w| filler(*w));
+                filler_gaps &= speech_gap && verse_gap;
+            }
+            prev = Some((i - 1, j - 1));
+            count += 1;
+            telling += usize::from(weight.get(j - 1).is_some_and(|w| *w >= ORDERED_TELLING_IDF));
+            first = i - 1;
+            last = last.max(i - 1);
+            i -= 1;
+            j -= 1;
+        } else if dp[at(i - 1, j)] >= dp[at(i, j - 1)] {
+            i -= 1;
+        } else {
+            j -= 1;
+        }
+    }
+    if count < min_words.max(3) || telling < ORDERED_MIN_TELLING || (count as f32) < ((last - first + 1) as f32) * ORDERED_MIN_DENSITY {
+        return None;
+    }
+    Some((dp[at(n, m)], filler_gaps))
 }
 
 /// How much of one verse's identifying weight `text` reads in a single unbroken run, in its

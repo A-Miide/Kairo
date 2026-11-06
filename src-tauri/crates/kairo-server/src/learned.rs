@@ -44,7 +44,7 @@ struct Store {
 static STORE: Mutex<Option<Store>> = Mutex::new(None);
 
 fn key(bible: &Bible, v: VerseId) -> String {
-    let r = bible.k.verse_ref(v);
+    let r = bible.k().verse_ref(v);
     format!("{}|{}|{}", r.book.name(), r.chapter, r.verse)
 }
 
@@ -103,9 +103,10 @@ pub fn heard(text: &str) {
 /// a word that isn't one Kairo knows, that word is this preacher's book ("San one ten").
 pub fn operator_put_up(v: VerseId) {
     with(|s| {
-        let r = s.bible.k.verse_ref(v);
+        let k = s.bible.k();
+        let r = k.verse_ref(v);
         let text: String = s.heard.iter().map(|(_, t)| t.as_str()).collect::<Vec<_>>().join(" ");
-        let vocab = s.bible.k.lexicon.vocab();
+        let vocab = k.lexicon.vocab();
         let known = |w: &str| CITATION_WORDS.contains(&w) || vocab.id(w).is_some() || Book::from_name(w).is_some();
         let Some(word) = kairo_detect::engine::learned::book_word(&text, r.chapter as u32, known) else { return };
         let book = r.book.name().to_string();

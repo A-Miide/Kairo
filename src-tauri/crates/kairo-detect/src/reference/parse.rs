@@ -89,11 +89,15 @@ impl Parser<'_> {
     /// The first citation in `text`.
     pub fn parse_one(&self, text: &str, active: Active) -> Option<Citation> {
         let t = self.prepare(text);
-        self.scan(&words(&t), active)
+        self.scan(&words(&t), active).map(|c| c.in_kjv_numbering(self.lang))
     }
 
-    /// Every citation in `text`, in order.
+    /// Every citation in `text`, in order, numbered as the KJV numbers them.
     pub fn parse_all(&self, text: &str, active: Active) -> Vec<Citation> {
+        self.parse_all_as_said(text, active).into_iter().map(|c| c.in_kjv_numbering(self.lang)).collect()
+    }
+
+    fn parse_all_as_said(&self, text: &str, active: Active) -> Vec<Citation> {
         let t = self.prepare(text);
         let w = words(&t);
         let mut out = Vec::new();
@@ -153,6 +157,41 @@ impl Parser<'_> {
         (0..w.len()).find_map(|i| self.citation_at(lead, w, i, active))
     }
 
+    /// The chapter `first` and the number after it, at `w[idx]`, read as one chapter: their digits run
+    /// together ("1 19") or share the digit between ("11 19"). Only when the second number can't be a
+    /// verse of `first`, the joined chapter exists, and a verse is said next that it has.
+    fn split_chapter(&self, w: &[&str], idx: usize, book: kairo_bible::Book, first: u32) -> Split {
+        let (a, b) = (get(w, idx), get(w, idx + 1));
+        if !(a.bytes().all(|c| c.is_ascii_digit()) && b.bytes().all(|c| c.is_ascii_digit()) && !a.is_empty() && !b.is_empty()) {
+            return Split::No;
+        }
+        let Ok(second) = b.parse::<u32>() else { return Split::No };
+        if self.shape.verses(book, first).is_some_and(|n| second <= n) {
+            return Split::No;
+        }
+        let joined: Vec<u32> = [format!("{a}{b}"), if a.ends_with(&b[..1]) { format!("{a}{}", &b[1..]) } else { String::new() }]
+            .iter()
+            .filter_map(|j| j.parse::<u32>().ok())
+            .filter(|&c| c <= self.shape.chapters(book))
+            .collect();
+        if joined.is_empty() {
+            return Split::No;
+        }
+        let mut at = idx + 2;
+        if matches!(get(w, at), "and" | ":") {
+            at += 1;
+        }
+        if is_verse_word(get(w, at)) {
+            at += 1;
+        }
+        // ("oh" reads as zero: no verse.)
+        let Some(verse) = num(w, at, None).map(|n| n32(n.value)).filter(|v| *v >= 1) else { return Split::Undecided };
+        match joined.into_iter().find(|&c| self.shape.verses(book, c).is_some_and(|n| verse >= 1 && verse <= n)) {
+            Some(c) => Split::Joined(c),
+            None => Split::No,
+        }
+    }
+
     fn citation_at(&self, lead: &[&str], w: &[&str], i: usize, active: Active) -> Option<Citation> {
         let (mut book, consumed) = self.books.match_at(w, i)?;
         let mut idx = i + consumed;
@@ -198,6 +237,17 @@ impl Parser<'_> {
                 if d1 >= 1 && (is_verse_word(get(w, idx + 2)) || only_pair_has_it) && pair <= i64::from(self.shape.chapters(book)) {
                     ch = Num { value: pair, consumed: 2 };
                 }
+            }
+        }
+        // A three-digit chapter heard as two numbers ("Psalm 11 19 and verse 97", "Psalm 1 19 verse 105":
+        // one hundred and nineteen): the second can't be a verse of the first, but the two read as one
+        // chapter that holds the verse said next (oyedepo-meditation, owner review 2026-11-05).
+        if ch.consumed == 1 {
+            match self.split_chapter(w, idx, book, n32(ch.value)) {
+                Split::Joined(joined) => ch = Num { value: joined as i64, consumed: 2 },
+                // Could be a split hundred, and no verse said yet to tell: nothing is guessed until it is.
+                Split::Undecided => return None,
+                Split::No => {}
             }
         }
         let mut chapter = n32(ch.value);
@@ -618,4 +668,13 @@ fn called_out(before: &[&str], ends_there: bool) -> bool {
         return ends_there;
     }
     before.iter().all(|x| LEAD.contains(x)) && before.last().is_some_and(|x| POINTS.contains(x))
+}
+
+/// Two numbers after a book that may be one chapter said in parts (Parser::split_chapter).
+enum Split {
+    /// They are one chapter: the verse said after it fits only that one.
+    Joined(u32),
+    /// They may be: no verse said after them yet.
+    Undecided,
+    No,
 }

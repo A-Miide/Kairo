@@ -72,6 +72,55 @@ pub fn connected(app_data: &Path, code: &str) -> Option<Value> {
     serde_json::from_slice(&raw).ok()
 }
 
+/// API.Bible's language id (ISO 639-3) for each language detection reads.
+const LANGUAGE_IDS: &[(&str, &str)] = &[("es", "spa"), ("pt", "por"), ("fr", "fra"), ("de", "deu")];
+
+/// A Bible the church connected in a language ("es"), the first by code when there are several.
+pub fn in_language(app_data: &Path, lang: &str) -> Option<String> {
+    let want = LANGUAGE_IDS.iter().find(|(l, _)| *l == lang)?.1;
+    let mut codes: Vec<String> = std::fs::read_dir(dir(app_data))
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        .filter_map(|p| p.file_stem().and_then(|s| s.to_str()).map(str::to_string))
+        .filter(|code| connected(app_data, code).is_some_and(|v| v["id"].is_string() && v["language"] == want && v["coverage"] != "ot"))
+        .collect();
+    codes.sort();
+    codes.into_iter().next()
+}
+
+/// Share of the Bible's chapters that must be saved before detection reads it instead of the pack.
+const ENOUGH_SAVED: f32 = 0.95;
+
+/// Enough of a connected Bible's chapters are saved for detection to read it.
+pub fn saved_enough(app_data: &Path, code: &str, corpus: &kairo_bible::Corpus) -> bool {
+    let all: usize = kairo_bible::Book::all().map(|b| corpus.chapter_count(b) as usize).sum();
+    let saved = std::fs::read_dir(dir(app_data).join(code)).map(|d| d.count()).unwrap_or(0);
+    saved as f32 >= all as f32 * ENOUGH_SAVED
+}
+
+/// A connected Bible's saved chapters as one translation, for detection to match speech against;
+/// None until enough of it is saved. Read from the encrypted cache and held only in memory.
+pub fn whole(app_data: &Path, code: &str, corpus: &kairo_bible::Corpus) -> Option<kairo_bible::Translation> {
+    if !saved_enough(app_data, code, corpus) {
+        return None;
+    }
+    let mut rows = Vec::new();
+    for b in kairo_bible::Book::all() {
+        for c in 1..=corpus.chapter_count(b) {
+            let Some(raw) = std::fs::read(chapter_file(app_data, code, b.index(), c)).ok().and_then(|x| open(app_data, &x)) else { continue };
+            let Ok(v) = serde_json::from_slice::<Value>(&raw) else { continue };
+            for (n, t) in v["verses"].as_object().into_iter().flatten() {
+                if let (Ok(n), Some(t)) = (n.parse::<u16>(), t.as_str()) {
+                    rows.push((b.name().to_string(), c, n, t.to_string()));
+                }
+            }
+        }
+    }
+    Some(corpus.align(code, rows.into_iter()))
+}
+
 /// Chapters are kept encrypted (AES-256-GCM), as API.Bible's terms (§12) and Biblica's licence (§V.E)
 /// ask: the text on disk can't be copied out as a Bible. The key is made once per computer and kept
 /// beside the cache, readable only by this user.
@@ -221,6 +270,7 @@ pub fn start(app: &Shared) {
     let outer = app.clone();
     let app = app.clone();
     tokio::spawn(async move {
+        let mut saved_any = false;
         while let Some(want) = rx.recv().await {
             let (code, book, chapter) = want.clone();
             let Some(info) = connected(&app.cfg.app_data_dir, &code) else { answered(&want, false); continue };
@@ -250,6 +300,12 @@ pub fn start(app: &Shared) {
             }
             // It can be asked for again once it has gone stale, or a minute after a failure.
             answered(&want, ok);
+            // Done saving for now: a Bible in the service language may now be whole enough to match.
+            saved_any |= ok;
+            if saved_any && rx.is_empty() {
+                saved_any = false;
+                crate::service_bible::rebuild_soon(&app);
+            }
             tokio::time::sleep(Duration::from_millis(250)).await;
         }
     });
@@ -260,9 +316,25 @@ pub fn start(app: &Shared) {
             let Some(code) = p.file_stem().and_then(|s| s.to_str()).map(str::to_string) else { continue };
             if p.extension().is_some_and(|x| x == "json") && connected(&outer.cfg.app_data_dir, &code).is_some_and(|v| v["id"].is_string()) {
                 keep_offline(&outer, &code);
+                learn_language(&outer, &code);
             }
         }
     }
+}
+
+/// A Bible connected before its language was kept: asked for once, so a service in that language can match it.
+fn learn_language(app: &Shared, code: &str) {
+    let path = dir(&app.cfg.app_data_dir).join(format!("{code}.json"));
+    let Some(mut info) = connected(&app.cfg.app_data_dir, code).filter(|v| v.get("language").is_none()) else { return };
+    let app = app.clone();
+    tokio::spawn(async move {
+        let (Some(key), Some(id)) = (app.settings.str(KEY).await, info["id"].as_str().map(str::to_string)) else { return };
+        let Ok(about) = get(&key, &format!("/bibles/{id}")).await else { return };
+        info["language"] = json!(about["data"]["language"]["id"].as_str().unwrap_or(""));
+        if std::fs::write(&path, info.to_string()).is_ok() {
+            crate::service_bible::rebuild_soon(&app);
+        }
+    });
 }
 
 fn fail(msg: impl Into<String>) -> Json<Value> {
@@ -374,7 +446,9 @@ pub async fn add(State(app): State<Shared>, Json(b): Json<Value>) -> Json<Value>
     let abbreviation = about["abbreviationLocal"].as_str().or(about["abbreviation"].as_str()).or(b["abbreviation"].as_str()).unwrap_or(&code).to_string();
     let copyright = about["copyright"].as_str().map(plain_text).unwrap_or_default();
     let d = dir(&app.cfg.app_data_dir);
-    let info = json!({ "id": id, "name": name, "coverage": coverage, "abbreviation": abbreviation, "copyright": copyright });
+    // Its language, so a service in that language matches speech against it (service_bible.rs).
+    let language = about["language"]["id"].as_str().unwrap_or("");
+    let info = json!({ "id": id, "name": name, "coverage": coverage, "abbreviation": abbreviation, "copyright": copyright, "language": language });
     if std::fs::create_dir_all(&d).is_err() || std::fs::write(d.join(format!("{code}.json")), info.to_string()).is_err() {
         return fail("Kairo couldn't save that.");
     }
@@ -391,7 +465,7 @@ fn chapters(app: &Shared, code: &str) -> Vec<(usize, u16)> {
     let ot_only = connected(&app.cfg.app_data_dir, code).is_some_and(|v| v["coverage"] == "ot");
     kairo_bible::Book::all()
         .filter(|b| !(ot_only && b.is_new_testament()))
-        .flat_map(|b| (1..=bible.k.corpus.chapter_count(b)).map(move |c| (b.index(), c)))
+        .flat_map(|b| (1..=bible.k().corpus.chapter_count(b)).map(move |c| (b.index(), c)))
         .collect()
 }
 
@@ -445,6 +519,7 @@ pub async fn remove(State(app): State<Shared>, Json(b): Json<Value>) -> Json<Val
         let mut m = serde_json::Map::new();
         m.insert(KEY.into(), Value::Null);
         app.settings.merge(m).await;
+        crate::service_bible::rebuild_soon(&app);
         return Json(json!({ "ok": true }));
     }
     let Some(code) = b["code"].as_str().and_then(crate::bible_import::clean_code) else { return Json(json!({ "ok": false })) };
@@ -453,6 +528,8 @@ pub async fn remove(State(app): State<Shared>, Json(b): Json<Value>) -> Json<Val
     if let Some(bible) = app.bible.get() {
         bible.forget_translation(&code);
     }
+    // Detection may have been matching it.
+    crate::service_bible::rebuild_soon(&app);
     Json(json!({ "ok": ok }))
 }
 

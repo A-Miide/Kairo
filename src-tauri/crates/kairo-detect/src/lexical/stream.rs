@@ -18,7 +18,7 @@ use std::collections::{HashMap, HashSet};
 use kairo_bible::VerseId;
 
 use super::lexicon::{Lexicon, WordId};
-use super::text::PREACHING_COMMON_WORDS;
+use super::text::is_preaching_common;
 
 /// A confirmed alignment is reported again after this many more words.
 const REPORT_AGAIN_AFTER: u32 = 3;
@@ -166,7 +166,7 @@ impl StreamMatcher {
                 let weighty_words = c
                     .counted
                     .iter()
-                    .filter(|w| lex.idf(**w) >= STREAM_WEIGHTY_IDF && !PREACHING_COMMON_WORDS.contains(lex.vocab().word(**w)))
+                    .filter(|w| lex.idf(**w) >= STREAM_WEIGHTY_IDF && !is_preaching_common(lex.vocab().word(**w)))
                     .count() as u32;
                 let peak_idf = c.counted.iter().map(|w| lex.idf(*w)).fold(0.0, f32::max);
                 let siblings: HashSet<WordId> = lex

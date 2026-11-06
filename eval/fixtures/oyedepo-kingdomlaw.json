@@ -4112,6 +4112,14 @@
     },
     {
       "book": "Psalms",
+      "chapter": 5,
+      "verse": 12,
+      "kind": "quote",
+      "startMs": 203000,
+      "note": "2026-11-05 owner confirmed: real quote missing from the key: \"thou shall compass the righteous about with favor as with a shield\""
+    },
+    {
+      "book": "Psalms",
       "chapter": 45,
       "verse": 6,
       "kind": "citation",
@@ -4647,6 +4655,14 @@
       "similarity": 0.4255807515177852
     },
     {
+      "book": "Deuteronomy",
+      "chapter": 28,
+      "verse": 2,
+      "kind": "quote",
+      "startMs": 2844000,
+      "note": "2026-11-05 owner confirmed: real quote missing from the key: \"all this blessing will come upon you and overtake you\""
+    },
+    {
       "book": "Genesis",
       "chapter": 22,
       "verse": 1,
@@ -5074,6 +5090,14 @@
       "kind": "citation",
       "startMs": 5921000,
       "addedBy": "read against the transcript (2026-10-27): \"De 12: 13 and 14 … but in the place with the Lord thy God shall choose\" — both verses cited and read"
+    },
+    {
+      "book": "Jeremiah",
+      "chapter": 3,
+      "verse": 15,
+      "kind": "quote",
+      "startMs": 5982000,
+      "note": "2026-11-05 owner confirmed: real quote missing from the key: \"I will give you pastors after my own heart\""
     },
     {
       "book": "Jeremiah",

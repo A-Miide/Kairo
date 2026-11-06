@@ -5,8 +5,9 @@
 //! In order:
 //! 1. Spellings that sound the same, which speech-to-text writes the modern
 //!    American way ("honour" → "honor", "shew" → "show"), homophones a speech
-//!    engine can only guess between ("profit"/"prophet"), and the articles
-//!    (preachers and engines swap "a"/"the" freely).
+//!    engine can only guess between ("profit"/"prophet"), the articles
+//!    (preachers and engines swap "a"/"the" freely), and the KJV's pronouns
+//!    and helper verbs as said today (thee/thou/ye → you, thy → your, shalt → shall).
 //! 2. Irregular forms no suffix rule reaches (hath, saith, begat, brethren).
 //! 3. Suffixes: -ies/-ied, -eth/-est, -ing, -ed, -es, -s.
 //! 4. A final -e and a doubled final consonant drop.
@@ -31,6 +32,12 @@ static SPELLING: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|
         ("fulness", "fullness"),
         ("a", "the"), ("an", "the"),
         ("profit", "prophet"), ("profits", "prophets"), ("wholly", "holy"), ("prey", "pray"), ("sole", "soul"), ("soles", "souls"),
+        // The KJV's pronouns and helper verbs as preachers say them today ("lest thou shouldest say" is
+        // said "lest you should say"; owner review 2026-11-05).
+        //PRONOUNS
+        //VERBS1
+        ("wast", "was"), ("wert", "was"), ("mayest", "may"), ("mightest", "might"),
+        //SOEVER
     ]
     .into_iter()
     .collect()

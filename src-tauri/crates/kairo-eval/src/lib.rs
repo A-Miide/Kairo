@@ -45,8 +45,14 @@ pub fn knowledge() -> Knowledge {
     let also = modern(&corpus, bsb);
     // The service language's Bible, matched first, as a non-English service would
     // (`KAIRO_EVAL_OWN=databases/bibles/packs/es.json`).
-    let own = std::env::var_os("KAIRO_EVAL_OWN").map(|p| corpus.load_flat("OWN", Path::new(&p)).expect("the service language's Bible"));
-    Knowledge::build(corpus, Wordings { own, also })
+    // The pack's language from its file name ("es.json"): the spelling it is matched in, and the
+    // anchors built as the app builds them for that language (kairo-server service_bible.rs).
+    let lang = std::env::var_os("KAIRO_EVAL_OWN")
+        .map(|p| kairo_detect::reference::Lang::from_code(Path::new(&p).file_stem().and_then(|s| s.to_str()).unwrap_or("")))
+        .unwrap_or_default();
+    let own = std::env::var_os("KAIRO_EVAL_OWN")
+        .map(|p| kairo_detect::lexical::text::for_matching(&corpus.load_flat("OWN", Path::new(&p)).expect("the service language's Bible"), lang));
+    Knowledge::build_for(corpus, Wordings { own, also }, lang)
 }
 
 fn bench_config(name: &str) -> PathBuf {

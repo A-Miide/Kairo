@@ -15,7 +15,7 @@ full scope note.
 |---|---|---|---|---|
 | es | Spanish | Reina-Valera (1909) | Public domain | https://api.getbible.net/v2/valera.json |
 | pt | Portuguese | Almeida Atualizada (1911 revision) | GPL | https://api.getbible.net/v2/almeida.json |
-| fr | French | Louis Segond (1910) | Public domain | https://api.getbible.net/v2/ls1910.json |
+| fr | French | Louis Segond (1910) | Public domain (eBible.org: "Cette Bible est dans le domaine public") | https://ebible.org/Scriptures/fraLSG_vpl.zip — rebuilt 2026-11-06 with `scripts/fr-pack-from-ebible.py`, then renumbered to the KJV with `scripts/pack-versification.py` |
 | de | German | Luther (1545, modern spelling) | Public domain | https://api.getbible.net/v2/luther1545.json |
 | sw | Swahili | New Testament only | Public domain | https://api.getbible.net/v2/swahili.json |
 | yo | Yoruba | Biblica Open Yoruba Contemporary Bible (2017) | CC BY-SA 4.0 — © Biblica, Inc. | https://ebible.org/find/details.php?id=yor |
