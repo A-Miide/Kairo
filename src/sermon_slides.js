@@ -65,17 +65,11 @@
     { id: 'royal', name: 'Royal Blue', bg: '#0136A0', bg2: '#1B62B0', text: '#FFFFFF', accent: '#8FC5F3', accentOn: ['#0141AA'],
       display: { family: 'Anton', weight: 400, width: 0.5 }, body: { family: 'Montserrat' } },
     { id: 'night', name: 'Night Worship', bg: '#031A5A', bg2: '#071664', ramp: ['#020C3A', '#031A5A', '#0B2A8C'], text: '#FAFBFD', accent: '#9DB4FF',
-      // A diagonal sweep of light across the deep blue, brightest toward the top-right corner.
-      sweep: { angle: 100, stops: [{ pos: 0, color: '#041243' }, { pos: 30, color: '#060E54' }, { pos: 52, color: '#0F1D7A' },
-        { pos: 70, color: '#3157C1' }, { pos: 86, color: '#6B96E6' }, { pos: 100, color: '#88B2EA' }] },
-      glows: [{ x: 96, y: 58, rx: 22, ry: 26, color: '#A8CCED' }, { x: 50, y: 50, rx: 30, ry: 30, color: '#0B146B' },
-        { x: 80, y: 90, rx: 26, ry: 9, color: '#4F78DA' }],
-      // Light the reference has on top of the gradient: a dark crease across the lower right, and a
-      // hard-edged plane of pale light cut into the top-right corner.
-      folds: [
-        { id: 'ss-plane', name: 'Light plane', clip: [[82, 0], [100, 0], [100, 40]], angle: 210, top: true,
-          stops: [{ pos: 0, color: '#B4CCF5' }, { pos: 55, color: '#86A6EE' }, { pos: 100, color: '#6A8EE6' }], opacity: 100 },
-      ],
+      // The light as diagonal streaks (not round glows) over the deep blue, its darker part #061853.
+      sweep: { angle: 135, stops: [{ pos: 0, color: '#041243' }, { pos: 40, color: '#0B146B' }, { pos: 62, color: '#061853' },
+        { pos: 68, color: '#2447AE' }, { pos: 73, color: '#5A84DC' }, { pos: 78, color: '#2447AE' }, { pos: 83, color: '#061853' },
+        { pos: 88, color: '#2F55BE' }, { pos: 91, color: '#061853' }, { pos: 100, color: '#061853' }] },
+      glows: [],
       display: { family: 'Inter', weight: 800, width: 0.56 }, body: { family: 'Inter' } },
     { id: 'lime', name: 'Lime Black', bg: '#000000', bg2: '#0B0B0B', text: '#FFFFFF', accent: '#D5F228',
       display: { family: 'Anton', weight: 400, width: 0.5 }, body: { family: 'Inter' } },
