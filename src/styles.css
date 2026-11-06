@@ -3817,7 +3817,6 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
 }
 .monitor-message-bar.is-live .monitor-message-label { color: var(--red); }
 .monitor-message-head { display: flex; align-items: center; justify-content: space-between; min-height: 22px; }
-.monitor-message-head .rs-clear-btn:disabled { opacity: 0.4; cursor: default; background: transparent; border-color: var(--border); color: var(--text-3); }
 .monitor-message-row { display: flex; gap: 6px; align-items: center; }
 .monitor-message-input {
   flex: 1;
@@ -8606,9 +8605,12 @@ body.video-director #ts-add-videozone-btn, body.video-director #ts-add-contentzo
 
 
 
-/* The message's audience: a small quiet select beside the label. */
+/* With more than one Monitor: which one, at the far right of the header. */
 .monitor-message-head { display: flex; align-items: center; gap: 8px; }
-.monitor-message-to { appearance: auto; margin-left: 4px; margin-right: auto; height: 22px; padding: 0 4px 0 6px; border-radius: 6px; border: 1px solid var(--border); background: transparent; color: var(--text-2, var(--text)); font: inherit; font-size: 11.5px; cursor: pointer; }
+.monitor-message-head .monitor-message-label { white-space: nowrap; }
+.monitor-message-head .cs-select-wrapper { margin-left: auto; width: auto; max-width: 150px; }
+.monitor-message-head .cs-select-trigger { height: 24px; padding: 0 8px; font-size: 11.5px; }
+.monitor-message-head .cs-select-wrapper[hidden], .monitor-message-to[hidden] { display: none; }
 
 /* Theme Studio / item editor: Back reads as navigation, not as one of the action chips. */
 .ts-nav-back {
@@ -8983,3 +8985,11 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 .free-badge { display: flex; align-items: center; gap: 14px; width: 100%; padding: 10px 14px; border: 1px solid rgba(34, 197, 94, 0.35); border-radius: 10px; background: rgba(34, 197, 94, 0.07); }
 .free-badge b { font-size: 30px; font-weight: 700; line-height: 1; color: #4ade80; font-variant-numeric: tabular-nums; }
 .free-badge span { font-size: 12.5px; line-height: 1.4; color: var(--text); }
+/* What's up on the monitors, with its own ✕ to take it down. */
+.monitor-message-live { display: flex; align-items: center; gap: 8px; min-width: 0; padding: 6px 8px 6px 10px; border-radius: 6px; background: rgba(255, 255, 255, 0.05); font-size: 12px; }
+.monitor-message-live[hidden] { display: none; }
+.monitor-message-live-where { flex: none; color: var(--text-3); }
+.monitor-message-live-text { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); font-weight: 600; }
+.monitor-message-clear { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0; border: 0; border-radius: 5px; background: none; color: var(--text-2); cursor: pointer; }
+.monitor-message-clear:hover { background: var(--bg-hover); color: var(--text); }
+.monitor-message-row .monitor-message-btn.is-ready { background: var(--brand); border-color: var(--brand); color: #fff; }

@@ -731,27 +731,25 @@
                 </div>
             </div>
 
-            <!-- Monitor message — a line from the booth to every Monitor output
-                 (display.html's confidence view). Shown only while there is
-                 one (refreshMonitorMessageBar, app_outputs.js). -->
+            <!-- Monitor message — a line from the booth to the stage: Monitor outputs only
+                 (owner, 2026-11-05), shown while there is one (refreshMonitorMessageBar,
+                 app_outputs.js). With more than one Monitor, a picker at the right says which.
+                 While a message is up, it shows above the box with its own ✕ to take it down. -->
             <div class="monitor-message-bar hidden" id="monitor-message-bar">
-                <!-- Clear sits up here, right above Show — the box keeps Show
-                     as its only button (owner, 2026-10-01). -->
                 <div class="monitor-message-head">
-                    <span class="monitor-message-label">Message</span>
-                    <select id="monitor-message-to" class="monitor-message-to" aria-label="Who sees the message" title="Who sees the message">
-                        <option value="monitors">Monitors</option>
-                        <option value="screens">Audience screens</option>
-                        <option value="all">Everywhere</option>
-                    </select>
-                    <button type="button" id="monitor-message-clear" class="rs-clear-btn" title="Take the message down" disabled>
-                        <svg width="8" height="8" viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-                        <span>Clear</span>
+                    <span class="monitor-message-label">Alerts to monitors</span>
+                    <select id="monitor-message-to" class="setting-input monitor-message-to" aria-label="Which monitor sees the alert" hidden></select>
+                </div>
+                <div class="monitor-message-live" id="monitor-message-live" hidden>
+                    <span class="monitor-message-live-where" id="monitor-message-live-where">On monitors:</span>
+                    <span class="monitor-message-live-text" id="monitor-message-live-text"></span>
+                    <button type="button" id="monitor-message-clear" class="monitor-message-clear" title="Take the alert off the monitors" aria-label="Take the alert off the monitors">
+                        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
                     </button>
                 </div>
                 <div class="monitor-message-row">
                     <input type="text" id="monitor-message-input" class="monitor-message-input" placeholder="e.g. 5 minutes left" maxlength="200" autocomplete="off" aria-label="Message">
-                    <button type="button" id="monitor-message-send" class="rs-layer-clear-btn monitor-message-btn" title="Show the message" aria-label="Show the message">
+                    <button type="button" id="monitor-message-send" class="rs-layer-clear-btn monitor-message-btn" title="Show the alert" aria-label="Show the alert">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
                     </button>
                 </div>

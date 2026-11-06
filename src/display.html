@@ -2578,10 +2578,12 @@
         }
 
         if (msg.type === 'monitor-message') {
-            // Who it is for: the Monitors (the stage), the audience screens, or both.
+            // Who it is for: every Monitor, one Monitor ("monitor:<output id>"), and from older
+            // versions and macros the audience screens or both.
             const to = msg.to || 'monitors';
             lastMessage = { text: msg.text || '', to };
-            setMonitorMessage(to === 'screens' ? '' : msg.text);
+            const forThisMonitor = to === 'monitors' || to === 'all' || to === `monitor:${OUTPUT_KEY}`;
+            setMonitorMessage(forThisMonitor ? msg.text : '');
             drawMessageBanner();
             return;
         }

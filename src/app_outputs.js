@@ -2046,35 +2046,46 @@ async function applyOutputModes() {
 }
 
 // ── Monitor message — a line from the booth to the Monitor outputs ─────────
-// Under the preview while there is a Monitor output.
-function refreshMonitorMessageBar() {
-  // Always there: a message can go to the audience screens too. Without a Monitor (or with
-  // only the multiview one) the choice starts on the screens.
+// Under the preview while there is a Monitor output; monitors only, never the audience
+// screens (owner, 2026-11-05). "to" is "monitors" (every one) or "monitor:<output id>".
+function stageMonitors() {
   const mv = isDirectorOn() ? settings.videoMultiview : '';
-  const hasMonitor = monitorOutputs().some(m => m.id !== mv);
-  document.getElementById('monitor-message-bar')?.classList.remove('hidden');
-  const to = document.getElementById('monitor-message-to');
-  if (to) {
-    to.querySelector('option[value="monitors"]').disabled = !hasMonitor;
-    to.querySelector('option[value="all"]').disabled = !hasMonitor;
-    if (!hasMonitor && to.value !== 'screens') to.value = 'screens';
-  }
+  return monitorOutputs().filter(m => m.id !== mv);
 }
-function showMonitorMessageState(text) {
+function refreshMonitorMessageBar() {
+  const monitors = stageMonitors();
+  document.getElementById('monitor-message-bar')?.classList.toggle('hidden', monitors.length === 0);
+  // More than one Monitor: which one, at the right of the header.
+  const to = document.getElementById('monitor-message-to');
+  if (!to) return;
+  const keep = to.value;
+  to.replaceChildren(new Option('All monitors', 'monitors'), ...monitors.map(m => new Option(m.name || 'Monitor', `monitor:${m.id}`)));
+  to.value = [...to.options].some(o => o.value === keep) ? keep : 'monitors';
+  to.hidden = monitors.length < 2;
+  to.nextElementSibling?.classList?.contains('cs-select-wrapper') && (to.nextElementSibling.hidden = to.hidden);
+}
+function monitorMessageWhere(to) {
+  if (!to || to === 'monitors' || to === 'all') return 'On monitors:';
+  const m = stageMonitors().find(x => `monitor:${x.id}` === to);
+  return `On ${m?.name || 'one monitor'}:`;
+}
+function showMonitorMessageState(text, to) {
   const bar = document.getElementById('monitor-message-bar');
   if (!bar) return;
   const live = !!String(text || '').trim();
   bar.classList.toggle('is-live', live);
-  const clear = document.getElementById('monitor-message-clear');
-  if (clear) clear.disabled = !live;
+  // What's up on the monitors, with its own ✕, just above the box.
+  const line = document.getElementById('monitor-message-live');
+  if (line) line.hidden = !live;
+  const shown = document.getElementById('monitor-message-live-text');
+  if (shown) shown.textContent = live ? String(text).trim() : '';
+  const where = document.getElementById('monitor-message-live-where');
+  if (where) where.textContent = monitorMessageWhere(to);
   const send = document.getElementById('monitor-message-send');
   if (send) {
-    send.title = live ? 'Update the message' : 'Show the message';
+    send.title = live ? 'Replace the alert' : 'Show the alert';
     send.setAttribute('aria-label', send.title);
   }
-  // What's up on the Monitor stays in view (and editable) — unless being typed over.
-  const input = document.getElementById('monitor-message-input');
-  if (input && document.activeElement !== input) input.value = live ? String(text).trim() : '';
 }
 async function sendMonitorMessage(text, to) {
   to = to || document.getElementById('monitor-message-to')?.value || 'monitors';
@@ -2093,16 +2104,16 @@ async function sendMonitorMessage(text, to) {
   const send = document.getElementById('monitor-message-send');
   const clear = document.getElementById('monitor-message-clear');
   if (!input || !send || !clear) return;
-  const show = () => { const t = input.value.trim(); if (t) sendMonitorMessage(t); };
+  // The send button wakes up (brand colour) once there's something to send.
+  const ready = () => send.classList.toggle('is-ready', !!input.value.trim());
+  const show = () => { const t = input.value.trim(); if (t) { sendMonitorMessage(t); input.value = ''; ready(); } };
   send.addEventListener('click', show);
+  input.addEventListener('input', ready);
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); show(); }
   });
-  clear.addEventListener('click', () => { sendMonitorMessage(''); input.value = ''; });
-  // A message already up moves to the newly chosen audience.
-  document.getElementById('monitor-message-to')?.addEventListener('change', () => {
-    if (document.getElementById('monitor-message-bar')?.classList.contains('is-live')) { const t = input.value.trim(); if (t) sendMonitorMessage(t); }
-  });
+  clear.addEventListener('click', () => sendMonitorMessage('', 'monitors'));
+  ready();
 })();
 
 // ── Keying — how a display output's background keys out for a mixer ───────
