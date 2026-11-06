@@ -46,14 +46,11 @@
       return sec;
     };
 
-    // ── the deck ──
-    const looks = el('div', 'ssp-looks');
-    for (const k of api.KITS) {
-      const b = el('button', 'ssp-look' + (k.id === deck.kit ? ' is-on' : ''));
-      b.type = 'button';
-      b.title = k.name;
-      b.setAttribute('aria-label', k.name);
-      const sw = el('span', 'ssp-swatch');
+    // ── the deck: one picker for the look, one for the layout (each opens a grid, so the panel
+    // stays the same size however many there are), and the background's three ways ──
+    const KS = window.KairoService;
+    const lookTile = (k, cls) => {
+      const sw = el('span', cls);
       sw.style.background = `radial-gradient(circle at 15% 10%, ${k.bg2} 0%, ${k.bg} 70%)`;
       const aa = el('span', 'ssp-aa', 'Aa');
       aa.style.color = k.text;
@@ -61,21 +58,77 @@
       const dot = el('span', 'ssp-dot');
       dot.style.background = k.accent;
       sw.append(aa, dot);
-      b.append(sw, el('span', 'ssp-look-name', k.name));
-      // A look brings its own colours: the operator's own are set again from it.
-      b.addEventListener('click', () => { deck.kit = k.id; delete deck.colors; remember(deck); apply(block?.gen?.part); });
-      looks.append(b);
       if (typeof loadGoogleFont === 'function') loadGoogleFont(k.display.family);
-    }
-    const deckSec = section('Deck look', looks,
-      segment(api.BACKGROUNDS, deck.style, (id) => { deck.style = id; remember(deck); apply(block?.gen?.part); }, 'Background'),
-      segment(api.LAYOUTS, deck.layout || 'left', (id) => {
-        deck.layout = id;
-        // A position applied to every slide belonged to the old layout.
-        for (const props of Object.values(deck.common || {})) { delete props.pos; delete props.align; }
-        remember(deck);
-        apply(block?.gen?.part);
-      }, 'Layout'));
+      return sw;
+    };
+    // One Style button: a preview of this slide and "Look · Layout · Background"; it opens one
+    // pop-out holding all three, which stays open while choices are tried (the panel is drawn
+    // again after each, and the pop-out opens again on the new button).
+    const kitNow = api.kitById(deck.kit);
+    const layoutNow = api.LAYOUTS.find(l => l.id === (deck.layout || 'left')) || api.LAYOUTS[0];
+    const bgNow = api.BACKGROUNDS.find(x => x.id === deck.style) || api.BACKGROUNDS[0];
+    const thumbOf = (layoutId, host) => {
+      const blocks = api.newDeck(deck.outline, { kit: deck.kit, style: deck.style, colors: deck.colors, layout: layoutId }).blocks;
+      const b = blocks.find(x => x.gen.part === block?.gen?.part) || blocks.find(x => x.gen.kind === 'point') || blocks[0];
+      if (b && KS?.paintLookLayers) requestAnimationFrame(() => KS.paintLookLayers(host, { layers: b.layers }, {}, {}));
+    };
+    const choose = (fn) => { keepOpen.add(item); KS.closePopover(); fn(); remember(deck); apply(block?.gen?.part); };
+    const styleBtn = el('button', 'ssp-picker ssp-style-btn');
+    styleBtn.type = 'button';
+    styleBtn.setAttribute('aria-haspopup', 'dialog');
+    const nowThumb = el('span', 'ssp-picker-thumb');
+    thumbOf(layoutNow.id, nowThumb);
+    const names = el('span', 'ssp-picker-name');
+    names.textContent = `${deck.colors ? kitNow.name + ' (own colours)' : kitNow.name} · ${layoutNow.name} · ${bgNow.name}`;
+    nowThumb.setAttribute('aria-hidden', 'true');
+    styleBtn.setAttribute('aria-label', `Deck style: ${names.textContent.replace(/ · /g, ', ')}`);
+    styleBtn.append(nowThumb, names);
+    styleBtn.insertAdjacentHTML('beforeend', '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>');
+    const openStyle = () => KS?.openPopover?.(styleBtn, (pop) => {
+      const wrap = el('div', 'ssp-pop-grid-wrap');
+      const head = (t) => el('div', 'ssp-pop-head', t);
+      const layouts = el('div', 'ssp-pop-grid ssp-pop-layouts');
+      layouts.setAttribute('role', 'listbox');
+      layouts.setAttribute('aria-label', 'Layout');
+      for (const l of api.LAYOUTS) {
+        const t = el('button', 'ssp-pop-item' + (l.id === layoutNow.id ? ' is-on' : ''));
+        t.type = 'button';
+        t.setAttribute('role', 'option');
+        t.setAttribute('aria-selected', String(l.id === layoutNow.id));
+        const th = el('span', 'ssp-layout-thumb');
+        th.setAttribute('aria-hidden', 'true');
+        t.setAttribute('aria-label', l.name);
+        t.append(th, el('span', 'ssp-pop-name', l.name));
+        t.addEventListener('click', () => choose(() => {
+          deck.layout = l.id;
+          // A position applied to every slide belonged to the old layout.
+          for (const props of Object.values(deck.common || {})) { delete props.pos; delete props.align; }
+        }));
+        layouts.append(t);
+        thumbOf(l.id, th);
+      }
+      const looks = el('div', 'ssp-pop-grid');
+      looks.setAttribute('role', 'listbox');
+      looks.setAttribute('aria-label', 'Look');
+      for (const k of api.KITS) {
+        const on = k.id === deck.kit && !deck.colors;
+        const t = el('button', 'ssp-pop-item' + (on ? ' is-on' : ''));
+        t.type = 'button';
+        t.setAttribute('role', 'option');
+        t.setAttribute('aria-selected', String(on));
+        t.append(lookTile(k, 'ssp-swatch'), el('span', 'ssp-pop-name', k.name));
+        // A look brings its own colours: the operator's own are set again from it.
+        t.addEventListener('click', () => choose(() => { deck.kit = k.id; delete deck.colors; }));
+        looks.append(t);
+      }
+      wrap.append(head('Layout'), layouts, head('Look'), looks, head('Background'),
+        segment(api.BACKGROUNDS, deck.style, (id) => choose(() => { deck.style = id; }), 'Background'));
+      pop.append(wrap);
+    });
+    styleBtn.addEventListener('click', openStyle);
+    const deckSec = section('Deck look', styleBtn);
+    // Re-opened after a choice, so the next can be tried straight away.
+    if (keepOpen.has(item)) { keepOpen.delete(item); requestAnimationFrame(() => { if (styleBtn.isConnected) openStyle(); }); }
 
     // ── the deck's colours: the look's, or the operator's own ──
     const kit = api.withColors(api.kitById(deck.kit), deck.colors);
@@ -150,6 +203,8 @@
 
   // Each deck's answer to "change the slides you edited too?", asked once while it's open.
   const restyleAnswers = new WeakMap();
+  // Decks whose Style pop-out re-opens after the panel is drawn again.
+  const keepOpen = new WeakSet();
 
   function segment(options, current, onPick, label) {
     const seg = el('div', 'ssp-seg');

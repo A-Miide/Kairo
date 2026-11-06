@@ -96,7 +96,7 @@
     { id: 'quote', name: 'Quote' },
     { id: 'badge', name: 'Badge card' },
     { id: 'worthy', name: 'Worthy' },
-    { id: 'glow', name: 'Glow' },
+    { id: 'glow', name: 'Light' },     // not "Glow": that's a background's name
   ];
   const layoutOf = (id) => (LAYOUTS.some(l => l.id === id) ? id : 'left');
   const kitById = (id) => KITS.find(k => k.id === id) || KITS[0];
