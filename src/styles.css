@@ -8990,7 +8990,8 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 .ac-sermon b { font-size: 13px; color: var(--text); }
 .ac-sermon .modal-btn { flex: none; }
 /* The deck's layout, picked before it's made: a point slide drawn in each. */
-.ac-layouts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; min-width: 0; }
+.ac-layouts { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; min-width: 0; }
+.ac-layouts .ac-layout { font-size: 11px; gap: 4px; padding: 4px; }
 .ac-layout { display: grid; gap: 6px; padding: 5px; border: 1px solid var(--border-md); border-radius: 9px; background: none; color: var(--text-2); font: inherit; font-size: 12px; font-weight: 600; cursor: pointer; text-align: center; }
 .ac-layout:hover { border-color: var(--text-3); color: var(--text); }
 .ac-layout.is-on { border-color: var(--accent); color: var(--text); box-shadow: 0 0 0 1px var(--accent); }
@@ -9049,3 +9050,13 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 .ac-palette-swatch + .ac-palette-swatch { border-left: 1px solid rgba(0, 0, 0, 0.35); }
 .ac-palette-swatch:hover { box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.6); }
 .ac-palette-swatch input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+/* A colour's typed code beside its picker (client_common.js hexField). */
+.hex-field, input.ts-hex { width: 7ch; min-width: 0; padding: 2px 4px; border: 1px solid transparent; border-radius: 4px; background: transparent;
+  color: var(--text); font: 500 11px/1.4 var(--mono); letter-spacing: 0.3px; text-transform: uppercase; }
+.hex-field:hover, input.ts-hex:hover { border-color: var(--border-md); }
+.hex-field:focus, input.ts-hex:focus { outline: none; border-color: var(--accent); background: var(--bg-input); }
+.hex-field.is-invalid, input.ts-hex.is-invalid { border-color: #ff4d3d; }
+.hex-field-boxed { border-color: var(--border-md); background: var(--bg-input); padding: 5px 6px; }
+.ac-palette-codes { display: flex; }
+.ac-palette-code { width: 38px; padding: 2px 0; text-align: center; font-size: 9.5px; }
+.ssp-color .hex-field { width: 100%; }

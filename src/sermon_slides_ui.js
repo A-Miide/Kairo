@@ -128,7 +128,7 @@
         inp.value = kit[key];
         inp.setAttribute('aria-label', name);
         inp.addEventListener('input', () => onPick(key, inp.value));
-        row.append(inp);
+        row.append(inp, typeof hexField === 'function' ? hexField(inp) : '');
       }
       grid.append(row);
     }
