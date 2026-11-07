@@ -817,7 +817,7 @@ pub async fn import(State(app): State<Shared>, Query(q): Query<HashMap<String, S
         let parsed = parse(&filename, &body)?;
         let fallback = parsed.name.clone().unwrap_or_else(|| stem.clone());
         let code = asked.as_deref().and_then(clean_code).unwrap_or_else(|| unique_code(&app_data, &fallback));
-        let (file, report) = build(parsed, &code, &bible.k.corpus)?;
+        let (file, report) = build(parsed, &code, &bible.k().corpus)?;
         let dir = bible.user_translations_dir().to_path_buf();
         std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
         let tmp = dir.join(format!("{code}.json.part"));

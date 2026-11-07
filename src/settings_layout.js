@@ -36,14 +36,15 @@
 })();
 
 // Numbers each Settings page's sections 1, 2, 3 in the order they show, on any page with more than
-// one; a hidden section isn't counted. Done here rather than with CSS counters, which WebKit
+// one; a hidden section isn't counted, nor one marked data-unnumbered (a list, not steps, or a side
+// panel like Language's "What this gives you"). Done here rather than with CSS counters, which WebKit
 // (the app's view) restarted in every section, so every number read 1 (2026-10-29).
 (function () {
   function number() {
     document.querySelectorAll('.settings-pane').forEach((pane) => {
       const shown = [...pane.querySelectorAll('.settings-section-label')].filter((l) => {
         const sec = l.closest('.settings-section') || l;
-        return sec.style.display !== 'none' && !sec.hidden;
+        return sec.style.display !== 'none' && !sec.hidden && !l.closest('[data-unnumbered]');
       });
       shown.forEach((l, i) => {
         const n = shown.length > 1 ? String(i + 1) : '';

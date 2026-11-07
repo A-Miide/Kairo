@@ -33,8 +33,14 @@ pub struct Knowledge {
 
 impl Knowledge {
     pub fn build(corpus: Corpus, wordings: Wordings) -> Knowledge {
+        Knowledge::build_for(corpus, wordings, Lang::En)
+    }
+
+    /// For a service in `lang`: in another language than English the KJV's English phrases aren't
+    /// indexed as anchors (Lexicon::build_with), only the language's own Bible's.
+    pub fn build_for(corpus: Corpus, wordings: Wordings, lang: Lang) -> Knowledge {
         let shape = Shape::new(&corpus);
-        let lexicon = Lexicon::build(&corpus, wordings);
+        let lexicon = Lexicon::build_with(&corpus, wordings, lang == Lang::En);
         let confusable = confusable_chapters(&corpus, &lexicon);
         let names = proper_names(&corpus);
         Knowledge { corpus, shape, books: Books::get(), lexicon, confusable, names }

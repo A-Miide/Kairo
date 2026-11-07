@@ -145,8 +145,13 @@ async fn post_settings(State(app): State<Shared>, Json(body): Json<Map<String, V
     }
     let animation_changed = incoming.contains_key("outputAnimation") || incoming.contains_key("outputAnimationSpeed");
     let obs_changed = ["obsEnabled", "obsUrl", "obsPassword"].iter().any(|k| body.contains_key(*k));
+    let language_changed = body.contains_key("sttLanguage");
     let (s, save_error) = app.settings.merge(incoming).await;
     app.refresh_presentation().await;
+    // Detection matches the Bible of the language spoken (service_bible.rs).
+    if language_changed {
+        crate::service_bible::rebuild_soon(&app);
+    }
     if obs_changed {
         let a = app.clone();
         tokio::spawn(async move { crate::routes_misc::connect_obs(&a).await });
@@ -186,8 +191,9 @@ async fn start_listening(State(app): State<Shared>, Json(body): Json<Value>) -> 
     let engine = body["engine"].as_str().unwrap_or("deepgram").to_lowercase();
     let spoken = app.settings.str("sttLanguage").await.unwrap_or_else(|| "en-US".into());
     if let Some((bible, _)) = app.ready() {
-        let k = bible.k.clone();
-        crate::interpretation::with(|i| i.set_known(std::sync::Arc::new(move |w: &str| k.lexicon.vocab().id(w).is_some())));
+        let bible = bible.clone();
+        // The Bible itself, not its knowledge now: knowledge rebuilt for another language mustn't be kept alive here.
+        crate::interpretation::with(|i| i.set_known(std::sync::Arc::new(move |w: &str| bible.k().lexicon.vocab().id(w).is_some())));
     }
     crate::interpretation::with(|i| i.reset(&spoken));
     let started = if engine == "offline" || engine == "browser" {
@@ -364,7 +370,8 @@ async fn slides_scripture(State(app): State<Shared>, Json(body): Json<Value>) ->
 
 fn typed_reference(app: &crate::bible::Bible, query: &str) -> Option<kairo_detect::reference::Citation> {
     let q: String = query.trim().to_lowercase().chars().map(|c| if ".,!?;".contains(c) { ' ' } else { c }).collect();
-    let parser = app.k.parser(Lang::En);
+    let k = app.k();
+    let parser = k.parser(Lang::En);
     if let Some(c) = parser.parse_one(&q, Active::default()) {
         return Some(c);
     }
@@ -445,7 +452,8 @@ async fn search_lookup(State(app): State<Shared>, Json(body): Json<Value>) -> Js
 async fn search_suggest(State(app): State<Shared>, Json(body): Json<Value>) -> Json<Value> {
     let query = body["query"].as_str().unwrap_or("").trim().to_string();
     let Some((bible, _)) = app.ready().filter(|_| query.split_whitespace().count() >= 3) else { return Json(json!({ "results": [] })) };
-    let parser = bible.k.parser(Lang::En);
+    let k = bible.k();
+    let parser = k.parser(Lang::En);
     let q: String = query.to_lowercase().chars().map(|c| if ".,!?;".contains(c) { ' ' } else { c }).collect();
     let mut out: Vec<Value> = Vec::new();
     if let Some(c) = parser.parse_one(&q, Active::default()) {
@@ -458,7 +466,9 @@ async fn search_suggest(State(app): State<Shared>, Json(body): Json<Value>) -> J
         }
     }
     if out.is_empty() {
-        for h in kairo_detect::lexical::verbatim(&bible.k.lexicon, &query, 3, 6) {
+        // The verse's words in its order, gaps allowed: "cast not therefore away your confidence" finds
+        // Hebrews 10:35 ("cast not away therefore"), "all things have become new" 2 Corinthians 5:17.
+        for h in kairo_detect::lexical::verbatim_in_order(&k.lexicon, &query, 3, 6) {
             let mut j = bible.verse_json(h.verse, h.score, "verbatim");
             j["match"] = json!("phrase");
             out.push(j);
@@ -586,14 +596,15 @@ fn is_scripture_slide(bible: &crate::bible::Bible, verse: &Value) -> bool {
     if words.is_empty() {
         return false;
     }
-    let parser = bible.k.parser(Lang::En);
+    let k = bible.k();
+    let parser = k.parser(Lang::En);
     let cites = |t: &str| parser.parse_all(t, Active::default()).into_iter().any(|c| !matches!(c.verses, Verses::Chapter));
     let opening = words.iter().take(4).copied().collect::<Vec<_>>().join(" ");
     if cites(&opening) {
         return true;
     }
     words.len() >= 6
-        && kairo_detect::lexical::verbatim(&bible.k.lexicon, &words.join(" "), 6, 1).first().is_some_and(|h| h.score >= 0.95)
+        && kairo_detect::lexical::verbatim(&bible.k().lexicon, &words.join(" "), 6, 1).first().is_some_and(|h| h.score >= 0.95)
 }
 
 /// Puts a Live Queue slide (or a verse) up. Returns where it landed.

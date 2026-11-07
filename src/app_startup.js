@@ -486,7 +486,7 @@ registerActionHandler('clock-message', (msg) => window.KairoService?.onClockActi
     scheduled = false;
     const verse = (previewVerseText.textContent || '').trim();
     const ref   = (previewVerseRef?.textContent || '').trim();
-    const blank = !verse || verse === 'Nothing on display';
+    const blank = !verse || verse === PREVIEW_EMPTY;
     const sig   = blank ? '' : (ref + '' + verse);
     if (sig === lastSent) return;
     lastSent = sig;

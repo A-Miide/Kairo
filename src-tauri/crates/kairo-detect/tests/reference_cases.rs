@@ -324,3 +324,19 @@ fn reading_context_lasts_through_a_pause_and_stretches_for_a_slow_pace() {
 
 
 
+
+/// A three-digit chapter transcribed as two numbers (owner review of oyedepo-meditation, 2026-11-05).
+#[test]
+fn hundreds_heard_as_two_numbers() {
+    // Joined only when a verse is said straight after, and only that chapter has it.
+    assert_eq!(all("Endeavors Psalm 11 19 and verse 97 oh how love I th Lord"), ["Psalms 119:97"]);
+    assert_eq!(all("Psalm 11 19 verse 97"), ["Psalms 119:97"]);
+    assert_eq!(all("Psalm 11 19:97"), ["Psalms 119:97"]);
+    assert_eq!(all("Psalm 1 19 verse 105"), ["Psalms 119:105"]);
+    // No verse after: nothing is guessed, neither Psalm 119 nor Psalm 11:19.
+    assert!(all("Psalm 11 19").iter().all(|c| c != "Psalms 119:" && c != "Psalms 11:19"), "{:?}", all("Psalm 11 19"));
+    assert!(all("Psalm 11 19 oh how love I thy law").iter().all(|c| !c.starts_with("Psalms 119") && c != "Psalms 11:19"));
+    // Still two numbers when the first chapter has that verse.
+    assert_eq!(all("Psalm 23 1"), ["Psalms 23:1"]);
+    assert_eq!(all("John 3 16"), ["John 3:16"]);
+}

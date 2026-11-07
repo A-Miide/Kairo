@@ -70,6 +70,11 @@ impl Translation {
         self.len() == 0
     }
 
+    /// The same translation with every verse's text rewritten.
+    pub fn mapped(&self, f: impl Fn(&str) -> String) -> Translation {
+        Translation { code: self.code.clone(), texts: self.texts.iter().map(|t| t.as_deref().map(|t| f(t).into_boxed_str())).collect() }
+    }
+
     /// Verses this translation has no text for, in canonical order.
     pub fn missing(&self) -> impl Iterator<Item = VerseId> + '_ {
         self.texts.iter().enumerate().filter(|(_, t)| t.is_none()).map(|(i, _)| VerseId(i as u32))
@@ -165,7 +170,8 @@ impl Corpus {
         Ok(self.align(code, file.verses.into_iter().filter_map(|v| v.text.map(|t| (v.book, v.chapter, v.verse, t)))))
     }
 
-    fn align(&self, code: &str, rows: impl Iterator<Item = (String, u16, u16, String)>) -> Translation {
+    /// A translation from `(book name, chapter, verse, text)` rows, aligned to this corpus as `load_flat` aligns a file.
+    pub fn align(&self, code: &str, rows: impl Iterator<Item = (String, u16, u16, String)>) -> Translation {
         let mut texts: Vec<Option<Box<str>>> = vec![None; self.len()];
         for (book, chapter, verse, text) in rows {
             let Some(b) = Book::from_name(&book) else { continue };

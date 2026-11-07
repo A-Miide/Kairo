@@ -1958,8 +1958,20 @@ function renderLayersList() {
       ? `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>`
       : `<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><line x1="4" y1="9" x2="20" y2="9"/><line x1="4" y1="15" x2="20" y2="15"/></svg>`;
 
+    // The padlock: shown on a locked layer, and on hover for the rest.
+    const lockBtn = document.createElement('button');
+    lockBtn.type = 'button';
+    lockBtn.className = 'ts-layer-lock' + (layer.locked ? ' is-on' : '');
+    lockBtn.title = layer.locked ? 'Unlock (⇧⌘L)' : 'Lock: the canvas leaves it alone (⇧⌘L)';
+    lockBtn.setAttribute('aria-label', `${layer.locked ? 'Unlock' : 'Lock'} ${layer.name || 'layer'}`);
+    lockBtn.setAttribute('aria-pressed', String(!!layer.locked));
+    lockBtn.innerHTML = layer.locked ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>' : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 7.5-2"/></svg>';
+    if (isBg) lockBtn.style.visibility = 'hidden';
+    lockBtn.addEventListener('click', e => { e.stopPropagation(); if (!isBg) setLayersLocked([layer], !layer.locked); });
+
     row.appendChild(grip);
     row.appendChild(visBtn);
+    row.appendChild(lockBtn);
     row.appendChild(typeIcon);
     row.appendChild(name);
     row.appendChild(delBtn);
@@ -2019,13 +2031,14 @@ function renderLayersList() {
     // counterpart on the base theme to diff into item.slideStyles.
     row.addEventListener('contextmenu', (e) => {
       e.preventDefault();
-      if (tsMode === 'item') return;
-      const sections = [[
+      const lockItem = isBg ? [] : [{ label: layer.locked ? 'Unlock' : 'Lock', onClick: () => setLayersLocked([layer], !layer.locked) }];
+      if (tsMode === 'item') { if (lockItem.length) window.KairoService.openContextMenu(e.clientX, e.clientY, [lockItem]); return; }
+      const sections = [lockItem, [
         { label: 'Select All', onClick: selectAllLayers },
         { label: 'Copy', onClick: () => { activeLayer = layer; copyLayers(); } },
       ]];
-      if (layerClipboard.length) sections[0].push({ label: 'Paste', onClick: pasteLayers });
-      window.KairoService.openContextMenu(e.clientX, e.clientY, sections);
+      if (layerClipboard.length) sections[1].push({ label: 'Paste', onClick: pasteLayers });
+      window.KairoService.openContextMenu(e.clientX, e.clientY, sections.filter(s => s.length));
     });
 
     el.appendChild(row);
@@ -2791,13 +2804,13 @@ function tsMarqueeEnd() {
   if (!m) return;
   if (!m.armed) {
     // Just a click on the background: select it, as before.
-    if (m.bgLayer && activeLayer !== m.bgLayer) { activeLayer = m.bgLayer; multiSelectedLayerIds = new Set(); renderLayersList(); renderProps(); }
+    if (m.bgLayer && !m.bgLayer.locked && activeLayer !== m.bgLayer) { activeLayer = m.bgLayer; multiSelectedLayerIds = new Set(); renderLayersList(); renderProps(); }
     renderPreview();
     return;
   }
   const b = m.box;
   const hit = (activeLook?.layers || []).filter(l => {
-    if (l.visible === false || (l.type === 'background' && !l.pos) || tsCoversCanvas(l)) return false;
+    if (l.visible === false || l.locked || (l.type === 'background' && !l.pos) || tsCoversCanvas(l)) return false;
     const p = l.pos || measurePos(l);
     const h = p.h > 0 ? p.h : tsEffectiveH(l, p);
     return p.x < b.x + b.w && p.x + p.w > b.x && p.y < b.y + b.h && p.y + h > b.y;
@@ -3315,6 +3328,13 @@ function tsSyncPosInputs(layer) {
 // Selection outline + drag/resize wiring for a rendered preview element.
 function tsDecorateLayerEl(div, layer, draggable) {
   div.dataset.layerId = layer.id;
+  // Locked: the canvas can't select, drag or resize it; clicks go through to what's under it. It
+  // can still be chosen in Layers (shown with a dashed outline, no handles) and changed in the panel.
+  if (layer.locked) {
+    div.style.pointerEvents = 'none';
+    if (activeLayer === layer || multiSelectedLayerIds.has(layer.id)) div.classList.add('ts-el-locked');
+    return;
+  }
   div.style.cursor = draggable ? 'move' : 'pointer';
   div.addEventListener('mousedown', (e) => {
     if (e.target.classList && e.target.classList.contains('ts-handle')) return;
@@ -3455,10 +3475,18 @@ function tsToggleMultiSelect(layer) {
 // and the Align toolbar. multiSelectedLayerIds is the complete selection
 // whenever 2+ are selected; otherwise it's just activeLayer alone.
 function tsSelectedLayers() {
+  // Locked layers are never moved, nudged, resized or aligned.
   if (multiSelectedLayerIds.size) {
-    return (activeLook.layers || []).filter(l => multiSelectedLayerIds.has(l.id));
+    return (activeLook.layers || []).filter(l => multiSelectedLayerIds.has(l.id) && !l.locked);
   }
-  return activeLayer ? [activeLayer] : [];
+  return activeLayer && !activeLayer.locked ? [activeLayer] : [];
+}
+// Lock or unlock layers (the Layers row's padlock, its menu, ⇧⌘L).
+function setLayersLocked(layers, locked) {
+  layers.filter(l => l && l !== baseBgLayer()).forEach(l => { if (locked) l.locked = true; else delete l.locked; });
+  up();
+  renderLayersList();
+  renderProps();
 }
 
 // Lines up every selected layer against the OUTER bounding box of the
@@ -4536,6 +4564,7 @@ function diffLayerOverride(baseLayer, curLayer) {
     if (JSON.stringify(cur) !== JSON.stringify(base)) ov[k] = cur ? deepClone(cur) : null;
   });
   if (curLayer.visible === false) ov.visible = false; // only the hidden case is ever stored; visible is the assumed default
+  if (curLayer.locked) ov.locked = true;              // likewise a lock on this slide's copy of a theme layer
   return ov;
 }
 function sameGraphic(a, b) {
@@ -4574,7 +4603,18 @@ function writeItemSlideStyleFromSynthetic() {
   // no sense for a slide with no base theme to diff against — the real
   // imported layers would silently never actually update.
   if (item.type === 'slides' && item.blocks?.[slideIndex]?.layers) {
-    item.blocks[slideIndex].layers = deepClone(activeLook.layers || []);
+    const block = item.blocks[slideIndex];
+    const next = deepClone(activeLook.layers || []);
+    // A sermon slide changed by hand keeps its own styling when its deck's look changes; a change
+    // to a part every slide shares (footer, label, number, rule, background) offers to go on all.
+    if (block.gen && JSON.stringify(next) !== JSON.stringify(block.layers)) {
+      block.gen.edited = true;
+      const S = window.KairoSermonSlides;
+      // Only parts that other slides have too are offered.
+      const changes = item.sermon && S ? S.commonChanges(block.layers, next).filter(c => S.sharedWith(item, c.id, slideIndex) > 0) : [];
+      if (changes.length) offerApplyToAll(item, slideIndex, changes);
+    }
+    block.layers = next;
     window.KairoService?.saveService?.();
     return;
   }
@@ -5016,10 +5056,21 @@ function renderBgProps(panel, layer) {
   // radius (the other shapes have their own edges and ignore it).
   if (layer.pos) {
     const isRect = (layer.shape || 'rect') === 'rect';
-    panel.appendChild(section('style', 'Shape', fieldRow([
+    const each = Array.isArray(layer.corners);
+    const rows = [fieldRow([
       shapeKindPicker(layer.shape || 'rect', v => { layer.shape = v; up(); renderProps(); }),
-      isRect && numField('Corners', layer.radius || 0, { min: 0, max: 200, unit: 'px', onChange: v => { layer.radius = v ?? 0; up(); } }),
-    ])));
+      isRect && !each && numField('Corners', layer.radius || 0, { min: 0, max: 400, unit: 'px', onChange: v => { layer.radius = v ?? 0; up(); } }),
+    ])];
+    if (isRect) {
+      rows.push(fieldRow([toggleField('Each corner', each, on => {
+        if (on) layer.corners = [0, 1, 2, 3].map(() => layer.radius || 0); else { layer.radius = Math.max(...layer.corners); delete layer.corners; }
+        up(); renderProps();
+      }, 'Round each corner by its own amount')]));
+      if (each) rows.push(fieldRow(['Top left', 'Top right', 'Bottom right', 'Bottom left'].map((name, i) =>
+        numField(name.split(' ').map(w => w[0].toUpperCase()).join(''), layer.corners[i] || 0, { min: 0, max: 400, title: name,
+          onChange: v => { layer.corners = layer.corners.map((c, j) => (j === i ? (v ?? 0) : c)); up(); } }))));
+    }
+    panel.appendChild(section('style', 'Shape', ...rows));
   }
 
   // Fill: its kind, then what that kind needs — a colour and its opacity; a
@@ -5046,6 +5097,38 @@ function renderBgProps(panel, layer) {
     rows.push(fieldRow([colorField(layer.color, v => { layer.color = v; up(); })], { cols: 2 }));
   }
   panel.appendChild(section('style', 'Fill', ...rows));
+  if (!layer.pos) return;
+
+  // Stroke: a line around the shape, its colour and width.
+  // A new stroke starts in a colour that shows against the fill (dark on a light shape, white on a dark one).
+  const fillHex = /^#[0-9a-f]{6}$/i.test(layer.color || '') ? layer.color : '#000000';
+  const fillLight = (parseInt(fillHex.slice(1, 3), 16) * 299 + parseInt(fillHex.slice(3, 5), 16) * 587 + parseInt(fillHex.slice(5, 7), 16) * 114) / 1000 > 150;
+  const stroke = layer.stroke || { enabled: false, color: fillLight ? '#1B1B1F' : '#FFFFFF', width: 4 };
+  panel.appendChild(section('style', 'Stroke', ...[
+    fieldRow([toggleField('Stroke', !!stroke.enabled, on => { layer.stroke = { ...stroke, enabled: on }; up(); renderProps(); })]),
+    stroke.enabled && fieldRow([
+      colorField(stroke.color, v => { layer.stroke = { ...(layer.stroke || stroke), color: v }; up(); }, 'Stroke colour'),
+      numField('Width', stroke.width, { min: 1, max: 60, unit: 'px', onChange: v => { layer.stroke = { ...(layer.stroke || stroke), width: v ?? 1 }; up(); } }),
+    ])].filter(Boolean)));
+
+  // Shadow: a drop shadow under the shape — colour and strength, then blur and offset.
+  const drop = layer.drop || { enabled: false, color: '#000000', opacity: 45, blur: 40, x: 0, y: 20 };
+  const setDrop = (patch) => { layer.drop = { ...(layer.drop || drop), ...patch }; up(); };
+  panel.appendChild(section('style', 'Shadow', ...[
+    fieldRow([toggleField('Shadow', !!drop.enabled, on => { layer.drop = { ...drop, enabled: on }; up(); renderProps(); })]),
+    drop.enabled && colorOpacityRow(drop.color, v => setDrop({ color: v }), drop.opacity, v => setDrop({ opacity: v })),
+    drop.enabled && fieldRow([
+      numField('Blur', drop.blur, { min: 0, max: 200, onChange: v => setDrop({ blur: v ?? 0 }) }),
+      numField('X', drop.x, { min: -200, max: 200, title: 'Horizontal offset', onChange: v => setDrop({ x: v ?? 0 }) }),
+      numField('Y', drop.y, { min: -200, max: 200, title: 'Vertical offset', onChange: v => setDrop({ y: v ?? 0 }) }),
+    ])].filter(Boolean)));
+
+  // Liquid glass: what's behind shows frosted through the shape (its fill becomes a faint tint).
+  panel.appendChild(section('style', 'Glass', ...[
+    fieldRow([toggleField('Liquid glass', !!layer.glass, on => { if (on) layer.glass = true; else delete layer.glass; up(); renderProps(); },
+      'Frost what is behind the shape, with a bright edge and sheen')]),
+    layer.glass && fieldRow([numField('Frost', layer.glassBlur ?? 22, { min: 0, max: 80, unit: 'px', title: 'How much what is behind is blurred',
+      onChange: v => { layer.glassBlur = v ?? 0; up(); } })], { cols: 2 })].filter(Boolean)));
 }
 
 // The Canvas isn't text, so its Style tab shows Text/Color inert rather than
@@ -5981,11 +6064,55 @@ function renderPPProps(panel, layer) {
   renderLayoutProps(panel, layer);
 }
 
+// A second way to bind a theme's text to scripture: by the layer's name. A text layer named
+// "Verse" shows the verse, "Reference" its reference, "Translation" the verse translated (and
+// "Countdown" the timer), the same as choosing it under Shows. Renaming it to anything else makes
+// it typed text again, if its name was what bound it. Themes only: a slide's own layers keep theirs.
+const NAME_BINDINGS = [
+  [/^(verse|verses|scripture|scripture text|bible|bible text|bible verse|lyrics|words)$/i, 'verse'],
+  [/^(reference|ref|scripture reference|verse reference|bible reference)$/i, 'reference'],
+  [/^(translation|translated|translated verse|verse translated|second language)$/i, 'verse_translated'],
+  [/^(countdown|timer)$/i, 'timer'],
+];
+function bindingForName(name) {
+  const n = String(name || '').trim();
+  return (NAME_BINDINGS.find(([re]) => re.test(n)) || [])[1] || null;
+}
+function applyNameBinding(layer) {
+  if (tsMode === 'item' || layer.type !== 'text') return false;
+  const b = bindingForName(layer.name);
+  if (b && layer.binding !== b) { layer.binding = b; layer.boundByName = true; return true; }
+  if (!b && layer.boundByName) { layer.binding = 'custom'; delete layer.boundByName; return true; }
+  return false;
+}
+// Under the name of a theme's typed-text layer: name it to show scripture there.
+function nameBindingPrompt(layer, onPick) {
+  const row = document.createElement('div');
+  row.className = 'ts-name-bind';
+  row.append(Object.assign(document.createElement('span'), { textContent: 'Show scripture here? Name it' }));
+  for (const name of ['Verse', 'Reference', 'Translation']) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'ts-name-bind-chip';
+    b.textContent = name;
+    b.addEventListener('click', () => onPick(name));
+    row.appendChild(b);
+  }
+  return row;
+}
+
 function renderTextProps(panel, layer) {
   const nameInp = document.createElement('input');
   nameInp.type = 'text'; nameInp.className = 'ts-prop-input';
   nameInp.value = layer.name; nameInp.placeholder = 'Layer name';
-  nameInp.addEventListener('input', () => { layer.name = nameInp.value; renderLayersList(); });
+  nameInp.addEventListener('input', () => {
+    layer.name = nameInp.value;
+    if (applyNameBinding(layer)) up();
+    renderLayersList();
+  });
+  // The panel shows the new binding once the name is finished (redrawing it while typing would
+  // take the field away from under the cursor).
+  nameInp.addEventListener('change', () => renderProps());
 
   const customInp = document.createElement('input');
   customInp.type = 'text'; customInp.className = 'ts-prop-input';
@@ -5996,6 +6123,11 @@ function renderTextProps(panel, layer) {
 
   panel.appendChild(section('layout', 'Layer', ...[
     prop('Name', nameInp),
+    tsMode !== 'item' && layer.binding === 'custom' && nameBindingPrompt(layer, (name) => {
+      layer.name = name;
+      applyNameBinding(layer);
+      up(); renderLayersList(); renderProps();
+    }),
     prop('Shows', makeSelect([
       { label: 'The verse or lyrics', value: 'verse' },
       { label: 'The reference', value: 'reference' },
@@ -6018,7 +6150,7 @@ function renderTextProps(panel, layer) {
         { label: 'The message from the booth', value: 'mon-message' },
       ] : []),
       { label: 'Text you type', value: 'custom' },
-    ], layer.binding, v => { layer.binding = v; up(); renderProps(); })),
+    ], layer.binding, v => { layer.binding = v; delete layer.boundByName; up(); renderProps(); })),
     customRow,
     // The language a translated verse shows in — the theme's, set on the
     // layer that shows it (a playlist item or the Bible tab can still pick
@@ -6155,6 +6287,7 @@ const newLookBtn   = document.getElementById('new-look-btn');
 // Theme Studio is a full in-window view, not an overlay: opening it swaps the
 // dashboard out so the canvas gets the whole content region.
 function openThemeStudio() {
+  nameBackButtons();
   // The top-nav "Theme Studio" tab stays clickable even while item mode's
   // modal is showing (same modal, both reachable independent of each
   // other) — without this, tsMode would stay 'item' while the left panel
@@ -6217,10 +6350,24 @@ function closeThemeStudio() {
 // render paths. Adding new layers IS supported in item mode (per-slide custom
 // text/shape/image layers, stored on the item) — Text, Shape, Image and
 // Library all stay visible.
+// Back names where it goes: the top-bar tab whose screen is waiting behind the editor.
+function nameBackButtons() {
+  const where = document.querySelector('.tb-group .tb-studio-btn.active:not(#looks-btn) span')?.textContent.trim();
+  for (const id of ['ts-back-btn', 'ts-item-back-btn']) {
+    const btn = document.getElementById(id);
+    if (!btn) continue;
+    btn.querySelector('span').textContent = where || 'Back';
+    btn.setAttribute('aria-label', where ? `Back to ${where}` : 'Back');
+    btn.title = where ? `Back to ${where}` : 'Back';
+  }
+}
+
 function toggleItemModeChrome(isItem) {
+  nameBackButtons();
   document.querySelector('#ts-pane-themes .ts-col-header')?.classList.toggle('hidden', isItem);
   document.getElementById('ts-item-mode-header')?.classList.toggle('hidden', !isItem);
   document.getElementById('ts-item-theme-header')?.classList.toggle('hidden', !isItem);
+  refreshSermonPane();
   // Canvas Size is a whole-theme concern too, same as Layout — both are
   // renderSlideLayout's, which (like the rest of the "nothing selected"
   // panel) only ever renders outside item mode; nothing to toggle here now
@@ -6545,6 +6692,7 @@ function buildSyntheticLook(item, slideIndex) {
       else if (ov[k] !== undefined) layer[k] = deepClone(ov[k]);
     });
     if (ov.visible === false) layer.visible = false;
+    if (ov.locked) layer.locked = true;
   });
   // Item/slide-specific layers the operator added in Full-scale edit — not
   // part of the theme, so they're stored whole (see writeItemSlideStyleFromSynthetic)
@@ -6563,6 +6711,7 @@ function buildSyntheticLook(item, slideIndex) {
 function renderItemSlidesList() {
   const el = document.getElementById('looks-list');
   if (!el || !tsItemCtx || !window.KairoService) return;
+  refreshSermonPane();
   el.innerHTML = '';
   const { item, slideIndex, baseLook } = tsItemCtx;
   const slides = window.KairoService.slidesFor(item);
@@ -6727,6 +6876,8 @@ function renderItemSlidesList() {
     label.textContent = String(i + 1) + '.';
     thumb.appendChild(label);
   });
+  // A slide whose words run past a text box is tagged (service.js markClipped).
+  el.querySelectorAll('.ts-item-slide-thumb').forEach(t => window.KairoService.markClipped(t));
 
   // "+ Add Slide" — a Timer segment's own affordance for building a
   // storyboard, right where the slides it creates will actually show up.
@@ -6820,10 +6971,77 @@ function duplicateTimerScene(item, index) {
 // Mirrors selectLook()'s fan-out (swap the data-source, reset history, then
 // the same five renders) — the established idiom in this file for "point
 // the whole engine at something else."
+// "Apply this change to all slides?" for a sermon deck's shared parts: a bar over the canvas until
+// answered or another slide is opened. Changes made while it's up gather into one offer.
+let tsApplyAll = null;   // { item, slideIndex, changes, bar }
+function offerApplyToAll(item, slideIndex, changes) {
+  if (tsApplyAll && (tsApplyAll.item !== item || tsApplyAll.slideIndex !== slideIndex)) hideApplyToAll();
+  if (!tsApplyAll) {
+    const host = document.querySelector('.ts-tool-float')?.parentElement;
+    if (!host) return;
+    const bar = document.createElement('div');
+    bar.className = 'ts-apply-all';
+    bar.setAttribute('role', 'status');
+    const text = document.createElement('span');
+    const btn = (label, cls) => Object.assign(document.createElement('button'), { type: 'button', className: `modal-btn ${cls}`, textContent: label });
+    const one = btn('Just this slide', 'secondary');
+    const later = btn('This and later slides', 'secondary');
+    const all = btn('All slides', 'primary');
+    bar.append(text, one, later, all);
+    host.appendChild(bar);
+    tsApplyAll = { item, slideIndex, changes: [], bar, text, all, later };
+    const apply = (scope) => {
+      const { item: it, slideIndex: at, changes: ch } = tsApplyAll;
+      window.KairoSermonSlides.applyCommon(it, ch, at, scope);
+      window.KairoService?.saveService?.();
+      hideApplyToAll();
+      renderItemSlidesList();
+    };
+    all.addEventListener('click', () => apply('all'));
+    later.addEventListener('click', () => apply('after'));
+    one.addEventListener('click', hideApplyToAll);
+  }
+  // The latest value of each part wins.
+  for (const c of changes) {
+    const had = tsApplyAll.changes.find(x => x.id === c.id);
+    if (had) Object.assign(had.props, c.props); else tsApplyAll.changes.push({ ...c, props: { ...c.props } });
+  }
+  const names = [...new Set(tsApplyAll.changes.map(c => c.name))];
+  const what = names.length > 2 ? `${names.length} parts` : names.length > 1 ? `${names[0]} and ${names[1]}` : names[0];
+  tsApplyAll.text.textContent = `Use this ${what} change on other slides too?`;
+  // Nothing comes after the last slide.
+  tsApplyAll.later.hidden = slideIndex >= item.blocks.length - 1;
+}
+function hideApplyToAll() {
+  tsApplyAll?.bar.remove();
+  tsApplyAll = null;
+}
+
+// A sermon deck's own panel under the Look tab (sermon_slides_ui.js): its look, background, footer
+// and contents, and this slide's background. A change there makes the deck's slides anew (slides
+// edited by hand are kept), so the editor is pointed at the new slides without saving the old one.
+function refreshSermonPane() {
+  const host = document.getElementById('ts-sermon-pane');
+  if (!host) return;
+  const item = tsMode === 'item' && tsItemCtx ? tsItemCtx.item : null;
+  // A sermon deck has its own look; the item's theme picker means nothing for it.
+  document.getElementById('ts-item-theme-header')?.classList.toggle('hidden', tsMode !== 'item' || !!item?.sermon);
+  if (!item?.sermon || !window.KairoSermonSlides?.mountPanel) { host.hidden = true; host.replaceChildren(); return; }
+  window.KairoSermonSlides.mountPanel(host, tsItemCtx, (index) => {
+    window.KairoService?.saveService?.();
+    tsItemCtx.slideIndex = index;
+    resetItemHistory();
+    activeLayer = null; multiSelectedLayerIds.clear();
+    activeLook = buildSyntheticLook(tsItemCtx.item, index);
+    renderItemSlidesList(); renderLayersList(); renderPreview(); renderProps();
+  });
+}
+
 function selectItemSlide(index) {
   if (!tsItemCtx) return;
   tsCommitActiveEdit(null);
   settleItemEdits();   // the slide being left keeps its last edit
+  hideApplyToAll();
   tsItemCtx.slideIndex = index;
   resetItemHistory();
   activeLayer = null; multiSelectedLayerIds.clear();
@@ -6961,7 +7179,7 @@ document.addEventListener('keydown', (e) => {
 // the layer row's right-click menu (renderLayersList) call one
 // implementation each, not two.
 function selectAllLayers() {
-  multiSelectedLayerIds = new Set(activeLook.layers.map(l => l.id));
+  multiSelectedLayerIds = new Set(activeLook.layers.filter(l => !l.locked).map(l => l.id));
   renderLayersList();
 }
 function copyLayers() {
@@ -7018,6 +7236,18 @@ function duplicateLayers() {
   up(); renderProps(); renderThemeCanvasSizeSelect();
 }
 
+// ⇧⌘L / Shift+Ctrl+L locks or unlocks the selection (Figma's shortcut); in item mode too.
+document.addEventListener('keydown', (e) => {
+  if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.key.toLowerCase() !== 'l') return;
+  if (looksModal?.classList.contains('hidden') || !activeLook) return;
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
+  const layers = multiSelectedLayerIds.size ? activeLook.layers.filter(l => multiSelectedLayerIds.has(l.id)) : (activeLayer ? [activeLayer] : []);
+  if (!layers.length) return;
+  e.preventDefault();
+  setLayersLocked(layers, !layers.every(l => l.locked));
+});
+
 // Delete/Backspace for the selected layer(s) — same gesture as removing a
 // file in Finder or a shape in Figma. Not folded into the Cmd/Ctrl block
 // above since this needs no modifier key, and (unlike select-all/copy/paste)
@@ -7031,11 +7261,11 @@ document.addEventListener('keydown', (e) => {
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
   if (multiSelectedLayerIds.size) {
     e.preventDefault();
-    const ids = [...multiSelectedLayerIds];
+    const ids = [...multiSelectedLayerIds].filter(id => !activeLook.layers.find(l => l.id === id)?.locked);   // locked layers stay
     multiSelectedLayerIds = new Set();
     activeLayer = null;
     ids.forEach(id => deleteLayer(activeLook.layers.find(l => l.id === id)));
-  } else if (activeLayer) {
+  } else if (activeLayer && !activeLayer.locked) {
     e.preventDefault();
     deleteLayer(activeLayer);
   }
@@ -8417,6 +8647,14 @@ const importLookFile = document.getElementById('import-look-file');
 // Back leaves Theme Studio for the dashboard (the header's Themes label made way for it).
 document.getElementById('ts-back-btn')?.addEventListener('click', () => closeThemeStudio());
 document.getElementById('import-look-btn')?.addEventListener('click', () => importLookFile?.click());
+// New stays in the header; Import and Export are used rarely, so they wait in this menu.
+document.getElementById('theme-more-btn')?.addEventListener('click', (e) => {
+  const r = e.currentTarget.getBoundingClientRect();
+  window.KairoService?.openContextMenu(r.right, r.bottom + 2, [[
+    { label: 'Import theme', onClick: () => document.getElementById('import-look-btn')?.click() },
+    { label: 'Export this theme', onClick: () => document.getElementById('export-look-btn')?.click() },
+  ]]);
+});
 importLookFile?.addEventListener('change', async () => {
   const file = importLookFile.files?.[0];
   importLookFile.value = '';

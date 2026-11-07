@@ -54,7 +54,7 @@
     .dm-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 14px 16px; }
     .dm-name { font-size: 13px; font-weight: 600; color: var(--text); }
     .dm-text .setting-hint { margin: 3px 0 0; }
-    .dm-armed { margin: 0; padding: 0 16px 12px; font-size: 11.5px; color: var(--orange); }
+    .dm-armed { margin: 0; padding: 0 16px 12px; font-size: 11.5px; color: var(--notice); }
     .dm-armed[hidden] { display: none; }`;
   document.head.appendChild(style);
   const nav = document.getElementById('settings-nav');

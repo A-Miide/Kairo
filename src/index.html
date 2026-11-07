@@ -402,32 +402,18 @@
                  in Full-scale edit (the Theme-Studio-style canvas) instead. -->
             <div class="cs-live-queue-section cs-live-queue-main hidden" id="svc-fullscreen">
                 <div class="cs-section-header svc-header">
-                    <button id="svc-back-to-stack" class="ts-back-btn svc-back-btn">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><polyline points="15 18 9 12 15 6"/></svg>
+                    <button id="svc-back-to-stack" class="ts-nav-back svc-back-btn" aria-label="Back to Slides">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
                         <span>Slides</span>
                     </button>
-                    <input type="text" id="svc-fs-title" class="ts-name-input svc-fs-title" placeholder="Section title…">
-
-                    <!-- Slides: a field per slide. Text: the whole section as one document
-                         (a blank line starts a slide, [Chorus] starts a group). -->
-                    <div class="svc-mode" id="svc-flow-mode" role="group" aria-label="Edit as">
-                        <button type="button" data-mode="slides" class="is-on" aria-pressed="true">Slides</button>
-                        <button type="button" data-mode="text" aria-pressed="false">Text</button>
-                    </div>
-
-                    <div class="svc-delim" id="svc-delim-group">
-                        <span class="svc-delim-label">Lines</span>
-                        <input type="number" id="svc-delim-input" class="svc-delim-input" min="0" value="2" title="Lines per slide — 0 keeps each slide/stanza as-is">
-                    </div>
+                    <div id="svc-fs-title" class="svc-fs-title"></div>
 
                     <div class="svc-header-right">
-                        <button id="svc-item-theme-btn" class="ls-icon-btn ls-icon-btn-labeled svc-theme-icon-btn svc-card-theme-btn" title="Theme for this section">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="13.5" r="2.5"/><circle cx="8.5" cy="13.5" r="2.5"/><path d="M12 21a9 9 0 1 1 0-18"/></svg>
-                            <span>Theme</span>
-                        </button>
-                        <button id="svc-item-fullscale-btn" class="ls-icon-btn ls-icon-btn-labeled" title="Open the layout/position canvas for this section">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="9" y1="10" x2="9" y2="20"/></svg>
-                            <span>Edit</span>
+                        <!-- View (Slides: a field per slide; Text: the whole section as one document),
+                             Lines per slide, Theme and Edit are all in this one menu. -->
+                        <button id="svc-actions-btn" class="ls-icon-btn ls-icon-btn-labeled" title="View, lines per slide, theme and design for this section" aria-haspopup="menu">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
+                            <span>Actions</span>
                         </button>
                     </div>
                 </div>
@@ -528,11 +514,10 @@
                  handle) — see initMediaBinResize/toggleMediaBin in
                  service.js. -->
             <div class="media-bin hidden" id="media-bin">
-                <div class="media-bin-splitter" id="media-bin-splitter" title="Drag to resize"></div>
+                <div class="media-bin-splitter" id="media-bin-splitter" title="Drag to resize · double-click to line up with the transcript"></div>
                 <div class="media-bin-header">
                     <span class="cs-section-label">Media Bin</span>
                     <select id="media-bin-folder" class="media-bin-folder" title="Show one folder" aria-label="Folder"></select>
-                    <span class="media-bin-hint">Click an item to send it to the display</span>
                     <!-- How media comes on screen (media_transition.js): Fade unless chosen otherwise. -->
                     <select id="media-bin-transition" class="media-bin-folder" title="How pictures and videos come on screen" aria-label="Media transition">
                         <option value="fade">Transition: Fade</option>
@@ -643,7 +628,7 @@
                          was working correctly. -->
                     <div class="live-screen-media hidden" id="slide-preview-media"></div>
                     <div class="live-screen-inner">
-                        <div class="live-screen-text" id="preview-verse-text">Nothing on display</div>
+                        <div class="live-screen-text" id="preview-verse-text">Nothing on screen</div>
                         <div class="live-screen-ref" id="preview-verse-ref"></div>
                     </div>
                     <!-- Song section annotation (Verse/
@@ -731,27 +716,25 @@
                 </div>
             </div>
 
-            <!-- Monitor message — a line from the booth to every Monitor output
-                 (display.html's confidence view). Shown only while there is
-                 one (refreshMonitorMessageBar, app_outputs.js). -->
+            <!-- Monitor message — a line from the booth to the stage: Monitor outputs only
+                 (owner, 2026-11-05), shown while there is one (refreshMonitorMessageBar,
+                 app_outputs.js). With more than one Monitor, a picker at the right says which.
+                 While a message is up, it shows above the box with its own ✕ to take it down. -->
             <div class="monitor-message-bar hidden" id="monitor-message-bar">
-                <!-- Clear sits up here, right above Show — the box keeps Show
-                     as its only button (owner, 2026-10-01). -->
                 <div class="monitor-message-head">
-                    <span class="monitor-message-label">Message</span>
-                    <select id="monitor-message-to" class="monitor-message-to" aria-label="Who sees the message" title="Who sees the message">
-                        <option value="monitors">Monitors</option>
-                        <option value="screens">Audience screens</option>
-                        <option value="all">Everywhere</option>
-                    </select>
-                    <button type="button" id="monitor-message-clear" class="rs-clear-btn" title="Take the message down" disabled>
-                        <svg width="8" height="8" viewBox="0 0 12 12" fill="none"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
-                        <span>Clear</span>
+                    <span class="monitor-message-label">Alerts to monitors</span>
+                    <select id="monitor-message-to" class="setting-input monitor-message-to" aria-label="Which monitor sees the alert" hidden></select>
+                </div>
+                <div class="monitor-message-live" id="monitor-message-live" hidden>
+                    <span class="monitor-message-live-where" id="monitor-message-live-where">On monitors:</span>
+                    <span class="monitor-message-live-text" id="monitor-message-live-text"></span>
+                    <button type="button" id="monitor-message-clear" class="monitor-message-clear" title="Take the alert off the monitors" aria-label="Take the alert off the monitors">
+                        <svg width="10" height="10" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M1 1l10 10M11 1L1 11" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
                     </button>
                 </div>
                 <div class="monitor-message-row">
                     <input type="text" id="monitor-message-input" class="monitor-message-input" placeholder="e.g. 5 minutes left" maxlength="200" autocomplete="off" aria-label="Message">
-                    <button type="button" id="monitor-message-send" class="rs-layer-clear-btn monitor-message-btn" title="Show the message" aria-label="Show the message">
+                    <button type="button" id="monitor-message-send" class="rs-layer-clear-btn monitor-message-btn" title="Show the alert" aria-label="Show the alert">
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13"/><path d="M22 2l-7 20-4-9-9-4 20-7z"/></svg>
                     </button>
                 </div>
@@ -848,9 +831,13 @@
                 </button>
             </div>
             <div class="modal-body" style="display:block;padding:16px 20px;">
+                <!-- The theme sits beside the title, the same Theme button as the Bible bar's. -->
                 <div class="setting-group">
-                    <label class="setting-label">Title</label>
-                    <input type="text" id="ac-title" class="setting-input">
+                    <label class="setting-label" for="ac-title">Title</label>
+                    <div class="ac-title-row">
+                        <input type="text" id="ac-title" class="setting-input">
+                        <span id="ac-theme-group" class="ac-theme-slot"><select id="ac-theme" class="setting-input" aria-label="Theme" hidden></select></span>
+                    </div>
                 </div>
                 <div class="setting-group" id="ac-playlist-group">
                     <label class="setting-label">Playlist</label>
@@ -879,9 +866,13 @@
                 <div class="setting-group hidden" id="ac-import-note">
                     <p class="setting-hint" id="ac-import-note-text"></p>
                 </div>
-                <div class="setting-group" id="ac-theme-group">
-                    <label class="setting-label">Theme</label>
-                    <select id="ac-theme" class="setting-input"></select>
+                <!-- A document that reads as a sermon outline: its own designed deck (sermon_slides.js). -->
+                <div class="ac-sermon hidden" id="ac-sermon">
+                    <div class="ac-sermon-head">
+                        <div><b>This reads as a sermon outline</b><span id="ac-sermon-detail"></span></div>
+                        <button type="button" class="modal-btn primary" id="ac-sermon-make">Make sermon slides</button>
+                    </div>
+                    <div class="ac-sermon-choices" id="ac-sermon-layouts"></div>
                 </div>
                 <div class="setting-group" id="ac-delim-group">
                     <label class="setting-label">Slide structure</label>
@@ -1076,17 +1067,18 @@
                              (and Shift+Z or Ctrl+Y for redo) already works
                              globally across both Theme Studio and Full-scale
                              edit, see the keydown handler near themeUndo. -->
-                        <button id="import-look-btn" class="ts-add-btn ts-add-btn-compact" title="Import a theme — .kairotheme, .protheme (ProPresenter), or plain .json">
+                        <button id="import-look-btn" hidden class="ts-add-btn ts-add-btn-compact" title="Import a theme — .kairotheme, .protheme (ProPresenter), or plain .json" aria-label="Import theme">
                             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                            <span>Import</span>
                         </button>
-                        <button id="export-look-btn" class="ts-add-btn ts-add-btn-compact" title="Export current theme (.kairotheme)">
+                        <button id="export-look-btn" hidden class="ts-add-btn ts-add-btn-compact" title="Export current theme (.kairotheme)" aria-label="Export theme">
                             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                            <span>Export</span>
                         </button>
                         <button id="new-look-btn" class="ts-add-btn ts-add-btn-compact" title="New theme">
                             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
                             <span>New</span>
+                        </button>
+                        <button id="theme-more-btn" class="ts-add-btn ts-add-btn-compact ts-add-btn-icon" title="Import or export a theme" aria-label="More theme actions" aria-haspopup="menu">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="1.8"/><circle cx="12" cy="12" r="1.8"/><circle cx="19" cy="12" r="1.8"/></svg>
                         </button>
                         </div>
                         <input type="file" id="import-look-file" accept="application/json,.json,.kairotheme,.protheme" style="display:none">
@@ -1163,6 +1155,14 @@
                                 <button class="ts-tool-btn" id="ts-add-qr-btn" data-tool-name="QR code" title="Add a QR code — type a link, and it goes on the slide as a picture" aria-label="Add a QR code">
                                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="14" y="3.5" width="6.5" height="6.5" rx="1"/><rect x="3.5" y="14" width="6.5" height="6.5" rx="1"/><path d="M14 14h2.5v2.5H14zM18 18h2.5v2.5H18zM14 18.5v2M18.5 14h2"/></svg><span class="ts-tool-label">QR</span>
                                 </button>
+                                <!-- Editing a playlist item: its theme, the same Theme button as the Bible bar's. -->
+                                <span class="ts-tool-theme hidden" id="ts-item-theme-header">
+                                    <span class="ts-tool-sep" aria-hidden="true"></span>
+                                    <button id="ts-item-theme-picker-btn" class="ls-icon-btn ls-icon-btn-labeled svc-card-theme-btn ts-tool-theme-btn" title="Choose the theme this slide uses" aria-haspopup="listbox">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="13.5" r="2.5"/><circle cx="8.5" cy="13.5" r="2.5"/><path d="M12 21a9 9 0 1 1 0-18"/></svg>
+                                        <span id="ts-item-theme-picker-label">Theme</span>
+                                    </button>
+                                </span>
                             </div>
                             <div class="ts-tool-tooltip" id="ts-tool-tooltip"></div>
                         </div>
@@ -1195,16 +1195,8 @@
                          base theme without leaving Full-scale edit. Hidden in
                          normal Theme Studio (theme picking lives in the
                          Themes list instead). -->
-                    <div class="ts-item-mode-header ts-props-section hidden" id="ts-item-theme-header">
-                        <div class="ts-field-row" style="--cols: 1">
-                            <label class="ts-field ts-labeled-field">
-                                <span class="ts-field-label">Theme</span>
-                                <button id="ts-item-theme-picker-btn" class="ts-select-btn" title="Choose the theme this item uses">
-                                    <span id="ts-item-theme-picker-label">Theme</span>
-                                </button>
-                            </label>
-                        </div>
-                    </div>
+                    <!-- A sermon deck's own choices (sermon_slides_ui.js): look, background, contents. -->
+                    <div class="ts-sermon-pane" id="ts-sermon-pane" hidden></div>
 
                     <!-- Timer segments only (item.type === 'timer', see
                          renderItemTimerControls in app.js) — the countdown's
@@ -1275,6 +1267,10 @@
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h.01M10 8h.01M14 8h.01M18 8h.01M6 12h.01M10 12h.01M14 12h.01M18 12h.01M8 16h8"/></svg>
                     <span>Shortcuts</span>
                 </button>
+                <button class="settings-nav-item" data-pane="downloads">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    <span>Downloads</span>
+                </button>
                 <button class="settings-nav-item" data-pane="help">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 2-3 4"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
                     <span>Help</span>
@@ -1298,7 +1294,7 @@
                 <div class="settings-section">
                     <div class="settings-section-label lang-step">Sound input</div>
                     <div class="setting-group">
-                        <label class="setting-label" for="audio-source-settings">Listen to</label>
+                        <label class="setting-label" for="audio-source-settings">Input</label>
                         <div class="au-input-row">
                             <select id="audio-source-settings" class="setting-input">
                                 <option value="">Loading devices…</option>
@@ -1319,7 +1315,7 @@
                 </div>
 
                 <div class="settings-section">
-                    <div class="settings-section-label lang-step">Speech engine</div>
+                    <div class="settings-section-head"><div class="settings-section-label lang-step">Speech engine</div><span class="au-service-lang">Service language: <b id="au-service-lang-name">English</b> <button type="button" class="lang-link" id="au-service-lang-change">Change</button></span></div>
                     <!-- Each engine's card holds everything it needs (the key, the model), shown
                          whether or not it is the one chosen; choosing is the card's own header. -->
                     <div class="toggle-group au-engines" id="speech-engine-toggle">
@@ -1330,17 +1326,20 @@
                             </button>
                             <div class="au-engine-body" id="deepgram-key-group">
                                 <input type="password" id="deepgram-key" class="setting-input bi-field" placeholder="Paste your Deepgram key" aria-label="Deepgram key">
-                                <p class="setting-hint">No key yet? <a href="https://console.deepgram.com/signup" target="_blank" rel="noopener">Get a free key</a>, with $200 of free credit to start.</p>
+                                <div class="au-free" id="deepgram-free">
+                                    <div class="free-badge"><b>$200</b><span>free credit, no card needed<br>&asymp; 350 hours of listening</span><a class="modal-btn primary" href="https://console.deepgram.com/signup" target="_blank" rel="noopener">Get my free key</a></div>
+                                </div>
                             </div>
                         </div>
                         <div class="au-engine">
                             <button class="toggle-btn" data-engine="browser">
                                 <span class="au-engine-title"><span class="au-dot" aria-hidden="true"></span>Offline</span>
-                                <span class="au-engine-sub">Works without internet or a key. A little less accurate.</span>
+                                <span class="au-engine-sub">Runs on this computer: no internet, no key.</span>
                             </button>
-                            <!-- The offline model is chosen by the language the preacher speaks, so it is
-                                 downloaded in Settings → Language; here, what's installed (app.js renderOfflineSummary). -->
+                            <!-- Both offline models, the one the service language needs marked, each downloadable
+                                 here (settings_language.js), the same rows as Language and Downloads. -->
                             <div class="au-engine-body" id="offline-summary-group">
+                                <div class="set-rows" id="offline-models"></div>
                                 <div id="offline-summary" class="lang-capability"></div>
                             </div>
                         </div>
@@ -1415,11 +1414,10 @@
                 <div class="bi-api-card" id="api-bible">
                     <div id="api-bible-signin">
                         <div class="bi-invite-title">Get Bibles free from API.Bible</div>
-                        <p class="setting-hint">A free API.Bible account gives your church 3 Bibles of its choice, like the NIV, NLT or the Message, plus dozens of free ones. Kairo downloads them so they work without internet.</p>
-                        <ol class="bi-steps">
-                            <li><a href="https://api.bible/sign-up" target="_blank" rel="noopener">Create a free account</a> and choose your Bibles there.</li>
-                            <li>Copy your API key and paste it here.</li>
-                        </ol>
+                        <!-- Spotlit like Deepgram's free credit in Audio (owner, 2026-11-05). -->
+                        <div class="au-free">
+                            <div class="free-badge"><b>3</b><span>Bibles of your choice, free<br>like the NIV, NLT or the Message</span><a class="modal-btn primary" href="https://api.bible/sign-up" target="_blank" rel="noopener">Get my free key</a></div>
+                        </div>
                         <div class="bi-row">
                             <input type="password" id="api-bible-key" class="setting-input bi-field" placeholder="Paste your API key" autocomplete="off" spellcheck="false" aria-label="API.Bible key">
                             <button type="button" id="api-bible-connect" class="setting-input btn-brand bi-btn">Connect</button>
@@ -1653,8 +1651,9 @@
                                 </ul>
                                 <p>Use <strong>+ New</strong> in the sidebar to create additional named playlists (e.g. one per service) — Default is just the one that's there from the start.</p>
                                 <p>Click any slide in an item to send it live; the currently-live slide is highlighted. Right-click a slide for more options (duplicate, delete, split, etc.).</p>
-                                <p><strong>Quick edit</strong> (right-click a song or deck) has two ways to edit. <strong>Slides</strong> gives a text field per slide: Shift+Enter splits a slide at the caret, and Backspace at the very start joins it onto the one before. <strong>Text</strong> shows the whole song or deck as one piece of writing, the easiest way to paste in or rework lyrics: a blank line starts a new slide, and a line like <code>[Chorus]</code> or <code>[Verse 2]</code> starts a part (in a deck, it names the next slide). The slides it makes are listed beside the text as you type, and each slide keeps its own theme.</p>
+                                <p><strong>Quick edit</strong> (right-click a song or deck, then Quick edit, or right-click one slide to open it at that slide) shows every slide as one line of its text, large, with the slide's number at the left and <strong>Send</strong> and a menu (⋯) at the right. A sermon slide also shows what it is (Title, Point 2 of 26, Section) and its scriptures under the words; click the scriptures to retype them, or choose <strong>Add scriptures</strong> in its menu. Shift+Enter or ⌘Enter splits a slide at the caret, and Backspace at the very start joins it onto the one before. The menu also duplicates, copies and deletes a slide. <strong>Actions</strong> at the top holds <strong>Edit as text</strong> (the whole song or deck as one piece of writing: a blank line starts a new slide, and a line like <code>[Chorus]</code> starts a part), <strong>Lines per slide</strong>, <strong>Theme</strong> and <strong>Edit design</strong>. To rename an item, double-click its name in the playlist.</p>
                                 <p>While Kairo is listening, slides follow along by themselves: a live song or sermon deck advances as it's sung or preached (the bar under the playlist shows <strong>Following</strong> and where it is), and a slide deck in the playlist comes up on its own when its first slide is said. When the slides move on while a scripture is on screen, the slide takes the screen back — the preacher has moved on. A slide that is itself scripture (the sermon's verses put on slides) is left to Bible detection, which puts the verse up as it's read. Click any slide to take over — following carries on from there. Stop listening and it stops.</p>
+                                <p><strong>Media Bin.</strong> Drag the Media Bin's top edge to make it taller or shorter; it keeps that height. Double-click the edge to line it up with the Live Transcript box again.</p>
                             </div>
                         </details>
 
@@ -1668,6 +1667,10 @@
                                 </ul>
                                 <p><strong>ProPresenter files are handled specially.</strong> Kairo auto-detects them and preserves the file's own design exactly as authored — fonts, colors, positions, images, layer structure — instead of reformatting it into a Kairo theme. The Add dialog shows a notice confirming this rather than asking you to pick a theme, since none is needed. A playlist file with several presentations imports all of them at once, each keeping its own original layout.</p>
                                 <p>A plain text/Word import instead asks how to split it into slides (by paragraph, or a fixed number of lines each) and which theme to render it with, since there's no original design to preserve.</p>
+                                <p><strong>Sermon slides.</strong> A Word file always offers <strong>Make sermon slides</strong>, and so does pasted text that reads like a sermon. Kairo reads numbered or lettered points (<code>1.</code> <code>1)</code> <code>I.</code> <code>A.</code> <code>Point 1:</code>), bullets and dashes, with the scriptures after a dash, in brackets or on the line below. A document with headings and no points becomes one point per heading, and a plain document becomes one slide per paragraph. The import window says how it was read; check the result in the slide editor, where <strong>In the deck</strong> lists every line (tick one to add it) and <strong>This slide</strong> can treat a line as a Point, Section or Introduction. Before making the deck, choose its <strong>Style</strong> and, beside it, its four <strong>Colours</strong> (background, second tone, text, accent: click one to open the colour picker, where you can also type its hex code).</p>
+                                <p><strong>Style</strong> opens one panel with a preview of your first point. Switch between <strong>Look</strong> (colours, fonts and background) and <strong>Layout</strong> (Left, Centred, Lower third, Split, Editorial, Statement, Card, Quote, Badge card, Worthy or Light); each is shown on your own words. What you pick is only tried out until you press <strong>Apply</strong>.</p>
+                                <p>The deck opens in the slide editor, where <strong>Style</strong> sits under <strong>Look</strong>. Every word is ordinary text: double-click it on the slide to change it, and its font and colour stay as they are. A slide you change by hand keeps its styling when the deck's look changes.</p>
+                                <p>Change a part that other slides have too (the footer, the card, a label, a ghost word, the background...) and Kairo asks where else it goes: <strong>Just this slide</strong>, <strong>This and later slides</strong>, or <strong>All slides</strong>. Its look and place carry; each slide keeps its own words (except the footer, the same everywhere). Sent to all slides, the change also stays when the deck's look changes. A slide whose words run past their box is tagged <strong>Cut off</strong> on its thumbnail, in the editor and in Edit; ghost words and quote marks are cropped on purpose and never tagged.</p>
                             </div>
                         </details>
 
@@ -1680,6 +1683,11 @@
                                 <p>The Multi-Language theme is a special split layout — the verse's own language on one side, a translated version on the other (see Multi-Language below).</p>
                                 <p><strong>Monitor layouts</strong> design what a Monitor output shows for whoever is up front. Start from <strong>New → New monitor layout</strong> or edit one of the two under <strong>Monitor layouts</strong>. A text layer's <strong>Shows</strong> can be what is on screen now, its reference, the next slide, the time of day, the countdown or the message from the booth; add backgrounds, logos and shapes like any theme. Pick it for a Monitor under <strong>Settings → Outputs</strong> (Layout); <strong>Built-in</strong> keeps the standard view. Monitor layouts never show up as themes for slides or verses.</p>
                                 <p><strong>Director themes</strong> (Director mode only, under <strong>Screens</strong>) are whole-screen designs for layouts: a background, frames and logos, a <strong>Video zone</strong> where the camera shows and a <strong>Content zone</strong> where slides and Bible verses show, each in its own theme. Add the zones with the two tools next to Image, or start from <strong>New → New Director theme</strong>. Put a verse text layer in a Director theme and it styles the verse itself instead of using a content zone.</p>
+                                <p><strong>Showing scripture by layer name.</strong> Besides choosing what a text layer shows under <strong>Shows</strong>, you can name it: a text layer named <strong>Verse</strong>, <strong>Reference</strong>, <strong>Translation</strong> or <strong>Countdown</strong> shows that. A layer of typed text offers the three names under its name, one click each. Rename it to anything else and it goes back to typed text.</p>
+                                <p><strong>Locking layers.</strong> Click the padlock beside a layer's eye in Layers (or right-click it, or press <kbd>⇧⌘L</kbd>) to lock it. A locked layer can't be clicked, dragged, resized, nudged, deleted or box-selected on the canvas, so you can work on what's above it without moving it; clicks go straight through to what's underneath. Choose it in Layers to change its settings in the panel. Click the padlock again to unlock.</p>
+                                <p><strong>Shapes.</strong> Under Style a shape has its kind and corners (one value, or <strong>Each corner</strong> on its own), its fill, a <strong>Stroke</strong> (colour and width), a <strong>Shadow</strong> (colour, strength, blur and offset) and <strong>Liquid glass</strong>, which frosts whatever is behind the shape.</p>
+                                <p><strong>Choosing a colour.</strong> Click any colour swatch to open the colour picker: drag in the shade square and along the hue bar, or type the colour's hex code (<code>#1E6BD6</code>, or the short <code>#16D</code>) or its R, G and B values. Where your system allows, the eyedropper picks a colour from anywhere on screen. Your last colours sit along the bottom for one-click reuse.</p>
+                                <p><strong>The Theme button.</strong> Wherever a theme is chosen (the Bible bar, a playlist item, the import step, the slide editor and each output in Settings → Outputs) it's the same <strong>Theme</strong> button: it shows a small preview of the chosen theme and opens the grouped list of themes with their previews.</p>
                             </div>
                         </details>
 
@@ -1853,17 +1861,15 @@
 
             <section class="settings-pane" data-pane="language">
             <!-- ── LANGUAGE ───────────────────────────────────────
-                 Two places to set up, then one optional extra:
-                 1 Listening: what the preacher speaks, and the one speech model it needs
-                   (downloaded here, beside the choice; never in Audio);
-                 2 Bible language: which Bible verses come from (all bundled);
-                 Second language: verses and slides in two languages at once (its slide
-                 translator downloads when picked). app_outputs.js renderLangCapability. -->
+                 One chain, each choice following from the one above (owner, 2026-11-05):
+                 1 what the preacher speaks; 2 how Kairo hears it (the Audio choice, with the
+                 offline model this language needs); 3 the Bible version shown and matched;
+                 4 slide translation, optional. settings_language.js; what it gives on the right. -->
+            <div class="lang-layout">
+            <div class="lang-chain">
             <div class="settings-section">
-                <div class="settings-section-label lang-step">Listening</div>
-                <div class="setting-row-2col">
-                    <div class="setting-group">
-                    <label class="setting-label" for="stt-language">Preacher speaks</label>
+                <div class="settings-section-label" data-n="1">The preacher speaks</div>
+                <div class="setting-group">
                     <select id="stt-language" class="setting-input">
                         <optgroup label="Citations and readings detected">
                                 <option value="en-US">English (US)</option>
@@ -1890,81 +1896,68 @@
                                 <option value="multi">Auto-detect (multilingual)</option>
                         </optgroup>
                             </select>
-                    <div class="lang-capability" id="lang-capability" aria-live="polite"></div>
-                    <!-- Offline model installer — shown only when "Offline" engine is selected.
-                         The startup bootstrap normally fetches this before the operator ever
-                         sees Settings; this panel is the manual fallback. -->
-                    <div class="setting-group" id="offline-installer-group" style="display:none;">
-                        
-                        <div id="offline-status-line" class="setting-status" style="font-size:12px;color:var(--text-3);margin-bottom:8px;">Checking…</div>
-                        <button id="offline-install-btn" class="setting-input btn-brand" style="cursor:pointer;display:none;">Download offline model for English (~465MB)</button>
-                        <div id="offline-progress-wrap" style="display:none;margin-top:6px;">
-                            <div style="background:var(--surface-2);height:6px;border-radius:3px;overflow:hidden;">
-                                <div id="offline-progress-bar" style="background:var(--accent);height:100%;width:0%;transition:width .2s;"></div>
-                            </div>
-                            <div id="offline-progress-text" style="font-size:11px;color:var(--text-3);margin-top:4px;">Starting…</div>
-                        </div>
-                    </div>
-
-                    <!-- Other spoken languages run on their own offline model
-                         (sherpa_installer.js MODELS.multi) — a second download,
-                         needed only when the Spoken language isn't English. -->
-                    <div class="setting-group" id="offline-multi-installer-group" style="display:none;">
-                        
-                        <div id="offline-multi-status-line" class="setting-status" style="font-size:12px;color:var(--text-3);margin-bottom:8px;">Checking…</div>
-                        <button id="offline-multi-install-btn" class="setting-input btn-brand" style="cursor:pointer;display:none;">Download offline model for other languages (~475MB)</button>
-                        <div id="offline-multi-progress-wrap" style="display:none;margin-top:6px;">
-                            <div style="background:var(--surface-2);height:6px;border-radius:3px;overflow:hidden;">
-                                <div id="offline-multi-progress-bar" style="background:var(--accent);height:100%;width:0%;transition:width .2s;"></div>
-                            </div>
-                            <div id="offline-multi-progress-text" style="font-size:11px;color:var(--text-3);margin-top:4px;">Starting…</div>
-                        </div>
-                        
-                    </div>
-
-                    </div>
-                <div class="setting-group">
-                    <label class="setting-label" for="custom-keyterms">Church vocabulary</label>
-                    <textarea id="custom-keyterms" class="setting-input" rows="3" placeholder="Pastor Mensah&#10;Grace Chapel&#10;Shiloh"></textarea>
-                        <p class="setting-hint">Names transcription may miss — your pastor, your church, local places. One per line, up to 40. Applies from the next Start Listening.</p>
-                    <!-- Names Kairo picked up from past services (vocabulary.rs):
-                         heard in 2+ services; the top 20 are passed to Deepgram
-                         as hints with the list above. app.js renderLearnedTerms. -->
-                    <div id="learned-keyterms" class="learned-terms" hidden>
-                        <span class="learned-terms-label">Learned from your services</span>
-                        <div class="learned-terms-list" id="learned-keyterms-list"></div>
-                    </div>
+                    <p class="setting-hint">What Kairo listens for, and how it reads a reference like &ldquo;Romans 8, verse 5&rdquo;.</p>
                 </div>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-label" data-n="2">Kairo hears it with</div>
+                <div class="setting-group">
+                    <div class="set-rows" id="lang-engine"></div>
+                    <p class="setting-hint">The same setting as Audio &rarr; Speech engine. If this language needs another offline model, it downloads here.</p>
                 </div>
             </div>
 
             <div class="settings-section" id="lang-screen-section">
-                <div class="settings-section-label lang-step">Bible language</div>
-                <select id="bible-language" hidden></select>
+                <div class="settings-section-label" data-n="3">Bible version</div>
                 <div class="setting-group">
-                    <label class="setting-label">Verses come from</label>
-                    <div class="lang-pills" id="lang-screen-pills"></div>
+                    <select id="lang-bible-version" class="setting-input" aria-label="Bible version"></select>
+                    <select id="bible-language" hidden></select>
+                    <p class="setting-hint">Shown on screen, and used to recognise verses read aloud. <button type="button" class="lang-link" id="lang-more-versions">Add more versions</button></p>
+                    <p class="setting-hint lang-mismatch" id="lang-bible-mismatch" hidden></p>
                     <details class="lang-sources"><summary>Bible sources</summary><p class="setting-hint scripture-credits" id="scripture-credits"></p></details>
                 </div>
             </div>
 
             <div class="settings-section">
-                <div class="settings-section-label">Second language <span class="lang-step-hint">Verses and slides in two languages at once.</span></div>
-                <select id="bible-translate-to-select" hidden><option value="">Off</option></select>
+                <div class="settings-section-label" data-n="4">Slide translation
+                    <span class="info-tip" tabindex="0" aria-describedby="slide-translation-tip">i<span class="info-tip-body" role="tooltip" id="slide-translation-tip"><b>Slide translation</b>Shows the service in a second language beside the first, on two-language themes such as Multi-Language. Verses come from a Bible in that language. Songs and slides are translated on this computer, after a one-time download.</span></span>
+                    <span class="lang-step-hint">Optional</span></div>
                 <div class="setting-group">
-                    <div class="lang-pills" id="lang-second-pills"></div>
-                    <div class="dl-list" id="second-lang-model" hidden></div>
+                    <select id="bible-translate-to-select" class="setting-input" aria-label="Slide translation language"><option value="">Off</option></select>
+                    <div class="set-rows" id="second-lang-model" hidden></div>
+                    <p class="setting-hint" id="second-lang-hint">Pick a language to show the service in two languages at once.</p>
                     <div class="lang-theme-tip" id="lang-theme-tip" hidden>
                         <span>Shows on screen with the Multi-Language theme.</span>
                         <button type="button" class="lang-link" id="lang-theme-tip-btn">Use Multi-Language theme</button>
                     </div>
                 </div>
             </div>
+            </div>
 
-            <details class="lang-sources lang-downloads" id="mt-model-group">
-                <summary>Manage downloads</summary>
-                <div id="mt-model-list" class="dl-list"></div>
-            </details>
+            <aside class="settings-section lang-preview" data-unnumbered>
+                <div class="settings-section-label">What this gives you</div>
+                <div class="lang-capability" id="lang-capability" aria-live="polite"></div>
+            </aside>
+            </div>
+            </section>
+
+            <section class="settings-pane" data-pane="downloads" data-unnumbered>
+            <!-- ── DOWNLOADS ── everything Kairo can download, per language, in one list
+                 (owner, 2026-11-05). Each is also offered where it's needed. settings_language.js. -->
+            <div class="dl-top"><p class="setting-hint">Everything Kairo can download. Each works offline once it&rsquo;s here.</p><span class="setting-hint" id="dl-space"></span></div>
+            <div class="settings-section">
+                <div class="settings-section-label">Listening <span class="lang-step-hint">Hears the preacher without internet. Not needed with Deepgram.</span></div>
+                <div class="setting-group"><div class="set-rows" id="dl-listening"></div></div>
+            </div>
+            <div class="settings-section">
+                <div class="settings-section-label">Slide translation <span class="lang-step-hint">One download per language, picked in Language &rarr; Slide translation. Verses don&rsquo;t need it.</span></div>
+                <div class="setting-group"><div class="set-rows" id="dl-translation"></div></div>
+            </div>
+            <div class="settings-section">
+                <div class="settings-section-label">Bibles <span class="lang-step-hint">Nine languages come with the app. Nothing to download.</span></div>
+                <div class="setting-group"><div class="set-rows" id="dl-bibles"></div></div>
+            </div>
             </section>
 
             <section class="settings-pane" data-pane="outputs">
@@ -2055,21 +2048,37 @@
          Every id the wizard logic (app.js) uses is kept. -->
     <div id="first-run-modal" class="onboarding hidden" role="dialog" aria-modal="true" aria-label="Welcome to Kairo">
         <div class="ob-backdrop"></div>
-        <div class="ob-spot" id="ob-spot" aria-hidden="true"></div>
         <div class="ob-shell">
             <header class="ob-top">
                 <div class="ob-brand" id="ob-brand"></div>
                 <div id="onboarding-progress" class="ob-progress" aria-hidden="true"></div>
-                <button id="close-first-run" class="ob-close" aria-label="Skip the tour">Skip</button>
             </header>
 
             <div class="ob-body">
                 <!-- 1 · What Kairo does -->
                 <section class="onboarding-step ob-step ob-welcome" data-step="0">
                     <div class="ob-copy">
-                        <p class="ob-hello" data-welcome-cycle><span class="obw-sr">Welcome to Kairo</span></p>
+                        <p class="ob-hellos" data-welcome-cycle><span class="obw-sr">Welcome to Kairo</span></p>
                         <h2 class="ob-title">Scripture on screen the moment it&rsquo;s spoken.</h2>
                         <p class="ob-lede">Kairo listens to the sermon and puts up the verse &mdash; in your theme, on every screen, online or off.</p>
+                        <!-- Required before anything else: the language sets what Kairo listens for, the
+                             model it needs and the Bible it matches (owner, 2026-11-05). The same choices as
+                             Settings → Language (ONBOARDING_MIRRORS, app.js). -->
+                        <div class="ob-service" role="group" aria-labelledby="ob-service-title">
+                            <p class="ob-service-title" id="ob-service-title">Your service <span>Needed to start</span></p>
+                            <div class="ob-field">
+                                <label for="first-run-language" class="ob-label">The preacher speaks</label>
+                                <select id="first-run-language" class="setting-input"></select>
+                            </div>
+                            <div class="ob-field">
+                                <label for="first-run-bible-version" class="ob-label">Bible version</label>
+                                <select id="first-run-bible-version" class="setting-input"></select>
+                            </div>
+                            <div class="ob-field">
+                                <label for="first-run-second-lang" class="ob-label">Slide translation <span class="ob-optional">optional</span></label>
+                                <select id="first-run-second-lang" class="setting-input"></select>
+                            </div>
+                        </div>
                     </div>
                     <!-- The feature reel: six short chapters, one idea each, played in
                          turn (onboarding_reel.js; styles.css "ob-reel"). Each chapter's
@@ -2098,19 +2107,19 @@
                                 <div class="obr-pills"><span>HDMI</span><span>NDI</span><span>Syphon</span><span>DeckLink SDI</span></div>
                             </div>
                             <!-- 3 · any Bible, by voice -->
-                            <div class="obr-scene obr-s4" data-hold="13500" data-title="Any Bible, by voice" data-sub="Say &ldquo;switch to the NIV&rdquo; and the screen follows. Put a second language beside it &mdash; eight built in.">
+                            <div class="obr-scene obr-s4" data-hold="8500" data-title="Any Bible, by voice" data-sub="Say &ldquo;switch to the NIV&rdquo; and the screen follows. Put French, Spanish or Portuguese beside it.">
                                 <div class="obr-card obr-s4-say"><div class="obr-bars"><i></i><i></i><i></i><i></i><i></i></div><p>&hellip;let&rsquo;s <mark>switch to the NIV</mark></p></div>
                                 <div class="obr-screen obr-theme obr-s4-screen">
                                     <div class="obr-s4-col">
                                         <div class="obr-swap"><p class="obr-kjv">For God so loved the world, that he gave his only begotten Son&hellip;</p><p class="obr-niv">For God so loved the world that he gave his one and only Son&hellip;</p></div>
                                         <div class="obr-swap"><b class="obr-kjv">John 3:16 &middot; KJV</b><b class="obr-niv">John 3:16 &middot; NIV</b></div>
                                     </div>
-                                    <div class="obr-s4-col obr-yo"><div class="obr-langs"><div><p>Nítorí Ọlọ́run fẹ́ aráyé tó bẹ́ẹ̀ gẹ́ẹ́, tí ó fi ọmọ rẹ̀ kan ṣoṣo fún ni&hellip;</p><b>John 3:16 &middot; Yorùbá</b></div><div><p>Nʼihi na Chineke hụrụ ụwa nʼanya, nke a mere o jiri nye Ọkpara ọ mụrụ naanị ya&hellip;</p><b>John 3:16 &middot; Igbo</b></div><div><p>Gama Allah ya ƙaunaci duniya sosai har ya ba da wanda yake Ɗaya kuma Makaɗaicin Ɗansa&hellip;</p><b>John 3:16 &middot; Hausa</b></div><div><p>Maana Mungu aliupenda ulimwengu hivi hata akamtoa Mwana wake wa pekee&hellip;</p><b>John 3:16 &middot; Kiswahili</b></div><div><p>Car Dieu a tant aimé le monde qu’il a donné son Fils unique&hellip;</p><b>John 3:16 &middot; Français</b></div><div><p>Porque de tal manera amó Dios al mundo, que ha dado á su Hijo unigénito&hellip;</p><b>John 3:16 &middot; Español</b></div><div><p>Porque Deus amou o mundo de tal maneira, que deu o seu Filho unigenito&hellip;</p><b>John 3:16 &middot; Português</b></div><div><p>Also hat GOtt die Welt geliebet, daß er seinen eingeborenen Sohn gab&hellip;</p><b>John 3:16 &middot; Deutsch</b></div></div></div>
+                                    <div class="obr-s4-col obr-second"><div class="obr-langs"><div lang="fr"><p>Car Dieu a tant aim&eacute; le monde qu&rsquo;il a donn&eacute; son Fils unique&hellip;</p><b>John 3:16 &middot; Fran&ccedil;ais</b></div><div lang="pt"><p>Porque Deus amou o mundo de tal maneira, que deu o seu Filho unigenito&hellip;</p><b>John 3:16 &middot; Portugu&ecirc;s</b></div><div lang="es"><p>Porque de tal manera am&oacute; Dios al mundo, que ha dado &aacute; su Hijo unig&eacute;nito&hellip;</p><b>John 3:16 &middot; Espa&ntilde;ol</b></div></div></div>
                                 </div>
                             </div>
                             <!-- 4 · bring your library -->
-                            <div class="obr-scene obr-s5" data-title="Bring your library" data-sub="ProPresenter, PowerPoint and Word come in looking as they did. 286 hymns built in.">
-                                <div class="obr-files"><span><b>.pro</b>ProPresenter</span><span><b>.pptx</b>PowerPoint</span><span><b>.docx</b>Word</span><span><b>&#9835;</b>286 hymns</span></div>
+                            <div class="obr-scene obr-s5" data-title="Bring your library" data-sub="ProPresenter, EasyWorship, PowerPoint and Word come in looking as they did. 286 hymns built in.">
+                                <div class="obr-files"><span><b>.pro</b>ProPresenter</span><span><b>.ewsx</b>EasyWorship</span><span><b>.pptx</b>PowerPoint</span><span><b>.docx</b>Word</span><span><b>&#9835;</b>286 hymns</span></div>
                                 <div class="obr-grid"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
                             </div>
                             <!-- 5 · sermon notes -->
@@ -2137,145 +2146,109 @@
                     </div>
                 </section>
 
-                <!-- 2 · How it listens (functional) -->
-                <section class="onboarding-step ob-step hidden" data-step="1">
+                <!-- 2 · Listening: the one setup Kairo needs before it can start -->
+                <section class="onboarding-step ob-step ob-feature hidden" data-step="1">
                     <div class="ob-copy">
-                        <p class="ob-eyebrow">Step 1 of 2</p>
-                        <h2 class="ob-title">How should Kairo listen?</h2>
-                        <p class="ob-lede">You can change this any time in Settings &rarr; Audio.</p>
-                    </div>
-                    <div class="toggle-group ob-choices" id="first-run-engine-toggle">
-                        <button class="toggle-btn ob-choice active" data-engine="deepgram">
-                            <span class="ob-choice-badge">Most accurate</span>
-                            <span class="ob-choice-name">Deepgram</span>
-                            <span class="ob-choice-desc">Cloud transcription. Needs internet and a free Deepgram key.</span>
-                        </button>
-                        <button class="toggle-btn ob-choice" data-engine="browser">
-                            <span class="ob-choice-badge">No internet</span>
-                            <span class="ob-choice-name">Offline</span>
-                            <span class="ob-choice-desc">Runs on this computer. One download, no account, no cost.</span>
-                        </button>
-                    </div>
-                    <div class="ob-setup">
-                        <div id="first-run-deepgram-group">
-                            <label for="first-run-deepgram-key" class="ob-label">Deepgram API key</label>
-                            <input id="first-run-deepgram-key" type="password" class="setting-input" autocomplete="off" spellcheck="false" placeholder="Paste your Deepgram API key" />
-                            <a href="https://console.deepgram.com/signup" target="_blank" rel="noopener" class="ob-link">Get a free key &rarr;</a>
-                        </div>
-                        <div id="first-run-offline-group" style="display:none;">
-                        <label style="display:block;margin-bottom:6px;font-size:12px;font-weight:600;">Offline Model</label>
-                        <div id="first-run-offline-status-line" style="font-size:12px;color:var(--text-3);margin-bottom:8px;">Checking…</div>
-                        <button id="first-run-offline-install-btn" class="setting-input btn-brand" style="cursor:pointer;display:none;width:100%;">Download offline model</button>
-                        <div id="first-run-offline-progress-wrap" style="display:none;margin-top:6px;">
-                            <div style="background:var(--surface-2);height:6px;border-radius:3px;overflow:hidden;">
-                                <div id="first-run-offline-progress-bar" style="background:var(--accent);height:100%;width:0%;transition:width .2s;"></div>
+                        <p class="ob-eyebrow">Listening <span class="ob-need">Needed to start</span></p>
+                        <h2 class="ob-title">Kairo listens to the sermon.</h2>
+                        <p class="ob-lede">It catches a verse when it&rsquo;s cited, read aloud or quoted, and puts it on screen in your theme. Press <strong>Start Listening</strong> at the top when the service begins.</p>
+                        <!-- Everything this step asks for, in one panel like step 1's (owner, 2026-11-05):
+                             what Kairo hears first, then how it turns that into words. -->
+                        <div class="ob-service" role="group" aria-labelledby="ob-listen-title">
+                            <p class="ob-service-title" id="ob-listen-title">How Kairo hears <span>Needed to start</span></p>
+                            <div class="ob-field">
+                                <label for="first-run-mic" class="ob-label">Input</label>
+                                <select id="first-run-mic" class="setting-input"><option value="">Finding inputs&hellip;</option></select>
                             </div>
-                            <div id="first-run-offline-progress-text" style="font-size:11px;color:var(--text-3);margin-top:4px;">Starting…</div>
+                            <div class="ob-field">
+                                <span class="ob-label">Speech</span>
+                                <div class="toggle-group ob-seg" id="first-run-engine-toggle" role="group" aria-label="Speech engine">
+                                    <button class="toggle-btn active" data-engine="deepgram">Deepgram<small>Most accurate</small></button>
+                                    <button class="toggle-btn" data-engine="browser">Offline<small>No internet</small></button>
+                                </div>
+                            </div>
+                            <div class="ob-field" id="first-run-deepgram-group">
+                                <label for="first-run-deepgram-key" class="ob-label">Deepgram key<a href="https://console.deepgram.com/signup" target="_blank" rel="noopener" class="ob-link">Get a free key &rarr;</a></label>
+                                <input id="first-run-deepgram-key" type="password" class="setting-input" autocomplete="off" spellcheck="false" placeholder="Paste your Deepgram key" />
+                            </div>
+                            <div class="ob-field" id="first-run-offline-group" hidden>
+                                <span class="ob-label">Offline model</span>
+                                <div class="set-rows" id="first-run-model"></div>
+                            </div>
+                            <p id="onboarding-speech-warning" class="ob-service-note hidden">No Deepgram key or offline model yet. You can finish this any time in Settings &rarr; Audio before the service.</p>
                         </div>
-                        <p style="margin:10px 0 0;font-size:12px;line-height:1.5;color:var(--text-dim,#aaa);">
-                            Runs entirely on this computer — no internet, no API key. Lower accuracy than Deepgram.
-                        </p>
                     </div>
-                        <p id="onboarding-speech-warning" class="hidden" style="margin:12px 0 0;padding:8px 10px;background:rgba(255,180,60,0.1);border:1px solid rgba(255,180,60,0.3);border-radius:6px;font-size:12px;line-height:1.5;color:var(--text-2);">
-                        You haven't set up a Deepgram key or downloaded the offline model yet —
-                        you can finish this anytime in Settings → Language before starting a session.
-                    </p>
+                    <div class="ob-visual ob-listen">
+                        <div class="ob-heard"><span class="ob-wave" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span><p>&hellip;turn with me to <mark>Romans 8:28</mark></p><span class="ob-heard-tag">Heard</span></div>
+                        <img class="ob-pic" src="tour/tour-listen-output.jpg" alt="Romans 8:28 on the main output, a moment after it was said" loading="lazy">
                     </div>
                 </section>
 
-                <!-- 3 · The standout features -->
-                <section class="onboarding-step ob-step hidden" data-step="2">
+                <!-- 3 · Bibles and languages -->
+                <section class="onboarding-step ob-step ob-feature hidden" data-step="2">
                     <div class="ob-copy">
-                        <p class="ob-eyebrow">Made for the whole room</p>
+                        <p class="ob-eyebrow">Bibles and languages <span class="ob-need">Optional</span></p>
+                        <h2 class="ob-title">Every Bible your church reads.</h2>
+                        <p class="ob-lede">Ten are built in, in nine languages. Add the NIV, NLT and more free through API.Bible; they keep working offline.</p>
+                        <div class="ob-service" role="group" aria-labelledby="ob-bibles-title">
+                            <p class="ob-service-title" id="ob-bibles-title">More versions <span class="is-quiet">Optional</span></p>
+                            <div class="ob-field">
+                                <label for="first-run-api-bible-key" class="ob-label">API.Bible key<a href="https://api.bible/sign-up" target="_blank" rel="noopener" class="ob-link">Get a free key &rarr;</a></label>
+                                <input id="first-run-api-bible-key" type="password" class="setting-input" autocomplete="off" spellcheck="false" placeholder="Paste your API.Bible key" />
+                            </div>
+                        </div>
+                    </div>
+                    <div class="ob-visual">
+                        <div class="ob-bi" aria-hidden="true">
+                            <div><p>For God so loved the world, that he gave his only begotten Son&hellip;</p><b>John 3:16 &middot; KJV</b></div>
+                            <div lang="es"><p>Porque de tal manera am&oacute; Dios al mundo, que ha dado &aacute; su Hijo unig&eacute;nito&hellip;</p><b>John 3:16 &middot; Espa&ntilde;ol</b></div>
+                        </div>
+                        <div class="ob-pills"><span>KJV</span><span>BSB</span><span>Yor&ugrave;b&aacute;</span><span>Igbo</span><span>Hausa</span><span>Kiswahili</span><span>Fran&ccedil;ais</span><span>Espa&ntilde;ol</span><span>Portugu&ecirc;s</span><span>Deutsch</span><span>+ NIV, NLT and more via API.Bible</span></div>
+                    </div>
+                </section>
+
+                <!-- 4 · Screens -->
+                <section class="onboarding-step ob-step ob-feature hidden" data-step="3">
+                    <div class="ob-copy">
+                        <p class="ob-eyebrow">Screens <span class="ob-need">Set up any time</span></p>
                         <h2 class="ob-title">One verse. Every screen. Its own look.</h2>
+                        <p class="ob-lede">Projector, livestream and lobby each get their own theme from the same verse. Watch them all at once from the Monitor.</p>
+                        <div class="ob-chips"><span>HDMI</span><span>NDI</span><span>Syphon</span><span>Spout</span><span>DeckLink</span><span>OBS</span></div>
+                        <button type="button" id="ob-add-screen" class="ob-action"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>Add a screen</button>
+                        <p class="ob-hint">Or later, in Settings &rarr; Outputs.</p>
                     </div>
-                    <div class="ob-tiles">
-                        <div class="ob-tile">
-                            <img class="ob-shot" src="tour/tour-outputs.jpg" alt="The theme picker for an output, each theme with a small preview" loading="lazy">
-                            <h3>Many outputs, each with its own theme</h3>
-                            <p>Projector, lobby, livestream over NDI or Syphon, and Blackmagic DeckLink &mdash; give every output a different theme, all fed by the same verse.</p>
-                        </div>
-                        <div class="ob-tile">
-                            <div class="ob-art ob-art-bi" aria-hidden="true"><b><em>For God so loved&hellip;</em></b><b><em>Car Dieu a tant aim&eacute;&hellip;</em></b></div>
-                            <h3>Multi-language, multi-theme</h3>
-                            <p>Show the verse in two languages side by side, on a theme built for it. Slide text translates on this computer.</p>
-                        </div>
-                        <div class="ob-tile">
-                            <img class="ob-shot" src="tour/tour-monitor.jpg" alt="The monitoring panel showing the live verse, with the transition controls under it" loading="lazy">
-                            <h3>Monitor: see every output at once</h3>
-                            <p>Open it in its own window and watch what each screen is showing, live, from the sound desk.</p>
-                        </div>
+                    <div class="ob-visual ob-stack">
+                        <img class="ob-pic ob-pic-a" src="tour/tour-outputs.jpg" alt="The theme picker for an output, each theme with a small preview" loading="lazy">
+                        <img class="ob-pic ob-pic-b" src="tour/tour-monitor.jpg" alt="The Monitor showing every output at once" loading="lazy">
                     </div>
                 </section>
 
-                <!-- 3 · What's inside -->
-                <section class="onboarding-step ob-step hidden" data-step="3">
+                <!-- 5 · Songs and slides -->
+                <section class="onboarding-step ob-step ob-feature hidden" data-step="4">
                     <div class="ob-copy">
-                        <p class="ob-eyebrow">What&rsquo;s inside</p>
-                        <h2 class="ob-title">Fits how your church already works.</h2>
+                        <p class="ob-eyebrow">Songs and slides <span class="ob-need">Optional</span></p>
+                        <h2 class="ob-title">Bring what you already have.</h2>
+                        <p class="ob-lede">Songs, schedules and slides come in looking as they did. 286 hymns are built in, and sermon notes are ready when the sermon ends.</p>
+                        <div class="ob-chips ob-files"><span><b>.pro</b>ProPresenter</span><span><b>.ewsx</b>EasyWorship</span><span><b>.pptx</b>PowerPoint</span><span><b>.docx</b>Word</span><span><b>&#9835;</b>286 hymns</span></div>
+                        <button type="button" id="ob-import-now" class="ob-action"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>Import now</button>
+                        <p class="ob-hint">Or later, from + Add content.</p>
                     </div>
-                    <div class="ob-tiles">
-                        <div class="ob-tile">
-                            <div class="ob-art ob-art-pro" aria-hidden="true"><i></i><i></i><i></i></div>
-                            <h3>Your ProPresenter library</h3>
-                            <p>Bring in .pro files, bundles, playlists and themes &mdash; slides keep their look.</p>
-                        </div>
-                        <div class="ob-tile">
-                            <div class="ob-art ob-art-import" aria-hidden="true"><b></b><i></i><i></i></div>
-                            <h3>Import anything</h3>
-                            <p>Word, PowerPoint or pasted text. Headings start slides; line breaks stay.</p>
-                        </div>
-                        <div class="ob-tile">
-                            <div class="ob-art ob-art-lang" aria-hidden="true" data-welcome-cycle></div>
-                            <h3>Every language in the room</h3>
-                            <p>Ten Bibles built in, including the KJV, the BSB, Yoruba, Igbo and Hausa, plus the NIV, NLT and more free through API.Bible &mdash; all working offline.</p>
-                        </div>
+                    <div class="ob-visual">
+                        <img class="ob-pic" src="tour/tour-songs.jpg" alt="The Songs tab with the built-in hymns" loading="lazy">
                     </div>
                 </section>
 
-                <!-- 4 · Production: cameras, streaming, overlays -->
-                <section class="onboarding-step ob-step hidden" data-step="4">
+                <!-- 6 · Production: everything here stays off until it's turned on -->
+                <section class="onboarding-step ob-step ob-feature hidden" data-step="5">
                     <div class="ob-copy">
-                        <p class="ob-eyebrow">When you&rsquo;re ready for more</p>
+                        <p class="ob-eyebrow">Production <span class="ob-need">For when you&rsquo;re ready</span></p>
                         <h2 class="ob-title">Cameras, the live stream and the extras.</h2>
+                        <p class="ob-lede">All of these stay off until you turn them on, so the screen stays simple on your first Sunday.</p>
                     </div>
-                    <div class="ob-tiles">
-                        <div class="ob-tile">
-                            <div class="ob-art ob-art-dir" aria-hidden="true"><i></i><i></i><b></b></div>
-                            <h3>Director mode</h3>
-                            <p>Cameras and inputs, Preview and Output, layouts that frame the verse beside the camera. Turn it on in Settings when you need it.</p>
-                        </div>
-                        <div class="ob-tile">
-                            <div class="ob-art ob-art-live" aria-hidden="true"><span>&#9679; LIVE</span><i></i><i></i><i></i></div>
-                            <h3>Go live, everywhere at once</h3>
-                            <p>Stream what the screen shows to YouTube, Facebook, Twitch or any RTMP server, with the sound from your desk.</p>
-                        </div>
-                        <div class="ob-tile">
-                            <div class="ob-art ob-art-ovl" aria-hidden="true"><i></i><b></b></div>
-                            <h3>Overlays and background music</h3>
-                            <p>A logo or badge over every screen, and music that plays on its own while slides and scripture change.</p>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- 5 · Ready: the real controls, spotlit -->
-                <section class="onboarding-step ob-step hidden" data-step="5">
-                    <div class="ob-copy">
-                        <p class="ob-eyebrow">Step 2 of 2</p>
-                        <h2 class="ob-title">You&rsquo;re ready.</h2>
-                        <p class="ob-lede">Pick the input that hears the preacher, then press <strong>Start Listening</strong> &mdash; up there.</p>
-                    </div>
-                    <div class="ob-setup">
-                        <label for="first-run-mic" class="ob-label">Microphone or audio input</label>
-                        <select id="first-run-mic" class="setting-input"><option value="">Finding inputs&hellip;</option></select>
-                    </div>
-                    <!-- Bibles beyond the ones that ship: the church's own free API.Bible account
-                         (bible_import.js connects the key when the tour is saved). -->
-                    <div class="ob-setup ob-bibles">
-                        <label for="first-run-api-bible-key" class="ob-label">Your church's Bibles <span class="ob-optional">optional</span></label>
-                        <p class="ob-bibles-lede">Get the NIV, NLT, the Message and more free from API.Bible. They download to work without internet.</p>
-                        <input id="first-run-api-bible-key" type="password" class="setting-input" autocomplete="off" spellcheck="false" placeholder="Paste your API.Bible key" />
-                        <a href="https://api.bible/sign-up" target="_blank" rel="noopener" class="ob-link">Get a free key &rarr;</a>
+                    <div class="ob-visual ob-rows">
+                        <div class="ob-row"><span class="ob-row-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3" y="6" width="13" height="12" rx="2"/><path d="M16 10l5-3v10l-5-3z"/></svg></span><div><b>Director mode</b><p>Cameras and inputs with Preview and Output, and layouts that put the verse beside the camera.</p></div><span class="ob-row-where">In Settings</span></div>
+                        <div class="ob-row"><span class="ob-row-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M6.3 6.3a8 8 0 0 0 0 11.4M17.7 6.3a8 8 0 0 1 0 11.4"/></svg></span><div><b>Go live</b><p>Stream what the screen shows to YouTube, Facebook or any RTMP server, with the sound from your desk.</p></div><span class="ob-row-where">In Settings</span></div>
+                        <div class="ob-row"><span class="ob-row-ic" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/></svg></span><div><b>Overlays and background music</b><p>A logo over every screen, and music that keeps playing while slides change.</p></div><span class="ob-row-where">In Settings</span></div>
                     </div>
                 </section>
             </div>
@@ -2284,7 +2257,7 @@
                 <button id="first-run-skip" class="ob-skip-link">Skip tour</button>
                 <button id="onboarding-back" class="modal-btn secondary hidden">Back</button>
                 <button id="onboarding-next" class="modal-btn primary">Get started</button>
-                <button id="first-run-save" class="modal-btn primary hidden">Start using Kairo</button>
+                <button id="first-run-save" class="modal-btn primary hidden">Finish</button>
             </footer>
         </div>
     </div>
@@ -2393,7 +2366,9 @@
             var keyGrp = document.getElementById('first-run-deepgram-group');
             if (!group) return;
             function apply(value) {
-                if (keyGrp) keyGrp.style.display = value === 'browser' ? 'none' : '';
+                if (keyGrp) keyGrp.hidden = value === 'browser';
+                var offGrp = document.getElementById('first-run-offline-group');
+                if (offGrp) offGrp.hidden = value !== 'browser';
             }
             group.addEventListener('toggle-change', function(e) { apply(e.detail.value); });
             var active = group.querySelector('.toggle-btn.active');
@@ -2584,6 +2559,7 @@
     </script>
 
     <script src="client_common.js"></script>
+    <script src="color_picker.js"></script>
     <script src="settings_store.js"></script>
     <script src="output_transitions.js"></script>
     <script src="problems.js"></script>
@@ -2606,6 +2582,8 @@
     <script src="backgrounds/backgrounds.js"></script>
     <script src="motion_graphics.js"></script>
     <script src="pp_render.js"></script>
+    <script src="sermon_slides.js"></script>
+    <script src="sermon_slides_ui.js"></script>
     <script src="announcement_pack.js"></script>
     <script src="content_browser.js"></script>
     <script src="hymns.js"></script>
@@ -2631,6 +2609,7 @@
     <script src="global_search.js"></script>
     <script src="onboarding_reel.js"></script>
     <script src="bible_import.js"></script>
+    <script src="settings_language.js"></script>
     <script src="dev_reload.js"></script>
 </body>
 </html>

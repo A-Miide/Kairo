@@ -4354,6 +4354,14 @@
       "addedBy": "read against the transcript (2026-10-16): \"dead four days\"; a phrase of the verse in passing"
     },
     {
+      "book": "John",
+      "chapter": 11,
+      "verse": 40,
+      "kind": "quote",
+      "startMs": 1620135,
+      "note": "2026-11-05 owner confirmed: real quote missing from the key: \"If you believe, you see the glory of God\" (offline transcription: 27.0 min too)"
+    },
+    {
       "book": "Romans",
       "chapter": 8,
       "kind": "citation",

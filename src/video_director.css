@@ -2,7 +2,7 @@
 .vsrc-root { display: flex; flex-direction: column; gap: 22px; }
 .vsrc-add-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .vsrc-add-row .setting-input { flex: 1 1 220px; min-width: 0; }
-.vsrc-error { color: var(--orange); }
+.vsrc-error { color: var(--notice); }
 .vsrc-split { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(240px, 1.2fr); gap: 16px; align-items: start; }
 @media (max-width: 760px) { .vsrc-split { grid-template-columns: 1fr; } }
 .vsrc-list { display: flex; flex-direction: column; gap: 6px; }
@@ -45,7 +45,7 @@
 
 /* The top-bar switch. */
 #video-director-btn.active { color: var(--text); background: var(--selected-dim); }
-#video-director-btn.vd-armed { color: var(--orange); }
+#video-director-btn.vd-armed { color: var(--notice); }
 
 /* ── Director mode screen. Every rule is under body.video-director. ───────── */
 /* Possible Matches and Message sit in the Scripture column (see the end of this file); the rest of the basic screen's side panels are not here. */
@@ -186,7 +186,7 @@ body.video-director #current-display-card .is-live .lvc-ref::before { content: '
 .vd-overlay.is-on { border-color: var(--red); color: var(--text); }
 /* The Media Bin's own cards, moved into the dock. */
 .vd-media-body #media-bin { display: flex !important; flex-direction: column; flex: 1 1 100%; width: 100%; min-width: 0; height: auto !important; border: 0; background: none; padding: 0; }
-.vd-media-body #media-bin .media-bin-splitter, .vd-media-body #media-bin .media-bin-hint, .vd-media-body #media-bin .media-bin-size, .vd-media-body #media-bin #media-bin-hide-btn, .vd-media-body #media-bin .cs-section-label { display: none; }
+.vd-media-body #media-bin .media-bin-splitter, .vd-media-body #media-bin .media-bin-size, .vd-media-body #media-bin #media-bin-hide-btn, .vd-media-body #media-bin .cs-section-label { display: none; }
 .vd-media-body #media-bin .media-bin-header { padding: 0 0 4px; min-height: 0; }
 .vd-media-body #media-bin .media-bin-strip { overflow: visible; display: flex; flex-wrap: wrap; gap: 8px; }
 

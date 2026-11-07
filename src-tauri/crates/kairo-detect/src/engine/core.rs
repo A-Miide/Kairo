@@ -66,6 +66,9 @@ pub struct Candidate {
     pub corrected_from: Option<VerseId>,
     /// The speech the path found it in, when that's a stretch of its own.
     pub source: Option<String>,
+    /// A stretch of speech found word for word in this verse alone, as the search box would find it:
+    /// offered even where nothing in the sermon points at it (paths.rs unique_phrase).
+    pub unique_phrase: bool,
 }
 
 impl Candidate {
@@ -83,6 +86,7 @@ impl Candidate {
             returning: false,
             corrected_from: None,
             source: None,
+            unique_phrase: false,
         }
     }
 

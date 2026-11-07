@@ -39,11 +39,62 @@ function applyShapeGeometry(div, layer, radius) {
   } else if (shape === 'diamond') {
     div.style.borderRadius = '0';
     div.style.clipPath = 'polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)';
+  } else if (Array.isArray(layer.corners) && layer.corners.length === 4) {
+    // Each corner its own rounding: top-left, top-right, bottom-right, bottom-left.
+    div.style.borderRadius = layer.corners.map(r => (typeof radius === 'function' ? radius(r) : (r * radius).toFixed(1) + 'px')).join(' ');
   } else if (layer.radius) {
     div.style.borderRadius = typeof radius === 'function'
       ? radius(layer.radius)
       : (layer.radius * radius).toFixed(1) + 'px';
   }
+  // A shape cut to its own outline: points as [x%, y%] of its box (a fold of light, a corner plane).
+  if (Array.isArray(layer.clip) && layer.clip.length >= 3) {
+    div.style.borderRadius = '0';
+    div.style.clipPath = `polygon(${layer.clip.map(([x, y]) => `${x}% ${y}%`).join(', ')})`;
+  }
+  const px = (n) => (typeof radius === 'function' ? radius(n) : (n * radius).toFixed(1) + 'px');
+  if (layer.glass) applyGlass(div, layer, radius);
+  // Shadows under the shape: its own drop shadow (Style → Shadow), and a lifted card's.
+  const shadows = [];
+  const d = layer.drop;
+  if (d && d.enabled) {
+    const n = parseInt(String(d.color || '#000000').replace('#', '').slice(0, 6), 16) || 0;
+    shadows.push(`${px(d.x || 0)} ${px(d.y || 0)} ${px(d.blur || 0)} rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${(d.opacity ?? 45) / 100})`);
+  }
+  if (layer.lift) shadows.push(`0 ${px(36)} ${px(80)} -${px(10)} rgba(0,0,0,0.45)`, `0 ${px(8)} ${px(20)} rgba(0,0,0,0.18)`);
+  if (shadows.length) div.style.boxShadow = [div.style.boxShadow, ...shadows].filter(Boolean).join(', ');
+  // A stroke: a line around the shape, inside its edge.
+  const st = layer.stroke;
+  if (st && st.enabled && st.width > 0) {
+    div.style.boxSizing = 'border-box';
+    div.style.border = `${px(st.width)} solid ${st.color || '#FFFFFF'}`;
+  }
+}
+
+// Liquid glass: a shape that frosts what's behind it. Its colour becomes a faint tint (its opacity
+// is how strong). The light follows the owner's CleanFrame glass: a top-left light catch and a 135°
+// sheen, a bright refractive top rim over a fine all-round rim, a soft bounce along the bottom, an
+// inner glow, and a faint cool halo. A light blur keeps words on it readable. Shared by the editor,
+// the previews and the output, after each has set the shape's fill.
+function applyGlass(div, layer, radius) {
+  const px = (n) => (typeof radius === 'function' ? radius(n) : (n * radius).toFixed(1) + 'px');
+  const n = parseInt(String(layer.color || '#FFFFFF').replace('#', '').slice(0, 6), 16) || 0xFFFFFF;
+  const tint = `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${Math.min(layer.opacity ?? 10, 40) / 100})`;
+  div.style.opacity = '';
+  div.style.background = 'linear-gradient(135deg, rgba(255,255,255,0.38), rgba(255,255,255,0) 42%), '
+    + 'radial-gradient(120% 80% at 20% -10%, rgba(255,255,255,0.28), rgba(255,255,255,0) 55%), ' + tint;
+  const blur = `blur(${px(layer.glassBlur ?? 22)}) saturate(1.5)`;
+  div.style.backdropFilter = blur;
+  div.style.webkitBackdropFilter = blur;
+  div.style.border = '0';
+  div.style.boxShadow = [
+    `inset 0 ${px(2)} ${px(1)} rgba(255,255,255,0.78)`,
+    `inset 0 0 0 ${px(1.5)} rgba(255,255,255,0.32)`,
+    `inset 0 -${px(3)} ${px(6)} rgba(255,255,255,0.2)`,
+    `inset 0 ${px(10)} ${px(22)} rgba(255,255,255,0.07)`,
+    `0 ${px(3)} ${px(22)} rgba(150,190,255,0.18)`,
+    `0 ${px(26)} ${px(64)} -${px(24)} rgba(6,10,14,0.5)`,
+  ].join(', ');
 }
 
 // Reconciles a stored layer id order against the layers actually present —
@@ -189,7 +240,7 @@ function imageFillCss(layer, opts = {}) {
 // end colours — without them a gradient changed on one slide or timer segment
 // went back to the theme's as soon as it was saved (owner, 2026-10-01: "when
 // you change the gradient, it doesn't save").
-const FILL_OVERRIDE_KEYS = ['fill', 'color', 'color2', 'angle', 'opacity', 'src', 'dim', 'gradientStops', 'gradientGlows'];
+const FILL_OVERRIDE_KEYS = ['fill', 'color', 'color2', 'angle', 'opacity', 'src', 'dim', 'gradientStops', 'gradientGlows', 'corners', 'stroke', 'drop', 'glass', 'glassBlur', 'lift', 'clip'];  // incl. a shape's corners, stroke, shadow and glass
 const LAYER_OVERRIDE_KEYS = ['rotation', 'accentColor', 'grayscale', 'fade', 'blendMode'];
 function withLayerOverride(layer, ov, keys = LAYER_OVERRIDE_KEYS) {
   if (!ov) return layer;

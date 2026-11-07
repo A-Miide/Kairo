@@ -389,55 +389,10 @@ function renderLangPacks() {
   if (typeof renderMtModelList === 'function') renderMtModelList(); // now that every language is known
 }
 
-// The two language choices as pills: one clear row each, driving the hidden
-// selects the saving code already listens to.
+// Settings → Language's Bible version picker (settings_language.js) and the theme tip.
 function renderLangPills() {
-  const bibleSel = document.getElementById('bible-language');
-  const secondSel = document.getElementById('bible-translate-to-select');
-  const screen = document.getElementById('lang-screen-pills');
-  const second = document.getElementById('lang-second-pills');
-  if (!bibleSel || !screen) return;
-  const pill = (label, active, title, onClick) => {
-    const b = document.createElement('button');
-    b.type = 'button'; b.className = 'lang-pill' + (active ? ' active' : ''); b.textContent = label;
-    if (title) b.title = title;
-    b.addEventListener('click', onClick);
-    return b;
-  };
-  const current = bibleSel.value || settings.bibleLanguage || 'en';
-  screen.innerHTML = '';
-  LANG_PACKS.forEach((p) => {
-    const missing = typeof bibleAvailability !== 'undefined' && bibleAvailability[p.code] === false;
-    const el = pill((missing ? '\u2193 ' : '') + p.name, p.code === current, missing ? `${p.translations}. Downloads when you pick it.` : p.translations, async () => {
-      if (missing) {
-        el.textContent = `${p.name}: starting\u2026`;
-        let ok = true;
-        await streamBibleInstall(p.code, { onProgress: (n) => { el.textContent = `${p.name}: ${n}%`; }, onStep: () => { el.textContent = `${p.name}: checking\u2026`; }, onComplete: (success) => { ok = success; } });
-        if (!ok) { el.textContent = `${p.name}: failed, try again`; return; }
-        bibleAvailability[p.code] = true;
-        renderMtModelList();
-      }
-      bibleSel.value = p.code;
-      bibleSel.dispatchEvent(new Event('change'));
-      renderLangPills();
-    });
-    screen.appendChild(el);
-  });
-
-  if (second && secondSel) {
-    const cur = secondSel.value || '';
-    second.innerHTML = '';
-    second.appendChild(pill('Off', cur === '', '', () => { secondSel.value = ''; secondSel.dispatchEvent(new Event('change')); renderLangPills(); }));
-    Array.from(secondSel.options).filter(o => o.value).forEach((o) => {
-      second.appendChild(pill(o.textContent, cur === o.value, '', () => {
-        // Picking a language fetches its slide translator straight away (renderSecondLangModel).
-        window._secondLangPicked = true;
-        secondSel.value = o.value; secondSel.dispatchEvent(new Event('change')); renderLangPills();
-      }));
-    });
-  }
+  window.renderBibleVersions?.();
   renderThemeTip();
-
 }
 
 // ── Service language: what Kairo listens for, and what that language gets ──
@@ -453,17 +408,14 @@ function spokenName() {
   return sel?.selectedOptions?.[0]?.textContent || 'English';
 }
 
-// Picking the service language picks the Bible too, when that language has one here (Spanish
-// service → Reina-Valera) — but only while scripture was following the service language: a
-// deliberate choice under More (an English service shown in Yoruba) stays.
-function matchScriptureToService(previous) {
+// Picking the service language picks its Bible too (Spanish service → Reina-Valera, English →
+// the English version last used): the two work together (owner, 2026-11-05). A Bible in another
+// language can still be chosen after, and the page says what that means.
+function matchScriptureToService() {
   const base = spokenCode().split('-')[0];
-  const before = String(previous || 'en').toLowerCase().split('-')[0];
   const bibleSel = document.getElementById('bible-language');
   const target = LANG_PACKS.find(p => p.code === base) ? base : (base === 'multi' ? null : 'en');
   if (!bibleSel || !target || bibleSel.value === target) return;
-  const following = bibleSel.value === before || bibleSel.value === 'en';
-  if (!following) return;
   bibleSel.value = target;
   bibleSel.dispatchEvent(new Event('change'));
 }
@@ -485,8 +437,8 @@ async function renderLangCapability() {
   const rows = [];
   if (!offline) rows.push([true, 'Heard by Deepgram']);
   else if (model?.installed) rows.push([true, 'Heard offline']);
-  else if (model?.installing) rows.push([false, `Downloading the offline model${typeof model.progress === 'number' ? ` \u2026 ${model.progress}%` : '\u2026'}`]);
-  else rows.push([false, base === 'en' ? 'Needs the offline model for English' : 'Needs the offline model for other languages']);
+  else if (model?.installing) rows.push([false, `Downloading the ${base === 'en' ? 'English only' : 'Multilingual'} model${typeof model.progress === 'number' ? ` \u2026 ${model.progress}%` : '\u2026'}`]);
+  else rows.push([false, `Can\u2019t listen offline yet: needs the ${base === 'en' ? 'English only' : 'Multilingual'} model`]);
   if (base === 'multi') rows.push([null, 'Finds verses in English, Spanish, Portuguese, French, German']);
   else if (DETECTS_IN[base]) rows.push([true, `Finds verses in ${DETECTS_IN[base]}`]);
   else rows.push([null, `${name} is transcribed; finds verses in English`]);
@@ -494,6 +446,8 @@ async function renderLangCapability() {
   const pack = LANG_PACKS.find(p => p.code === bibleCode);
   const bibleName = bibleCode === 'en' ? `English, ${settings.translation || 'KJV'}` : `${pack?.name || bibleCode}, ${(pack?.translations || '').replace(/\s*\(.*\)$/, '')}`;
   rows.push([true, `Shows ${bibleName}`]);
+  const second = document.getElementById('bible-translate-to-select')?.selectedOptions?.[0];
+  if (second?.value) rows.push([true, `Verses also in ${second.textContent}`]);
   box.innerHTML = '';
   rows.forEach(([ok, text]) => {
     const row = document.createElement('div');
@@ -530,20 +484,16 @@ document.getElementById('lang-theme-tip-btn')?.addEventListener('click', () => {
 });
 
 document.getElementById('stt-language')?.addEventListener('change', (e) => {
-  const previous = settings.sttLanguage;
   settings.sttLanguage = e.target.value;
   saveSettingsPatch({ sttLanguage: e.target.value });
-  matchScriptureToService(previous);
+  matchScriptureToService();
   renderLangPills();
   renderLangCapability();
 });
 document.getElementById('speech-engine-toggle')?.addEventListener('click', () => setTimeout(renderLangCapability, 0));
 document.getElementById('speech-engine-toggle')?.addEventListener('toggle-change', () => renderLangCapability());
 document.getElementById('translation-select-settings')?.addEventListener('change', () => setTimeout(renderLangCapability, 0));
-document.getElementById('custom-keyterms')?.addEventListener('change', (e) => {
-  settings.customKeyterms = e.target.value;
-  saveSettingsPatch({ customKeyterms: e.target.value });
-});
+document.getElementById('bible-translate-to-select')?.addEventListener('change', () => { renderThemeTip(); renderLangCapability(); });
 document.getElementById('bible-language')?.addEventListener('change', (e) => {
   settings.bibleLanguage = e.target.value;
   saveSettingsPatch({ bibleLanguage: e.target.value });
@@ -1130,6 +1080,14 @@ function detailTitle(text, statusEl, toggleEl) {
   return wrap;
 }
 
+// An output's Theme button on its own row, over the output's layers (NDI, DeckLink).
+function themeRow(outputId) {
+  const row = document.createElement('div');
+  row.className = 'outputs-detail-inline-row outputs-theme-row';
+  row.appendChild(buildThemeSelect(outputId));
+  return row;
+}
+
 // The theme picker for an output: a dropdown whose rows carry a tiny preview
 // of each theme (the same thumbnail the Slides/Bible theme picker and Theme
 // Studio draw), which a native <select> can't show.
@@ -1147,114 +1105,62 @@ function buildThemeSelect(outputId) {
   });
 }
 
-// Shared thumbnail theme dropdown (grouped like every other theme picker).
-// `value()` returns the current theme id; `onPick(id)` applies a choice;
-// `defaultLabel` adds a first row meaning "no theme of its own" (id '').
-// The returned element's refresh() repaints after the value changes outside.
-function buildThemeDropdown({ value, onPick, defaultLabel, monitor = false }) {
-  const wrap = document.createElement('div');
-  wrap.className = 'theme-pick';
+// The theme picker everywhere a theme is chosen: the Bible bar's Theme button (palette icon, the
+// chosen theme's name) opening the same grouped list with previews. `value()` returns the current
+// theme id; `onPick(id)` applies a choice; `defaultLabel` adds a first row meaning "no theme of its
+// own" (id ''). The button's refresh() repaints it after the value changes elsewhere.
+const THEME_ICON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="13.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="13.5" r="2.5"/><circle cx="8.5" cy="13.5" r="2.5"/><path d="M12 21a9 9 0 1 1 0-18"/></svg>';
+function buildThemeDropdown({ value, onPick, defaultLabel, monitor = false, label = 'Theme' }) {
   const trigger = document.createElement('button');
   trigger.type = 'button';
-  trigger.className = 'setting-input theme-pick-trigger';
+  trigger.className = 'ls-icon-btn ls-icon-btn-labeled svc-card-theme-btn theme-pick';
   trigger.setAttribute('aria-haspopup', 'listbox');
-  trigger.setAttribute('aria-expanded', 'false');
-  const menu = document.createElement('div');
-  menu.className = 'theme-pick-menu';
-  menu.setAttribute('role', 'listbox');
-  menu.hidden = true;
-  wrap.appendChild(trigger);
-  wrap.appendChild(menu);
-
-  const thumbFor = (look) => {
-    const t = document.createElement('div');
-    t.className = 'ts-theme-thumb';
-    if (look) window.KairoService?.renderLookThumbnail(t, look);
-    else t.classList.add('theme-pick-thumb-none');
-    return t;
-  };
+  trigger.innerHTML = THEME_ICON;
+  const name = document.createElement('span');
+  name.textContent = label;
+  const chosen = document.createElement('span');
+  chosen.className = 'ts-theme-thumb theme-pick-chosen';
+  chosen.setAttribute('aria-hidden', 'true');
+  trigger.append(name, chosen);
   const currentLook = () => looks.find(l => l.id === value()) || null;
-  const paintTrigger = () => {
+  // The chosen theme shows as a small preview on the button; its name is in the tooltip.
+  const paint = () => {
     const look = currentLook();
-    trigger.innerHTML = '';
-    if (look || defaultLabel) {
-      trigger.appendChild(thumbFor(look));
-      const name = document.createElement('span');
-      name.className = 'theme-pick-name';
-      name.textContent = look ? look.name : defaultLabel;
-      trigger.appendChild(name);
-    }
-    const chev = document.createElement('span');
-    chev.className = 'theme-pick-chev';
-    chev.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
-    chev.setAttribute('aria-hidden', 'true');
-    trigger.appendChild(chev);
+    chosen.hidden = !look;
+    if (look) window.KairoService?.renderLookThumbnail(chosen, look);
+    const label = look ? look.name : (defaultLabel || name.textContent);
+    const said = `${name.textContent}: ${label}`;
+    trigger.title = said;
+    trigger.setAttribute('aria-label', said);
   };
-  const close = () => {
-    menu.hidden = true;
-    trigger.setAttribute('aria-expanded', 'false');
-    document.removeEventListener('mousedown', onOutside, true);
-    document.removeEventListener('keydown', onKey, true);
-    document.removeEventListener('scroll', onScroll, true);
+  const row = (look, label, id, active) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'svc-popover-item has-thumb' + (active ? ' active' : '');
+    const thumb = document.createElement('div');
+    thumb.className = 'ts-theme-thumb';
+    if (look) window.KairoService.renderLookThumbnail(thumb, look);
+    else thumb.classList.add('theme-pick-thumb-none');
+    const lbl = document.createElement('span');
+    lbl.textContent = label;
+    b.append(thumb, lbl);
+    b.addEventListener('click', () => { onPick(id); paint(); window.KairoService.closePopover(); });
+    return b;
   };
-  const onOutside = (e) => { if (!wrap.contains(e.target)) close(); };
-  const onKey = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); trigger.focus(); } };
-  const onScroll = (e) => { if (!menu.contains(e.target)) close(); };
-  const pick = (id) => { onPick(id); paintTrigger(); close(); };
-  // Fixed to the viewport so a dialog or scrolling panel can't clip it;
-  // opens upward when there's more room above.
-  const placeMenu = () => {
-    const r = trigger.getBoundingClientRect();
-    const below = window.innerHeight - r.bottom - 12, above = r.top - 12;
-    const up = below < 220 && above > below;
-    menu.style.position = 'fixed';
-    menu.style.left = r.left + 'px';
-    menu.style.width = r.width + 'px';
-    menu.style.right = 'auto';
-    menu.style.maxHeight = Math.max(160, Math.min(360, up ? above : below)) + 'px';
-    menu.style.top = up ? 'auto' : (r.bottom + 4) + 'px';
-    menu.style.bottom = up ? (window.innerHeight - r.top + 4) + 'px' : 'auto';
-  };
-  const open = () => {
-    menu.innerHTML = '';
-    const current = currentLook();
-    const buildRow = (l) => {
-      const row = document.createElement('button');
-      row.type = 'button';
-      row.setAttribute('role', 'option');
-      row.className = 'theme-pick-item' + (current && l.id === current.id ? ' active' : '');
-      row.appendChild(thumbFor(l));
-      const name = document.createElement('span');
-      name.textContent = l.name;
-      row.appendChild(name);
-      row.addEventListener('click', () => pick(l.id));
-      return row;
-    };
-    if (defaultLabel) {
-      const row = document.createElement('button');
-      row.type = 'button';
-      row.setAttribute('role', 'option');
-      row.className = 'theme-pick-item' + (current ? '' : ' active');
-      row.appendChild(thumbFor(null));
-      const name = document.createElement('span');
-      name.textContent = defaultLabel;
-      row.appendChild(name);
-      row.addEventListener('click', () => pick(''));
-      menu.appendChild(row);
-    }
-    menu.appendChild(window.KairoService.buildThemeTree(looks, buildRow, current && current.id, { monitor }));
-    menu.hidden = false;
-    placeMenu();
-    trigger.setAttribute('aria-expanded', 'true');
-    menu.querySelector('.active')?.scrollIntoView({ block: 'nearest' });
-    document.addEventListener('mousedown', onOutside, true);
-    document.addEventListener('keydown', onKey, true);
-    document.addEventListener('scroll', onScroll, true);
-  };
-  trigger.addEventListener('click', () => (menu.hidden ? open() : close()));
-  paintTrigger();
-  wrap.refresh = paintTrigger;
-  return wrap;
+  trigger.addEventListener('click', () => {
+    const S = window.KairoService;
+    S.openPopover(trigger, (pop) => {
+      const current = currentLook();
+      const list = document.createElement('div');
+      list.className = 'svc-popover-list';
+      if (defaultLabel) list.appendChild(row(null, defaultLabel, '', !current));
+      list.appendChild(S.buildThemeTree(looks, (l) => row(l, l.name, l.id, !!current && l.id === current.id), current && current.id, { monitor }));
+      pop.appendChild(list);
+    });
+  });
+  paint();
+  trigger.refresh = paint;
+  return trigger;
 }
 
 function renderDisplayDetail(host, o) {
@@ -1336,7 +1242,10 @@ function renderDisplayDetail(host, o) {
     about.textContent = 'For whoever is up front: what’s on screen now with the next slide right under it, the time, the segment countdown, and any message you send from Monitor message under the preview. A single scripture called out shows on its own.';
     host.appendChild(about);
     // Its layout: the built-in one, or a Monitor layout made in Theme Studio.
-    host.appendChild(detailInlineGroup('Layout', buildThemeDropdown({
+    const layoutRow = document.createElement('div');
+    layoutRow.className = 'outputs-detail-inline-row outputs-theme-row';
+    host.appendChild(layoutRow);
+    layoutRow.appendChild(buildThemeDropdown({
       value: () => (settings.monitorLooks || {})[o.id] || '',
       onPick: (id) => {
         settings.monitorLooks = { ...(settings.monitorLooks || {}), [o.id]: id || null };
@@ -1345,14 +1254,18 @@ function renderDisplayDetail(host, o) {
       },
       defaultLabel: 'Built-in',
       monitor: true,
-    })));
+      label: 'Layout',
+    }));
     const how = document.createElement('p');
     how.className = 'setting-hint';
     how.textContent = 'Make your own in Theme Studio: New → New monitor layout.';
     host.appendChild(how);
   } else {
-    host.appendChild(detailInlineGroup('Theme', buildThemeSelect(o.id)));
-    host.appendChild(detailInlineGroup('Keying', buildKeyingSelect(o.id)));
+    // The Theme button (it says Theme itself) on the keying row.
+    const looksRow = detailInlineGroup('Keying', buildKeyingSelect(o.id));
+    looksRow.prepend(buildThemeSelect(o.id));
+    looksRow.classList.add('outputs-theme-row');
+    host.appendChild(looksRow);
   }
   appendOutputLayersSection(host, o.id);
 
@@ -1614,7 +1527,7 @@ function renderNativeOutputDetail(host, o) {
   wInput.addEventListener('change', scheduleRestart);
   hInput.addEventListener('change', scheduleRestart);
 
-  host.appendChild(detailInlineGroup('Theme', buildThemeSelect(o.id)));
+  host.appendChild(themeRow(o.id));
 
   appendOutputLayersSection(host, o.id);
 
@@ -1757,7 +1670,7 @@ function renderDeckLinkDetail(host, o) {
     keyBox.addEventListener('change', () => { updateNativeOutput('decklink', o.id, { keying: keyBox.checked }); restartIfLive(); });
   });
 
-  host.appendChild(detailInlineGroup('Theme', buildThemeSelect(o.id)));
+  host.appendChild(themeRow(o.id));
   appendOutputLayersSection(host, o.id);
 
   const del = document.createElement('button');
@@ -2096,35 +2009,46 @@ async function applyOutputModes() {
 }
 
 // ── Monitor message — a line from the booth to the Monitor outputs ─────────
-// Under the preview while there is a Monitor output.
-function refreshMonitorMessageBar() {
-  // Always there: a message can go to the audience screens too. Without a Monitor (or with
-  // only the multiview one) the choice starts on the screens.
+// Under the preview while there is a Monitor output; monitors only, never the audience
+// screens (owner, 2026-11-05). "to" is "monitors" (every one) or "monitor:<output id>".
+function stageMonitors() {
   const mv = isDirectorOn() ? settings.videoMultiview : '';
-  const hasMonitor = monitorOutputs().some(m => m.id !== mv);
-  document.getElementById('monitor-message-bar')?.classList.remove('hidden');
-  const to = document.getElementById('monitor-message-to');
-  if (to) {
-    to.querySelector('option[value="monitors"]').disabled = !hasMonitor;
-    to.querySelector('option[value="all"]').disabled = !hasMonitor;
-    if (!hasMonitor && to.value !== 'screens') to.value = 'screens';
-  }
+  return monitorOutputs().filter(m => m.id !== mv);
 }
-function showMonitorMessageState(text) {
+function refreshMonitorMessageBar() {
+  const monitors = stageMonitors();
+  document.getElementById('monitor-message-bar')?.classList.toggle('hidden', monitors.length === 0);
+  // More than one Monitor: which one, at the right of the header.
+  const to = document.getElementById('monitor-message-to');
+  if (!to) return;
+  const keep = to.value;
+  to.replaceChildren(new Option('All monitors', 'monitors'), ...monitors.map(m => new Option(m.name || 'Monitor', `monitor:${m.id}`)));
+  to.value = [...to.options].some(o => o.value === keep) ? keep : 'monitors';
+  to.hidden = monitors.length < 2;
+  to.nextElementSibling?.classList?.contains('cs-select-wrapper') && (to.nextElementSibling.hidden = to.hidden);
+}
+function monitorMessageWhere(to) {
+  if (!to || to === 'monitors' || to === 'all') return 'On monitors:';
+  const m = stageMonitors().find(x => `monitor:${x.id}` === to);
+  return `On ${m?.name || 'one monitor'}:`;
+}
+function showMonitorMessageState(text, to) {
   const bar = document.getElementById('monitor-message-bar');
   if (!bar) return;
   const live = !!String(text || '').trim();
   bar.classList.toggle('is-live', live);
-  const clear = document.getElementById('monitor-message-clear');
-  if (clear) clear.disabled = !live;
+  // What's up on the monitors, with its own ✕, just above the box.
+  const line = document.getElementById('monitor-message-live');
+  if (line) line.hidden = !live;
+  const shown = document.getElementById('monitor-message-live-text');
+  if (shown) shown.textContent = live ? String(text).trim() : '';
+  const where = document.getElementById('monitor-message-live-where');
+  if (where) where.textContent = monitorMessageWhere(to);
   const send = document.getElementById('monitor-message-send');
   if (send) {
-    send.title = live ? 'Update the message' : 'Show the message';
+    send.title = live ? 'Replace the alert' : 'Show the alert';
     send.setAttribute('aria-label', send.title);
   }
-  // What's up on the Monitor stays in view (and editable) — unless being typed over.
-  const input = document.getElementById('monitor-message-input');
-  if (input && document.activeElement !== input) input.value = live ? String(text).trim() : '';
 }
 async function sendMonitorMessage(text, to) {
   to = to || document.getElementById('monitor-message-to')?.value || 'monitors';
@@ -2143,16 +2067,16 @@ async function sendMonitorMessage(text, to) {
   const send = document.getElementById('monitor-message-send');
   const clear = document.getElementById('monitor-message-clear');
   if (!input || !send || !clear) return;
-  const show = () => { const t = input.value.trim(); if (t) sendMonitorMessage(t); };
+  // The send button wakes up (brand colour) once there's something to send.
+  const ready = () => send.classList.toggle('is-ready', !!input.value.trim());
+  const show = () => { const t = input.value.trim(); if (t) { sendMonitorMessage(t); input.value = ''; ready(); } };
   send.addEventListener('click', show);
+  input.addEventListener('input', ready);
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') { e.preventDefault(); show(); }
   });
-  clear.addEventListener('click', () => { sendMonitorMessage(''); input.value = ''; });
-  // A message already up moves to the newly chosen audience.
-  document.getElementById('monitor-message-to')?.addEventListener('change', () => {
-    if (document.getElementById('monitor-message-bar')?.classList.contains('is-live')) { const t = input.value.trim(); if (t) sendMonitorMessage(t); }
-  });
+  clear.addEventListener('click', () => sendMonitorMessage('', 'monitors'));
+  ready();
 })();
 
 // ── Keying — how a display output's background keys out for a mixer ───────

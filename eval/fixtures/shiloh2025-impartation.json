@@ -4450,10 +4450,35 @@
     {
       "book": "Haggai",
       "chapter": 2,
+      "verse": 3,
+      "kind": "quote",
+      "startMs": 1416935,
+      "note": "2026-11-05 owner review of the misses list: \"who among you saw this house in its first glory ... is it not ... as nothing?\""
+    },
+    {
+      "book": "Haggai",
+      "chapter": 2,
       "verse": 9,
       "kind": "quote",
-      "startMs": 1428000,
-      "addedBy": "read against the offline transcription (2026-10-12): the glory of this latter house shall be greater than of the former"
+      "startMs": 1422360,
+      "addedBy": "read against the offline transcription (2026-10-12): the glory of this latter house shall be greater than of the former",
+      "note": "2026-11-05 owner review of the misses list: \"the group of this little house shall be ... greater than the former\" (time moved to that line)"
+    },
+    {
+      "book": "Haggai",
+      "chapter": 2,
+      "verse": 8,
+      "kind": "quote",
+      "startMs": 1426600,
+      "note": "2026-11-05 owner review of the misses list: \"The silver and the gold ... are mine\""
+    },
+    {
+      "book": "Malachi",
+      "chapter": 3,
+      "verse": 17,
+      "kind": "quote",
+      "startMs": 1430920,
+      "note": "2026-11-05 owner review of the misses list: \"In the day when I release my jewels, they shall be mine\""
     },
     {
       "book": "Job",
@@ -4796,5 +4821,8 @@
       "startMs": 3750210,
       "addedBy": "read against the transcript (2026-10-16): \"call upon the name of the lord shall be saved\""
     }
+  ],
+  "keyCorrections": [
+    "2026-11-05 owner review of the misses list: added Haggai 2:3, 2:8 and Malachi 3:17 beside Haggai 2:9 (moved to the line that says it). Checked and kept: 2 Timothy 1:7 at 55.2 min and Proverbs 22:7 at 28.7 min are said (offline transcription: \"Second Timothy one seven. God has not given us the spirit of fear\", \"the borrower is servant to the lender\"); the Deepgram transcription dropped those words."
   ]
 }

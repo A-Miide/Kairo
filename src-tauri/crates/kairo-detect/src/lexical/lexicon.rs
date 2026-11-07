@@ -141,6 +141,14 @@ pub struct Lexicon {
 
 impl Lexicon {
     pub fn build(corpus: &Corpus, wordings: Wordings) -> Lexicon {
+        Lexicon::build_with(corpus, wordings, true)
+    }
+
+    /// As `build`; without `kjv_anchors` only the church's own wording feeds the anchors and twins. A
+    /// service in another language never says the KJV's English phrases, and indexing them beside the
+    /// language's own took ~80 MB more than an English service (replay, 2026-11-05).
+    pub fn build_with(corpus: &Corpus, wordings: Wordings, kjv_anchors: bool) -> Lexicon {
+        let kjv_anchors = kjv_anchors || wordings.own.is_none();
         let mut vocab = Vocab::default();
         let wording = |t: Translation, vocab: &mut Vocab| -> Wording {
             let mut norm_ids = Vec::with_capacity(corpus.len());
@@ -263,18 +271,19 @@ impl Lexicon {
             gram_entries: Vec::new(),
             twins: HashMap::new(),
         };
-        lex.build_grams(corpus);
+        lex.build_grams(corpus, kjv_anchors);
         lex
     }
 
     /// The anchor index and the twin table, from 4-grams of stems in the KJV
     /// and the church's own wording. A verse's two wordings count once toward
     /// how many verses share a phrase.
-    fn build_grams(&mut self, corpus: &Corpus) {
+    fn build_grams(&mut self, corpus: &Corpus, kjv_anchors: bool) {
         let grams_of = |s: &[WordId]| -> Vec<Gram> { s.windows(4).map(|w| [w[0], w[1], w[2], w[3]]).collect() };
         // Every slot (a verse in the KJV, then in the church's own wording) and its phrases.
-        let mut slots: Vec<(VerseId, bool, Vec<Gram>)> = corpus.ids().map(|v| (v, false, grams_of(self.slot_stems(v, false)))).collect();
-        let kjv_grams: Vec<Vec<Gram>> = slots.iter().map(|(_, _, g)| g.clone()).collect();
+        let mut slots: Vec<(VerseId, bool, Vec<Gram>)> =
+            if kjv_anchors { corpus.ids().map(|v| (v, false, grams_of(self.slot_stems(v, false)))).collect() } else { Vec::new() };
+        let kjv_grams: Vec<Vec<Gram>> = if kjv_anchors { slots.iter().map(|(_, _, g)| g.clone()).collect() } else { vec![Vec::new(); corpus.len()] };
         if self.own().is_some() {
             for v in corpus.ids() {
                 if self.own().and_then(|o| o.stems(v)).is_some() {
