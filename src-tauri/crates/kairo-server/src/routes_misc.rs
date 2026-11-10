@@ -225,7 +225,7 @@ async fn sermon_notes(app: &Shared, b: &Value, date: &str) -> Result<(String, Ve
     let (mut notes, segments, session) = {
         let bible = bible.clone();
         tokio::task::spawn_blocking(move || {
-            let (notes, segments) = crate::notes::outline(&bible.k, &session, meaning.as_deref().map(|m| m as &dyn crate::notes::Meaning));
+            let (notes, segments) = crate::notes::outline(&bible.k(), &session, meaning.as_deref().map(|m| m as &dyn crate::notes::Meaning));
             (notes, segments, session)
         })
         .await
@@ -247,7 +247,7 @@ async fn sermon_notes(app: &Shared, b: &Value, date: &str) -> Result<(String, Ve
             .and_then(|ms| chrono::DateTime::from_timestamp_millis(ms as i64))
             .map(|t| t.with_timezone(&chrono::Local).format("%A, %B %-d, %Y at %-I:%M %p").to_string())
             .unwrap_or_default();
-        let pdf = crate::notes::render_pdf(&bible.k, &notes, &when);
+        let pdf = crate::notes::render_pdf(&bible.k(), &notes, &when);
         let title = safe_file_name(&notes.title);
         (format!("{} — {date}.pdf", if title.is_empty() { "Sermon Notes".to_string() } else { title }), pdf)
     })

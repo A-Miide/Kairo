@@ -20,7 +20,6 @@ pub mod config;
 mod deepgram;
 pub mod detect;
 pub mod hub;
-pub mod language;
 pub mod meaning_multi;
 pub mod interpretation;
 mod clock;
@@ -53,6 +52,7 @@ mod report;
 mod routes;
 mod routes_library;
 mod routes_misc;
+mod service_bible;
 mod translate;
 mod util;
 pub mod settings;
@@ -71,9 +71,6 @@ use axum::extract::{Request, State};
 use axum::http::StatusCode;
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
-use kairo_bible::Corpus;
-use kairo_detect::knowledge::Knowledge;
-use kairo_detect::lexical::Wordings;
 use serde_json::json;
 
 pub use config::Config;
@@ -253,22 +250,23 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
     tokio::task::spawn_blocking(move || {
         let t = std::time::Instant::now();
         let db = &starting.cfg.db_dir;
-        let corpus = match Corpus::load(db) {
-            Ok(c) => c,
+        // Matched against the KJV and the Bible of the service's spoken language (service_bible.rs).
+        let spoken = rt.block_on(starting.settings.str("sttLanguage")).unwrap_or_else(|| "en-US".into());
+        let (k, lang, from) = match service_bible::build(&starting, &spoken) {
+            Ok(built) => built,
             Err(e) => {
                 eprintln!("[Server] Bible data unavailable: {e}");
                 starting.hub.broadcast(json!({ "type": "worker-error", "error": e.to_string() }));
                 return;
             }
         };
-        // The BSB (public domain) is the modern wording matched beside the KJV: as good as the NIV and
-        // NLT together on the dev sermons, which stopped shipping 2026-10 (no licence).
-        let bsb = corpus.load_flat("BSB", &db.join("translations/BSB.json")).ok();
-        let k = Arc::new(Knowledge::build(corpus, Wordings { own: None, also: bsb.clone().into_iter().collect() }));
-        let modern = bsb.unwrap_or_else(|| k.corpus.kjv().clone());
+        service_bible::built(&from);
+        let k = Arc::new(k);
+        // The modern wording the meaning models rerank with: the BSB, in whatever language the service is.
+        let modern = service_bible::english_modern(&k.corpus, db).unwrap_or_else(|| k.corpus.kjv().clone());
         let bible = Arc::new(Bible::new(k, modern, db.clone(), starting.cfg.app_data_dir.join("packs")));
         let p = starting.presentation.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
-        let cfg = kairo_detect::engine::Config { auto_send: p.auto_send, ..Default::default() };
+        let cfg = kairo_detect::engine::Config { auto_send: p.auto_send, lang, ..Default::default() };
         let detector = Detector::start(bible.clone(), starting.hub.clone(), cfg, starting.presentation.clone(), rt.clone(), starting.log.clone());
         let (a, h) = (starting.clone(), rt);
         let (a2, h2, h3) = (a.clone(), h.clone(), h.clone());
@@ -416,7 +414,7 @@ pub(crate) fn load_meaning(app: &Shared, multi: bool) {
         }
     };
     let built = if multi { multi_dir.join("verse_index.kvx") } else { app.cfg.app_data_dir.join("models").join(&index_name) };
-    let verses = app.bible.get().map_or(0, |b| b.k.corpus.len());
+    let verses = app.bible.get().map_or(0, |b| b.k().corpus.len());
     // An index built for another numbering of the Bible would point at the wrong verses.
     let fits = |i: VerseIndex| if i.len() == verses { Ok(i) } else { Err(()) };
     let bundled = if multi { built.clone() } else { db.join(&index_name) };
@@ -426,8 +424,9 @@ pub(crate) fn load_meaning(app: &Shared, multi: bool) {
             let Some(bible) = app.bible.get() else { return };
             eprintln!("[Server] Building the verse index (first run, a few minutes)…");
             let cache = app.cfg.app_data_dir.join("models");
-            let b = kairo_semantic::Builder { embedder: &embedder, corpus: &bible.k.corpus, cache_dir: cache };
-            match b.build(&[bible.k.corpus.kjv()], |_, _, _| {}) {
+            let k = bible.k();
+            let b = kairo_semantic::Builder { embedder: &embedder, corpus: &k.corpus, cache_dir: cache };
+            match b.build(&[k.corpus.kjv()], |_, _, _| {}) {
                 Ok(i) => {
                     let _ = std::fs::create_dir_all(built.parent().unwrap_or(db));
                     let _ = i.save(&built);
@@ -451,7 +450,7 @@ pub(crate) fn load_meaning(app: &Shared, multi: bool) {
         Reranker::load(RerankerConfig { name: "minilm-l6".into(), model: rr_dir.join("onnx/model_int8.onnx"), tokenizer: rr_dir.join("tokenizer.json"), max_tokens: 256, threads: 0 }).ok()
     };
     let Some((bible, detector)) = app.ready() else { return };
-    let m = Arc::new(MeaningService::new(embedder, index, reranker, bible.k.corpus.kjv().clone(), vec![bible.modern.clone()]));
+    let m = Arc::new(MeaningService::new(embedder, index, reranker, bible.k().corpus.kjv().clone(), vec![bible.modern.clone()]));
     // Cosines differ between embedders: the thresholds go with the model, ahead of it.
     detector.configure(move |c| c.meaning_thresholds = thresholds);
     detector.meaning_ready(m.clone());

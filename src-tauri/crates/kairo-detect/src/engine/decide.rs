@@ -232,7 +232,7 @@ impl Engine {
         if target == Target::Suggestions && self.partial_text_match(&c) && distinctive_wording(&c) && !corroborated && !self.context_supports(top, now) {
             self.note(|e| format!("{} offer of {} stands on its distinctive wording «{}»", c.method.wire(), e.label(top), c.source.as_deref().unwrap_or("")));
         }
-        if target == Target::Suggestions && self.partial_text_match(&c) && !distinctive_wording(&c) && !corroborated && !self.context_supports(top, now) {
+        if target == Target::Suggestions && self.partial_text_match(&c) && !distinctive_wording(&c) && !corroborated && !c.unique_phrase && !self.context_supports(top, now) {
             self.note(|e| format!("{} offer of {} dropped: partial wording, nothing in the sermon points at it [{:?}] «{}»", c.method.wire(), e.label(top), c.evidence, c.source.as_deref().unwrap_or("")));
             return Target::Drop;
         }

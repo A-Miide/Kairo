@@ -40,9 +40,9 @@ impl Lang {
     }
 }
 
-/// Accents removed, lowercased ("João" → "joao").
+/// Accents removed, lowercased, "ß" spelled out ("João" → "joao", "daß" → "dass").
 pub fn fold(s: &str) -> String {
-    s.nfd().filter(|c| !('\u{0300}'..='\u{036f}').contains(c)).collect::<String>().to_lowercase()
+    s.nfd().filter(|c| !('\u{0300}'..='\u{036f}').contains(c)).collect::<String>().to_lowercase().replace('ß', "ss")
 }
 
 struct Data {
@@ -54,6 +54,9 @@ struct Data {
     to: &'static [&'static str],
     and: &'static [&'static str],
     verse_articles: &'static [&'static str],
+    /// The small words between a chapter or verse number and the book it belongs to, when the
+    /// number comes first ("capítulo 8 de la carta a los Romanos"); empty where it never does.
+    between_number_and_book: &'static [&'static str],
     triggers: &'static [(&'static str, &'static [&'static str])],
     units: &'static [&'static str],
     tens: &'static [(&'static str, u32)],
@@ -71,7 +74,7 @@ const ES: Data = Data {
         ("Ezra", &["esdras"]), ("Nehemiah", &["nehemias"]), ("Esther", &["ester"]), ("Job", &["job"]), ("Psalms", &["salmos", "salmo"]), ("Proverbs", &["proverbios"]),
         ("Ecclesiastes", &["eclesiastes"]), ("Song of Solomon", &["cantar de los cantares", "cantares", "cantar"]), ("Isaiah", &["isaias"]), ("Jeremiah", &["jeremias"]),
         ("Lamentations", &["lamentaciones"]), ("Ezekiel", &["ezequiel"]), ("Daniel", &["daniel"]), ("Hosea", &["oseas"]), ("Joel", &["joel"]), ("Amos", &["amos"]),
-        ("Obadiah", &["abdias"]), ("Jonah", &["jonas"]), ("Micah", &["miqueas"]), ("Nahum", &["nahum"]), ("Habakkuk", &["habacuc"]), ("Zephaniah", &["sofonias"]),
+        ("Obadiah", &["abdias"]), ("Jonah", &["jonas"]), ("Micah", &["miqueas"]), ("Nahum", &["nahum"]), ("Habakkuk", &["habacuc", "bacuc"]), ("Zephaniah", &["sofonias"]),
         ("Haggai", &["hageo"]), ("Zechariah", &["zacarias"]), ("Malachi", &["malaquias"]), ("Matthew", &["mateo"]), ("Mark", &["marcos"]), ("Luke", &["lucas"]),
         ("John", &["juan"]), ("Acts", &["hechos de los apostoles", "hechos"]), ("Romans", &["romanos"]), ("Corinthians", &["corintios"]), ("Galatians", &["galatas"]),
         ("Ephesians", &["efesios"]), ("Philippians", &["filipenses"]), ("Colossians", &["colosenses"]), ("Thessalonians", &["tesalonicenses"]), ("Timothy", &["timoteo"]),
@@ -85,7 +88,8 @@ const ES: Data = Data {
     to: &["hasta el", "hasta", "al", "a"],
     and: &["y"],
     verse_articles: &["del", "de"],
-    triggers: &[("next verse", &["siguiente versiculo", "proximo versiculo", "versiculo siguiente"]), ("previous verse", &["versiculo anterior"])],
+    between_number_and_book: &["de", "del", "la", "el", "los", "las", "carta", "epistola", "libro", "a", "al"],
+    triggers: &[("next verse", &["siguiente versiculo", "proximo versiculo", "versiculo siguiente"]), ("previous verse", &["versiculo anterior"]), ("sorry", &["perdon", "perdoname"])],
     units: &[
         "cero", "uno", "dos", "tres", "cuatro", "cinco", "seis", "siete", "ocho", "nueve", "diez", "once", "doce", "trece", "catorce", "quince",
         "dieciseis", "diecisiete", "dieciocho", "diecinueve", "veinte", "veintiuno", "veintidos", "veintitres", "veinticuatro", "veinticinco",
@@ -117,7 +121,9 @@ const PT: Data = Data {
     to: &["ate o", "ate", "ao", "a"],
     and: &["e"],
     verse_articles: &["do", "de"],
-    triggers: &[("next verse", &["proximo versiculo", "versiculo seguinte"]), ("previous verse", &["versiculo anterior"])],
+    between_number_and_book: &["de", "do", "da", "dos", "das", "o", "a", "os", "as", "carta", "epistola", "livro", "aos", "ao"],
+    // "versículo de número 12", "o versículo da número 2" (pt-elizeu-romanos1): the number's own words.
+    triggers: &[("next verse", &["proximo versiculo", "versiculo seguinte"]), ("previous verse", &["versiculo anterior"]), ("sorry", &["perdao", "desculpa", "desculpe"]), ("verse", &["versiculo de numero", "versiculo da numero", "versiculo do numero", "versiculo numero"])],
     units: &[
         "zero", "um", "dois", "tres", "quatro", "cinco", "seis", "sete", "oito", "nove", "dez", "onze", "doze", "treze", "catorze", "quinze",
         "dezesseis", "dezessete", "dezoito", "dezenove",
@@ -136,19 +142,21 @@ const FR: Data = Data {
         ("Lamentations", &["lamentations"]), ("Ezekiel", &["ezechiel"]), ("Daniel", &["daniel"]), ("Hosea", &["osee"]), ("Joel", &["joel"]), ("Amos", &["amos"]),
         ("Obadiah", &["abdias"]), ("Jonah", &["jonas"]), ("Micah", &["michee"]), ("Nahum", &["nahum"]), ("Habakkuk", &["habacuc"]), ("Zephaniah", &["sophonie"]),
         ("Haggai", &["aggee"]), ("Zechariah", &["zacharie"]), ("Malachi", &["malachie"]), ("Matthew", &["matthieu"]), ("Mark", &["marc"]), ("Luke", &["luc"]),
-        ("John", &["jean"]), ("Acts", &["actes des apotres", "actes"]), ("Romans", &["romains"]), ("Corinthians", &["corinthiens"]), ("Galatians", &["galates"]),
+        ("John", &["jean"]), ("Acts", &["actes des apotres", "actes"]), ("Romans", &["romains", "romain"]), ("Corinthians", &["corinthiens"]), ("Galatians", &["galates"]),
         ("Ephesians", &["ephesiens"]), ("Philippians", &["philippiens"]), ("Colossians", &["colossiens"]), ("Thessalonians", &["thessaloniciens"]), ("Timothy", &["timothee"]),
         ("Titus", &["tite"]), ("Philemon", &["philemon"]), ("Hebrews", &["hebreux"]), ("James", &["jacques"]), ("Peter", &["pierre"]), ("Jude", &["jude"]),
         ("Revelation", &["apocalypse"]),
     ],
-    ordinals: &[("premier", 1), ("premiere", 1), ("deuxieme", 2), ("second", 2), ("seconde", 2), ("troisieme", 3)],
+    // "un Jean" is how the recogniser writes "1 Jean" said aloud ("un Jean un 9", fr-espoir-romains1).
+    ordinals: &[("premier", 1), ("premiere", 1), ("deuxieme", 2), ("second", 2), ("seconde", 2), ("troisieme", 3), ("un", 1), ("une", 1)],
     ordinal_fillers: &["aux", "a", "de", "epitre de", "epitre aux", "lettre de", "lettre aux", "livre de", "livre des"],
     chapter: &["chapitre", "chapitres"],
     verse: &["versets", "verset"],
     to: &["jusqu au", "jusqu a", "au", "a"],
     and: &["et"],
     verse_articles: &["du", "de"],
-    triggers: &[("next verse", &["verset suivant", "prochain verset"]), ("previous verse", &["verset precedent"])],
+    between_number_and_book: &["de", "du", "des", "la", "le", "les", "l", "lettre", "epitre", "livre", "aux", "au", "a"],
+    triggers: &[("next verse", &["verset suivant", "prochain verset"]), ("previous verse", &["verset precedent"]), ("sorry", &["pardon", "excusez moi", "je veux dire"])],
     units: &[
         "zero", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix", "onze", "douze", "treize", "quatorze", "quinze",
         "seize", "dix sept", "dix huit", "dix neuf",
@@ -171,10 +179,10 @@ const DE: Data = Data {
         ("Jeremiah", &["jeremia"]), ("Lamentations", &["klagelieder"]), ("Ezekiel", &["hesekiel", "ezechiel"]), ("Daniel", &["daniel"]), ("Hosea", &["hosea"]),
         ("Joel", &["joel"]), ("Amos", &["amos"]), ("Obadiah", &["obadja"]), ("Jonah", &["jona"]), ("Micah", &["micha"]), ("Nahum", &["nahum"]), ("Habakkuk", &["habakuk"]),
         ("Zephaniah", &["zefanja", "zephanja"]), ("Haggai", &["haggai"]), ("Zechariah", &["sacharja"]), ("Malachi", &["maleachi"]), ("Matthew", &["matthaus"]),
-        ("Mark", &["markus"]), ("Luke", &["lukas"]), ("John", &["johannes"]), ("Acts", &["apostelgeschichte"]), ("Romans", &["romer"]), ("Corinthians", &["korinther"]),
-        ("Galatians", &["galater"]), ("Ephesians", &["epheser"]), ("Philippians", &["philipper"]), ("Colossians", &["kolosser"]), ("Thessalonians", &["thessalonicher"]),
-        ("Timothy", &["timotheus"]), ("Titus", &["titus"]), ("Philemon", &["philemon"]), ("Hebrews", &["hebraer"]), ("James", &["jakobus"]), ("Peter", &["petrus"]),
-        ("Jude", &["judas"]), ("Revelation", &["offenbarung"]),
+        ("Mark", &["markus"]), ("Luke", &["lukas"]), ("John", &["johannes"]), ("Acts", &["apostelgeschichte"]), ("Romans", &["romer", "romerbrief"]), ("Corinthians", &["korinther"]),
+        ("Galatians", &["galater", "galaterbrief"]), ("Ephesians", &["epheser", "epheserbrief"]), ("Philippians", &["philipper", "philipperbrief"]), ("Colossians", &["kolosser", "kolosserbrief"]), ("Thessalonians", &["thessalonicher"]),
+        ("Timothy", &["timotheus"]), ("Titus", &["titus", "titusbrief"]), ("Philemon", &["philemon", "philemonbrief"]), ("Hebrews", &["hebraer", "hebraerbrief"]), ("James", &["jakobus", "jakobusbrief"]), ("Peter", &["petrus"]),
+        ("Jude", &["judas", "judasbrief"]), ("Revelation", &["offenbarung"]),
     ],
     ordinals: &[
         ("erste", 1), ("erster", 1), ("ersten", 1), ("erstes", 1), ("zweite", 2), ("zweiter", 2), ("zweiten", 2), ("zweites", 2),
@@ -186,9 +194,12 @@ const DE: Data = Data {
     to: &["bis zu", "bis"],
     and: &["und"],
     verse_articles: &["von"],
+    between_number_and_book: &[],
     triggers: &[
         ("next verse", &["nachste vers", "nachster vers", "nachsten vers", "folgende vers", "folgenden vers"]),
         ("previous verse", &["vorherige vers", "vorherigen vers"]),
+        ("sorry", &["entschuldigung", "verzeihung", "pardon", "ich meine"]),
+        ("verse", &["die verse", "den vers", "der vers", "die vers"]),
     ],
     units: &[
         "null", "eins", "zwei", "drei", "vier", "funf", "sechs", "sieben", "acht", "neun", "zehn", "elf", "zwolf", "dreizehn", "vierzehn",
@@ -220,6 +231,10 @@ struct Compiled {
     article: regex::Regex,
     to: regex::Regex,
     and: regex::Regex,
+    /// "capítulo 8 de Romanos" → "romans chapter 8" (languages that name the chapter first).
+    chapter_first: Option<regex::Regex>,
+    /// "versículos 5 al 11 de Romanos 8" → "romans 8 verse 5 to 11".
+    verse_first: Option<regex::Regex>,
 }
 
 fn data(lang: Lang) -> Option<&'static Data> {
@@ -262,6 +277,15 @@ fn compile(lang: Lang) -> Compiled {
                     add(format!("{o} {f} {name}"), format!("{n} {target}"));
                 }
             }
+            // The ordinal as a figure, as transcripts write it ("2º de Timoteo", "1er aux Corinthiens"):
+            // marked ("ord2") until it is found before a book.
+            for n in 1..=3 {
+                add(format!("ord{n} {name}"), format!("{n} {target}"));
+                for f in d.ordinal_fillers {
+                    add(format!("{n} {f} {name}"), format!("{n} {target}"));
+                    add(format!("ord{n} {f} {name}"), format!("{n} {target}"));
+                }
+            }
         }
     }
     if lang == Lang::De {
@@ -300,12 +324,21 @@ fn compile(lang: Lang) -> Compiled {
         nums.insert(w.to_string(), *n);
     }
     let articles = alternation(d.verse_articles);
+    // A book in English tokens, with its 1/2/3 when it takes one.
+    let mut targets: Vec<String> = d.books.iter().map(|(en, _)| en.to_lowercase()).collect();
+    targets.sort_by_key(|t| std::cmp::Reverse(t.len()));
+    let book = format!("((?:[123] )?(?:{}))", targets.iter().map(|t| regex::escape(t)).collect::<Vec<_>>().join("|"));
+    // Between the number and the book: "de", "de la carta a los", "aux", "do livro de".
+    let fillers = format!("(?:(?:{}) ){{0,5}}", alternation(d.between_number_and_book));
     Compiled {
         data: d,
         lang,
         phrases,
         book_stems,
         nums,
+        chapter_first: (!d.between_number_and_book.is_empty()).then(|| re(&format!(r"(?-u:\b)chapter ([0-9]+) {fillers}{book}(?-u:\b)"))),
+        verse_first: (!d.between_number_and_book.is_empty())
+            .then(|| re(&format!(r"(?-u:\b)(verse [0-9]+(?: (?:to|and) [0-9]+)*) {fillers}{book} ([0-9]+)(?-u:\b)"))),
         article: re(&format!(r"(?-u:\b)(chapter|verse) (?:{articles}) ([0-9])")),
         to: re(&format!(r"([0-9]) (?:{}) (?:(?:verse|{articles}) )?([0-9])", alternation(d.to))),
         and: re(&format!(r"([0-9]) (?:{}) (?:verse )?([0-9])", alternation(d.and))),
@@ -321,19 +354,86 @@ pub fn localize(text: &str, lang: Lang) -> String {
     let Some(c) = COMPILED.get(&lang) else { return text.to_string() };
     static DE_ORDINAL_DOT: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?-u:\b)([1-5])\.\s"));
     static NUM_SEP: LazyLock<regex::Regex> = LazyLock::new(|| re(r"([0-9])\s*[:.]\s*([0-9])"));
+    // An ordinal written as a figure: "1º", "2ª", "1er", "2e", "3eme".
+    static ORDINAL_LEFT: LazyLock<regex::Regex> = LazyLock::new(|| re(r"^ord[123]$"));
+    static ABBREVIATED: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?-u:\b)([a-z]{2,5})\.\s*([0-9])"));
+    static DE_ZU: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?-u:\b)([0-9]{1,3}) zu ([0-9]{1,3})(?-u:\b)"));
+    static DE_FROM: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?-u:\b)(?:ab )+(kapitel|vers|versen|verse)(?-u:\b)"));
+    static ORDINAL_MARK: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?-u:\b)([123])(?:\s?[ºª°]|er|re|ere|e|eme|nd)(?-u:\b)|(?-u:\b)([123])[ºª°]"));
     let mut t = fold(text).replace('ß', "ss");
+    if lang != Lang::De {
+        t = ORDINAL_MARK.replace_all(&t, "ord$1$2").into_owned();
+    }
     if lang == Lang::De {
         t = DE_ORDINAL_DOT.replace_all(&t, "$1 ").into_owned();
     }
     t = NUM_SEP.replace_all(&t, "$1 $2").into_owned();
+    let t = ABBREVIATED.replace_all(&t, "${1}_ $2").into_owned();
     let t: String = t.chars().map(|ch| if ".,;:!?¿¡\"()-'".contains(ch) { ' ' } else { ch }).collect();
+    // German "ab Kapitel 8 ab Vers 18": "from", not a word of the citation. "Johannes 15 zu 1",
+    // "Klagelieder 3 zu 33": chapter and verse joined by "zu" (de-malgo-johannes15).
+    let t = if lang == Lang::De { DE_ZU.replace_all(&DE_FROM.replace_all(&t, "$1"), "$1 $2").into_owned() } else { t };
     let t = t.split_whitespace().collect::<Vec<_>>().join(" ");
     let t = replace_phrases(&t, &c.phrases);
-    let t = numbers_to_digits(&t.split(' ').collect::<Vec<_>>(), c).join(" ");
+    // An ordinal figure not before a book counts points ("1º coisa… 2º… 3º", pt-hernandes-romanos8),
+    // except after "verse" or "chapter": "versículo 1º" is verse one.
+    let raw: Vec<&str> = t.split(' ').collect();
+    let kept: Vec<&str> = raw
+        .iter()
+        .enumerate()
+        .map(|(i, w)| match *w {
+            // …unless written with a full stop before a number: "Hos. 11, 8" is the recogniser's own
+            // abbreviation of a book said (marked "hos_" below). "noch mal 3" is not Malachi.
+            w if w.ends_with('_') => w.trim_end_matches('_'),
+            w if ENGLISH_ABBREVIATIONS.contains(w) => "-",
+            w if ORDINAL_LEFT.is_match(w) && i > 0 && matches!(raw[i - 1], "verse" | "chapter") => &w[3..],
+            w if ORDINAL_LEFT.is_match(w) => "-",
+            w => w,
+        })
+        .collect();
+    let t = numbers_to_digits(&kept, c).join(" ");
     let t = c.article.replace_all(&t, "$1 $2");
     let t = c.to.replace_all(&t, "$1 to $2");
-    c.and.replace_all(&t, "$1 and $2").into_owned()
+    let mut t = c.and.replace_all(&t, "$1 and $2").into_owned();
+    if let Some(r) = &c.verse_first {
+        t = r.replace_all(&t, "$2 $3 $1").into_owned();
+    }
+    if let Some(r) = &c.chapter_first {
+        t = r.replace_all(&t, "$2 chapter $1").into_owned();
+    }
+    t
 }
+
+/// Verses a Psalm's title takes in the numbering this language's preachers cite: French Bibles (Segond)
+/// and German ones (Luther, Elberfelder, Schlachter) count the title as verse 1, or 1–2, where the KJV
+/// gives it no number, so "Psaume 59 verset 2" is the KJV's 59:1 (fr-mayala-psaume35). The same list
+/// as `scripts/pack-versification.py`.
+pub fn psalm_title_verses(lang: Lang, chapter: u32) -> u32 {
+    const ONE: &[u32] = &[
+        3, 4, 5, 6, 7, 8, 9, 12, 18, 19, 20, 21, 22, 30, 31, 34, 36, 38, 39, 40, 41, 42, 44, 45, 46, 47, 48, 49, 53, 55, 56, 57, 58,
+        59, 61, 62, 63, 64, 65, 67, 68, 69, 70, 75, 76, 77, 80, 81, 83, 84, 85, 88, 89, 92, 102, 108, 140, 142,
+    ];
+    const TWO: &[u32] = &[51, 52, 54, 60];
+    match lang {
+        Lang::Fr | Lang::De if TWO.contains(&chapter) => 2,
+        Lang::Fr | Lang::De if ONE.contains(&chapter) => 1,
+        _ => 0,
+    }
+}
+
+/// English abbreviations of book names ("dan", "mal", "sal", "col", "jos", "pro"): ordinary words in
+/// the other languages ("se dan cuenta", "el mal", "la sal"), never how those preachers name a book —
+/// their names come through the tables above as the English full name. Left in, "¿se dan cuenta?"
+/// put Daniel in play and the next "versículo 6" had no chapter (es-michelen-romanos8).
+static ENGLISH_ABBREVIATIONS: LazyLock<std::collections::HashSet<String>> = LazyLock::new(|| {
+    let full: std::collections::HashSet<String> = kairo_bible::book::BOOK_NAMES
+        .iter()
+        .map(|n| n.to_lowercase().replace("song of solomon", "songofsolomon"))
+        .map(|n| n.rsplit(' ').next().unwrap_or(&n).to_string())
+        .chain(["psalm", "revelations", "zachariah", "zacharias"].map(String::from))
+        .collect();
+    super::books::Books::get().single_words().filter(|w| !full.contains(*w)).map(String::from).collect()
+});
 
 fn is_word_char(c: char) -> bool {
     c.is_ascii_lowercase() || c.is_ascii_digit()

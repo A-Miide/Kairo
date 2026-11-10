@@ -35,6 +35,9 @@ const AT_ONCE: usize = 6;
 /// and for a minute after a failed fetch. Without it every lookup of a missing chapter queued it
 /// again, so offline in a service the queue grew without end and, back online, fetched the same
 /// chapter over and over (spending the key's allowance).
+/// Chapters asked for and not yet answered, and whether any was saved since the last rebuild of detection's words.
+static PENDING: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static SAVED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
 static ASKED: std::sync::LazyLock<std::sync::Mutex<HashMap<Want, std::time::Instant>>> = std::sync::LazyLock::new(Default::default);
 const RETRY_AFTER_FAILURE: Duration = Duration::from_secs(60);
 
@@ -48,12 +51,14 @@ fn ask(code: &str, book: usize, chapter: u16, urgent: bool) {
         return;
     }
     if q.send(want.clone()).is_ok() {
+        PENDING.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         asked.insert(want, now + Duration::from_secs(24 * 3600)); // until the worker is done with it
     }
 }
 
 /// The worker is done with a chapter: it may be asked for again (after a while if it failed).
 fn answered(want: &Want, ok: bool) {
+    let _ = PENDING.fetch_update(std::sync::atomic::Ordering::Relaxed, std::sync::atomic::Ordering::Relaxed, |n| n.checked_sub(1));
     let mut asked = crate::util::lock(&ASKED);
     if ok {
         asked.remove(want);
@@ -74,6 +79,55 @@ fn chapter_file(app_data: &Path, code: &str, book: usize, chapter: u16) -> PathB
 pub fn connected(app_data: &Path, code: &str) -> Option<Value> {
     let raw = std::fs::read(dir(app_data).join(format!("{code}.json"))).ok()?;
     serde_json::from_slice(&raw).ok()
+}
+
+/// API.Bible's language id (ISO 639-3) for each language detection reads.
+const LANGUAGE_IDS: &[(&str, &str)] = &[("es", "spa"), ("pt", "por"), ("fr", "fra"), ("de", "deu")];
+
+/// A Bible the church connected in a language ("es"), the first by code when there are several.
+pub fn in_language(app_data: &Path, lang: &str) -> Option<String> {
+    let want = LANGUAGE_IDS.iter().find(|(l, _)| *l == lang)?.1;
+    let mut codes: Vec<String> = std::fs::read_dir(dir(app_data))
+        .ok()?
+        .flatten()
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "json"))
+        .filter_map(|p| p.file_stem().and_then(|s| s.to_str()).map(str::to_string))
+        .filter(|code| connected(app_data, code).is_some_and(|v| v["id"].is_string() && v["language"] == want && v["coverage"] != "ot"))
+        .collect();
+    codes.sort();
+    codes.into_iter().next()
+}
+
+/// Share of the Bible's chapters that must be saved before detection reads it instead of the pack.
+const ENOUGH_SAVED: f32 = 0.95;
+
+/// Enough of a connected Bible's chapters are saved for detection to read it.
+pub fn saved_enough(app_data: &Path, code: &str, corpus: &kairo_bible::Corpus) -> bool {
+    let all: usize = kairo_bible::Book::all().map(|b| corpus.chapter_count(b) as usize).sum();
+    let saved = std::fs::read_dir(dir(app_data).join(code)).map(|d| d.count()).unwrap_or(0);
+    saved as f32 >= all as f32 * ENOUGH_SAVED
+}
+
+/// A connected Bible's saved chapters as one translation, for detection to match speech against;
+/// None until enough of it is saved. Read from the encrypted cache and held only in memory.
+pub fn whole(app_data: &Path, code: &str, corpus: &kairo_bible::Corpus) -> Option<kairo_bible::Translation> {
+    if !saved_enough(app_data, code, corpus) {
+        return None;
+    }
+    let mut rows = Vec::new();
+    for b in kairo_bible::Book::all() {
+        for c in 1..=corpus.chapter_count(b) {
+            let Some(raw) = std::fs::read(chapter_file(app_data, code, b.index(), c)).ok().and_then(|x| open(app_data, &x)) else { continue };
+            let Ok(v) = serde_json::from_slice::<Value>(&raw) else { continue };
+            for (n, t) in v["verses"].as_object().into_iter().flatten() {
+                if let (Ok(n), Some(t)) = (n.parse::<u16>(), t.as_str()) {
+                    rows.push((b.name().to_string(), c, n, t.to_string()));
+                }
+            }
+        }
+    }
+    Some(corpus.align(code, rows.into_iter()))
 }
 
 /// Chapters are kept encrypted (AES-256-GCM), as API.Bible's terms (§12) and Biblica's licence (§V.E)
@@ -140,36 +194,6 @@ pub fn verse(app_data: &Path, code: &str, book: usize, chapter: u16, verse: u16)
     };
     let v: Value = serde_json::from_slice(&raw).ok()?;
     v["verses"][verse.to_string()].as_str().map(str::to_string)
-}
-
-/// Every verse of a connected Bible that is on this computer, read from the kept chapters without asking
-/// API.Bible for any: (book name, chapter, verse, text). The detector builds the words of the Bible from
-/// these in memory; nothing is written out. `kept` is how many chapters were read, so a Bible still being
-/// kept offline can be built again when more of it has come.
-pub fn kept_verses(app_data: &Path, code: &str) -> (Vec<(String, u16, u16, String)>, usize) {
-    let mut rows = Vec::new();
-    let mut kept = 0;
-    for (book, name) in BOOK_NAMES.iter().enumerate() {
-        for chapter in 1..=150u16 {
-            let path = chapter_file(app_data, code, book, chapter);
-            let Some(raw) = std::fs::read(&path).ok().and_then(|b| open(app_data, &b)) else { continue };
-            let Ok(v) = serde_json::from_slice::<Value>(&raw) else { continue };
-            kept += 1;
-            for (n, text) in v["verses"].as_object().into_iter().flatten() {
-                if let (Ok(n), Some(t)) = (n.parse::<u16>(), text.as_str()) {
-                    rows.push((name.to_string(), chapter, n, t.to_string()));
-                }
-            }
-        }
-    }
-    (rows, kept)
-}
-
-/// The number of chapters of a connected Bible kept on this computer, in hundreds (the wording is built
-/// again when another hundred has come).
-pub fn kept_hundreds(app_data: &Path, code: &str) -> usize {
-    let n = std::fs::read_dir(dir(app_data).join(code)).map(|d| d.count()).unwrap_or(0);
-    n / 100
 }
 
 /// "[1] In the beginning… [2] Now the earth…" → verse number → text. A Bible that runs verses together
@@ -291,6 +315,7 @@ pub fn start(app: &Shared) {
             let Some(code) = p.file_stem().and_then(|s| s.to_str()).map(str::to_string) else { continue };
             if p.extension().is_some_and(|x| x == "json") && connected(&outer.cfg.app_data_dir, &code).is_some_and(|v| v["id"].is_string()) {
                 keep_offline(&outer, &code);
+                learn_language(&outer, &code);
             }
         }
     }
@@ -331,6 +356,28 @@ async fn fetch_chapter(app: &Shared, want: &Want, pause: &std::sync::Mutex<std::
     }
     // It can be asked for again once it has gone stale, or a minute after a failure.
     answered(want, ok);
+    // Done saving for now: a Bible in the service language (or the church's own) may now be whole enough to match.
+    if ok {
+        SAVED.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+    if PENDING.load(std::sync::atomic::Ordering::Relaxed) == 0 && SAVED.swap(false, std::sync::atomic::Ordering::Relaxed) {
+        crate::service_bible::rebuild_soon(app);
+    }
+}
+
+/// A Bible connected before its language was kept: asked for once, so a service in that language can match it.
+fn learn_language(app: &Shared, code: &str) {
+    let path = dir(&app.cfg.app_data_dir).join(format!("{code}.json"));
+    let Some(mut info) = connected(&app.cfg.app_data_dir, code).filter(|v| v.get("language").is_none()) else { return };
+    let app = app.clone();
+    tokio::spawn(async move {
+        let (Some(key), Some(id)) = (app.settings.str(KEY).await, info["id"].as_str().map(str::to_string)) else { return };
+        let Ok(about) = get(&key, &format!("/bibles/{id}")).await else { return };
+        info["language"] = json!(about["data"]["language"]["id"].as_str().unwrap_or(""));
+        if std::fs::write(&path, info.to_string()).is_ok() {
+            crate::service_bible::rebuild_soon(&app);
+        }
+    });
 }
 
 fn fail(msg: impl Into<String>) -> Json<Value> {
@@ -442,7 +489,9 @@ pub async fn add(State(app): State<Shared>, Json(b): Json<Value>) -> Json<Value>
     let abbreviation = about["abbreviationLocal"].as_str().or(about["abbreviation"].as_str()).or(b["abbreviation"].as_str()).unwrap_or(&code).to_string();
     let copyright = about["copyright"].as_str().map(plain_text).unwrap_or_default();
     let d = dir(&app.cfg.app_data_dir);
-    let info = json!({ "id": id, "name": name, "coverage": coverage, "abbreviation": abbreviation, "copyright": copyright });
+    // Its language, so a service in that language matches speech against it (service_bible.rs).
+    let language = about["language"]["id"].as_str().unwrap_or("");
+    let info = json!({ "id": id, "name": name, "coverage": coverage, "abbreviation": abbreviation, "copyright": copyright, "language": language });
     if std::fs::create_dir_all(&d).is_err() || std::fs::write(d.join(format!("{code}.json")), info.to_string()).is_err() {
         return fail("Kairo couldn't save that.");
     }
@@ -459,7 +508,7 @@ fn chapters(app: &Shared, code: &str) -> Vec<(usize, u16)> {
     let ot_only = connected(&app.cfg.app_data_dir, code).is_some_and(|v| v["coverage"] == "ot");
     kairo_bible::Book::all()
         .filter(|b| !(ot_only && b.is_new_testament()))
-        .flat_map(|b| (1..=bible.k.corpus.chapter_count(b)).map(move |c| (b.index(), c)))
+        .flat_map(|b| (1..=bible.k().corpus.chapter_count(b)).map(move |c| (b.index(), c)))
         .collect()
 }
 
@@ -513,6 +562,7 @@ pub async fn remove(State(app): State<Shared>, Json(b): Json<Value>) -> Json<Val
         let mut m = serde_json::Map::new();
         m.insert(KEY.into(), Value::Null);
         app.settings.merge(m).await;
+        crate::service_bible::rebuild_soon(&app);
         return Json(json!({ "ok": true }));
     }
     let Some(code) = b["code"].as_str().and_then(crate::bible_import::clean_code) else { return Json(json!({ "ok": false })) };
@@ -521,6 +571,8 @@ pub async fn remove(State(app): State<Shared>, Json(b): Json<Value>) -> Json<Val
     if let Some(bible) = app.bible.get() {
         bible.forget_translation(&code);
     }
+    // Detection may have been matching it.
+    crate::service_bible::rebuild_soon(&app);
     Json(json!({ "ok": ok }))
 }
 
@@ -570,24 +622,6 @@ mod tests {
         assert_eq!(verse(&d, "TST", 42, 3, 16).as_deref(), Some("For God so loved"));
         assert_eq!(verse(&d, "TST", 42, 3, 17), None);
         assert_eq!(verse(&d, "TST", 0, 1, 1), None);
-        let _ = std::fs::remove_dir_all(&d);
-    }
-
-    #[test]
-    fn kept_chapters_give_every_verse_for_the_detector() {
-        let d = std::env::temp_dir().join("kairo_api_bible_kept_test");
-        let _ = std::fs::remove_dir_all(&d);
-        for (book, chapter, body) in [(42usize, 3u16, r#"{"verses":{"16":"For God so loved","17":"For God sent not"}}"#), (0, 1, r#"{"verses":{"1":"In the beginning"}}"#)] {
-            let f = chapter_file(&d, "TST", book, chapter);
-            std::fs::create_dir_all(f.parent().unwrap()).unwrap();
-            std::fs::write(&f, seal(&d, body.as_bytes()).unwrap()).unwrap();
-        }
-        let (mut rows, kept) = kept_verses(&d, "TST");
-        rows.sort();
-        assert_eq!(kept, 2);
-        assert_eq!(rows.len(), 3);
-        assert!(rows.contains(&("John".to_string(), 3, 16, "For God so loved".to_string())));
-        assert_eq!(kept_hundreds(&d, "TST"), 0);
         let _ = std::fs::remove_dir_all(&d);
     }
 }

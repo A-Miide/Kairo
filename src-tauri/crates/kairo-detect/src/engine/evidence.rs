@@ -4,7 +4,7 @@
 
 use std::collections::HashSet;
 
-use crate::reference::i18n::fold;
+use crate::lexical::text::{OTHER_PREACHING_COMMON, OTHER_STOP_WORDS};
 
 /// Words a verse ending, opening or comparison is judged on: letters only,
 /// three or more, minus the words nearly every verse and sentence has.
@@ -19,15 +19,15 @@ pub fn meaningful_words(text: &str) -> Vec<String> {
         "his", "her", "its", "my", "our", "your", "their", "was", "are", "were", "that", "this", "from", "with", "for", "not", "i",
         "we", "by", "at",
     ];
-    // Accents folded, not dropped: "rémission" is "remission", Yoruba "ẹ̀ṣẹ̀" is "ese" (a-z only cut them
-    // to "rmission" and "", so no word of a pack's verse could tell it from its twin).
-    let folded = if text.is_ascii() { text.to_lowercase() } else { fold(text) };
+    // Accents folded first, so "espíritu" is one word, not "esprit u" ("él" was "l").
+    let lower = text.to_lowercase();
+    let folded = if lower.is_ascii() { lower } else { crate::reference::i18n::fold(&lower) };
     folded
         .chars()
         .filter(|c| c.is_alphabetic() || c.is_whitespace())
         .collect::<String>()
         .split_whitespace()
-        .filter(|w| w.len() >= 3 && !SKIP.contains(w))
+        .filter(|w| w.len() >= 3 && !SKIP.contains(w) && !OTHER_STOP_WORDS.contains(w))
         .map(str::to_string)
         .collect()
 }
@@ -47,6 +47,7 @@ const NON_EVIDENCE: &[&str] = &[
 /// The everyday words of preaching, said whatever is quoted.
 pub fn preaching_common(stem: &str) -> bool {
     ["jesu", "christ", "lord", "god", "name", "holy", "ghost", "spirit", "father", "amen", "praise", "glory", "hallelujah"].contains(&stem)
+        || OTHER_PREACHING_COMMON.iter().any(|w| stem_lite(w) == stem)
 }
 
 pub fn evidence_words(text: &str) -> HashSet<String> {

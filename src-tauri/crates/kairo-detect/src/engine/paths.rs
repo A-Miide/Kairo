@@ -14,9 +14,21 @@ use super::evidence::{explained_better_by, meaningful_words, stem_lite};
 use super::scoring::{SAME_BOOK_WINDOW_MS, STREAM_IDF_FULL_CONFIDENCE, VERBATIM_CERTAIN_IDF};
 use super::twins::TwinOutcome;
 use super::types::{Evidence, Hold, Method, Target};
-use crate::lexical::{fingerprint, read_share, topic_library, verbatim, Confidence, RecentCitation, VerbatimHit};
+use crate::lexical::{fingerprint, read_share, topic_library, verbatim, verbatim_in_order, Confidence, RecentCitation, Tier, VerbatimHit};
 use crate::reference::book_mentions;
 
+/// A verse's words matched in its order, weighing this much, are a strong match: sent when no other
+/// verse comes close, offered when one does (unique_phrase).
+const UNIQUE_PHRASE_IDF: f32 = 11.0;
+/// A strong match scores at least this (the search's own score) to be sent, this to be offered.
+const UNIQUE_PHRASE_SEND_SCORE: f32 = 0.60;
+const UNIQUE_PHRASE_OFFER_SCORE: f32 = 0.50;
+/// Another verse scoring this share of the best one, and matching this share of its weight, is close
+/// enough that the phrase isn't unique.
+const UNIQUE_PHRASE_RIVAL: f32 = 0.8;
+const UNIQUE_PHRASE_RIVAL_WEIGHT: f32 = 0.75;
+/// The score a unique phrase is sent with.
+const UNIQUE_PHRASE_SCORE: f32 = 0.90;
 const VERBATIM_AUTOSEND_MIN: f32 = 0.95;
 /// A word this rare of a verse the reading passed, said again, means it's being read again.
 const SAID_AGAIN_MIN_IDF: f32 = 5.0;
@@ -192,6 +204,53 @@ impl Engine {
         best
     }
 
+    /// What the search box would find in this stretch of speech: the verse's words in its order (a run,
+    /// or in order with gaps), carrying real weight. Sent only when they are an unbroken run of the
+    /// verse's words, no other verse comes close and the words have settled (a final, not the
+    /// recogniser's first guess): "the same yesterday today and forever", Hebrews 13:8. Offered when
+    /// the match needed gaps, another verse comes close, or the words may still change. A verse
+    /// worded like another ("whosoever shall call upon the name of the Lord shall be saved": Romans
+    /// 10:13, Acts 2:21) is offered with it, never sent alone (owner decisions 2026-11-05).
+    fn unique_phrase(&mut self, results: &[VerbatimHit], found_in: &str) -> Option<Candidate> {
+        let first = *results.first()?;
+        let weight = first.matched_idf?;
+        if first.tier == Tier::Phrases4 || weight < UNIQUE_PHRASE_IDF || first.score < UNIQUE_PHRASE_OFFER_SCORE {
+            return None;
+        }
+        // Close: near on score and on the weight matched ("cast me not away" in Psalm 51:11 scores near
+        // Hebrews 10:35 on few words; Mark 7:13 "of none effect" is close to Romans 3:3 on both).
+        let close: Vec<VerseId> = results
+            .iter()
+            .skip(1)
+            .filter(|h| h.score >= first.score * UNIQUE_PHRASE_RIVAL && h.matched_idf.is_none_or(|m| m >= weight * UNIQUE_PHRASE_RIVAL_WEIGHT))
+            .map(|h| h.verse)
+            .collect();
+        let twins: Vec<VerseId> = close.iter().copied().filter(|v| self.k.lexicon.twins(first.verse).iter().any(|t| t.verse == *v)).collect();
+        let evidence = Evidence { similarity: Some(first.score), matched_idf: Some(weight), ..Default::default() };
+        let settled = self.t.interim.is_empty();
+        // Only an unbroken run of the verse's words is sent (or one whose only gaps are filler words); a
+        // match that needed gaps is offered (owner, 2026-11-05: "I think it should be offered").
+        let run = || matches!(first.tier, Tier::Phrase | Tier::LongVerse | Tier::NearRun) && first.score >= UNIQUE_PHRASE_SEND_SCORE;
+        let mut c = if close.is_empty() && settled && run() {
+            let mut c = Candidate::new(vec![first.verse], Method::Verbatim, UNIQUE_PHRASE_SCORE, Target::Screen);
+            c.evidence = Evidence { similarity: Some(UNIQUE_PHRASE_SCORE), ..evidence };
+            c
+        } else {
+            let mut verses = vec![first.verse];
+            verses.extend(twins);
+            // Offered at how closely the words match in order, not at the weight they add up to: that
+            // weight scores like a certain quote, and put every loose match over the 0.80 Possible Matches
+            // shows (English: 1.2 → 4.0 noise an hour). Only a strong match, or one another method
+            // backs, is seen.
+            let mut c = Candidate::new(verses, Method::Verbatim, first.score, Target::Suggestions).held(Hold::QuoteBelowBar);
+            c.evidence = Evidence { similarity: Some(first.score), ..Default::default() };
+            c
+        };
+        c.unique_phrase = true;
+        self.note(|e| format!("unique phrase {} → {:?}, close {:?}", c.verses.iter().map(|v| e.label(*v)).collect::<Vec<_>>().join(", "), c.intent, close.iter().map(|v| e.label(*v)).collect::<Vec<_>>()));
+        Some(c.from_text(found_in))
+    }
+
     pub(crate) fn process_verbatim(&mut self, text: &str, rescan: bool, latest: &str, now: u64) {
         let texts = clause_list(text, VERBATIM_MIN_WORDS);
         if texts.is_empty() {
@@ -200,10 +259,22 @@ impl Engine {
         // An earlier verse of the passage up, still in the end-of-utterance window, is not looked
         // for again: read near-complete, it ended the search before the verse being read was tried
         // (Psalm 149:4 found again while 149:6 was read, live 2026-10-26).
-        let behind = |v: VerseId| self.behind_up(v);
-        let (results, found_in) = self.verbatim_batch(&texts, VERBATIM_MIN_WORDS, |v| rescan && behind(v));
-        let Some(first) = results.first().copied() else { return };
         let certain = |h: &VerbatimHit| h.score >= VERBATIM_AUTOSEND_MIN || h.matched_idf.is_some_and(|m| m >= VERBATIM_CERTAIN_IDF);
+        let (results, found_in) = {
+            let behind = |v: VerseId| self.behind_up(v);
+            self.verbatim_batch(&texts, VERBATIM_MIN_WORDS, |v| rescan && behind(v))
+        };
+        // Nothing certain word for word, and the words have settled: what the search box would find, the
+        // verse's words in its order with gaps allowed.
+        if !rescan && self.t.interim.is_empty() && !results.iter().any(certain) {
+            let in_order = verbatim_in_order(&self.k.lexicon, text, VERBATIM_MIN_WORDS, VERBATIM_LIMIT);
+            if let Some(c) = self.unique_phrase(&in_order, text) {
+                self.decide(c, now);
+                return;
+            }
+        }
+        let behind = |v: VerseId| self.behind_up(v);
+        let Some(first) = results.first().copied() else { return };
         let screen: Vec<VerbatimHit> = results.iter().copied().filter(certain).collect();
         let evidence = |h: &VerbatimHit| Evidence { similarity: Some(h.score), matched_idf: h.matched_idf, ..Default::default() };
 

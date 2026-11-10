@@ -13,4 +13,4 @@ pub mod window;
 pub use fingerprint::{fingerprint, topic_library, Confidence, FingerprintResult, RecentCitation};
 pub use lexicon::{Lexicon, Twin, Wordings};
 pub use stream::{AnchorHit, Confirmed, StreamMatcher, StreamTick};
-pub use verbatim::{read_share, verbatim, Tier, VerbatimHit};
+pub use verbatim::{read_share, verbatim, verbatim_in_order, Tier, VerbatimHit};

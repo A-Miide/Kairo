@@ -61,6 +61,33 @@ fn citations_in_four_languages() {
     assert!(failed.is_empty(), "\n{}", failed.join("\n"));
 }
 
+/// The way preachers really say them, from the recorded Spanish sermons (eval/fixtures/es-*.json).
+#[test]
+fn citations_as_spanish_sermons_say_them() {
+    let cases = [
+        // The chapter before the book.
+        ("Y el capítulo 8 de romanos, que vamos a continuar estudiando", "Romans 8:"),
+        ("los versículos 5 al 11 de romanos 8, que vamos a considerar", "Romans 8:5-11"),
+        ("el versículo 5 de romanos 8", "Romans 8:5"),
+        ("en el capítulo 5 de la carta a los Romanos", "Romans 5:"),
+        // An ordinal written as a figure: 1º, 2º.
+        ("Pablo dice en 1º a los Corintios, capítulo 2, versículo 14, que el hombre natural", "1 Corinthians 2:14"),
+        ("Pablo dice en 1º los Corintios, capítulo 6, versículo 19", "1 Corinthians 6:19"),
+        ("en 2º de Timoteo capítulo 3", "2 Timothy 3:"),
+        // Already understood: kept so they stay that way.
+        ("en Juan capítulo 3, dice", "John 3:"),
+        ("¿Qué dice Pablo en Efesios capítulo 2?", "Ephesians 2:"),
+    ];
+    let mut failed = Vec::new();
+    for (text, want) in cases {
+        let got = refs(text, Lang::Es);
+        if got != [want] {
+            failed.push(format!("{text:?} → {got:?}, want {want}"));
+        }
+    }
+    assert!(failed.is_empty(), "\n{}", failed.join("\n"));
+}
+
 #[test]
 fn ordinary_sentences_are_not_citations() {
     assert_eq!(refs("había un hombre que tenía dos hijos", Lang::Es), Vec::<String>::new());
@@ -89,4 +116,40 @@ fn english_passes_through() {
     assert_eq!(localize("John 3:16", Lang::En), "John 3:16");
     assert_eq!(Lang::from_code("en-US"), Lang::En);
     assert_eq!(Lang::from_code("pt-BR"), Lang::Pt);
+}
+
+/// Lines from the recorded Portuguese, French and German sermons (eval/fixtures/{pt,fr,de}-*.json).
+#[test]
+fn citations_as_other_sermons_say_them() {
+    let cases = [
+        (Lang::Fr, "Si je tombe un Jean, un 9, je confesse ma faute", vec!["1 John 1:9"]),
+        // Segond numbers the title as verse 1: its 59:2 is the KJV's 59:1.
+        (Lang::Fr, "David dit encore dans les psaumes 52, pardon 59, verset 2", vec!["Psalms 59:1"]),
+        (Lang::Fr, "Psaume 51 verset 3", vec!["Psalms 51:1"]),
+        (Lang::Es, "Salmo 51 versículo 3", vec!["Psalms 51:3"]),
+        // German Bibles number Psalm titles and Genesis 32 as the Hebrew does.
+        (Lang::De, "Psalm 51 Vers 3", vec!["Psalms 51:1"]),
+        (Lang::De, "1. Mose 32, Vers 26", vec!["Genesis 32:25"]),
+        (Lang::De, "Psalm 23 Vers 1", vec!["Psalms 23:1"]),
+        // Lines from the German test sermons (de-*.json).
+        (Lang::De, "Hebräerbrief, Kapitel 11, die Verse 1 bis 22. Das ist unser Ziel heute.", vec!["Hebrews 11:1-22"]),
+        (Lang::De, "Und mein Vater, der Weingärtner, Johannes 15 zu 1, Jesus Christus", vec!["John 15:1"]),
+        (Lang::De, "Klagelieder 3 zu 33.", vec!["Lamentations 3:33"]),
+        (Lang::De, "In Hos. 11, 8 hören wir den Herrn", vec!["Hosea 11:8"]),
+        (Lang::Es, "¿Se dan cuenta el contraste?", vec![]),
+        (Lang::Pt, "os versículos 3 e 4 de romanos 8", vec!["Romans 8:3-4"]),
+        (Lang::Pt, "2º, toda a pendência que aquela pessoa tinha. 3º, o filho adotivo", vec![]),
+        (Lang::Es, "¿Se dan cuenta el contraste? En el versículo 6", vec![]),
+        (Lang::Es, "en 2º de Timoteo capítulo 3", vec!["2 Timothy 3:"]),
+        (Lang::Pt, "o fato glorioso de romanos 8 versículo 1º", vec!["Romans 8:1"]),
+        (Lang::De, "Römer 8 ab Vers 18", vec!["Romans 8:18"]),
+    ];
+    let mut failed = Vec::new();
+    for (lang, text, want) in cases {
+        let got = refs(text, lang);
+        if got != want {
+            failed.push(format!("{lang:?} {text:?} → {got:?}, want {want:?}"));
+        }
+    }
+    assert!(failed.is_empty(), "\n{}", failed.join("\n"));
 }

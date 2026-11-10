@@ -1171,7 +1171,23 @@ impl Engine {
     /// Returns that other reading when it is a real verse, so the words read next decide.
     pub(crate) fn glued_verse_alt(&self, c: &Citation, text: &str) -> Option<Citation> {
         let Verses::One(v) = c.verses else { return None };
-        if !(11..=19).contains(&v) || c.alt_chapter.is_some() {
+        if c.alt_chapter.is_some() {
+            return None;
+        }
+        // German verses in the twenties lose their tens in the transcript: "Jeremia zwei,
+        // einundzwanzig" written "Jeremia 2.1", "Johannes 12.4" for 12,24, "1. Mose 32.6" for 32,26
+        // (de-malgo-johannes15). A one-digit verse written after a dot may be that.
+        if self.cfg.lang == crate::reference::Lang::De && (1..=9).contains(&v) {
+            static DOTTED: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| crate::re::re(r"(?-u:\b)([0-9]{1,3})\.([0-9])(?-u:\b)"));
+            let dotted = DOTTED.captures_iter(text).any(|m| m[1].parse::<u32>().ok() == Some(c.chapter) && m[2].parse::<u32>().ok() == Some(v));
+            if !dotted {
+                return None;
+            }
+            let mut alt = c.clone();
+            alt.verses = Verses::One(20 + v);
+            return (!self.citation_verses(&alt).is_empty()).then_some(alt);
+        }
+        if !(11..=19).contains(&v) {
             return None;
         }
         let words: Vec<String> = text.split_whitespace()
