@@ -2594,7 +2594,7 @@
         if (item.type === 'slides') wireMediaBinDropTarget(body.firstElementChild, item);
       } else {
         const grid = document.createElement('div');
-        grid.className = 'svc-slides-grid';
+        grid.className = slideView() === 'text' ? 'svc-slides-text' : 'svc-slides-grid';
         slides.forEach((s, i) => grid.appendChild(slideCard(item, s, i)));
         if (item.type === 'slides') wireMediaBinDropTarget(grid, item);
         body.appendChild(grid);
@@ -2699,9 +2699,15 @@
     card.dataset.index = i;
     card.title = 'Send to all outputs';
 
+    const textMode = slideView() === 'text';
     const preview = document.createElement('div');
     preview.className = 'svc-slide-preview';
-    if (s.image) {
+    if (textMode) {
+      // Words only: no thumbnail is painted, so a long deck opens at once and every slide reads in one look.
+      card.classList.add('svc-slide-text');
+      preview.classList.add('svc-slide-textbody');
+      preview.textContent = s.image && !s.text ? '(picture)' : String(s.text || '').replace(/\n+/g, '\n').trim();
+    } else if (s.image) {
       preview.style.backgroundImage = `url('${window.kairoSmall(s.image, 480)}')`;
       preview.classList.add('is-image');
       // Wins over .is-image's hardcoded `background-size: cover` (styles.css)
@@ -7487,11 +7493,16 @@
   }
 
   // ── Grid/List + scale, applied to expanded card previews ─────────────────
+  // Grid (thumbnails) or Text (every slide's words as plain rows). The old List view (the same thumbnails in a
+  // single column) is gone: a saved 'list' reads as the grid.
+  function slideView() {
+    return localStorage.getItem('kairo-svc-view') === 'text' ? 'text' : 'grid';
+  }
   function applyView() {
     const size = parseInt(localStorage.getItem('kairo-svc-scale') || '190', 10);
-    const view = localStorage.getItem('kairo-svc-view') || 'grid';
+    const view = slideView();
+    document.getElementById('svc-stack-view')?.setAttribute('data-view', view);
     document.querySelectorAll('#svc-stack-list .svc-slides-grid').forEach(g => {
-      g.classList.toggle('is-list', view === 'list');
       g.style.setProperty('--svc-card', size + 'px');
     });
     document.querySelectorAll('#svc-view-chips .ts-chip').forEach(b =>
@@ -7957,7 +7968,13 @@
     document.getElementById('svc-view-chips')?.addEventListener('click', (e) => {
       const btn = e.target.closest('.ts-chip');
       if (!btn) return;
+      const before = slideView();
       localStorage.setItem('kairo-svc-view', btn.dataset.view);
+      if (slideView() !== before) {
+        // Text view is for seeing everything at once: every file opens (each can still be closed).
+        if (slideView() === 'text') (service?.items || []).forEach((i) => expanded.add(i.id));
+        renderStack();
+      }
       applyView();
     });
     document.getElementById('svc-scale')?.addEventListener('input', (e) => {

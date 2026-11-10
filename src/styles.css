@@ -2259,10 +2259,6 @@ input.svc-item-title {
   background: var(--blue-dim);
   border-radius: var(--radius);
 }
-.svc-slides-grid.is-list {
-  grid-template-columns: 1fr;
-  gap: 6px;
-}
 .svc-slide {
   position: relative;
   display: flex;
@@ -2361,21 +2357,6 @@ input.svc-item-title {
   background-position: center;
   padding: 0;
 }
-
-/* List view: preview shrinks to a thumbnail; the label stays overlaid on it
-   (same convention as grid mode), not beside it. */
-.svc-slides-grid.is-list .svc-slide {
-  flex-direction: row;
-  align-items: center;
-  gap: var(--space-3);
-  padding: 6px 10px;
-}
-.svc-slides-grid.is-list .svc-slide-preview {
-  width: var(--svc-card);
-  flex: none;
-  padding: 6px;
-}
-.svc-slides-grid.is-list .svc-slide-line { font-size: 9px; }
 
 .svc-add-line {
   margin-top: 6px;
@@ -9101,3 +9082,14 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 .svc-auto-switch.on .svc-auto-knob::after { transform: translateX(9px); }
 .svc-auto-switch:focus { outline: none; }
 .svc-auto-switch:focus-visible .svc-auto-knob { box-shadow: 0 0 0 2px var(--bg-card), 0 0 0 4px var(--brand); }
+
+/* Text view: every slide's words as plain rows, no thumbnails, so a whole playlist reads in one look. */
+.svc-slides-text { display: flex; flex-direction: column; gap: 3px; }
+.svc-slide.svc-slide-text { flex-direction: row; align-items: flex-start; padding: 8px 12px; gap: 0; background: transparent; border-color: transparent; border-radius: 8px; }
+.svc-slide.svc-slide-text:hover { background: var(--bg-card); }
+.svc-slide.svc-slide-text.live { background: var(--brand-dim, rgba(232, 66, 42, 0.12)); border-color: var(--brand); }
+.svc-slide-text .svc-slide-preview.svc-slide-textbody { aspect-ratio: auto; flex: 1; min-width: 0; padding: 0; background: none; display: flex; flex-direction: row; align-items: flex-start; justify-content: flex-start; gap: 12px; overflow: visible; color: var(--text); font-size: 14px; line-height: 1.5; white-space: pre-line; }
+.svc-slide-text .svc-slide-label { position: static; order: -1; flex: none; min-width: 34px; background: none; padding: 0; color: var(--text-3); font-size: 12px; font-weight: 700; }
+.svc-slide-text .svc-slide-label.sec-labeled { min-width: 0; padding: 1px 7px; border-radius: 6px; }
+.svc-slide-text .svc-live-tag { position: static; margin-left: 10px; flex: none; align-self: flex-start; }
+#svc-stack-view[data-view="text"] #svc-scale { display: none; }
