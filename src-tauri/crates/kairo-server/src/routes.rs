@@ -145,8 +145,17 @@ async fn post_settings(State(app): State<Shared>, Json(body): Json<Map<String, V
     }
     let animation_changed = incoming.contains_key("outputAnimation") || incoming.contains_key("outputAnimationSpeed");
     let obs_changed = ["obsEnabled", "obsUrl", "obsPassword"].iter().any(|k| body.contains_key(*k));
+    let wording_changed = body.contains_key("translation") || body.contains_key("sttLanguage");
     let (s, save_error) = app.settings.merge(incoming).await;
     app.refresh_presentation().await;
+    if wording_changed {
+        if let Some((bible, d)) = app.ready() {
+            let spoken = app.settings.str("sttLanguage").await.unwrap_or_else(|| "en-US".into());
+            let translation = app.settings.str("translation").await.unwrap_or_default();
+            crate::language::follow_spoken_language(&bible, &d, &spoken, &translation);
+            crate::meaning_multi::follow_language(&app, &spoken);
+        }
+    }
     if obs_changed {
         let a = app.clone();
         tokio::spawn(async move { crate::routes_misc::connect_obs(&a).await });
@@ -185,9 +194,13 @@ async fn start_listening(State(app): State<Shared>, Json(body): Json<Value>) -> 
     }
     let engine = body["engine"].as_str().unwrap_or("deepgram").to_lowercase();
     let spoken = app.settings.str("sttLanguage").await.unwrap_or_else(|| "en-US".into());
-    if let Some((bible, _)) = app.ready() {
+    if let Some((bible, d)) = app.ready() {
         let k = bible.k.clone();
         crate::interpretation::with(|i| i.set_known(std::sync::Arc::new(move |w: &str| k.lexicon.vocab().id(w).is_some())));
+        // The detector reads the service's language: its reference grammar and its Bible's wording.
+        let translation = app.settings.str("translation").await.unwrap_or_default();
+        crate::language::follow_spoken_language(&bible, &d, &spoken, &translation);
+        crate::meaning_multi::follow_language(&app, &spoken);
     }
     crate::interpretation::with(|i| i.reset(&spoken));
     let started = if engine == "offline" || engine == "browser" {

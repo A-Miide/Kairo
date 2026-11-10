@@ -8818,6 +8818,8 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 .au-engine-body .lang-capability { margin: 0; }
 .bi-list .bi-credit { font-size: 11px; color: var(--text-3, var(--text-2)); line-height: 1.4; }
 .bi-list .bi-credit a { color: var(--text-2); }
+.bi-list .bi-credit details { margin-bottom: 2px; }
+.bi-list .bi-credit summary { cursor: pointer; width: fit-content; }
 /* Onboarding: the optional API.Bible key on the last step */
 .au-dot { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--text-2); flex: none; }
 .toggle-btn.active .au-dot { background: #3fb950; border-color: #3fb950; }

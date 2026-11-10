@@ -23,6 +23,8 @@ pub fn router() -> Router<Shared> {
         .route("/api/bible-packs/catalog", get(crate::bible_packs::catalog))
         .route("/api/bible-packs/install", post(crate::bible_packs::install))
         .route("/api/bible-packs/remove", post(crate::bible_packs::remove))
+        .route("/api/meaning-multi/status", get(crate::meaning_multi::status))
+        .route("/api/meaning-multi/install", post(crate::meaning_multi::install_route))
         .route("/api/bibles/import", post(crate::bible_import::import).layer(axum::extract::DefaultBodyLimit::max(120 * 1024 * 1024)))
         .route("/api/bibles/mine", get(crate::bible_import::mine))
         .route("/api/api-bible/connect", post(crate::api_bible::connect))
@@ -216,7 +218,7 @@ async fn sermon_notes(app: &Shared, b: &Value, date: &str) -> Result<(String, Ve
     if session.lines.is_empty() {
         return Err("Nothing captured yet — start listening first".into());
     }
-    let meaning = app.meaning.get().cloned();
+    let meaning = app.meaning.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
     let date = date.to_string();
     // The outline first: it's the notes on every machine, and the parts the writer is given.
     let name = session.name.clone();

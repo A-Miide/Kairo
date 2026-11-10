@@ -239,6 +239,10 @@ pub struct MeaningThresholds {
     pub offer_in_play: (f32, f32, f32),
     /// No cross-encoder (a service in another language): cosine, wording.
     pub offer_no_rerank: (f32, f32),
+    /// No cross-encoder: sure enough for the screen: cosine, wording, and the lead in cosine over the
+    /// next verse. Off (a cosine nothing reaches) for English, whose paraphrases are only offered.
+    #[serde(default = "MeaningThresholds::never_send")]
+    pub send_no_rerank: (f32, f32, f32),
     /// Read by the cross-encoder in modern wording: rr, cos, wording, lead over the next.
     pub offer_modern: (f32, f32, f32, f32),
     /// The screen: rr, cos, wording, lead over the next.
@@ -254,6 +258,7 @@ impl MeaningThresholds {
         offer: (0.98, 0.80, 10.0),
         offer_in_play: (0.95, 0.78, 8.0),
         offer_no_rerank: (0.82, 10.0),
+        send_no_rerank: (9.0, 0.0, 0.0),
         offer_modern: (0.98, 0.75, 15.0, 0.2),
         send: (0.99, 0.84, 15.0, 0.2),
         scoped: (0.60, 0.03),
@@ -270,9 +275,32 @@ impl MeaningThresholds {
         offer: (0.98, 0.70, 10.0),
         offer_in_play: (0.95, 0.68, 8.0),
         offer_no_rerank: (0.748, 10.0),
+        send_no_rerank: (9.0, 0.0, 0.0),
         offer_modern: (0.98, 0.65, 15.0, 0.2),
         send: (0.99, 0.767, 15.0, 0.2),
         scoped: (0.546, 0.03),
+    };
+
+    fn never_send() -> (f32, f32, f32) {
+        (9.0, 0.0, 0.0)
+    }
+
+    /// multilingual-e5-small, trimmed (mean pooling, "query: " / "passage: "), for a service in another
+    /// language: no cross-encoder, so only `offer_no_rerank`, `send_no_rerank` and `scoped` are used; the
+    /// rest are the English calibration (`calibrate`: the same share of sermon speech clears each cosine).
+    /// The two no-rerank bars were set on 360 verses read aloud from Spanish, French and Portuguese Bibles the
+    /// detector had no wording of (2026-11-10, 954 meaning searches): a top verse at cosine 0.86 or more, a lead of
+    /// 0.02 or more over the next and 4 or more shared identifying wording was right 32 times in 32; without the
+    /// lead or the wording it was right 25% of the time. Cosine alone doesn't separate right from wrong here
+    /// (right: median 0.888, wrong: 0.878).
+    pub const E5_SMALL: MeaningThresholds = MeaningThresholds {
+        offer: (0.98, 0.906, 10.0),
+        offer_in_play: (0.95, 0.899, 8.0),
+        offer_no_rerank: (0.86, 5.0),
+        send_no_rerank: (0.87, 6.0, 0.025),
+        offer_modern: (0.98, 0.891, 15.0, 0.2),
+        send: (0.99, 0.916, 15.0, 0.2),
+        scoped: (0.849, 0.03),
     };
 
     /// The lowest cosine any cross-encoder decision takes (offer, in play, modern wording,
@@ -287,6 +315,7 @@ impl MeaningThresholds {
     pub fn for_embedder(name: &str) -> MeaningThresholds {
         match name {
             "bge-small" => MeaningThresholds::BGE_SMALL,
+            "e5-small" => MeaningThresholds::E5_SMALL,
             _ => MeaningThresholds::LEGACY,
         }
     }
@@ -358,6 +387,11 @@ impl Engine {
         let id = self.next_request_id();
         self.out.requests.push(Request::Paraphrase { id, windows: windows.clone(), limit: PARAPHRASE_LIMIT, rerank_from: self.cfg.meaning_thresholds.rerank_from() });
         self.meaning.asked = Some((id, windows, just_cited));
+    }
+
+    /// For the evaluation tools: the wording a window shares with a verse.
+    pub fn shared_wording(&self, text: &str, v: VerseId) -> f32 {
+        self.shared_identifying_weight(text, v)
     }
 
     /// Identifying weight (IDF sum) of the verse's words said in `text`, each stem once.
@@ -500,6 +534,14 @@ impl Engine {
                     .then_some((m_top.hit.verse, Target::Suggestions, OFFER_SCORE, m_top.hit.rerank, m_top.lex))
             }
             None => {
+                // A service in another language, with no cross-encoder: a match this sure goes up on its
+                // own, as a quote read from a Bible the detector has no wording of. Surer than an offer in
+                // cosine, shared wording and its lead over the next verse; the search must hold twice running.
+                let (s_cos, s_lex, s_lead) = t.send_no_rerank;
+                let lead = second.map_or(1.0, |s| top.hit.cos - s.hit.cos);
+                if top.hit.cos >= s_cos && top.lex >= s_lex && lead >= s_lead {
+                    return out(Target::Screen, SEND_SCORE);
+                }
                 let (n_cos, n_lex) = t.offer_no_rerank;
                 (top.hit.cos >= n_cos && top.lex >= n_lex).then_some((top.hit.verse, Target::Suggestions, OFFER_SCORE, None, top.lex))
             }

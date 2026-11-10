@@ -22,6 +22,9 @@ pub enum Command {
     Configure(Box<dyn FnOnce(&mut Config) + Send>),
     /// The meaning models are ready (or replaced).
     Meaning(Arc<MeaningService>),
+    /// The words the detector matches change (the service language's own Bible, or back to English):
+    /// the engine starts again on this knowledge with the same settings.
+    Knowledge(Arc<kairo_detect::knowledge::Knowledge>),
 }
 
 /// How the church shows scripture, read from settings on each decision.
@@ -118,6 +121,11 @@ impl Detector {
         let _ = self.tx.send(Command::Meaning(m));
     }
 
+    /// Match another wording from now on (the engine restarts on it, same settings).
+    pub fn use_knowledge(&self, k: Arc<kairo_detect::knowledge::Knowledge>) {
+        let _ = self.tx.send(Command::Knowledge(k));
+    }
+
     /// One recognised stretch of speech, from any engine.
     pub fn speech(&self, hub: &Hub, text: &str, is_final: bool, confidence: f32, speech_final: bool, words: Option<Value>, continues_live: bool) {
         // An interpreter's turn is not transcribed and never reaches the detectors.
@@ -202,7 +210,8 @@ fn run(
     on_translation: Arc<std::sync::OnceLock<Box<dyn Fn(&'static str, String) + Send + Sync>>>,
 ) {
     let started = Instant::now();
-    let mut engine = Engine::new(bible.k.clone(), cfg);
+    let mut knowledge = bible.k.clone();
+    let mut engine = Engine::new(knowledge.clone(), cfg);
     let mut meaning: Option<Arc<MeaningService>> = None;
     let mut range = RangeMirror::default();
     let (mtx, mrx) = mpsc::channel::<Request>();
@@ -244,13 +253,19 @@ fn run(
                         let cfg = engine.config().clone();
                         crate::routes::write_debug_global("server:detection-panic", json!({ "message": panic_text(&p) }));
                         eprintln!("[Detect] the engine panicked and was restarted: {}", panic_text(&p));
-                        engine = Engine::new(bible.k.clone(), cfg);
+                        engine = Engine::new(knowledge.clone(), cfg);
                         continue;
                     }
                 }
             }
             Command::Configure(f) => {
                 f(engine.config_mut());
+                continue;
+            }
+            Command::Knowledge(k) => {
+                let cfg = engine.config().clone();
+                knowledge = k.clone();
+                engine = Engine::new(k, cfg);
                 continue;
             }
             Command::Meaning(m) => {

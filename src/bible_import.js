@@ -36,6 +36,15 @@
 
   // ── The list of added Bibles ──
   let polling = null;
+  let listShape = '';
+  // The nearest ancestor that scrolls (the Settings panel), so a redraw can leave the reader where they were.
+  function scrollParent(el) {
+    for (let n = el.parentElement; n; n = n.parentElement) {
+      const o = getComputedStyle(n).overflowY;
+      if ((o === 'auto' || o === 'scroll') && n.scrollHeight > n.clientHeight) return n;
+    }
+    return document.scrollingElement;
+  }
   let apiConnected = false;
   let keyHint = '';
   async function refresh() {
@@ -47,13 +56,28 @@
         return { ...b, kind: 'api', downloading: !done, source: done ? `API.Bible${b.abbreviation && b.abbreviation !== b.code ? ` · shows as ${b.abbreviation}` : ''} · works offline` : `API.Bible · downloading ${Math.min(99, Math.floor((100 * (b.chapters || 0)) / (b.total || 1)))}%` };
       }),
     ].sort((a, b) => a.code.localeCompare(b.code));
-    list.replaceChildren(...rows.map(row));
-    renderCredits(rows);
-    $('bible-list-empty').hidden = rows.length > 0;
-    syncVersions(rows.map((r) => r.code));
-    apiConnected = !!api.connected;
-    keyHint = api.keyHint || '';
-    showApiState();
+    // Only the progress of a download moved: change that text where it is. Drawing the whole panel again
+    // every few seconds threw the reader back to the top of Settings while a Bible downloaded.
+    const shape = rows.map((r) => `${r.kind}:${r.code}:${r.downloading ? 1 : 0}`).join('|');
+    const sameShape = shape === listShape && apiConnected === !!api.connected && keyHint === (api.keyHint || '');
+    if (sameShape) {
+      [...list.children].forEach((li, i) => {
+        const src = li.querySelector('.bi-source');
+        if (src && src.textContent !== rows[i].source) src.textContent = rows[i].source;
+      });
+    } else {
+      const scroller = scrollParent(list);
+      const top = scroller ? scroller.scrollTop : 0;
+      list.replaceChildren(...rows.map(row));
+      renderCredits(rows);
+      $('bible-list-empty').hidden = rows.length > 0;
+      syncVersions(rows.map((r) => r.code));
+      apiConnected = !!api.connected;
+      keyHint = api.keyHint || '';
+      showApiState();
+      listShape = shape;
+      if (scroller) scroller.scrollTop = top;
+    }
     clearTimeout(polling);
     if (rows.some((r) => r.downloading)) polling = setTimeout(refresh, 3000);
   }
@@ -81,9 +105,16 @@
     li.append(code, name, src, rm);
     // API.Bible asks every Bible it serves to carry its copyright notice and a link back to it.
     if (b.kind === 'api') {
-      const credit = document.createElement('span');
+      // The notice is carried (API.Bible's rule) but folded away: it ran to seven lines in the card.
+      const credit = document.createElement('div');
       credit.className = 'bi-credit';
-      if (b.copyright) credit.append(`${b.copyright} `);
+      if (b.copyright) {
+        const more = document.createElement('details');
+        const sum = document.createElement('summary');
+        sum.textContent = 'Copyright';
+        more.append(sum, b.copyright);
+        credit.append(more);
+      }
       const a = document.createElement('a');
       a.href = 'https://api.bible';
       a.target = '_blank';

@@ -9,7 +9,7 @@
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 use std::time::{Duration, SystemTime};
 
 use axum::extract::{Query, State};
@@ -27,6 +27,10 @@ const KEY: &str = "apiBibleKey";
 
 type Want = (String, usize, u16);
 static QUEUE: OnceLock<UnboundedSender<Want>> = OnceLock::new();
+/// A chapter someone is waiting for (a verse about to be shown) goes ahead of the ones being kept for offline.
+static URGENT: OnceLock<UnboundedSender<Want>> = OnceLock::new();
+/// How many chapters are asked for at once. One at a time, each on a new connection, took 20-30 minutes for a Bible.
+const AT_ONCE: usize = 6;
 /// Chapters asked for, until when they aren't asked for again: while queued or being fetched,
 /// and for a minute after a failed fetch. Without it every lookup of a missing chapter queued it
 /// again, so offline in a service the queue grew without end and, back online, fetched the same
@@ -35,8 +39,8 @@ static ASKED: std::sync::LazyLock<std::sync::Mutex<HashMap<Want, std::time::Inst
 const RETRY_AFTER_FAILURE: Duration = Duration::from_secs(60);
 
 /// Queues a chapter for the worker, unless it is already asked for.
-fn ask(code: &str, book: usize, chapter: u16) {
-    let Some(q) = QUEUE.get() else { return };
+fn ask(code: &str, book: usize, chapter: u16, urgent: bool) {
+    let Some(q) = (if urgent { URGENT.get() } else { QUEUE.get() }) else { return };
     let want = (code.to_string(), book, chapter);
     let now = std::time::Instant::now();
     let mut asked = crate::util::lock(&ASKED);
@@ -125,17 +129,47 @@ pub fn verse(app_data: &Path, code: &str, book: usize, chapter: u16, verse: u16)
     let path = chapter_file(app_data, code, book, chapter);
     let stale = std::fs::metadata(&path).and_then(|m| m.modified()).ok().is_none_or(|t| SystemTime::now().duration_since(t).unwrap_or_default() > REFRESH_AFTER);
     if stale {
-        ask(code, book, chapter);
+        ask(code, book, chapter, true);
     }
     let Some(raw) = std::fs::read(&path).ok().and_then(|b| open(app_data, &b)) else {
         // Saved before chapters were encrypted, or unreadable: fetch it again.
         if !stale && path.exists() {
-            ask(code, book, chapter);
+            ask(code, book, chapter, true);
         }
         return None;
     };
     let v: Value = serde_json::from_slice(&raw).ok()?;
     v["verses"][verse.to_string()].as_str().map(str::to_string)
+}
+
+/// Every verse of a connected Bible that is on this computer, read from the kept chapters without asking
+/// API.Bible for any: (book name, chapter, verse, text). The detector builds the words of the Bible from
+/// these in memory; nothing is written out. `kept` is how many chapters were read, so a Bible still being
+/// kept offline can be built again when more of it has come.
+pub fn kept_verses(app_data: &Path, code: &str) -> (Vec<(String, u16, u16, String)>, usize) {
+    let mut rows = Vec::new();
+    let mut kept = 0;
+    for (book, name) in BOOK_NAMES.iter().enumerate() {
+        for chapter in 1..=150u16 {
+            let path = chapter_file(app_data, code, book, chapter);
+            let Some(raw) = std::fs::read(&path).ok().and_then(|b| open(app_data, &b)) else { continue };
+            let Ok(v) = serde_json::from_slice::<Value>(&raw) else { continue };
+            kept += 1;
+            for (n, text) in v["verses"].as_object().into_iter().flatten() {
+                if let (Ok(n), Some(t)) = (n.parse::<u16>(), text.as_str()) {
+                    rows.push((name.to_string(), chapter, n, t.to_string()));
+                }
+            }
+        }
+    }
+    (rows, kept)
+}
+
+/// The number of chapters of a connected Bible kept on this computer, in hundreds (the wording is built
+/// again when another hundred has come).
+pub fn kept_hundreds(app_data: &Path, code: &str) -> usize {
+    let n = std::fs::read_dir(dir(app_data).join(code)).map(|d| d.count()).unwrap_or(0);
+    n / 100
 }
 
 /// "[1] In the beginning… [2] Now the earth…" → verse number → text. A Bible that runs verses together
@@ -195,8 +229,14 @@ fn plain_text(s: &str) -> String {
     out.replace("&amp;", "&").replace("&nbsp;", " ").replace("&copy;", "©").split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
+/// One client for every call, so the connection to API.Bible is kept and not made again for each chapter.
 fn client() -> Result<reqwest::Client, String> {
-    reqwest::Client::builder().connect_timeout(Duration::from_secs(10)).timeout(Duration::from_secs(20)).build().map_err(|e| e.to_string())
+    static CLIENT: OnceLock<reqwest::Client> = OnceLock::new();
+    if let Some(c) = CLIENT.get() {
+        return Ok(c.clone());
+    }
+    let c = reqwest::Client::builder().connect_timeout(Duration::from_secs(10)).timeout(Duration::from_secs(20)).build().map_err(|e| e.to_string())?;
+    Ok(CLIENT.get_or_init(|| c).clone())
 }
 
 async fn get(key: &str, path: &str) -> Result<Value, String> {
@@ -215,42 +255,33 @@ pub fn start(app: &Shared) {
         return;
     }
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Want>();
-    if QUEUE.set(tx).is_err() {
+    let (utx, mut urx) = tokio::sync::mpsc::unbounded_channel::<Want>();
+    if QUEUE.set(tx).is_err() || URGENT.set(utx).is_err() {
         return;
     }
     let outer = app.clone();
     let app = app.clone();
     tokio::spawn(async move {
-        while let Some(want) = rx.recv().await {
-            let (code, book, chapter) = want.clone();
-            let Some(info) = connected(&app.cfg.app_data_dir, &code) else { answered(&want, false); continue };
-            let (Some(id), Some(key)) = (info["id"].as_str().map(str::to_string), app.settings.str(KEY).await) else { answered(&want, false); continue };
-            let osis = crate::bible_import::usfm_code(book);
-            let url = format!("/bibles/{id}/chapters/{osis}.{chapter}?content-type=text&include-notes=false&include-titles=false&include-chapter-numbers=false&include-verse-numbers=true");
-            let mut ok = false;
-            match get(&key, &url).await {
-                Ok(v) => {
-                    let verses = split_verses(v["data"]["content"].as_str().unwrap_or(""));
-                    ok = !verses.is_empty();
-                    if ok {
-                        let path = chapter_file(&app.cfg.app_data_dir, &code, book, chapter);
-                        if let Some(p) = path.parent() {
-                            let _ = std::fs::create_dir_all(p);
-                        }
-                        let map: HashMap<String, &String> = verses.iter().map(|(n, t)| (n.to_string(), t)).collect();
-                        if let Some(sealed) = seal(&app.cfg.app_data_dir, &serde_json::to_vec(&json!({ "verses": map })).unwrap_or_default()) {
-                            let _ = std::fs::write(&path, sealed);
-                        }
-                        if let Some(b) = app.bible.get() {
-                            b.forget_translation(&code);
-                        }
-                    }
-                }
-                Err(e) => eprintln!("[ApiBible] {code} {} {chapter}: {e}", BOOK_NAMES[book]),
+        let permits = Arc::new(tokio::sync::Semaphore::new(AT_ONCE));
+        // Told to wait by API.Bible (HTTP 429): nothing is asked for until then.
+        let pause = Arc::new(std::sync::Mutex::new(std::time::Instant::now()));
+        loop {
+            let want = tokio::select! {
+                biased;
+                Some(w) = urx.recv() => w,
+                Some(w) = rx.recv() => w,
+                else => break,
+            };
+            let Ok(permit) = permits.clone().acquire_owned().await else { break };
+            let wait = crate::util::lock(&pause).saturating_duration_since(std::time::Instant::now());
+            if !wait.is_zero() {
+                tokio::time::sleep(wait).await;
             }
-            // It can be asked for again once it has gone stale, or a minute after a failure.
-            answered(&want, ok);
-            tokio::time::sleep(Duration::from_millis(250)).await;
+            let (app, pause) = (app.clone(), pause.clone());
+            tokio::spawn(async move {
+                fetch_chapter(&app, &want, &pause).await;
+                drop(permit);
+            });
         }
     });
     // Bibles already connected: what's missing or older than 30 days is fetched again in the background.
@@ -263,6 +294,43 @@ pub fn start(app: &Shared) {
             }
         }
     }
+}
+
+/// Fetches one chapter and keeps it (sealed). A refusal for too many calls pauses the whole worker for a while.
+async fn fetch_chapter(app: &Shared, want: &Want, pause: &std::sync::Mutex<std::time::Instant>) {
+    let (code, book, chapter) = want.clone();
+    let Some(info) = connected(&app.cfg.app_data_dir, &code) else { return answered(want, false) };
+    let (Some(id), Some(key)) = (info["id"].as_str().map(str::to_string), app.settings.str(KEY).await) else { return answered(want, false) };
+    let osis = crate::bible_import::usfm_code(book);
+    let url = format!("/bibles/{id}/chapters/{osis}.{chapter}?content-type=text&include-notes=false&include-titles=false&include-chapter-numbers=false&include-verse-numbers=true");
+    let mut ok = false;
+    match get(&key, &url).await {
+        Ok(v) => {
+            let verses = split_verses(v["data"]["content"].as_str().unwrap_or(""));
+            ok = !verses.is_empty();
+            if ok {
+                let path = chapter_file(&app.cfg.app_data_dir, &code, book, chapter);
+                if let Some(p) = path.parent() {
+                    let _ = std::fs::create_dir_all(p);
+                }
+                let map: HashMap<String, &String> = verses.iter().map(|(n, t)| (n.to_string(), t)).collect();
+                if let Some(sealed) = seal(&app.cfg.app_data_dir, &serde_json::to_vec(&json!({ "verses": map })).unwrap_or_default()) {
+                    let _ = std::fs::write(&path, sealed);
+                }
+                if let Some(b) = app.bible.get() {
+                    b.forget_translation(&code);
+                }
+            }
+        }
+        Err(e) => {
+            if e.contains("call limit") {
+                *crate::util::lock(pause) = std::time::Instant::now() + Duration::from_secs(30);
+            }
+            eprintln!("[ApiBible] {code} {} {chapter}: {e}", BOOK_NAMES[book]);
+        }
+    }
+    // It can be asked for again once it has gone stale, or a minute after a failure.
+    answered(want, ok);
 }
 
 fn fail(msg: impl Into<String>) -> Json<Value> {
@@ -406,7 +474,7 @@ fn keep_offline(app: &Shared, code: &str) -> usize {
                 .is_some_and(|t| SystemTime::now().duration_since(t).unwrap_or_default() < REFRESH_AFTER)
                 && std::fs::read(&file).is_ok_and(|b| b.starts_with(SEALED));
             if !fresh {
-                ask(code, b, c);
+                ask(code, b, c, false);
             }
         }
     }
@@ -502,6 +570,24 @@ mod tests {
         assert_eq!(verse(&d, "TST", 42, 3, 16).as_deref(), Some("For God so loved"));
         assert_eq!(verse(&d, "TST", 42, 3, 17), None);
         assert_eq!(verse(&d, "TST", 0, 1, 1), None);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn kept_chapters_give_every_verse_for_the_detector() {
+        let d = std::env::temp_dir().join("kairo_api_bible_kept_test");
+        let _ = std::fs::remove_dir_all(&d);
+        for (book, chapter, body) in [(42usize, 3u16, r#"{"verses":{"16":"For God so loved","17":"For God sent not"}}"#), (0, 1, r#"{"verses":{"1":"In the beginning"}}"#)] {
+            let f = chapter_file(&d, "TST", book, chapter);
+            std::fs::create_dir_all(f.parent().unwrap()).unwrap();
+            std::fs::write(&f, seal(&d, body.as_bytes()).unwrap()).unwrap();
+        }
+        let (mut rows, kept) = kept_verses(&d, "TST");
+        rows.sort();
+        assert_eq!(kept, 2);
+        assert_eq!(rows.len(), 3);
+        assert!(rows.contains(&("John".to_string(), 3, 16, "For God so loved".to_string())));
+        assert_eq!(kept_hundreds(&d, "TST"), 0);
         let _ = std::fs::remove_dir_all(&d);
     }
 }

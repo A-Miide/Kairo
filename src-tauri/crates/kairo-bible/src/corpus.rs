@@ -165,7 +165,8 @@ impl Corpus {
         Ok(self.align(code, file.verses.into_iter().filter_map(|v| v.text.map(|t| (v.book, v.chapter, v.verse, t)))))
     }
 
-    fn align(&self, code: &str, rows: impl Iterator<Item = (String, u16, u16, String)>) -> Translation {
+    /// A translation from rows of (book name, chapter, verse, text), aligned to this corpus.
+    pub fn align(&self, code: &str, rows: impl Iterator<Item = (String, u16, u16, String)>) -> Translation {
         let mut texts: Vec<Option<Box<str>>> = vec![None; self.len()];
         for (book, chapter, verse, text) in rows {
             let Some(b) = Book::from_name(&book) else { continue };
