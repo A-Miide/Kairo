@@ -524,7 +524,7 @@ fn main() {
     let m = opt("--meaning").map(|e| {
         let codes = opt("--index").unwrap_or_else(|| "KJV".into());
         let codes: Vec<&str> = codes.split(',').collect();
-        meaning(&e, Some(opt("--reranker").as_deref().unwrap_or("minilm.json")), &codes)
+        meaning(&e, Some(opt("--reranker").as_deref().unwrap_or("minilm.json")).filter(|r| *r != "none"), &codes)
     });
     let thresholds: MeaningThresholds = opt("--thresholds")
         .map(|p| serde_json::from_slice(&std::fs::read(root().join("src-tauri/crates/kairo-semantic/bench").join(p)).expect("thresholds")).expect("thresholds"))

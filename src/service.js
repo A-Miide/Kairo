@@ -1187,6 +1187,33 @@
     contentLookup.setCandidates(playlistPool);
   }
 
+  // ── Auto-Deploy: a file (deck, song or hymn) the operator switched on is shown when a slide of it is heard ────────────────────
+  // The switch is the operator's consent, given ahead of time for that one slide. Even so it only acts while
+  // Kairo is listening, not over a verse that just went up (scripture stays on top), not for the slide already
+  // live, not twice within a few seconds, and (for a slide) only on a match stronger than an offer needs.
+  const AUTO_SHOW_CONFIDENCE = 0.7;
+  const AUTO_SHOW_GAP_MS = 4000;
+  let lastAutoShowAt = 0;
+  function autoShowOk(o) {
+    if (!autoFollow) return false;
+    // The Bible tab's Auto-Deploy is the master: off, every match is offered and nothing goes up without a click.
+    if (window.KairoAutoDeployOn && !window.KairoAutoDeployOn()) return false;
+    if (bibleOnTop && bibleLive && Date.now() - bibleLive.at < 15000) return false;
+    if (liveSlideKey === `${o.itemId}:${o.index}`) return false;
+    if (Date.now() - lastAutoShowAt < AUTO_SHOW_GAP_MS) return false;
+    return o.kind === 'song' || (o.confidence || 0) >= AUTO_SHOW_CONFIDENCE;
+  }
+  function autoShowFound(o) {
+    lastAutoShowAt = Date.now();
+    debugLog('slide-finder-auto', { itemId: o.itemId, index: o.index, playlistId: o.playlistId, confidence: o.confidence, kind: o.kind });
+    openFound({ kind: 'slide', playlistId: o.playlistId, itemId: o.itemId, index: o.index }, { send: true, auto: true });
+  }
+  // The file's Auto-Deploy switch, saved with the item so it goes wherever the item goes.
+  function setItemAuto(item, on) {
+    if (on) item.auto = true; else delete item.auto;
+    saveService();
+  }
+
   // Every slide of every deck in every playlist (slide_finder.js): one being
   // read from somewhere else (mid-deck, another playlist) is offered in
   // Possible Matches; clicking it opens it where it lives and sends it (owner,
@@ -1198,7 +1225,10 @@
     if (!slideFinder) {
       slideFinder = new SF.SlideFinder({
         onOffer: (o) => {
-          debugLog('slide-finder-offer', { itemId: o.itemId, index: o.index, playlistId: o.playlistId, confidence: o.confidence });
+          // A slide the operator switched on is sent as soon as it is found (when it is safe to: see autoShowOk);
+          // otherwise, and for anything not switched on, it is offered in Possible Matches.
+          if (o.auto && autoShowOk(o)) { autoShowFound(o); return; }
+          debugLog('slide-finder-offer', { itemId: o.itemId, index: o.index, playlistId: o.playlistId, confidence: o.confidence, kind: o.kind, ambiguous: !!o.ambiguous });
           window.KairoSlideOffer?.(o);
         },
       });
@@ -1210,9 +1240,15 @@
       const slides = [];
       for (const p of ordered) {
         for (const it of p.items || []) {
+          // A song or hymn is found by its title being said (offered, or sent if its Auto switch is on).
+          if (it.type === 'song' && it.title) {
+            slides.push({ playlistId: p.id, playlistName: p.name, itemId: it.id, itemTitle: it.title, index: 0, text: it.title, kind: 'song', auto: !!it.auto });
+            continue;
+          }
           if (it.type !== 'slides') continue;
           (it.blocks || []).forEach((b, i) => {
-            if (b && b.text) slides.push({ playlistId: p.id, playlistName: p.name, itemId: it.id, itemTitle: it.title || 'Slides', index: i, text: b.text });
+            // auto: the file's Auto-Deploy switch is on, so finding any of its slides sends it. A deck set to Off never does.
+            if (b && b.text) slides.push({ playlistId: p.id, playlistName: p.name, itemId: it.id, itemTitle: it.title || 'Slides', index: i, text: b.text, auto: !!it.auto && it.followMode !== 'off' });
           });
         }
       }
@@ -2506,6 +2542,29 @@
       e.stopPropagation();
       openItemContextMenu(e.clientX, e.clientY, item, title, moreBtn);
     });
+    // One Auto-Deploy switch per file (deck, song or hymn), beside Actions. On, a slide of this file that Kairo hears
+    // goes up by itself, with no click; off, it is offered in Possible Matches.
+    if (item.type === 'song' || item.type === 'slides') {
+      const sw = document.createElement('span');
+      sw.className = 'svc-auto-switch in-head' + (item.auto ? ' on' : '');
+      sw.setAttribute('role', 'switch');
+      sw.setAttribute('aria-checked', String(!!item.auto));
+      sw.setAttribute('aria-label', 'Auto-Deploy: show this file by itself when it is heard');
+      sw.tabIndex = 0;
+      sw.innerHTML = '<span class="svc-auto-knob"></span><span class="svc-auto-text">Auto-Deploy</span>';
+      const paintSwitch = () => {
+        sw.classList.toggle('on', !!item.auto);
+        sw.setAttribute('aria-checked', String(!!item.auto));
+        sw.title = item.auto
+          ? 'On: when Kairo hears a slide of this file, it goes up by itself. Click to turn off.'
+          : 'Off: a slide of this file that Kairo hears is offered in Possible Matches. Turn on to send it by itself.';
+      };
+      paintSwitch();
+      const flip = (e) => { e.stopPropagation(); e.preventDefault(); setItemAuto(item, !item.auto); paintSwitch(); };
+      sw.addEventListener('click', flip);
+      sw.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') flip(e); });
+      head.appendChild(sw);
+    }
     head.appendChild(moreBtn);
 
     head.addEventListener('click', () => {
@@ -8145,7 +8204,7 @@
   // Opens a search result where it lives; with send, also does what clicking
   // it there does (a slide or media goes live, a song opens Add to playlist).
   // Timers only open — starting one is a deliberate act in the Timer tab.
-  async function openFound(r, { send = false } = {}) {
+  async function openFound(r, { send = false, auto = false } = {}) {
     if (r.kind === 'item' || r.kind === 'slide') {
       const p = playlists.find(x => x.id === r.playlistId);
       const item = p?.items?.find(i => i.id === r.itemId);
@@ -8157,7 +8216,7 @@
         requestAnimationFrame(() => requestAnimationFrame(() =>
           flashFound(`.svc-card[data-id="${CSS.escape(item.id)}"] .svc-slide[data-index="${index}"]`, 'svc-stack-list')));
       }
-      if (send && slidesFor(item).length) sendSlide(item, index);
+      if (send && slidesFor(item).length) sendSlide(item, index, auto ? { auto: true, follow: true } : undefined);
       return true;
     }
     if (r.kind === 'song') {

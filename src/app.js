@@ -173,6 +173,8 @@ autoSendSettings?.addEventListener('change', () => {
 // not just cosmetic: an operator needs to know whether a matching verse
 // is about to hit the screen on its own or sit in Candidates waiting for
 // a manual send. Called on load and from both autoSend change handlers.
+// The files' Auto-Deploy switches (service.js) follow this one: with it off, nothing is shown without a click.
+window.KairoAutoDeployOn = () => settings.autoSend !== false;
 function updateAutoDeployBadge() {
   const badge = document.getElementById('cs-auto-badge');
   const label = document.getElementById('cs-auto-badge-label');
@@ -1633,7 +1635,7 @@ window.KairoSlideOffer = function (o) {
   card.dataset.at = String(Date.now());
   card.innerHTML = `
     <div class="cand-row">
-      <span class="cand-ref">${escapeHtml(`${o.itemTitle} · Slide ${o.index + 1}`)}</span>
+      <span class="cand-ref">${escapeHtml(o.kind === 'song' ? `${o.itemTitle} · Song` : `${o.itemTitle} · Slide ${o.index + 1}`)}</span>
       <span class="cand-badge conf-good" title="The playlist this slide is in">${escapeHtml(o.playlistName || 'Playlist')}</span>
     </div>
     <div class="cand-text">${escapeHtml(String(o.text || '').replace(/\s+/g, ' ').trim())}</div>
