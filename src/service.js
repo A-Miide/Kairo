@@ -1054,7 +1054,7 @@
       if (!v) return;
       ownVerseRef = v.reference;
       await fetchWithTimeout(`${SERVER}/api/service/send`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ verse: v }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ verse: v, auto: true }),   // the follower's own send, not the operator's choice
       });
     } catch (err) { debugLog('slide-follow-verse-failed', { ref, error: err.message }); }
   }
@@ -1346,6 +1346,7 @@
         fit: item.type === 'image' ? (item.fit || 'contain') : undefined,
         slideStyle: item.slideStyles?.[index] || null,
         book: 'Service', chapter: 0, verse: index + 1,
+        songSlide: item.type === 'song' ? true : undefined,   // lyrics can quote scripture: the detector holds back for them alone
         similarity: 1, method: 'service',
       },
     };
@@ -2966,6 +2967,7 @@
         ...(onOlderTheme(item) ? [{ label: 'Update to the current theme', onClick: () => updateToCurrentTheme(item) }] : []),
         { label: 'Edit', onClick: () => window.KairoItemStyleEditor?.open?.(item.id, 0) },
         { label: 'Quick edit', onClick: () => openFullEdit(item.id) },
+        ...(canExportPptx(item) ? [{ label: 'Export as PowerPoint', onClick: () => exportItemAsPptx(item) }, { label: 'Export for ProPresenter', onClick: () => exportItemAsPro(item) }] : []),
         // Auto-advance (src/lyrics_follow.js for songs, src/slide_follow.js for decks)
         // — opt-in per item, unlike a song (which always auto-follows once
         // Start Listening is on): a 'slides' deck is just as often
@@ -3577,6 +3579,126 @@
     if (titleEl) { titleEl.textContent = item?.title || ''; titleEl.title = item?.title || ''; }
   }
 
+  // ── Export as PowerPoint ───────────────────────────────────────────────────────────────────────
+  // Each slide as the app draws it (its look, its own changes, its words) in layers, then export_pptx.js
+  // makes real PowerPoint shapes of them: editable text, shapes and pictures.
+  function slideForExport(item, s, i) {
+    const R = window.KairoPptx;
+    if (s.image) {
+      return { items: [
+        { kind: 'shape', x: 0, y: 0, w: DESIGN_W, h: DESIGN_H, fill: { kind: 'solid', color: R.parseColor('#000000') } },
+        { kind: 'image', x: 0, y: 0, w: DESIGN_W, h: DESIGN_H, src: s.image, fit: item.fit === 'fill' ? 'fill' : (item.fit || 'contain') },
+      ], notes: [], fonts: [] };
+    }
+    const look = s.isScene ? { layers: s.layers || [] } : (slideThemeLook(s, item) || themeForItem(item));
+    const style = s.isScene ? {} : (item.slideStyles?.[i] || {});
+    let layers = [...(look?.layers || []), ...(style.__customLayers || [])];
+    if (style.__layerOrder) layers = applyLayerOrder(layers, style.__layerOrder);
+    if (style.bgMedia?.src) {
+      layers = [{ id: '__bg-media', type: 'image', visible: true, src: style.bgMedia.src, fit: 'cover', opacity: 100, pos: { x: 0, y: 0, w: DESIGN_W, h: DESIGN_H } },
+        ...layers.filter(l => l.type !== 'background')];
+    }
+    const content = { verseText: s.text, referenceText: s.reference || '', translatedText: getTranslatedText(item, s, () => {}) };
+    return R.itemsFromLayers(layers, style, content, {});
+  }
+  // A picture's bytes for the file: a JPEG as it is; anything else (PNG, WebP, an SVG such as the vignette)
+  // drawn on a canvas and kept as a PNG, no larger than 2560 px (1280 for an SVG).
+  async function pictureForExport(src) {
+    const res = await fetch(typeof authedMediaUrl === 'function' ? authedMediaUrl(src) : src);
+    if (!res.ok) throw new Error('missing');
+    const blob = await res.blob();
+    if ((blob.type || '').toLowerCase() === 'image/jpeg') {
+      const bmp = await createImageBitmap(blob);
+      const out = { bytes: new Uint8Array(await blob.arrayBuffer()), ext: 'jpeg', w: bmp.width, h: bmp.height };
+      bmp.close?.();
+      return out;
+    }
+    const url = URL.createObjectURL(blob);
+    try {
+      const img = await new Promise((ok, bad) => { const el = new Image(); el.onload = () => ok(el); el.onerror = bad; el.src = url; });
+      let w = img.naturalWidth || DESIGN_W, h = img.naturalHeight || DESIGN_H;
+      // A drawn picture (SVG) is smooth at any size, so it goes in smaller than a photo does.
+      const k = Math.min(1, (/svg/i.test(blob.type || '') ? 1280 : 2560) / Math.max(w, h));
+      w = Math.round(w * k); h = Math.round(h * k);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const png = await new Promise(ok => canvas.toBlob(ok, 'image/png'));
+      return { bytes: new Uint8Array(await png.arrayBuffer()), ext: 'png', w, h };
+    } finally { URL.revokeObjectURL(url); }
+  }
+  const COMMON_FONTS = new Set(['Arial', 'Arial Black', 'Helvetica', 'Helvetica Neue', 'Times New Roman', 'Georgia', 'Verdana', 'Tahoma', 'Trebuchet MS', 'Courier New', 'Calibri', 'Cambria', 'Impact', 'Segoe UI', 'Menlo', 'Monaco']);
+  async function exportItemAsPptx(item) {
+    const R = window.KairoPptx;
+    const all = slidesFor(item);
+    if (!R || !all.length) { window.kairoProblem?.('There are no slides to export.'); return; }
+    try {
+      const slides = [], notes = new Set(), fonts = new Set();
+      all.forEach((s, i) => {
+        const r = slideForExport(item, s, i);
+        slides.push({ items: r.items });
+        r.notes.forEach(n => notes.add(n));
+        r.fonts.forEach(f => fonts.add(f));
+      });
+      const srcs = new Set();
+      slides.forEach(sl => sl.items.forEach(it => { if (it.kind === 'image' && it.src && it.src.indexOf('glow:') !== 0) srcs.add(it.src); }));
+      const images = {};
+      let lost = 0;
+      await Promise.all([...srcs].map(async (src) => { try { images[src] = await pictureForExport(src); } catch { lost += 1; } }));
+      if (lost) notes.add(`${lost} picture${lost === 1 ? '' : 's'} that couldn’t be loaded`);
+      const bytes = R.buildPptx(slides, images, { title: item.title });
+      const name = (String(item.title || 'Kairo slides').replace(/[^\p{L}\p{N}\- ]+/gu, '').trim().replace(/\s+/g, ' ') || 'Kairo slides') + '.pptx';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }));
+      a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      const extra = [...fonts].filter(f => !COMMON_FONTS.has(f));
+      const say = [`${all.length} slide${all.length === 1 ? '' : 's'} saved as “${name}”. The text, shapes and pictures can be edited in PowerPoint, Keynote or Google Slides.`];
+      if (notes.size) say.push(`Not included, or drawn more simply: ${[...notes].join('; ')}.`);
+      if (extra.length) say.push(`Fonts used: ${extra.join(', ')}. Install them on the computer that opens the file, or it will use another font.`);
+      if (typeof confirmDialog === 'function') await confirmDialog(say.join('\n\n'), { title: 'Exported to PowerPoint', confirmLabel: 'Done', cancelLabel: 'Close' });
+    } catch (err) {
+      console.warn('[Export] PowerPoint failed:', err);
+      window.kairoProblem?.(`Couldn’t make the PowerPoint file: ${err && err.message ? err.message : err}`);
+    }
+  }
+  const canExportPptx = (item) => !!item && ['slides', 'song', 'scripture', 'image'].includes(item.type);
+
+  // ── Export for ProPresenter ────────────────────────────────────────────────────────────────────
+  // The same slides, written as a ProPresenter 7 presentation (.pro): text and shapes as ProPresenter's own
+  // elements. Pictures aren't carried (a .pro points at files on disk), and the dialog says so.
+  async function exportItemAsPro(item) {
+    const R = window.KairoProPresenter;
+    const all = slidesFor(item);
+    if (!R || !all.length) { window.kairoProblem?.('There are no slides to export.'); return; }
+    try {
+      const slides = [], notes = new Set(), fonts = new Set();
+      all.forEach((s, i) => {
+        const r = slideForExport(item, s, i);
+        slides.push({ items: r.items });
+        r.notes.forEach(n => notes.add(n));
+        r.fonts.forEach(f => fonts.add(f));
+      });
+      const out = R.buildPro(slides, { title: item.title });
+      out.notes.forEach(n => notes.add(n));
+      const name = (String(item.title || 'Kairo slides').replace(/[^\p{L}\p{N}\- ]+/gu, '').trim().replace(/\s+/g, ' ') || 'Kairo slides') + '.pro';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([out.bytes], { type: 'application/octet-stream' }));
+      a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      const extra = [...fonts].filter(f => !COMMON_FONTS.has(f));
+      const say = [`${all.length} slide${all.length === 1 ? '' : 's'} saved as “${name}”. In ProPresenter, choose File → Import → File, or drop it into the library.`];
+      if (notes.size) say.push(`Not included, or drawn more simply: ${[...notes].join('; ')}.`);
+      if (extra.length) say.push(`Fonts used: ${extra.join(', ')}. Install them on the computer that runs ProPresenter, or it will use another font.`);
+      if (typeof confirmDialog === 'function') await confirmDialog(say.join('\n\n'), { title: 'Exported for ProPresenter', confirmLabel: 'Done', cancelLabel: 'Close' });
+    } catch (err) {
+      console.warn('[Export] ProPresenter failed:', err);
+      window.kairoProblem?.(`Couldn’t make the ProPresenter file: ${err && err.message ? err.message : err}`);
+    }
+  }
+
   // The Actions menu in Quick edit's header: how to edit (as slides or as text), lines per slide, the
   // theme, and the design canvas, all for this item.
   function openFullEditActions(anchor) {
@@ -3597,6 +3719,7 @@
       { label: 'Theme', onClick: () => openThemePopover(anchor, item) },
       { label: 'Edit design', onClick: () => window.KairoItemStyleEditor?.open?.(item.id, 0) },
     ]);
+    if (canExportPptx(item)) sections.push([{ label: 'Export as PowerPoint', onClick: () => exportItemAsPptx(item) }, { label: 'Export for ProPresenter', onClick: () => exportItemAsPro(item) }]);
     const r = anchor.getBoundingClientRect();
     openContextMenu(r.right, r.bottom + 2, sections);
   }
@@ -4810,8 +4933,10 @@
       const how = acDraft.outline.how || { mode: 'points', points: acDraft.outline.items.filter(i => i.kind === 'point').length };
       const heading = document.querySelector('#ac-sermon .ac-sermon-head b');
       const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
-      if (heading) heading.textContent = how.mode === 'points' ? 'This reads as a sermon outline' : 'Kairo can make this into sermon slides';
-      document.getElementById('ac-sermon-detail').textContent = how.mode === 'points'
+      if (heading) heading.textContent = how.mode === 'points' || how.mode === 'roles' ? 'This reads as a sermon outline' : 'Kairo can make this into sermon slides';
+      document.getElementById('ac-sermon-detail').textContent = how.mode === 'roles'
+        ? `${plural(how.points, 'point')}${how.sections ? `, ${plural(how.sections, 'section heading')}` : ''}${how.withRefs ? `, ${how.withRefs} with scriptures` : ''}${how.verses ? ` and ${plural(how.verses, 'typed verse')} (${how.versesOn ? 'each on its own slide after its point' : 'listed in the editor, off until you pick them'})` : ''}. Check them in the editor.`
+        : how.mode === 'points'
         ? `${plural(how.points, 'point')}${how.withRefs ? `, ${how.withRefs} with scriptures,` : ''} made into designed slides you can edit.`
         : how.mode === 'headings'
           ? `No numbered points, so each of the ${plural(how.points, 'heading')} became a point, with the scriptures found under it. Check them in the editor.`
@@ -7365,7 +7490,7 @@
   }
 
   // A slide thumbnail whose words run past a text box's edges (cut off on screen) gets a small
-  // "Cut off" tag. Measured once drawn and again when fonts have loaded (a late font changes the fit).
+  // "Text doesn't fit" tag (top left, opposite the LIVE badge). Measured once drawn and again when fonts have loaded (a late font changes the fit).
   const CLIP_ICON = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h7"/><path d="M17 15v6M14.5 18.5 17 21l2.5-2.5"/></svg>';
   function clipCheck(host) {
     // Not laid out yet (a collapsed section, a card still sizing): nothing to measure.
@@ -7376,8 +7501,8 @@
     if (over && !tag) {
       tag = document.createElement('span');
       tag.className = 'clip-tag';
-      tag.title = 'Some words run past their text box and are cut off';
-      tag.innerHTML = CLIP_ICON + '<span>Cut off</span>';
+      tag.title = 'Some of this slide\u2019s words run past their box, so part of them won\u2019t show. Shorten the text or make it smaller.';
+      tag.innerHTML = CLIP_ICON + '<span>Text doesn\u2019t fit</span>';
       host.appendChild(tag);
     } else if (!over) tag?.remove();
   }

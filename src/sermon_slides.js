@@ -232,7 +232,7 @@
   function docxParagraphs(xml) {
     const out = [];
     const P = /<w:p\b[^>]*?(?:\/>|>([\s\S]*?)<\/w:p>)/g;
-    let m;
+    let m, gap = 0;
     while ((m = P.exec(xml))) {
       const body = m[1] || '';
       const style = (/<w:pStyle\b[^>]*w:val="([^"]+)"/.exec(body) || [])[1] || '';
@@ -240,14 +240,15 @@
         .replace(/<w:tab\/>/g, ' ').replace(/<w:br\/>/g, ' ')
         .replace(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>|<[^>]+>/g, (_, t) => (t != null ? decodeXml(t) : ''))
         .replace(/\s+/g, ' ').trim();
-      if (!text) continue;
+      if (!text) { gap += 1; continue; }
       const list = /^listparagraph/i.test(style) || body.includes('<w:numPr>');
       const level = +((/<w:ilvl\b[^>]*w:val="(\d+)"/.exec(body) || [])[1] || 0);
       // Every run bold: set apart as a heading when short.
       const runs = body.match(/<w:r\b[\s\S]*?<\/w:r>/g) || [];
       const bold = runs.length > 0 && runs.every(r => !/<w:t[ >]/.test(r) || /<w:b\/>|<w:b w:val="(?:1|true)"\/>/.test(r));
       const heading = /^(?:heading\d|title|subtitle)/i.test(style) || (!list && bold && wordCount(text) <= 12 && !/[.?!]$/.test(text));
-      out.push({ text, list, family: list ? 'list' : null, level, heading });
+      out.push({ text, list, family: list ? 'list' : null, level, heading, bold, gap });
+      gap = 0;
     }
     return out;
   }
@@ -255,11 +256,17 @@
   // Pasted text: a line that starts with a marker ("1." "2)" "II." "B)" "•" "-" "Point 3:") is a
   // list paragraph (its marker taken off).
   function textParagraphs(text) {
-    return String(text || '').replace(/\r/g, '').split(/\n/).map(l => l.trim()).filter(Boolean).map(l => {
+    let gap = 0;
+    const out = [];
+    for (const raw of String(text || '').replace(/\r/g, '').split(/\n/)) {
+      const l = raw.trim();
+      if (!l) { gap += 1; continue; }
       const m = markerOf(l);
-      return m ? { text: m.text.trim(), list: true, family: m.family, level: 0, heading: false }
-        : { text: l, list: false, family: null, level: 0, heading: capsHeading(l) };
-    });
+      out.push(m ? { text: m.text.trim(), list: true, family: m.family, level: 0, heading: false, gap }
+        : { text: l, list: false, family: null, level: 0, heading: capsHeading(l), gap });
+      gap = 0;
+    }
+    return out;
   }
 
   // ── scriptures in a line ───────────────────────────────────────────────────────────────────────
@@ -321,6 +328,8 @@
     for (const p of paras) if (p.family && !(p.family === 'list' && p.level > 0)) counts[p.family] = (counts[p.family] || 0) + 1;
     const top = Object.keys(counts).sort((x, y) => counts[y] - counts[x])[0];
     const marked = top ? paras.map(p => ({ ...p, list: p.family === top && !(p.level > 0), sub: !!p.family && !(p.family === top && !(p.level > 0)) })) : paras;
+    const byRoles = rolesOutline(paras);
+    if (byRoles) return byRoles;
     const strict = top && counts[top] >= 2 ? pointsOutline(marked) : null;
     if (strict) return strict;
     return headingsOutline(paras) || paragraphsOutline(paras, always);
@@ -384,6 +393,178 @@
     // Three points, or two with a scripture: an outline. Fewer is a list of something else.
     if (!(points.length >= 3 || (points.length >= 2 && withRefs >= 1))) return null;
     return finish({ header: header.map(h => ({ text: h.statement, refs: h.refs })), week, items, other }, 'points');
+  }
+  // ── reading by roles ───────────────────────────────────────────────────────────────────────────
+  // Documents come laid out in many ways (numbered points, bold statements, a ProPresenter slides file
+  // with each verse typed under its own reference), so the reader doesn't look for a layout. It gives
+  // each paragraph a role from what the paragraph is, and its neighbours:
+  //   statement   a point or heading: numbered, bold, in capitals, or a Word heading
+  //   scriptures  references and nothing else ("Isaiah 8:18 / John 3:8"), under the statement they belong to
+  //   verseHead   a single reference with its words written out under it
+  //   verseText   those words ("18. Behold, I and the children …")
+  //   story       a long paragraph of prose        note   "NB: …" and what follows a "Note" heading
+  //   short       a short plain line               sub    a point's own sub-point         line   anything else
+  // and then one assembler builds the outline from the roles, whatever order they came in.
+  const bareRef = (text) => String(text || '').replace(/\s*\[[^\]}]*[\]}]/g, '').trim();
+  function refsOnly(text) {
+    const first = bareRef(String(text || '').split('|')[0]);
+    if (!first || wordCount(first) > 14 || !/^\(?(?:[1-3] ?)?[A-Z]/.test(first)) return null;
+    const refs = refsIn(first);
+    // Every part is a book and numbers, nothing else ("Isaiah 8:18", "Ps. 119:14, 111"): not a reference with words after it.
+    const bare = (r) => /^(?:[1-3] ?)?[A-Za-z][A-Za-z. ]{1,24}?\s*\d{1,3}(?:\s*:\s*[\d\s,–—-]+)?$/.test(r.trim());
+    return refs.length && refs.every(r => bare(r) && normaliseRef(r)) ? refs : null;
+  }
+  // A reference with its verse on the same line ("Prov 23:7 For as he thinketh …", "Matt 7:16-20 (16 Ye shall know …)").
+  function inlineVerse(text) {
+    const m = /^((?:[1-3] ?)?[A-Z][A-Za-z]{1,12}\.? ?\d{1,3}(?:\s*:\s*\d{1,3}(?:\s*[-–—]\s*\d{1,3})?(?:\s*[,/]\s*\d{1,3}(?:\s*[-–—]\s*\d{1,3})?)*)?)(?:\s*\[[^\]]*\])?\s*(\S[\s\S]*)$/.exec(String(text || '').trim());
+    if (!m || !normaliseRef(m[1])) return null;
+    const words = m[2].replace(/^\(\s*\d{0,3}\s*/, '').replace(/\)\s*$/, '').trim();
+    return wordCount(words) >= 5 ? { ref: normaliseRef(m[1]), raw: m[1].trim(), text: words } : null;
+  }
+  const isBold = (p) => (p.bold !== undefined ? !!p.bold : !!p.heading);
+  const startsVerse = (t) => /^\d{1,3}\s*[.)]\s*\S/.test(t) || (/^\d{1,3}\s+\S/.test(t) && !refsOnly(t));
+  // Words written under a reference: they begin with a verse number or are a sentence, and aren't a heading.
+  // In a numbered document the points are the numbered lines, so a bold line is free to be a verse; elsewhere a
+  // bold line is a statement, and verse words are the plain ones.
+  function verseBodyAt(paras, i, hasList) {
+    const p = paras[i];
+    if (!p || p.list || refsOnly(p.text) || capsHeading(p.text) || /^vs\b/i.test(p.text)) return false;
+    return startsVerse(p.text) || ((hasList || !isBold(p)) && wordCount(p.text) >= 6);
+  }
+  function labelParagraphs(paras, hasList) {
+    const roles = [];
+    let inNotes = false;
+    const isStatement = (p) => !p.sub && (hasList ? p.list : (p.list || isBold(p) || p.heading)) && wordCount(p.text) >= 2 && !refsOnly(p.text);
+    let verseOpen = false;   // words are being read as a verse (a "VS:10" marker inside them doesn't end it)
+    paras.forEach((p, i) => {
+      const text = p.text.trim().replace(/^\d{6,}(?=[A-Za-z])/, '');
+      const prev = roles[i - 1] || { role: '' };
+      const seenStatement = roles.some(r => r.role === 'statement');
+      let role = 'line';
+      if (inNotes || (/^nb\b/i.test(text) && text.includes(':'))) role = 'note';
+      else if (seenStatement && /^(?:note|notes|nb)\s*:?$/i.test(text)) { inNotes = true; role = 'skip'; }
+      else if (p.sub && seenStatement) role = 'sub';
+      else if (seenStatement && /^vs\s*:?\s*\d/i.test(text)) role = 'vs';
+      else if (!p.list && seenStatement && !refsOnly(text) && inlineVerse(text)) role = 'verseInline';
+      else if (refsOnly(text) && !p.list) {
+        const prevOpen = prev.role === 'statement' && !prev.refs;
+        role = prevOpen && !(isBold(p) && verseBodyAt(paras, i + 1, hasList)) ? 'scriptures' : (verseBodyAt(paras, i + 1, hasList) ? 'verseHead' : 'scriptures');
+      } else if (verseOpen && (startsVerse(text) || wordCount(text) > 10 || (!isBold(p) && wordCount(text) >= 6)) && (hasList || !isBold(p) || startsVerse(text)) && !p.list && !capsHeading(text) && !/^vs\b/i.test(text)) role = 'verseText';
+      else if (isStatement(p)) role = 'statement';
+      else if (wordCount(text) > 30) role = 'story';
+      else if (wordCount(text) <= 10 && !/^\d/.test(text)) role = 'short';
+      if (role !== 'vs') verseOpen = role === 'verseHead' || role === 'verseText';
+      const { statement, refs } = role === 'statement' ? splitStatement(text) : { statement: text, refs: [] };
+      roles.push({ role, text, statement, refs: refs.length ? refs : null, p });
+    });
+    return roles;
+  }
+
+  // The outline from the roles. Returns null when it holds fewer than the points of a sermon.
+  function rolesOutline(paras) {
+    const counts = {};
+    for (const p of paras) if (p.family && !(p.family === 'list' && p.level > 0)) counts[p.family] = (counts[p.family] || 0) + 1;
+    const top = Object.keys(counts).sort((x, y) => counts[y] - counts[x])[0];
+    const marked = top && counts[top] >= 2 ? paras.map(p => ({ ...p, list: p.family === top && !(p.level > 0), sub: !!p.family && !(p.family === top && !(p.level > 0)) })) : paras.map(p => ({ ...p, sub: false }));
+    const hasList = marked.some(p => p.list);
+    const roles = labelParagraphs(marked, hasList);
+    const items = [], other = [], header = [];
+    let cur = null, verse = null, week = null, pointSeen = false;
+    const flushVerse = () => { verse = null; };
+    // The document's own heading: the lines before its first point (numbered documents), or the capitals at its top.
+    roles.forEach((r, i) => {
+      const { role, p } = r;
+      if (role === 'skip' || role === 'vs') return;
+      if (role === 'note') { flushVerse(); items.push({ kind: 'note', text: r.text }); return; }
+      if (role === 'sub') { other.push(r.text); return; }
+      if (role === 'statement') {
+        const isHeader = hasList ? (!pointSeen && !p.list && header.length < 6) : (header.length < 2 && !pointSeen && capsHeading(r.statement));
+        if (isHeader) {
+          header.push({ text: r.statement, refs: r.refs || [] });
+          cur = { kind: 'headerline', refs: r.refs || [], verses: [], notes: [] };
+          flushVerse();
+          return;
+        }
+        pointSeen = true;
+        if (wordCount(r.statement) > 80) { items.push({ kind: 'story', text: r.statement, refs: findRefs(r.statement) }); cur = null; flushVerse(); return; }
+        cur = { kind: 'point', n: 0, text: r.statement.replace(/:$/, ''), refs: r.refs ? [...r.refs] : [], verses: [], notes: [] };
+        items.push(cur); flushVerse();
+        return;
+      }
+      if (role === 'scriptures') {
+        const [first, ...rest] = r.text.split('|').map(t => t.trim());
+        const refs = refsIn(bareRef(first));
+        if (cur) { cur.refs.push(...refs); if (cur.kind === 'headerline') { const h = header[header.length - 1]; if (h) h.refs = cur.refs; } }
+        const wk = rest.find(x => /^week\b/i.test(x));
+        if (wk && !week) week = wk;
+        if (rest.length && cur && cur.notes) cur.notes.push(rest.join(' | '));
+        flushVerse();
+        return;
+      }
+      if (role === 'verseHead') {
+        verse = { ref: bareRef(r.text), text: [] };
+        if (!cur || cur.kind === 'headerline') { cur = { kind: 'point', n: 0, text: '', refs: [], verses: [], notes: [] }; items.push(cur); }
+        cur.verses.push(verse);
+        return;
+      }
+      if (role === 'verseInline') {
+        const v = inlineVerse(r.text);
+        if (!cur || cur.kind === 'headerline') { cur = { kind: 'point', n: 0, text: '', refs: [], verses: [], notes: [] }; items.push(cur); }
+        cur.verses.push({ ref: v.raw, text: [v.text] });
+        flushVerse();
+        return;
+      }
+      if (role === 'verseText') { if (verse) verse.text.push(r.text.replace(/^\d{1,3}\s*[.)]\s*(?=\S)/, '')); return; }
+      if ((role === 'short' || role === 'line') && cur && cur.kind === 'point' && findRefs(r.text).length) {
+        cur.notes.push(r.text);
+        for (const ref of findRefs(r.text)) if (!cur.refs.includes(ref)) cur.refs.push(ref);
+        flushVerse();
+        return;
+      }
+      if (role === 'story') {
+        flushVerse();
+        // Prose before the first point is the introduction; prose among the points is that point's own note.
+        items.push({ kind: 'story', text: r.text, refs: findRefs(r.text) }); cur = null;
+        return;
+      }
+      if ((role === 'line' || role === 'short') && hasList && !pointSeen && wordCount(r.text) <= 30) {
+        if (/^week\s*\d+/i.test(r.text)) week = r.text; else if (!/^introduction\b/i.test(r.text) && header.length < 6) { const h = splitStatement(r.text); header.push({ text: h.statement, refs: h.refs }); }
+        return;
+      }
+      if (role === 'short') {
+        flushVerse();
+        if (!pointSeen) { if (/^week\s*\d+/i.test(r.text)) week = r.text; else if (!/^introduction\b/i.test(r.text) && header.length < 6) { const h = splitStatement(r.text); header.push({ text: h.statement, refs: h.refs }); } return; }
+        if (/^vs\b/i.test(r.text) && /\d/.test(r.text)) { other.push(r.text); return; }
+        items.push({ kind: 'section', text: r.text.replace(/:$/, '') }); cur = null;
+        return;
+      }
+      other.push(r.text);
+    });
+    // Tidy: a point is its words, scriptures and verses; capitals with nothing under them divide the service.
+    for (const it of items) {
+      if (it.kind !== 'point') continue;
+      it.refs = [...new Set(it.refs)];
+      it.verses = it.verses.filter(v => v.text.length).map(v => ({ ref: v.ref, text: v.text.join(' ') }));
+      it.notes = it.notes.join('\n'); if (!it.notes) delete it.notes;
+      if (!it.verses.length) delete it.verses;
+      if (!it.text && it.verses) it.text = it.verses[0].ref;
+      if (capsHeading(it.text) && !it.refs.length && !it.verses) it.kind = 'section';
+    }
+    const last = [...items].reverse().find(i => i.kind !== 'note');
+    if (last && last.kind === 'section') last.kind = 'closing';
+    let n = 0;
+    for (const it of items) { if (it.kind === 'point') it.n = ++n; else delete it.n; }
+    const points = items.filter(i => i.kind === 'point');
+    const withRefs = points.filter(p => p.refs.length || p.verses).length;
+    if (!(points.length >= 3 || (points.length >= 2 && withRefs >= 1))) return null;
+    const out = finish({ header, week, items, other, titleIndex: hasList ? undefined : 0 }, 'roles');
+    const typed = items.reduce((c, i) => c + (i.verses ? i.verses.length : 0), 0);
+    const named = new Set(items.flatMap(i => [...(i.refs || []), ...((i.verses || []).map(v => v.ref))])).size;
+    out.how.verses = typed;
+    // A document with no numbered points that writes out most of the scriptures it names is a slides document: its
+    // verses are slides. A numbered outline's typed verses are the preacher's reading notes: offered, not on.
+    out.how.versesOn = !hasList && typed >= 3 && typed >= 0.5 * named;
+    return out;
   }
   // Each heading a point; the scriptures named in the paragraphs under it are its own.
   function headingsOutline(paras) {
@@ -614,7 +795,7 @@
     const lines = (gen.lines || []).filter(Boolean);
     if (layout === 'centred' && (gen.kind === 'point' || gen.kind === 'story')) {
       if (gen.kind === 'point' && gen.n) L.push(textLayer('ss-number', 'Number', { x: (W - 740) / 2, y: 190, w: 740, h: 640 }, String(gen.n).padStart(2, '0'),
-        { ...display(kit, 520, kit.text, 'center', { lineHeight: 1.0 }), opacity: 7 }));
+        { ...display(kit, 520, kit.text, 'center', { lineHeight: 1.0 }), opacity: 7, decor: true }));
       if (gen.kind === 'story') L.push(ruleLayer(kit, (W - 96) / 2, 300, 96));
       if (gen.label) L.push(labelLayer(kit, gen.label, { x: M, y: gen.kind === 'story' ? 330 : 230, w: W - 2 * M, h: 48 }, 'center'));
       if (gen.kind === 'point') {
@@ -636,7 +817,7 @@
     } else if (gen.kind === 'point') {
       // The point at the left; its number, very large and quiet, balances the right.
       if (gen.n) L.push(textLayer('ss-number', 'Number', { x: 1080, y: 250, w: 740, h: 580 }, String(gen.n).padStart(2, '0'),
-        { ...display(kit, 480, kit.text, 'right', { lineHeight: 1.0 }), opacity: 7 }));
+        { ...display(kit, 480, kit.text, 'right', { lineHeight: 1.0 }), opacity: 7, decor: true }));
       if (gen.label) L.push(labelLayer(kit, gen.label, { x: M, y: 230, w: 900, h: 48 }, 'left'));
       L.push(headline(kit, gen, { x: M, y: 300, w: 1180, h: 500 }, lines.join(' '), 104, kit.text, 'left', 1.08));
       L.push(...chipLayers(kit, refs, M, 840, 'left'));
@@ -991,7 +1172,7 @@
     });
     (outline.items || []).forEach((it, i) => {
       parts.push({ id: `i${i}`, kind: it.kind, text: it.text, refs: it.refs || [], n: it.n, notes: it.notes, on: it.kind !== 'note' });
-      (it.verses || []).forEach((v, j) => parts.push({ id: `i${i}v${j}`, kind: 'verse', text: v.text, refs: [v.ref], on: false }));
+      (it.verses || []).forEach((v, j) => parts.push({ id: `i${i}v${j}`, kind: 'verse', text: v.text, refs: [v.ref], on: !!(outline.how && outline.how.versesOn) }));
     });
     (outline.other || []).forEach((t, i) => parts.push({ id: `o${i}`, kind: 'line', text: t, refs: [], on: false }));
     return parts;
@@ -1039,7 +1220,8 @@
         make({ kind: p.kind, label: '', lines: [p.text], refs: [] });
       } else {
         // A line, note or typed verse the operator chose: the quieter left-hand layout.
-        const cut = opening(p.text, 28);
+        const whole = p.kind === 'verse' && outline.how && outline.how.versesOn;   // a verse the document wrote out is read whole
+        const cut = whole ? p.text : opening(p.text, 28);
         const ref = p.kind === 'verse' ? refsOf(p.refs)[0] || '' : '';
         make({ kind: 'story', label: ref, lines: [cut], refs: [], shortened: cut !== p.text }, { notes: p.text });
       }
@@ -1148,7 +1330,7 @@
   }
 
   const api = { W, H, KITS, BACKGROUNDS, LAYOUTS, DESIGNS, kitById, withColors, kitWarnings, contrast, bookName, normaliseRef,
-    docxParagraphs, textParagraphs, outlineFrom, partsOf, readDocx, readText, shortenPoint, build, newDeck, regenerate, commonChanges, applyCommon, sharedWith, withText, serialize, parse, issues };
+    docxParagraphs, textParagraphs, labelParagraphs, outlineFrom, partsOf, readDocx, readText, shortenPoint, build, newDeck, regenerate, commonChanges, applyCommon, sharedWith, withText, serialize, parse, issues };
   if (typeof window !== 'undefined') window.KairoSermonSlides = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();

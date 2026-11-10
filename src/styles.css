@@ -9003,7 +9003,7 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 .ts-apply-all .modal-btn { padding: 6px 14px; font-size: 12px; }
 /* A slide thumbnail whose text runs past its box (service.js markClipped): a small dark tag, the
    icon in the brand colour; no frame around the slide. */
-.clip-tag { position: absolute; top: 6px; right: 6px; z-index: 3; display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px 2px 6px; border-radius: 999px; background: rgba(12, 12, 14, 0.82); color: #fff; font: 600 10px/1.5 var(--font); pointer-events: auto; }
+.clip-tag { position: absolute; top: 6px; left: 6px; z-index: 3; display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px 2px 6px; border-radius: 999px; background: rgba(12, 12, 14, 0.82); color: #fff; font: 600 10px/1.5 var(--font); pointer-events: auto; }
 .clip-tag svg { color: var(--accent); flex: none; }
 .ssp-colors { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
 .ssp-color { display: grid; gap: 4px; min-width: 0; }
@@ -9085,3 +9085,6 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 .svc-popover:has(.ssp-pop-grid-wrap) { max-width: none; width: 460px; max-height: min(640px, 92vh); overflow-y: auto; }
 .ac-style-group { flex: 1; min-width: 0; }
 .ac-style-slot .ssp-style-btn { width: 100%; }
+
+/* A message in the confirm dialog can run to paragraphs (the PowerPoint export's summary). */
+#gc-message { white-space: pre-line; }
