@@ -4,6 +4,8 @@
 
 use std::collections::HashSet;
 
+use crate::reference::i18n::fold;
+
 /// Words a verse ending, opening or comparison is judged on: letters only,
 /// three or more, minus the words nearly every verse and sentence has.
 /// Every word, lowercased, letters and digits only ("LORD," → "lord"): for comparing word order.
@@ -17,9 +19,12 @@ pub fn meaningful_words(text: &str) -> Vec<String> {
         "his", "her", "its", "my", "our", "your", "their", "was", "are", "were", "that", "this", "from", "with", "for", "not", "i",
         "we", "by", "at",
     ];
-    text.to_lowercase()
+    // Accents folded, not dropped: "rémission" is "remission", Yoruba "ẹ̀ṣẹ̀" is "ese" (a-z only cut them
+    // to "rmission" and "", so no word of a pack's verse could tell it from its twin).
+    let folded = if text.is_ascii() { text.to_lowercase() } else { fold(text) };
+    folded
         .chars()
-        .filter(|c| c.is_ascii_lowercase() || c.is_whitespace())
+        .filter(|c| c.is_alphabetic() || c.is_whitespace())
         .collect::<String>()
         .split_whitespace()
         .filter(|w| w.len() >= 3 && !SKIP.contains(w))

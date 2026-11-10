@@ -633,14 +633,18 @@ pub(crate) async fn send_service_slide(app: &Shared, mut verse: Value, look: Val
         match verse["book"].as_str().and_then(|b| bible.find(b, verse["chapter"].as_u64().unwrap_or(0), verse["verse"].as_u64().unwrap_or(0))) {
             Some(v) => {
                 d.send(Event::OperatorSent(v));
-                crate::learned::operator_put_up(v);
+                // A verse the slide follower put up is not the operator's choice: it teaches no book word.
+                if !auto {
+                    crate::learned::operator_put_up(v);
+                }
                 crate::learned::shown(v);
                 song_live(&app, false);
                 crate::util::lock(&app.log).shown.push(crate::notes::Shown { verse: v, at: epoch_ms(), how: crate::notes::How::Cited });
             }
             None if !is_bible => {
-                d.send(Event::NonScriptureLive);
-                song_live(&app, true);
+                // A slide holds nothing back: scripture read over it goes up as it would over a blank screen.
+                // (Whether a song is up still tells the interpreter to stand down.)
+                song_live(&app, verse["songSlide"] == true);
             }
             None => {}
         }

@@ -132,12 +132,13 @@ impl Engine {
             named_person_in_chapter: self.person_in_chapter(r, now),
             // Only a verse that is itself a near-duplicate of one in the
             // chapter on screen: Acts 2:17 (Joel 2:28) waits, Peter's own
-            // "this is that which was spoken by the prophet Joel" doesn't.
+            // "this is that which was spoken by the prophet Joel" doesn't. Nor does one whose own words,
+            // which its twin lacks, are being said ("for the remission of sins" with Luke 22:20 up).
             confusable_with_screen: on_screen.is_some_and(|s| {
                 self.k.confusable((r.book, r.chapter), (s.verse.book, s.verse.chapter))
                     && self.k.lexicon.twins(top).iter().any(|t| {
                         let tr = self.r(t.verse);
-                        tr.book == s.verse.book && tr.chapter == s.verse.chapter
+                        tr.book == s.verse.book && tr.chapter == s.verse.chapter && !self.own_words_heard(top, t.verse)
                     })
             }),
         };
@@ -178,7 +179,12 @@ impl Engine {
 
         // 5. What the path knew and the score can't see only ever demotes: a named hold (types::Hold)
         // keeps it to Possible Matches whatever the score.
-        if target == Target::Screen && ((c.verbatim_disagreed && !continuity) || c.hold.is_some()) {
+        // The one hold a second method can lift is a part-quote below the word-for-word bar: two
+        // methods independently landing the verse, and the score clearing the screen bar with them,
+        // is a preacher giving a verse in their own order ("believe in your heart the Lord Jesus,
+        // confess with your mouth…" for Romans 10:9, live-clip test 2026-11-09).
+        let hold = c.hold.filter(|h| !(*h == Hold::QuoteBelowBar && corroborated && !c.verbatim_disagreed));
+        if target == Target::Screen && ((c.verbatim_disagreed && !continuity) || hold.is_some()) {
             target = Target::Suggestions;
         }
 
@@ -366,7 +372,6 @@ impl Engine {
                 } else if c.method != Method::Continuation {
                     self.note_replaced_citation(top, now);
                 }
-                self.screen.non_scripture_live = false;
                 // "verse N" now means a verse of the passage on screen.
                 if c.method != Method::Direct && c.method != Method::DirectPartial {
                     self.reading.update(r.book, Some(r.chapter as u32), now);
@@ -421,7 +426,7 @@ impl Engine {
 
     /// The text-match guards (rule 9).
     fn text_match_held(&self, c: &Candidate, top: VerseId, now: u64) -> bool {
-        if self.screen.non_scripture_live || self.screen.singing {
+        if self.screen.singing {
             return true;
         }
         if self.shown_verse_returns_without_new_evidence(top, now) || self.range_left_verse_returns_without_new_evidence(top, now) {
