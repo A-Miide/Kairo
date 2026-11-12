@@ -930,13 +930,21 @@
           if (idx == null || `${item.id}:${idx}` === liveSlideKey) return;
           followerAdvancing = true;
           Promise.resolve(sendSlide(item, idx, { auto: true, follow: true })).finally(() => { followerAdvancing = false; });
+  // A song moves on by itself only when the operator has switched Auto-Deploy on for that song (its switch
+  // beside Actions) and the Bible tab's master Auto-Deploy is on. Until the song follower is fully polished,
+  // a song that has not been switched on is never advanced by it.
+  function songFollowOn(item) {
+    return !!(item && item.auto) && !(window.KairoAutoDeployOn && !window.KairoAutoDeployOn());
+  }
         },
         onPosition: (s) => renderFollowHud(s),
       });
       followItemId = item.id;
       const blockIdx = fromIndex != null ? (slidesFor(item)[fromIndex]?.blockIndex ?? 0) : null;
+      if (!item.auto) { stopFollower(); return; }
       if (blockIdx != null) follower.resync(blockIdx);
     } else if (followModeOf(item) === 'slide') {
+          if (!songFollowOn(item)) return;
       const SF = window.KairoSlideFollow;
       if (!SF) return;
       const texts = (item.blocks || []).map(b => (b.image && !b.text) ? imageTriggerPhrase(b) : (b.text || ''));
@@ -1223,6 +1231,11 @@
     const SF = window.KairoSlideFinder;
     if (!SF) return null;
     if (!slideFinder) {
+    // A song already on the screen starts or stops being followed as its switch is flipped.
+    if (item.type === 'song' && liveSlideKey && liveSlideKey.startsWith(`${item.id}:`)) {
+      if (on && autoFollow) startFollower(item, Number(liveSlideKey.slice(item.id.length + 1)));
+      else if (!on && followItemId === item.id) stopFollower();
+    }
       slideFinder = new SF.SlideFinder({
         onOffer: (o) => {
           // A slide the operator switched on is sent as soon as it is found (when it is safe to: see autoShowOk);
@@ -1307,7 +1320,7 @@
   function renderFollowHud(snap) {
     let el = document.getElementById('lyric-follow-hud');
     const liveItem = liveSlideKey && service && service.items.find(i => i.id === liveSlideKey.split(':')[0]);
-    const followable = liveItem && (liveItem.type === 'song' || sermonFollowEligible(liveItem));
+    const followable = liveItem && ((liveItem.type === 'song' && liveItem.auto) || sermonFollowEligible(liveItem));
     if (!followable) { if (el) el.remove(); return; }
     if (!el) {
       el = document.createElement('div');
