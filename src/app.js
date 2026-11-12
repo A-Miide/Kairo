@@ -3367,6 +3367,7 @@ async function loadSettings() {
     applyOutputThemes();
     applyOutputLayers();
     applyOutputKeying();
+    applyOutputFit();
     if (typeof applyOutputFrames === "function") applyOutputFrames();
     if (typeof applyMonitorLooks === "function") applyMonitorLooks();
     applyOutputModes();

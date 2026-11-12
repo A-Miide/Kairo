@@ -705,6 +705,11 @@ async fn send_media(State(app): State<Shared>, Json(body): Json<Value>) -> Respo
 
 async fn send_timer(State(app): State<Shared>, Json(b): Json<Value>) -> Json<Value> {
     if b["clear"] == true {
+        // A window noticing that the segment before has stopped asks for the screen to be cleared; with another
+        // segment now running that would wipe its countdown, so it is ignored (Clear Timer stops the live one first).
+        if app.segments.has_live() {
+            return Json(json!({ "ok": true, "kept": true }));
+        }
         app.hub.broadcast(json!({ "type": "timer-slide", "target": "viewer", "clear": true }));
     } else {
         let or_null = |k: &str| if b[k].is_null() { Value::Null } else { b[k].clone() };
@@ -877,6 +882,12 @@ async fn look_apply(State(app): State<Shared>, Json(b): Json<Value>) -> Response
     if frames.is_object() && look.is_null() && themes.is_null() {
         app.hub.broadcast(json!({ "type": "look-update", "frames": frames }));
         return Json(json!({ "ok": true, "outputs": count(frames) })).into_response();
+    }
+    // How a design of another shape meets each output: contain or cover (display.html canvasRect).
+    let fit = &b["fit"];
+    if fit.is_object() && look.is_null() && themes.is_null() {
+        app.hub.broadcast(json!({ "type": "look-update", "fit": fit }));
+        return Json(json!({ "ok": true, "outputs": count(fit) })).into_response();
     }
     if keying.is_object() && look.is_null() {
         app.hub.broadcast(json!({ "type": "look-update", "keying": keying }));

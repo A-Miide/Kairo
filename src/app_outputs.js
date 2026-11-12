@@ -1266,6 +1266,7 @@ function renderDisplayDetail(host, o) {
     looksRow.prepend(buildThemeSelect(o.id));
     looksRow.classList.add('outputs-theme-row');
     host.appendChild(looksRow);
+    host.appendChild(fitRow(o.id));
   }
   appendOutputLayersSection(host, o.id);
 
@@ -1528,6 +1529,7 @@ function renderNativeOutputDetail(host, o) {
   hInput.addEventListener('change', scheduleRestart);
 
   host.appendChild(themeRow(o.id));
+  host.appendChild(fitRow(o.id));
 
   appendOutputLayersSection(host, o.id);
 
@@ -1671,6 +1673,7 @@ function renderDeckLinkDetail(host, o) {
   });
 
   host.appendChild(themeRow(o.id));
+  host.appendChild(fitRow(o.id));
   appendOutputLayersSection(host, o.id);
 
   const del = document.createElement('button');
@@ -2125,6 +2128,42 @@ function buildKeyingSelect(outputId) {
     applyOutputKeying();
   });
   return sel;
+}
+
+// ── Fit — how a design whose shape differs from the output's meets it ──────
+// Each output's own choice, like keying: Contain shows the whole design with bands where the shapes
+// differ; Cover fills the output and crops the design's edges. A design is never stretched.
+const FIT_OPTIONS = [
+  ['contain', 'Contain — whole design, bands at the edges'],
+  ['cover', 'Cover — fill the screen, crop the edges'],
+];
+function outputFitMap() {
+  const src = settings.outputFit && typeof settings.outputFit === 'object' ? settings.outputFit : {};
+  const map = {};
+  for (const o of allConfiguredOutputs()) if (o.type !== 'obs') map[o.id] = src[o.id] === 'cover' ? 'cover' : 'contain';
+  return map;
+}
+async function applyOutputFit() {
+  const map = outputFitMap();
+  storeLocal('kairo-output-fit', JSON.stringify(map));
+  try {
+    await fetch(`${SERVER}/api/look/apply`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ fit: map }) });
+  } catch (err) {
+    console.warn('[Look] per-output fit broadcast failed:', err.message);
+  }
+}
+function fitRow(outputId) {
+  const sel = document.createElement('select');
+  sel.className = 'setting-input';
+  sel.title = 'For a design whose shape is not this screen\'s, such as a portrait slide on a wide screen.';
+  const current = outputFitMap()[outputId];
+  FIT_OPTIONS.forEach(([value, label]) => sel.add(new Option(label, value, false, value === current)));
+  sel.addEventListener('change', () => {
+    settings.outputFit = { ...outputFitMap(), [outputId]: sel.value };
+    saveSettingsPatch({ outputFit: settings.outputFit });
+    applyOutputFit();
+  });
+  return detailInlineGroup('Fit', sel);
 }
 
 // A layout's frame (Director mode): a screen theme drawn around the slide or verse, set per
