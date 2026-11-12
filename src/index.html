@@ -5,20 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KAIRO</title>
     <link rel="stylesheet" href="styles.css">
-    <!-- Manrope loads as a non-blocking preload-then-swap so the app paints
-         instantly on its own local styles.css regardless of network state.
-         The old plain <link rel="stylesheet"> here was render-blocking: with
-         no internet — the exact scenario an operator testing the Offline
-         speech engine is in — the browser sat waiting on this fetch before
-         painting anything at all, which is the "black, then white, then
-         finally shows up" delay. Now it degrades to the CSS fallback stack
-         (system-ui) instantly and upgrades to Manrope only once it arrives. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preload" as="style"
-          href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap"
-          onload="this.onload=null;this.rel='stylesheet'">
-    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap"></noscript>
+    <!-- Every font the app shows (Manrope for the interface, the slide creator's and the timer templates' faces) is
+         kept in fonts/, so nothing waits on the network: offline, the app paints the same as online. -->
+    <link rel="stylesheet" href="fonts/fonts.css">
     <script>
       // Platform class must land BEFORE first paint: on macOS the window's
       // traffic lights overlay the top bar, so the logo needs a left inset,
