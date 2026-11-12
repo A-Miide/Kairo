@@ -1292,16 +1292,17 @@
     return out;
   }
   // How many other slides of the deck have this part.
-  const sharedWith = (item, id, fromIndex) => (item.blocks || []).filter((b, i) => i !== fromIndex && (b.layers || []).some(l => l.id === id)).length;
+  const slidesOf = (item) => item.blocks || item.scenes || [];
+  const sharedWith = (item, id, fromIndex) => slidesOf(item).filter((b, i) => i !== fromIndex && (b.layers || []).some(l => l.id === id)).length;
   // Those changes onto the same part of other slides: every slide ('all'), or only the slides after
   // this one ('after'). Applied to all, a change also becomes the deck's own, so slides made later
   // (a look or contents change) keep it.
   function applyCommon(item, changes, fromIndex, scope = 'all') {
-    const d = item.sermon;
-    if (scope === 'all') d.common = { ...(d.common || {}) };
+    const d = item.sermon;   // a timer's slides have no deck record; the change just goes onto the slides
+    if (scope === 'all' && d) d.common = { ...(d.common || {}) };
     for (const c of changes) {
-      if (scope === 'all') d.common[c.id] = { ...(d.common[c.id] || {}), ...c.props };
-      (item.blocks || []).forEach((b, i) => {
+      if (scope === 'all' && d) d.common[c.id] = { ...(d.common[c.id] || {}), ...c.props };
+      slidesOf(item).forEach((b, i) => {
         if (i === fromIndex || (scope === 'after' && i < fromIndex)) return;
         const l = (b.layers || []).find(x => x.id === c.id);
         if (!l) return;
@@ -1329,7 +1330,7 @@
     return { ...block, gen, text: serialize(gen), label: gen.label || (gen.lines || [])[0] || block.label };
   }
 
-  const api = { W, H, KITS, BACKGROUNDS, LAYOUTS, DESIGNS, kitById, withColors, kitWarnings, contrast, bookName, normaliseRef,
+  const api = { W, H, KITS, BACKGROUNDS, LAYOUTS, DESIGNS, backgroundLayers, kitById, withColors, kitWarnings, contrast, bookName, normaliseRef,
     docxParagraphs, textParagraphs, labelParagraphs, outlineFrom, partsOf, readDocx, readText, shortenPoint, build, newDeck, regenerate, commonChanges, applyCommon, sharedWith, withText, serialize, parse, issues };
   if (typeof window !== 'undefined') window.KairoSermonSlides = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

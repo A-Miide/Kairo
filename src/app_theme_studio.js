@@ -609,7 +609,8 @@ const DEFAULT_LOOKS = [
     id: 'timer-big', name: 'Timer — Big Countdown', layout: 'fullscreen', animation: 'cut',
     groupId: 'grp-timer', groupName: 'Timer',
     layers: [
-      gradientCanvas('kairo'),
+      // Plain black: only the Preservice timer has a picture behind its time.
+      { id: 'bg', type: 'background', name: 'Canvas', visible: true, fill: 'solid', color: '#000000', color2: '#000000', opacity: 100, angle: 160 },
       { id: 'timer', type: 'text', name: 'Countdown', visible: true, binding: 'timer', customText: '',
         pos: { x: 160, y: 380, w: 1600, h: 320 },
         font: { family: 'Manrope', size: 180, weight: 800, italic: false, lineHeight: 1, letterSpacing: 0, transform: 'none' },
@@ -1881,19 +1882,25 @@ function renderLayersList() {
     // 'hidden' utility class (display:none !important) — that collision
     // used to make the toggle button itself vanish the moment a layer was
     // switched off, leaving no way to turn it back on.
-    // The canvas is the artboard — always visible, same as Photoshop's
-    // Background layer (no eye to click off, nothing to hide it with).
+    // The canvas is the artboard, and its eye is the transparency switch (as in design tools): on = opaque, off = clear, so no
+    // full-screen background paints and a video mixer can key the output out.
     if (isBg) layer.visible = true;
+    const canvasOn = isBg ? layer.fill !== 'transparent' : layer.visible;
     const visBtn = document.createElement('button');
-    visBtn.className = 'ts-layer-vis' + (layer.visible ? '' : ' is-off') + (isBg ? ' is-locked' : '');
-    visBtn.title = isBg ? 'The canvas is always visible — it\'s the artboard' : (layer.visible ? 'Hide' : 'Show');
-    visBtn.innerHTML = layer.visible
+    visBtn.className = 'ts-layer-vis' + (canvasOn ? '' : ' is-off');
+    visBtn.title = isBg ? (canvasOn ? 'Make the canvas transparent' : 'Make the canvas opaque') : (layer.visible ? 'Hide' : 'Show');
+    visBtn.innerHTML = canvasOn
       ? `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>`
       : `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></svg>`;
-    if (isBg) visBtn.disabled = true;
     visBtn.addEventListener('click', e => {
       e.stopPropagation();
-      if (isBg) return;
+      if (isBg) {
+        layer.fill = layer.fill === 'transparent' ? 'none' : 'transparent';
+        renderLayersList();
+        renderPreview();
+        if (tsMode === 'item') tsSave(); else scheduleThemeAutosave();
+        return;
+      }
       layer.visible = !layer.visible;
       renderLayersList();
       renderPreview();
@@ -2043,6 +2050,7 @@ function renderLayersList() {
 
     el.appendChild(row);
   });
+  tsMarkOverflowRows();
 }
 
 let tsDragLayerId = null;
@@ -2211,13 +2219,45 @@ function tsImageArt(layer, src, fit, kenBurns) {
 }
 
 // The canvas, then the rulers and guides around it (tsPaintRulers).
-function renderPreview() { renderStage(); tsPaintRulers(); }
+function renderPreview() { renderStage(); tsPaintRulers(); tsMarkOverflowRows(); }
+// A text layer whose words run past its box gets a small yellow warning on its row in Layers, so it can be found at a
+// glance. Measured on the drawn canvas; the rows are marked in place (the list isn't rebuilt).
+const TS_WARN_ICON = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+function tsMarkOverflowRows() {
+  const stage = document.getElementById('looks-preview-stage');
+  const list = document.getElementById('ts-layers-list');
+  if (!stage || !list || !activeLook) return;
+  // Not laid out yet (hidden, or drawn a moment ago): every box would read as zero wide, and everything as overflowing.
+  if (!stage.clientWidth) { setTimeout(tsMarkOverflowRows, 300); return; }
+  const bad = new Set();
+  for (const layer of activeLook.layers || []) {
+    // A layer marked decor (a ghost word, a quote mark) is cropped on purpose, so it never warns.
+    // (A rotated layer, like the big ghost countdown, is a design choice that runs past its box on purpose.)
+    if (layer.type !== 'text' || layer.visible === false || layer.decor || layer.rotation) continue;
+    const el = stage.querySelector(`[data-layer-id="${CSS.escape(layer.id)}"]`);
+    if (el && el.clientWidth && (el.scrollWidth > el.clientWidth * 1.08 + 2 || el.scrollHeight > el.clientHeight * 1.08 + 2)) bad.add(layer.id);
+  }
+  list.querySelectorAll('.ts-layer-row').forEach(row => {
+    const on = bad.has(row.dataset.layerId);
+    let warn = row.querySelector('.ts-layer-warn');
+    if (on && !warn) {
+      warn = document.createElement('span');
+      warn.className = 'ts-layer-warn';
+      warn.title = "Text doesn't fit";
+      warn.innerHTML = TS_WARN_ICON;
+      const name = row.querySelector('.ts-layer-name');
+      if (name) name.after(warn); else row.appendChild(warn);
+    } else if (!on && warn) warn.remove();
+  });
+}
+if (document.fonts && document.fonts.ready) document.fonts.ready.then(() => { try { tsMarkOverflowRows(); } catch {} });
 function renderStage() {
   const stage = document.getElementById('looks-preview-stage');
   if (!stage || !activeLook) return;
 
   stage.innerHTML = '';
   stage.className = 'ts-preview-stage';
+  if (typeof lookHasNoBackdrop === 'function' && lookHasNoBackdrop(activeLook)) stage.classList.add('ts-transparent-bg');
   // Preview-shape only (see themeCanvasSize) — layer positions below still
   // work entirely in percentages of the fixed TS_DESIGN_W/H, unaffected by
   // whatever shape this box actually renders at.
@@ -2226,9 +2266,11 @@ function renderStage() {
   fitPreviewStage(stage, size.w, size.h);
 
   const layout = activeLook.layout;
-  // Dynamic preview scale — real stage width over design width, so fonts and
-  // free positions render at true relative size whatever the modal size is.
-  const pxScale = (stage.clientWidth / TS_DESIGN_W) || SCALE;
+  // Dynamic preview scale: text, corners and shadows are pixels of a canvas
+  // 1080 high, the same unit the output draws them in (layer_geometry.js
+  // canvasFitRect), so a portrait or square canvas shows its text at the size
+  // the screen will. For a 16:9 canvas this equals width over 1920.
+  const pxScale = (stage.clientHeight / TS_DESIGN_H) || SCALE;
   // "Play" (tsPlayBuilds) replays every layer's build-in once; any other
   // repaint — every edit is one — shows the finished slide.
   const playing = tsPlayBuilds;
@@ -2240,7 +2282,7 @@ function renderStage() {
     // An element imported from ProPresenter: drawn exactly by pp_render.js,
     // with a plain box over it to select and move it by.
     if (layer.type === 'pp') {
-      stage.appendChild(window.KairoPP.render(layer, { verseText: PREVIEW_TEXT_SAMPLE, referenceText: PREVIEW_REF_SAMPLE }, { motion: 'still', scale: pxScale }));
+      stage.appendChild(window.KairoPP.render(layer, { verseText: PREVIEW_TEXT_SAMPLE, referenceText: PREVIEW_REF_SAMPLE }, { motion: 'still', scale: (stage.clientWidth / TS_DESIGN_W) || SCALE }));   // imported boxes scale by width, as on the output (pp_render.js)
       const p = layer.pos || { x: 0, y: 0, w: TS_DESIGN_W, h: TS_DESIGN_H };
       const hit = document.createElement('div');
       hit.style.cssText = `position:absolute;left:${p.x / TS_DESIGN_W * 100}%;top:${p.y / TS_DESIGN_H * 100}%;width:${p.w / TS_DESIGN_W * 100}%;height:${p.h / TS_DESIGN_H * 100}%;` +
@@ -2253,6 +2295,7 @@ function renderStage() {
     if (layer.type === 'background') {
       const div = document.createElement('div');
       div.style.cssText = 'position:absolute;inset:0;';
+      if (layer.pos && isFullScreenFill(layer) && lookCanvasClear(activeLook)) { stage.classList.add('ts-transparent-bg'); return; }   // a clear canvas paints no full-screen background
 
       if (layer.fill === 'none') {
         // The canvas paints nothing (its colour is the Background shape), but stays the surface a click selects.
@@ -2426,8 +2469,8 @@ function renderStage() {
         top:${(p.y / TS_DESIGN_H * 100)}%;
         width:${(p.w / TS_DESIGN_W * 100)}%;
         height:${(p.h / TS_DESIGN_H * 100)}%;
-        border-radius:${(layer.radius || 0) / TS_DESIGN_H * 100}vh;
-        ${(() => { const v = n => (n / TS_DESIGN_H * 100) + 'vh'; const sh = []; if (layer.frameWidth > 0) sh.push(`0 0 0 ${v(layer.frameWidth)} ${layer.frameColor || '#ffffff'}`); if (layer.shadow > 0) sh.push(`0 ${v(layer.shadow * 0.3)} ${v(layer.shadow)} rgba(0,0,0,${(layer.shadowOpacity ?? 60) / 100})`); return sh.length ? `box-shadow:${sh.join(',')};` : ''; })()}
+        border-radius:${((layer.radius || 0) * pxScale).toFixed(1)}px;
+        ${(() => { const v = n => (n * pxScale).toFixed(1) + 'px'; const sh = []; if (layer.frameWidth > 0) sh.push(`0 0 0 ${v(layer.frameWidth)} ${layer.frameColor || '#ffffff'}`); if (layer.shadow > 0) sh.push(`0 ${v(layer.shadow * 0.3)} ${v(layer.shadow)} rgba(0,0,0,${(layer.shadowOpacity ?? 60) / 100})`); return sh.length ? `box-shadow:${sh.join(',')};` : ''; })()}
         ${layer.type !== 'videozone' && layer.cardOpacity > 0 ? `background:${hexOpacity(layer.cardColor || '#000000', layer.cardOpacity)};` : ''}
       `;
       div.textContent = ZONE_INFO[layer.type].canvas;
@@ -3763,20 +3806,26 @@ function renderProps() {
   // sidebars, just the one") — Style gets the Text/Color a text layer would,
   // greyed out (it isn't one), not just Fill on its own.
   const canvas = baseBgLayer();
+  // The canvas selected in a slide or timer: the same canvas panel the theme editor has (its size), not a different editor.
+  if (inItem && canvas && activeLayer === canvas && !multiSelectedLayerIds.size) {
+    lastPropsLayerId = activeLayer.id;
+    if (!['item', 'layout'].includes(activePropsTab)) activePropsTab = 'layout';
+    showTabs(['item', 'layout']);
+    empty.style.display = 'none';
+    panel.innerHTML = '';
+    renderCanvasSize(panel);
+    panel.style.display = onItemTab() ? 'none' : 'block';
+    panel.querySelectorAll('[data-tab]').forEach(el => el.classList.toggle('ts-tab-hidden', el.dataset.tab !== activePropsTab));
+    return;
+  }
   if (!inItem && !multiSelectedLayerIds.size && (!activeLayer || activeLayer === canvas)) {
     lastPropsLayerId = activeLayer?.id ?? null;
-    const available = canvas ? ['layout', 'style', 'animate'] : ['layout'];
-    if (!available.includes(activePropsTab)) activePropsTab = 'layout';
-    showTabs(available);
+    activePropsTab = 'layout';
+    showTabs(['layout']);
     itemPane?.classList.add('ts-tab-hidden');
     empty.style.display = 'none';
     panel.innerHTML = '';
     renderSlideLayout(panel);
-    if (canvas) {
-      renderBgProps(panel, canvas);
-      renderInertTextStyle(panel);
-      renderAnimateProps(panel, canvas);
-    }
     panel.style.display = 'block';
     panel.querySelectorAll('[data-tab]').forEach(el => el.classList.toggle('ts-tab-hidden', el.dataset.tab !== activePropsTab));
     return;
@@ -4589,7 +4638,16 @@ function writeItemSlideStyleFromSynthetic() {
   // itself is service.js's saveTimerScenes, same as every other scene
   // mutation (add/delete/reorder/duration) already goes through.
   if (item.type === 'timer' && item.scenes && item.scenes.length) {
-    if (item.scenes[slideIndex]) item.scenes[slideIndex].layers = deepClone(activeLook.layers || []);
+    if (item.scenes[slideIndex]) {
+      const S = window.KairoSermonSlides;
+      const before = item.scenes[slideIndex].layers || [];
+      const next = deepClone(activeLook.layers || []);
+      // Parts the other slides share (background, text look) offer to go on them too.
+      const changes = S ? S.commonChanges(before, next).filter(c => S.sharedWith(item, c.id, slideIndex) > 0) : [];
+      item.scenes[slideIndex].layers = next;
+      if (activeLook.canvasSize) item.scenes[slideIndex].canvasSize = { ...activeLook.canvasSize };
+      if (changes.length) offerApplyToAll(item, slideIndex, changes);
+    }
     // resend:false — scheduleItemStyleAutosave's caller already re-pushes the
     // live segment right after this returns (resendLiveForSlideStyleEdit);
     // saveTimerScenes's own resend would otherwise double-fire the broadcast.
@@ -4605,6 +4663,7 @@ function writeItemSlideStyleFromSynthetic() {
   if (item.type === 'slides' && item.blocks?.[slideIndex]?.layers) {
     const block = item.blocks[slideIndex];
     const next = deepClone(activeLook.layers || []);
+    if (activeLook.canvasSize) block.canvasSize = { ...activeLook.canvasSize };
     // A sermon slide changed by hand keeps its own styling when its deck's look changes; a change
     // to a part every slide shares (footer, label, number, rule, background) offers to go on all.
     if (block.gen && JSON.stringify(next) !== JSON.stringify(block.layers)) {
@@ -4652,6 +4711,8 @@ function writeItemSlideStyleFromSynthetic() {
     if (Object.keys(ov).length) overrides[layer.id] = ov;
   });
   if (customLayers.length) overrides.__customLayers = customLayers;
+  // The canvas's own size, when this slide has one other than its base theme's.
+  if (activeLook.canvasSize && (activeLook.canvasSize.w !== themeCanvasSize(baseLook).w || activeLook.canvasSize.h !== themeCanvasSize(baseLook).h)) overrides.__canvasSize = { ...activeLook.canvasSize };
   // Layer order (z-order — see reorderLayer) is per-slide too. Sparse like
   // everything else here: only stored when it actually differs from the
   // natural order (base theme layers in their original order, then custom
@@ -4966,6 +5027,38 @@ const THEME_LAYOUTS = [
   { label: 'Split, text left', value: 'split-left' },
   { label: 'Split, text right', value: 'split-right' },
 ];
+// The canvas's size — W/H and the connected displays, in the layout tab. The same panel in every editor (theme, slide,
+// timer): what the canvas is, not what any one design puts on it. Saved on the design itself.
+function renderCanvasSize(panel) {
+  if (!activeLook) return;
+  // Size — was a plain preset dropdown off in the tool bar under the canvas;
+  // here with the rest of the slide's own layout, and a real W/H a size the
+  // presets don't cover can be typed into directly, not just picked from a
+  // synthesized "(Custom)" option nothing ever actually offered a way to
+  // reach.
+  const size = themeCanvasSize(activeLook);
+  const setSize = (w, h) => { activeLook.canvasSize = { w, h }; renderPreview(); tsSave(); };
+  const sizeOptions = [{ label: '1920 × 1080 (Default)', value: '1920x1080' }];
+  if (typeof displayOutputs === 'function' && typeof outputScreenMap === 'function') {
+    const screens = outputScreenMap();
+    displayOutputs().forEach(d => {
+      const s = screens[d.id];
+      if (s) sizeOptions.push({ label: `${d.name}: ${s.width} × ${s.height}`, value: `${s.width}x${s.height}` });
+    });
+  }
+  const wantValue = `${size.w}x${size.h}`;
+  if (!sizeOptions.some(o => o.value === wantValue)) sizeOptions.push({ label: `${size.w} × ${size.h} (Custom)`, value: wantValue });
+  const sizeSel = makeSelect(sizeOptions, wantValue, v => {
+    const [w, h] = v.split('x').map(Number);
+    if (w && h) { setSize(w, h); renderProps(); }
+  });
+  sizeSel.title = 'A configured output\'s resolution — or type your own below';
+  panel.appendChild(section('layout', 'Size', fieldRow([sizeSel]), fieldRow([
+    numField('W', size.w, { min: 240, max: 7680, unit: 'px', onChange: v => { if (v) { setSize(v, themeCanvasSize(activeLook).h); renderProps(); } } }),
+    numField('H', size.h, { min: 240, max: 7680, unit: 'px', onChange: v => { if (v) { setSize(themeCanvasSize(activeLook).w, v); renderProps(); } } }),
+  ])));
+}
+
 function renderSlideLayout(panel) {
   if (!activeLook) return;
   const layouts = [...THEME_LAYOUTS];
@@ -5005,49 +5098,14 @@ function renderSlideLayout(panel) {
   }
   panel.appendChild(section('layout', 'Slide', prop('Layout', layoutSel), fieldRow([designBtn])));
 
-  // Size — was a plain preset dropdown off in the tool bar under the canvas;
-  // here with the rest of the slide's own layout, and a real W/H a size the
-  // presets don't cover can be typed into directly, not just picked from a
-  // synthesized "(Custom)" option nothing ever actually offered a way to
-  // reach.
-  const size = themeCanvasSize(activeLook);
-  const setSize = (w, h) => { activeLook.canvasSize = { w, h }; renderPreview(); scheduleThemeAutosave(); };
-  const sizeOptions = [{ label: '1920 × 1080 (Default)', value: '1920x1080' }];
-  if (typeof displayOutputs === 'function' && typeof outputScreenMap === 'function') {
-    const screens = outputScreenMap();
-    displayOutputs().forEach(d => {
-      const s = screens[d.id];
-      if (s) sizeOptions.push({ label: `${d.name}: ${s.width} × ${s.height}`, value: `${s.width}x${s.height}` });
-    });
-  }
-  const wantValue = `${size.w}x${size.h}`;
-  if (!sizeOptions.some(o => o.value === wantValue)) sizeOptions.push({ label: `${size.w} × ${size.h} (Custom)`, value: wantValue });
-  const sizeSel = makeSelect(sizeOptions, wantValue, v => {
-    const [w, h] = v.split('x').map(Number);
-    if (w && h) { setSize(w, h); renderProps(); }
-  });
-  sizeSel.title = 'A configured output\'s resolution — or type your own below';
-  panel.appendChild(section('layout', 'Size', fieldRow([sizeSel]), fieldRow([
-    numField('W', size.w, { min: 240, max: 7680, unit: 'px', onChange: v => { if (v) setSize(v, size.h); } }),
-    numField('H', size.h, { min: 240, max: 7680, unit: 'px', onChange: v => { if (v) setSize(size.w, v); } }),
-  ])));
+  renderCanvasSize(panel);
 }
 
 // Background layer properties — a shape, or the canvas itself (always the
 // whole screen: its layout is the slide's, see renderSlideLayout).
 function renderBgProps(panel, layer) {
-  // The canvas: only see-through or not. Its colour is the Background shape (splitCanvasFill).
-  if (!layer.pos) {
-    const box = document.createElement('label'); box.className = 'output-toggle';
-    const inp = document.createElement('input'); inp.type = 'checkbox'; inp.checked = layer.fill === 'transparent';
-    inp.addEventListener('change', () => { layer.fill = inp.checked ? 'transparent' : 'none'; up(); renderProps(); });
-    const track = document.createElement('span'); track.className = 'output-toggle-track';
-    box.append(inp, track);
-    const hint = document.createElement('p'); hint.className = 'setting-hint';
-    hint.textContent = 'The canvas is the size of the design. Transparent lets a video mixer key it out. For a colour, gradient or picture, use the Background layer (or add a shape).';
-    panel.appendChild(section('style', 'Canvas', prop('Transparent', box), hint));
-    return;
-  }
+  // The canvas has no panel: its eye in the layer list is the transparency switch. Its colour is the Background shape (splitCanvasFill).
+  if (!layer.pos) return;
   if (layer.pos) renderLayoutProps(panel, layer);
 
   // Shape (a shape layer only — the canvas fill is always the whole screen):
@@ -6435,6 +6493,100 @@ function configuredTimerText(item) {
 // in the item-mode header rather than the per-layer props panel below
 // because it's a property of the SEGMENT, not of whichever text/image
 // layer happens to be selected (or unselected) on the canvas right now.
+// What a template changes is the LOOK: the slides' backgrounds, colours and fonts. The words, how many slides there are
+// and where things sit stay as they are. `sources` are the template's slides; slide i takes the look of source i
+// (the last one for any beyond).
+function restyleScenes(scenes, sources) {
+  return scenes.map((sc, i) => {
+    const src = sources[Math.min(i, sources.length - 1)] || { layers: [] };
+    const srcText = (src.layers || []).filter(l => l.type === 'text');
+    const decor = JSON.parse(JSON.stringify((src.layers || []).filter(l => l.type !== 'text')));
+    const text = (sc.layers || []).filter(l => l.type === 'text').map(l => {
+      const m = srcText.find(x => x.binding === l.binding && x.name === l.name) || srcText.find(x => x.binding === l.binding) || srcText[0];
+      return m ? { ...l, color: m.color ?? l.color, shadow: m.shadow ?? l.shadow, font: { ...l.font, family: m.font?.family ?? l.font?.family, weight: m.font?.weight ?? l.font?.weight } } : l;
+    });
+    // The old look's own layers (background, light, grain, lines) give way to the new look's; a picture the church
+    // added itself (not one of the built-in backgrounds) stays.
+    const own = (sc.layers || []).filter(l => l.type === 'image' && l.src && !/^backgrounds\//.test(l.src) && !String(l.id || '').startsWith('ss-'));
+    return { ...sc, layers: [...decor, ...own, ...text] };
+  });
+}
+
+// Templates: what a timer looks like, kept under a name, so any timer can use it. Choosing one restyles this timer's
+// slides (its words stay); edit freely, then "Save as template" to keep what you made. Three ship with Kairo.
+function timerStyleSection(item) {
+  const sel = document.createElement('select');
+  sel.className = 'ts-select';
+  sel.add(new Option('Choose a template', ''));
+  sel.add(new Option('No template (plain timer)', '__plain'));
+  const server = `${location.protocol}//${location.host}`;
+  const json = { 'Content-Type': 'application/json' };
+  let saved = [];
+  const refreshStyles = (select) => fetch(`${server}/api/timer-styles`).then(r => r.json()).then(d => {
+    saved = d.styles || [];
+    sel.length = 2;
+    sel.querySelectorAll('optgroup').forEach(g => g.remove());
+    const mine = document.createElement('optgroup'); mine.label = 'Timer templates';
+    saved.forEach(st => mine.appendChild(new Option(st.name, st.id)));
+    sel.appendChild(mine);
+    // The template this timer uses is the one shown.
+    const shown = select || item.templateId || ((item.scenes && item.scenes.length) ? '' : '__plain');
+    sel.value = shown;
+    if (sel.value !== shown) sel.value = '';
+  }).catch(() => {});
+  refreshStyles();
+  sel.addEventListener('change', async () => {
+    if (!sel.value) return;
+    if (sel.value === '__plain') {
+      // Back to the plain timer: no slides, no template, its time on black.
+      try {
+        await fetch(`${server}/api/segments/${item.id}`, { method: 'PUT', headers: json, body: JSON.stringify({ scenes: [], scenePace: null, themeId: null, slideStyles: {}, templateId: null }) });
+        await window.KairoService.loadSegments();
+        window.KairoService.refreshTimerGrid?.();
+        window.KairoItemStyleEditor?.open?.(item.id, 0);
+      } catch (e) { console.warn('[Template] could not clear it:', e); }
+      return;
+    }
+    try {
+      const hasSlides = !!(item.scenes && item.scenes.length);
+      let sources;
+      const st = saved.find(x => x.id === sel.value);
+      sources = (st && st.scenes) || [];
+      if (!hasSlides && st) {
+        // A timer with no slides of its own takes the whole template.
+        await fetch(`${server}/api/segments/${item.id}/style`, { method: 'POST', headers: json, body: JSON.stringify({ styleId: sel.value }) });
+        sources = null;
+      }
+      if (sources) {
+        const scenes = hasSlides ? restyleScenes(item.scenes, sources) : sources;
+        await fetch(`${server}/api/segments/${item.id}`, { method: 'PUT', headers: json, body: JSON.stringify({ scenes, themeId: null, slideStyles: {}, templateId: sel.value }) });
+      }
+      await window.KairoService.loadSegments();
+      window.KairoService.refreshTimerGrid?.();
+      window.KairoItemStyleEditor?.open?.(item.id, 0);   // the editor opens again on the segment as it is now
+    } catch (e) { console.warn('[Template] could not apply it:', e); }
+  });
+  const name = document.createElement('input');
+  name.type = 'text'; name.className = 'ts-prop-input'; name.placeholder = 'Name this template'; name.maxLength = 60;
+  name.setAttribute('aria-label', 'Template name');
+  const save = fieldBtn('Save as template', async () => {
+    const n = name.value.trim();
+    if (!n) { name.focus(); return; }
+    try {
+      const res = await fetch(`${server}/api/timer-styles`, { method: 'POST', headers: json, body: JSON.stringify({ name: n, segmentId: item.id }) });
+      const made = (await res.json()).style;
+      name.value = '';
+      if (made) {
+        // This timer now uses the template it was saved as.
+        item.templateId = made.id;
+        await fetch(`${server}/api/segments/${item.id}`, { method: 'PUT', headers: json, body: JSON.stringify({ templateId: made.id }) });
+        refreshStyles(made.id);
+      }
+    } catch {}
+  });
+  return section('item', 'Template', prop('Template', sel), fieldRow([name, save]));
+}
+
 function renderItemTimerControls() {
   const host = document.getElementById('ts-item-timer-header');
   if (!host) return;
@@ -6508,6 +6660,7 @@ function renderItemTimerControls() {
     swatchField('Last minute', params.warnColor || timerLayer?.warnColor || '#e8a64a', (v) => save({ warnColor: v }), 'The countdown turns this colour for its final minute'),
     swatchField('Overtime', params.overtimeColor || timerLayer?.overtimeColor || '#ed1c24', (v) => save({ overtimeColor: v }), 'The colour once it passes zero and counts up'),
   ]);
+  host.appendChild(timerStyleSection(item));
   host.appendChild(section('item', 'Timer', prop('Counts down', modeSel), valueRow, colors));
 
   // Scenes (segment.scenes — a storyboard, see segments.js) are managed
@@ -6546,24 +6699,19 @@ function renderScenePaceControls(host, item) {
     item.scenePace = { ...M.normalizePace(item.scenePace), ...patch };
     window.KairoService?.saveScenePace?.(item);
     if (rerender) { renderItemTimerControls(); renderItemSlidesList(); }
-    else readout.textContent = paceReadout();
+    else { try { paceRow.setAttribute('title', paceReadout()); } catch {} }
   };
   const totalSec = item.trigger?.params?.mode === 'duration' ? Number(item.trigger.params.durationSec) || 0 : 0;
   const paceReadout = () => {
     const p = M.normalizePace(item.scenePace);
-    if (p.mode !== 'countdown') return 'Each slide stays for the seconds on its own row.';
-    if (!totalSec) return 'Paced by the time left when the countdown starts.';
+    if (p.mode !== 'countdown') return 'Each slide uses its own seconds.';
+    if (!totalSec) return 'Set a length to pace the slides.';
     const first = M.sceneAt(item.scenes, p, 0, totalSec * 1000);
     const per = Math.round(first.slotMs / 1000);
     const finale = p.finaleSec > 0 && item.scenes.length > 1;
-    return `About ${per} s per slide on this ${Math.round(totalSec / 60)}-minute countdown`
-      + (finale ? `, then “${item.scenes[item.scenes.length - 1].name || 'the last slide'}” to finish.` : '.');
+    return `About ${per} s per slide` + (finale ? `, then ${item.scenes[item.scenes.length - 1].name || 'the last slide'}.` : '.');
   };
-  const note = document.createElement('p');
-  note.className = 'setting-hint';
-  note.style.margin = '0';
-  note.textContent = `${item.scenes.length} slide${item.scenes.length === 1 ? '' : 's'}, in order — add, remove and reorder them in the list on the left.`;
-  const rows = [note, prop('Pace', makeSelect([
+  const rows = [prop('Pace', makeSelect([
     { label: 'The countdown sets it', value: 'countdown' },
     { label: 'Each slide\'s own time', value: 'fixed' },
   ], pace.mode, v => savePace({ mode: v }, true)))];
@@ -6576,11 +6724,9 @@ function renderScenePaceControls(host, item) {
   rows.push(fieldRow([makeSelect([
     { label: 'Blur between slides', value: 'blur' }, { label: 'Fade between slides', value: 'fade' }, { label: 'Cut between slides', value: 'cut' },
   ], pace.transition, v => savePace({ transition: v }, true))]));
-  const readout = document.createElement('p');
-  readout.className = 'setting-hint';
-  readout.style.margin = '0';
-  readout.textContent = paceReadout();
-  rows.push(readout);
+  // The pace detail is a tooltip on the Pace row, not a paragraph in the panel.
+  const paceRow = rows[0];
+  if (paceRow && paceRow.setAttribute) paceRow.setAttribute('title', paceReadout());
   host.appendChild(section('item', 'Slides', ...rows));
 }
 
@@ -6610,8 +6756,13 @@ function resolveItemBaseLook(item, slideIndex) {
   // entry, never deletable) so this never itself falls through to null.
   if (item.type === 'timer') {
     const countdown = looks.find(l => l.id === 'timer-big');
-    // Its own gradient, the same one its card and the screen show (service.js).
-    if (countdown) return window.KairoService?.segmentDefaultLook?.(item, countdown) || countdown;
+    // A timer with no design of its own is the plain one, the same as its card and the screen show: its time on black.
+    if (countdown) {
+      const plain = deepClone(countdown);
+      plain.layers = (plain.layers || []).map(l => (l.type === 'background' && (l.role === 'backdrop' || !l.pos))
+        ? { ...l, fill: 'solid', src: undefined, gradientStops: undefined, color: '#000000', color2: '#000000', opacity: 100 } : l);
+      return plain;
+    }
     return primaryOutputLook() || looks[0] || null;
   }
   return primaryOutputLook() || looks[0] || null;
@@ -6650,18 +6801,19 @@ function buildSyntheticLook(item, slideIndex) {
   // branch is the reciprocal save path.
   if (item.type === 'timer' && item.scenes && item.scenes.length) {
     const scene = item.scenes[slideIndex] || item.scenes[0];
-    return { id: `scene:${item.id}:${slideIndex}`, layers: deepClone(scene?.layers || []) };
+    return { id: `scene:${item.id}:${slideIndex}`, layers: deepClone(scene?.layers || []), ...(scene?.canvasSize ? { canvasSize: { ...scene.canvasSize } } : {}) };
   }
   // Same idea for a 'slides' item's own scene blocks (a ProPresenter
   // import preserved as-authored — see slidesFor's 'slides' case) — its
   // layers live directly on the block, not a separate item.scenes array.
   if (item.type === 'slides' && item.blocks?.[slideIndex]?.layers) {
-    return { id: `scene:${item.id}:${slideIndex}`, layers: deepClone(item.blocks[slideIndex].layers) };
+    return { id: `scene:${item.id}:${slideIndex}`, layers: deepClone(item.blocks[slideIndex].layers), ...(item.blocks[slideIndex].canvasSize ? { canvasSize: { ...item.blocks[slideIndex].canvasSize } } : {}) };
   }
   const base = resolveItemBaseLook(item, slideIndex);
   const clone = deepClone(base) || { layers: [] };
   clone.id = `item-edit:${item.id}:${slideIndex}`;
   const overrides = item.slideStyles?.[slideIndex] || {};
+  if (overrides.__canvasSize) clone.canvasSize = { ...overrides.__canvasSize };
   clone.layers = applyBgMediaOverride(clone.layers || [], overrides.bgMedia);
   (clone.layers || []).forEach(layer => {
     const ov = overrides[layer.id];
@@ -6993,7 +7145,7 @@ function offerApplyToAll(item, slideIndex, changes) {
     const apply = (scope) => {
       const { item: it, slideIndex: at, changes: ch } = tsApplyAll;
       window.KairoSermonSlides.applyCommon(it, ch, at, scope);
-      window.KairoService?.saveService?.();
+      if (it.type === 'timer') window.KairoService?.saveTimerScenes?.(it); else window.KairoService?.saveService?.();
       hideApplyToAll();
       renderItemSlidesList();
     };
@@ -7010,7 +7162,7 @@ function offerApplyToAll(item, slideIndex, changes) {
   const what = names.length > 2 ? `${names.length} parts` : names.length > 1 ? `${names[0]} and ${names[1]}` : names[0];
   tsApplyAll.text.textContent = `Use this ${what} change on other slides too?`;
   // Nothing comes after the last slide.
-  tsApplyAll.later.hidden = slideIndex >= item.blocks.length - 1;
+  tsApplyAll.later.hidden = slideIndex >= (item.blocks || item.scenes).length - 1;
 }
 function hideApplyToAll() {
   tsApplyAll?.bar.remove();

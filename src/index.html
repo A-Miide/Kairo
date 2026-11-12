@@ -255,6 +255,9 @@
                 </div>
             </div>
 
+            <!-- The order of service on every tab (service_strip.js): the running segment, overtime, and Next. -->
+            <div class="svp-strip" id="svp-strip" hidden></div>
+
             <!-- Transcript body -->
             <!-- Playlist / service order. Lives beside the transcript so the
                  operator drives the whole service from one column. -->
@@ -375,11 +378,15 @@
                             <button class="ts-chip ts-chip-icon active" data-view="grid" title="Grid view">
                                 <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="1" y="1" width="6" height="6" rx="1" fill="currentColor"/><rect x="9" y="1" width="6" height="6" rx="1" fill="currentColor"/><rect x="1" y="9" width="6" height="6" rx="1" fill="currentColor"/><rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor"/></svg>
                             </button>
-                            <button class="ts-chip ts-chip-icon" data-view="text" title="Text view: every slide's words, all at once">
-                                <svg width="14" height="14" viewBox="0 0 16 16" fill="none"><rect x="1" y="2.5" width="14" height="1.6" rx="0.8" fill="currentColor"/><rect x="1" y="6.2" width="10" height="1.6" rx="0.8" fill="currentColor"/><rect x="1" y="9.9" width="14" height="1.6" rx="0.8" fill="currentColor"/><rect x="1" y="13.6" width="8" height="1.6" rx="0.8" fill="currentColor"/></svg>
+                            <button class="ts-chip ts-chip-icon ts-chip-t" data-view="text" title="Text only: just the words, everything else stripped out">
+                                <span class="ts-t" aria-hidden="true">T</span>
                             </button>
+                            <div class="svc-size-drawer" id="svc-size-pop" hidden>
+                                <span class="svc-size-icon sm" aria-hidden="true"></span>
+                                <input type="range" id="svc-scale" class="svc-scale" min="90" max="360" step="10" value="190" title="Size" aria-label="Size">
+                                <span class="svc-size-icon lg" aria-hidden="true"></span>
+                            </div>
                         </div>
-                        <input type="range" id="svc-scale" class="svc-scale" min="90" max="360" step="10" value="190" title="Slide size">
                         <button id="svc-add-section-btn" class="modal-btn primary svc-edit-btn">+ Add content</button>
                     </div>
                 </div>
@@ -462,11 +469,8 @@
                 <div class="cs-section-header svc-header">
                     <span class="cs-section-label">Timer</span>
                     <div class="svc-header-right">
-                        <label class="bs-check-label" style="margin-right:8px;">
-                            <input type="checkbox" id="clock-toggle">
-                            Live clock
-                        </label>
                         <button id="segment-add-btn" class="modal-btn secondary svc-edit-btn">+ Add Segment</button>
+                        <button id="segment-plan-btn" class="modal-btn primary svc-edit-btn" title="Set the service start time and how long each segment runs. The order of service then runs from the left column on every tab.">Order of service</button>
                     </div>
                 </div>
                 <div class="timer-grid" id="timer-grid"></div>
@@ -2588,7 +2592,9 @@
     <script src="slide_follow.js"></script>
     <script src="content_lookup.js"></script>
     <script src="slide_finder.js"></script>
+    <script src="service_plan.js"></script>
     <script src="service.js"></script>
+    <script src="service_strip.js"></script>
     <script src="audio_level.js"></script>
     <script src="queue_order.js"></script>
     <script src="app.js"></script>
