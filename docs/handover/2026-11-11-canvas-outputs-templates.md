@@ -21,7 +21,7 @@ Also fixed: a verse sent while only a countdown was up never reached the screen 
 
 ## Open (needs the owner)
 
-- **Highlands and Ember as built-ins.** Highlands is reworked and approved in preview: Welcome ("We're glad you're here", lake photo), Scripture (Psalm 121:1–2, path photo), the countdown finale; "Lift your eyes" was dropped; one serif (Cormorant Garamond) plus one sans (Manrope), no script face. Ember (red) still has the script face (Yellowtail) over "HOME". Neither is in `BUILT_IN_TEMPLATES` or `announcement_pack.json`: the slides exist only in the scratchpad (`gen/final.json`, `build_final.py`). To ship: add the entries to `BUILT_IN_TEMPLATES` and the pack, update the test `built_in_templates_are_refreshed_and_keep_their_own_slides`, delete the unused pictures (`highlands-ridge.webp` if "Lift your eyes" stays out, the `open-*` and `crimson-*` sets). Decide whether Reach stays.
+- ~~Highlands and Ember as built-ins~~ **Done 12 Nov** (`8fbed66`): both ship; Ember keeps its script face over HOME (owner's call); Reach stays.
 - **Documents folder.** Typing a name for a new media folder creates `Documents/Kairo Media/<name>` (`create_folder`, `media.rs`). The agreed fix, not done: create it inside Kairo's data folder (`media/folders/<name>`), keep linked folders as references only.
 - **Pull request.** One for everything, or the detector commits first.
 
