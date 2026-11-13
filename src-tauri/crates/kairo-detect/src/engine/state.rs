@@ -170,8 +170,6 @@ pub struct Screen {
     /// The last spoken citation sent, when, and the words heard at that moment.
     pub last_citation: Option<(VerseId, u64, u64)>,
     pub corrected_away: Option<CorrectedAway>,
-    /// A song or other non-scripture slide is live.
-    pub non_scripture_live: bool,
     /// People are singing (heard, not a slide): scripture in the lyrics is only offered.
     pub singing: bool,
     /// Verse → when it was last offered.

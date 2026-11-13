@@ -180,7 +180,11 @@ fn score(k: &Knowledge, gt: &[GroundTruth], decisions: &[Decision], last_ms: i64
     let mut missed: Vec<&GroundTruth> = Vec::new();
     for g in gt.iter().filter(|g| !g.keys.is_empty() && !g.paraphrase) {
         s.total += 1;
-        let hit = screen.iter().enumerate().find(|(i, d)| !used.contains(i) && g.keys.contains(&d.verses[0]) && (d.at_ms - g.at_ms).abs() <= MATCH_WINDOW_MS);
+        // Every verse a send put up counts (John 18:4-6 is 18:5 on screen too), and one send answers the
+        // same verse listed twice in the ground truth (a citation and the reading of it) once no other
+        // send is left for it.
+        let near = |d: &&Decision| d.verses.iter().any(|v| g.keys.contains(v)) && (d.at_ms - g.at_ms).abs() <= MATCH_WINDOW_MS;
+        let hit = screen.iter().enumerate().find(|(i, d)| !used.contains(i) && near(d)).or_else(|| screen.iter().enumerate().find(|(_, d)| near(d)));
         match hit {
             Some((i, d)) => {
                 used.insert(i);
@@ -197,7 +201,7 @@ fn score(k: &Knowledge, gt: &[GroundTruth], decisions: &[Decision], last_ms: i64
     };
     s.sent = screen.len();
     for (i, d) in screen.iter().enumerate() {
-        let wrong = !used.contains(&i) && !all_keys.contains(&d.verses[0]) && !in_bare(d);
+        let wrong = !used.contains(&i) && !d.verses.iter().any(|v| all_keys.contains(v)) && !in_bare(d);
         let e = s.by_score.entry((d.method.clone(), (d.score * 100.0).round() as u32)).or_default();
         e.0 += 1;
         e.1 += wrong as usize;
@@ -245,7 +249,7 @@ fn score(k: &Knowledge, gt: &[GroundTruth], decisions: &[Decision], last_ms: i64
         }
     }
     for g in &missed {
-        let offered = suggestions.iter().any(|d| g.keys.contains(&d.verses[0]) && (d.at_ms - g.at_ms).abs() <= MATCH_WINDOW_MS);
+        let offered = suggestions.iter().any(|d| d.verses.iter().any(|v| g.keys.contains(v)) && (d.at_ms - g.at_ms).abs() <= MATCH_WINDOW_MS);
         if offered {
             s.offered += 1;
         }
@@ -383,10 +387,6 @@ fn replay(k: &Arc<Knowledge>, golden: &Value, audio: bool, m: Option<&MeaningSer
     // A recording can say which language the service was in ("lang": "es"), as Settings does.
     let lang = golden["lang"].as_str().map(kairo_detect::reference::Lang::from_code).unwrap_or_default();
     let mut engine = Engine::new(k.clone(), Config { explain: trace.is_some(), meaning: m.is_some(), meaning_thresholds: thresholds, offline: golden["offline"].as_bool().unwrap_or(false), lang, ..Config::default() });
-    // A scenario can start with a song slide live ("songLive"): the operator sent lyrics, not scripture.
-    if golden["songLive"].as_bool().unwrap_or(false) {
-        engine.handle(Event::NonScriptureLive, 0);
-    }
     let cue_at = cue_ms(golden);
     let mut out = Vec::new();
     let mut wakes: Vec<(u64, Event)> = Vec::new();
@@ -524,7 +524,7 @@ fn main() {
     let m = opt("--meaning").map(|e| {
         let codes = opt("--index").unwrap_or_else(|| "KJV".into());
         let codes: Vec<&str> = codes.split(',').collect();
-        meaning(&e, Some(opt("--reranker").as_deref().unwrap_or("minilm.json")), &codes)
+        meaning(&e, Some(opt("--reranker").as_deref().unwrap_or("minilm.json")).filter(|r| *r != "none"), &codes)
     });
     let thresholds: MeaningThresholds = opt("--thresholds")
         .map(|p| serde_json::from_slice(&std::fs::read(root().join("src-tauri/crates/kairo-semantic/bench").join(p)).expect("thresholds")).expect("thresholds"))

@@ -13,5 +13,6 @@ kairo-server = { path = "../kairo-server" }
 regex = "1.13.1"
 serde_json.workspace = true
 sha2 = "0.10"
+tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
 ort = "=2.0.0-rc.13"
 sherpa-onnx = "1.13.8"

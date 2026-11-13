@@ -20,6 +20,7 @@ pub mod config;
 mod deepgram;
 pub mod detect;
 pub mod hub;
+pub mod meaning_multi;
 pub mod interpretation;
 mod clock;
 mod learned;
@@ -103,7 +104,7 @@ pub struct App {
     pub(crate) video: Arc<video::Video>,
     pub(crate) obs: obs::Obs,
     pub(crate) translator: translate::Translator,
-    pub(crate) meaning: OnceLock<Arc<kairo_semantic::MeaningService>>,
+    pub(crate) meaning: std::sync::RwLock<Option<Arc<kairo_semantic::MeaningService>>>,
     pub(crate) log: detect::Log,
 }
 
@@ -149,7 +150,7 @@ pub type Shared = Arc<App>;
 
 impl App {
     pub fn meaning_ready(&self) -> bool {
-        self.meaning.get().is_some()
+        self.meaning.read().unwrap_or_else(std::sync::PoisonError::into_inner).is_some()
     }
 
     pub fn ready(&self) -> Option<(&Arc<Bible>, &Detector)> {
@@ -217,7 +218,7 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         video: video::Video::open(&cfg.app_data_dir, &cfg.ui_dir),
         obs: obs::Obs::new(),
         translator: translate::Translator::default(),
-        meaning: OnceLock::new(),
+        meaning: std::sync::RwLock::new(None),
         log: Default::default(),
         hub,
         bible: OnceLock::new(),
@@ -288,7 +289,9 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         });
         eprintln!("[Server] Detection engine ready in {:.1}s (reference + verbatim + stream + fingerprint).", t.elapsed().as_secs_f32());
         starting.hub.broadcast(json!({ "type": "worker-ready" }));
-        load_meaning(&starting);
+        // The meaning model that fits the service language: the multilingual one when it is installed.
+        let spoken = h3.block_on(starting.settings.str("sttLanguage")).unwrap_or_else(|| "en-US".into());
+        load_meaning(&starting, meaning_multi::serves(&spoken) && meaning_multi::present(&meaning_multi::dir(&starting)));
     });
 
     let router = routes::router().merge(routes_library::router()).merge(overlays::router()).merge(routes_misc::router())
@@ -355,27 +358,51 @@ async fn follow_screen_in_obs(app: Shared) {
     }
 }
 
+/// Which meaning model is loaded: `Some(true)` the multilingual one, `Some(false)` the English one.
+static MEANING_MULTI: std::sync::Mutex<Option<bool>> = std::sync::Mutex::new(None);
+
+pub(crate) fn meaning_is_multi() -> Option<bool> {
+    *crate::util::lock(&MEANING_MULTI)
+}
+
 /// The meaning models (embedding model, verse index, cross-encoder): the
-/// paraphrase and meaning paths turn on once they're loaded.
-fn load_meaning(app: &Shared) {
+/// paraphrase and meaning paths turn on once they're loaded. `multi`: the multilingual model for a
+/// service in another language (no cross-encoder; see `meaning_multi`), else the English one. Loading
+/// one replaces the other, so only one is in memory.
+pub(crate) fn load_meaning(app: &Shared, multi: bool) {
     use kairo_semantic::{Embedder, EmbedderConfig, MeaningService, Pooling, Reranker, RerankerConfig, VerseIndex};
     let t = std::time::Instant::now();
     // The models' thread pools are started here and keep this priority.
     let _below = crate::util::below_speech();
     let db = &app.cfg.db_dir;
+    let multi_dir = crate::meaning_multi::dir(app);
     // bge-small-en-v1.5 (int8, 34 MB): as good as the 207 MB EmbeddingGemma on the
     // sermons, at half the search time.
     let bge = db.join("model/Xenova/bge-small-en-v1.5");
-    let cfg = EmbedderConfig {
-        name: "bge-small".into(),
-        model: bge.join("onnx/model_quantized.onnx"),
-        tokenizer: bge.join("tokenizer.json"),
-        pooling: Pooling::Cls,
-        query_prefix: "Represent this sentence for searching relevant passages: ".into(),
-        document_prefix: String::new(),
-        truncate_dims: 0,
-        max_tokens: 256,
-        threads: 0,
+    let cfg = if multi {
+        EmbedderConfig {
+            name: "e5-small".into(),
+            model: multi_dir.join("model.onnx"),
+            tokenizer: multi_dir.join("tokenizer.json"),
+            pooling: Pooling::Mean,
+            query_prefix: "query: ".into(),
+            document_prefix: "passage: ".into(),
+            truncate_dims: 0,
+            max_tokens: 256,
+            threads: 0,
+        }
+    } else {
+        EmbedderConfig {
+            name: "bge-small".into(),
+            model: bge.join("onnx/model_quantized.onnx"),
+            tokenizer: bge.join("tokenizer.json"),
+            pooling: Pooling::Cls,
+            query_prefix: "Represent this sentence for searching relevant passages: ".into(),
+            document_prefix: String::new(),
+            truncate_dims: 0,
+            max_tokens: 256,
+            threads: 0,
+        }
     };
     let index_name = format!("verse_index.{}.kvx", cfg.name);
     let thresholds = kairo_detect::engine::MeaningThresholds::for_embedder(&cfg.name);
@@ -386,11 +413,12 @@ fn load_meaning(app: &Shared) {
             return;
         }
     };
-    let built = app.cfg.app_data_dir.join("models").join(&index_name);
+    let built = if multi { multi_dir.join("verse_index.kvx") } else { app.cfg.app_data_dir.join("models").join(&index_name) };
     let verses = app.bible.get().map_or(0, |b| b.k().corpus.len());
     // An index built for another numbering of the Bible would point at the wrong verses.
     let fits = |i: VerseIndex| if i.len() == verses { Ok(i) } else { Err(()) };
-    let index = match VerseIndex::load(&db.join(&index_name)).map_err(|_| ()).and_then(fits).or_else(|_| VerseIndex::load(&built).map_err(|_| ()).and_then(fits)) {
+    let bundled = if multi { built.clone() } else { db.join(&index_name) };
+    let index = match VerseIndex::load(&bundled).map_err(|_| ()).and_then(fits).or_else(|_| VerseIndex::load(&built).map_err(|_| ()).and_then(fits)) {
         Ok(i) => i,
         Err(_) => {
             let Some(bible) = app.bible.get() else { return };
@@ -414,15 +442,22 @@ fn load_meaning(app: &Shared) {
     // The 6-layer cross-encoder: the 12-layer one was most of Kairo's own CPU in a service. On
     // the dev sermons (replay, CPU transcripts, 2026-10-30) the 6-layer found the same 67/82 with
     // the same 3 wrong, and offered 10 of the missed 15 to the 12-layer's 9, in half the time.
-    let rr_dir = db.join("reranker_model/Xenova/ms-marco-MiniLM-L-6-v2");
-    let reranker = Reranker::load(RerankerConfig { name: "minilm-l6".into(), model: rr_dir.join("onnx/model_int8.onnx"), tokenizer: rr_dir.join("tokenizer.json"), max_tokens: 256, threads: 0 }).ok();
+    // The multilingual model has none: the cross-encoder only reads English.
+    let reranker = if multi {
+        None
+    } else {
+        let rr_dir = db.join("reranker_model/Xenova/ms-marco-MiniLM-L-6-v2");
+        Reranker::load(RerankerConfig { name: "minilm-l6".into(), model: rr_dir.join("onnx/model_int8.onnx"), tokenizer: rr_dir.join("tokenizer.json"), max_tokens: 256, threads: 0 }).ok()
+    };
     let Some((bible, detector)) = app.ready() else { return };
     let m = Arc::new(MeaningService::new(embedder, index, reranker, bible.k().corpus.kjv().clone(), vec![bible.modern.clone()]));
     // Cosines differ between embedders: the thresholds go with the model, ahead of it.
     detector.configure(move |c| c.meaning_thresholds = thresholds);
     detector.meaning_ready(m.clone());
-    let _ = app.meaning.set(m);
-    eprintln!("[Server] Meaning-based detection ready in {:.1}s.", t.elapsed().as_secs_f32());
+    // The old model is let go here: nothing else holds it once the detector's thread has taken this one.
+    *app.meaning.write().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(m);
+    *crate::util::lock(&MEANING_MULTI) = Some(multi);
+    eprintln!("[Server] Meaning-based detection ready in {:.1}s ({}).", t.elapsed().as_secs_f32(), if multi { "multilingual" } else { "English" });
 }
 
 fn is_static_asset(path: &str) -> bool {

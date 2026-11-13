@@ -385,3 +385,19 @@ function fitTextToBox(el, minPx = 6) {
   }
 }
 window.fitTextToBox = fitTextToBox;
+
+// ── A design's canvas on an output ─────────────────────────────────────────
+// Where a design of canvas `size` ({w, h}; 16:9 when unset) sits on an output
+// W×H, and how much it is scaled. Layer boxes are percentages of the canvas;
+// text, corners and shadows are pixels of a canvas 1080 high (the unit the
+// editor and the ProPresenter import share), so the design is laid out at
+// uw×uh and scaled by k. 'contain' shows all of it (bands where the shapes
+// differ), 'cover' fills the output and crops the design's edges. Never stretched.
+function canvasFitRect(W, H, size, fit) {
+  const a = size && size.w > 0 && size.h > 0 ? size.w / size.h : 1920 / 1080;
+  W = W > 0 ? W : 1920; H = H > 0 ? H : 1080;
+  const heightBound = (W / H > a) !== (fit === 'cover');
+  const h = heightBound ? H : W / a, w = heightBound ? H * a : W;
+  return { left: (W - w) / 2, top: (H - h) / 2, w, h, k: h / 1080, uw: 1080 * a, uh: 1080 };
+}
+window.canvasFitRect = canvasFitRect;

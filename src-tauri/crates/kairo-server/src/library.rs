@@ -102,6 +102,8 @@ pub struct Triggers {
     items: Mutex<Vec<Value>>,
     active: Mutex<HashMap<String, tokio::task::JoinHandle<()>>>,
     hub: Arc<Hub>,
+    /// Milliseconds added to a running timer's end ("Add 5 min"), by trigger id.
+    extra: Arc<Mutex<HashMap<String, i64>>>,
 }
 
 /// "HH:MM" today, as epoch milliseconds.
@@ -141,7 +143,7 @@ pub fn trigger_types() -> Value {
 impl Triggers {
     pub fn open(app_data: &std::path::Path, hub: Arc<Hub>) -> Triggers {
         let path = app_data.join("triggers").join("triggers.json");
-        Triggers { items: Mutex::new(load(&path)), path, active: Mutex::new(HashMap::new()), hub }
+        Triggers { items: Mutex::new(load(&path)), path, active: Mutex::new(HashMap::new()), extra: Arc::new(Mutex::new(HashMap::new())), hub }
     }
 
     pub fn list(&self) -> Vec<Value> {
@@ -189,7 +191,17 @@ impl Triggers {
         Some(out)
     }
 
+    /// More time for a running timer: its end moves out by `ms` and the next tick says so. False when it isn't running.
+    pub fn extend(&self, id: &str, ms: i64) -> bool {
+        if !self.is_active(id) {
+            return false;
+        }
+        *crate::util::lock(&self.extra).entry(id.to_string()).or_insert(0) += ms;
+        true
+    }
+
     pub fn stop(&self, id: &str) {
+        crate::util::lock(&self.extra).remove(id);
         if let Some(h) = crate::util::lock(&self.active).remove(id) {
             h.abort();
         }
@@ -242,13 +254,15 @@ impl Triggers {
             let end = end_at(&fired).unwrap_or_else(epoch_ms);
             let total = end as i64 - epoch_ms() as i64;
             let style = fired["params"]["style"].clone();
+            let extra = self.extra.clone();
             tokio::spawn(async move {
                 let mut tick = tokio::time::interval(Duration::from_secs(1));
                 loop {
                     tick.tick().await;
-                    let remaining = end as i64 - epoch_ms() as i64;
+                    let more = crate::util::lock(&extra).get(&tid).copied().unwrap_or(0);
+                    let remaining = end as i64 + more - epoch_ms() as i64;
                     hub.broadcast(json!({ "type": "action", "actionId": "stage-timer", "target": "viewer", "triggerId": tid,
-                        "payload": { "remainingMs": remaining, "label": label, "style": style, "totalMs": total } }));
+                        "payload": { "remainingMs": remaining, "label": label, "style": style, "totalMs": total + more } }));
                 }
             })
         } else {
@@ -275,7 +289,7 @@ impl Triggers {
 
 // ── Segments ────────────────────────────────────────────────────────────────
 
-const DEFAULT_SEGMENTS: [&str; 7] = ["Preservice", "Preservice 2", "Prayer", "Worship", "The Word", "Testimony", "Ministration"];
+const DEFAULT_SEGMENTS: [&str; 6] = ["Preservice", "Prayer", "Worship", "The Word", "Testimony", "Ministration"];
 const PRESERVICE_2: &str = "Preservice 2";
 const PACK: &str = include_str!("../data/announcement_pack.json");
 
@@ -285,10 +299,10 @@ fn is_preservice(name: &str) -> bool {
 }
 
 /// The pre-service announcement loop (scenes and pace).
-fn preservice_loop(second: bool) -> Map<String, Value> {
+fn preservice_loop(key: &str) -> Map<String, Value> {
     let pack: Value = serde_json::from_str(PACK).expect("bundled announcement pack");
     let mut m = Map::new();
-    m.insert("scenes".into(), pack[if second { "preservice2" } else { "preservice" }].clone());
+    m.insert("scenes".into(), pack[key].clone());
     m.insert("scenePace".into(), pack["pace"].clone());
     m
 }
@@ -297,6 +311,92 @@ pub struct Segments {
     path: PathBuf,
     items: Mutex<Vec<Value>>,
     triggers: Arc<Triggers>,
+    pub styles: TimerStyles,
+}
+
+/// Saved looks for a timer: the slides (scenes), their pace, and the design under them. The two designs Kairo shipped
+/// as "Preservice" and "Preservice 2" are the first two; anything edited can be saved as another and applied to any timer.
+/// (id, name, key in the announcement pack): a welcome with invitations, a plain starting-soon countdown, Reach
+/// (a raised hand in blue light, with the big words behind it), Highlands (a lake and a mountain path in blue, one
+/// serif and one sans) and Ember (warm red, the tree in front of the words).
+const BUILT_IN_TEMPLATES: [(&str, &str, &str); 5] = [
+    ("builtin-welcome-to-church", "Welcome and invite", "preservice"),
+    ("builtin-welcome", "Starting soon", "preservice2"),
+    ("builtin-reach", "Reach", "reach"),
+    ("builtin-highlands", "Highlands", "highlands"),
+    ("builtin-ember", "Ember", "ember"),
+];
+
+/// The names of a timer's slides, in order: two designs with the same ones are the same design.
+fn scene_names(v: &Value) -> Vec<String> {
+    v["scenes"].as_array().into_iter().flatten().map(|s| s["name"].as_str().unwrap_or("").to_string()).collect()
+}
+
+pub struct TimerStyles {
+    path: PathBuf,
+    items: Mutex<Vec<Value>>,
+}
+
+impl TimerStyles {
+    pub fn open(app_data: &std::path::Path) -> TimerStyles {
+        let path = app_data.join("segments").join("timer_styles.json");
+        let mut items = load(&path);
+        // The built-in templates are Kairo's own: a version that ships replaces an older copy, and one it no longer ships goes.
+        let before = items.len();
+        items.retain(|s| s["builtIn"] != true || BUILT_IN_TEMPLATES.iter().any(|(id, _, _)| s["id"] == *id));
+        let mut changed = items.len() != before;
+        for (id, name, key) in BUILT_IN_TEMPLATES {
+            let mut style = Value::Object(preservice_loop(key));
+            style["id"] = json!(id);
+            style["name"] = json!(name);
+            style["builtIn"] = json!(true);
+            match items.iter_mut().find(|s| s["id"] == id) {
+                Some(have) if *have == style => {}
+                Some(have) => {
+                    *have = style;
+                    changed = true;
+                }
+                None => {
+                    items.push(style);
+                    changed = true;
+                }
+            }
+        }
+        if changed {
+            save(&path, &items);
+        }
+        TimerStyles { path, items: Mutex::new(items) }
+    }
+
+    pub fn list(&self) -> Vec<Value> {
+        crate::util::lock(&self.items).clone()
+    }
+
+    /// Saves `from` (a segment, or any value with scenes / scenePace / themeId / slideStyles) as a style called `name`.
+    pub fn add(&self, name: &str, from: &Value) -> Value {
+        let style = json!({
+            "id": new_id(), "name": name,
+            "scenes": from["scenes"].clone(), "scenePace": from["scenePace"].clone(),
+            "themeId": from["themeId"].clone(), "slideStyles": if from["slideStyles"].is_object() { from["slideStyles"].clone() } else { json!({}) },
+        });
+        let mut items = crate::util::lock(&self.items);
+        items.push(style.clone());
+        save(&self.path, &items);
+        style
+    }
+
+    pub fn get(&self, id: &str) -> Option<Value> {
+        crate::util::lock(&self.items).iter().find(|s| s["id"] == id).cloned()
+    }
+
+    /// The two built-in styles stay; any other can be removed.
+    pub fn remove(&self, id: &str) -> bool {
+        let mut items = crate::util::lock(&self.items);
+        let before = items.len();
+        items.retain(|s| !(s["id"] == id && s["builtIn"] != true));
+        save(&self.path, &items);
+        items.len() != before
+    }
 }
 
 impl Segments {
@@ -310,7 +410,7 @@ impl Segments {
                 }
             }
         }
-        let me = Segments { path, items: Mutex::new(items), triggers };
+        let me = Segments { path, items: Mutex::new(items), triggers, styles: TimerStyles::open(app_data) };
         me.seed();
         me
     }
@@ -329,7 +429,7 @@ impl Segments {
             for s in items.iter_mut() {
                 let empty = s["scenes"].as_array().is_none_or(|a| a.is_empty()) && s["themeId"].is_null();
                 if is_preservice(s["name"].as_str().unwrap_or("")) && s["loopSeeded"] != true && empty {
-                    for (k, v) in preservice_loop(false) {
+                    for (k, v) in preservice_loop("preservice") {
                         s[k.as_str()] = v;
                     }
                     s["loopSeeded"] = json!(true);
@@ -337,33 +437,22 @@ impl Segments {
                 }
             }
         }
-        let pre = {
-            let items = crate::util::lock(&self.items);
-            items.iter().filter(|s| is_preservice(s["name"].as_str().unwrap_or(""))).min_by_key(|s| s["order"].as_i64().unwrap_or(0)).cloned()
-        };
-        if let Some(pre) = pre.filter(|p| p["preservice2Seeded"] != true) {
-            let has = crate::util::lock(&self.items).iter().any(|s| s["name"].as_str().unwrap_or("").trim().eq_ignore_ascii_case(PRESERVICE_2));
-            {
-                let mut items = crate::util::lock(&self.items);
-                if let Some(p) = items.iter_mut().find(|s| s["id"] == pre["id"]) {
-                    p["preservice2Seeded"] = json!(true);
-                }
+        // "Preservice 2" is a style of the one Preservice timer now. An existing card that isn't running becomes a saved
+        // style (so nothing the church edited is lost) and leaves the list.
+        let second = crate::util::lock(&self.items).iter()
+            .find(|s| s["name"].as_str().unwrap_or("").trim().eq_ignore_ascii_case(PRESERVICE_2) && s["status"] != "live").cloned();
+        if let Some(sec) = second {
+            // Kept as a template only when it isn't one we already have (a church that edited it, not the stock one).
+            if !self.styles.list().iter().any(|t| scene_names(t) == scene_names(&sec)) {
+                self.styles.add("Preservice 2", &sec);
+            }
+            self.triggers.remove(sec["triggerId"].as_str().unwrap_or(""));
+            let mut items = crate::util::lock(&self.items);
+            items.retain(|x| x["id"] != sec["id"]);
+            for (i, seg) in items.iter_mut().enumerate() {
+                seg["order"] = json!(i);
             }
             changed = true;
-            if !has {
-                let added = self.add(PRESERVICE_2, &Value::Object(preservice_loop(true)));
-                let pre_order = pre["order"].as_i64().unwrap_or(0);
-                let mut items = crate::util::lock(&self.items);
-                for s in items.iter_mut() {
-                    let o = s["order"].as_i64().unwrap_or(0);
-                    if s["id"] != added["id"] && o > pre_order {
-                        s["order"] = json!(o + 1);
-                    }
-                }
-                if let Some(a) = items.iter_mut().find(|s| s["id"] == added["id"]) {
-                    a["order"] = json!(pre_order + 1);
-                }
-            }
         }
         if changed {
             save(&self.path, &crate::util::lock(&self.items));
@@ -372,11 +461,8 @@ impl Segments {
             for name in DEFAULT_SEGMENTS {
                 let mut opts = Map::new();
                 if is_preservice(name) {
-                    opts = preservice_loop(false);
+                    opts = preservice_loop("preservice");
                     opts.insert("loopSeeded".into(), json!(true));
-                    opts.insert("preservice2Seeded".into(), json!(true));
-                } else if name == PRESERVICE_2 {
-                    opts = preservice_loop(true);
                 }
                 self.add(name, &Value::Object(opts));
             }
@@ -426,7 +512,7 @@ impl Segments {
         if let Some(p) = r.get("params") {
             self.triggers.update(&trigger_id, &json!({ "params": p }));
         }
-        for k in ["themeId", "slideStyles", "scenes", "scenePace"] {
+        for k in ["themeId", "slideStyles", "scenes", "scenePace", "fixedAt", "included", "templateId"] {
             if let Some(v) = r.get(k) {
                 s[k] = v.clone();
             }
@@ -484,10 +570,16 @@ impl Segments {
             if let Some((wid, _)) = &was_live {
                 if let Some(w) = items.iter_mut().find(|x| x["id"] == *wid) {
                     w["status"] = json!("done");
+                    w["endedAt"] = json!(epoch_ms());
                 }
             }
             let s = items.iter_mut().find(|s| s["id"] == id).expect("found above");
             s["status"] = json!("live");
+            s["startedAt"] = json!(epoch_ms());
+            if let Some(o) = s.as_object_mut() {
+                o.remove("endedAt");
+                o.remove("extendedSec");
+            }
             let out = s.clone();
             save(&self.path, &items);
             out
@@ -506,6 +598,56 @@ impl Segments {
             let mut items = crate::util::lock(&self.items);
             let s = items.iter_mut().find(|s| s["id"] == id).expect("found above");
             s["status"] = json!(status);
+            // How long it really ran: kept when it is marked done, forgotten when it goes back to waiting.
+            if status == "done" {
+                s["endedAt"] = json!(epoch_ms());
+            } else if let Some(o) = s.as_object_mut() {
+                o.remove("startedAt");
+                o.remove("endedAt");
+                o.remove("extendedSec");
+            }
+            let out = s.clone();
+            save(&self.path, &items);
+            out
+        };
+        json!({ "ok": true, "segment": self.with_trigger(&out) })
+    }
+
+    /// Gives a segment a saved style's slides, pace and design (its length, name and times stay).
+    pub fn apply_style(&self, id: &str, style_id: &str) -> Value {
+        let Some(style) = self.styles.get(style_id) else { return json!({ "error": "No such style" }) };
+        let out = {
+            let mut items = crate::util::lock(&self.items);
+            let Some(s) = items.iter_mut().find(|s| s["id"] == id) else { return json!({ "error": "No such segment" }) };
+            for k in ["scenes", "scenePace", "themeId", "slideStyles"] {
+                s[k] = if style[k].is_null() && k == "slideStyles" { json!({}) } else { style[k].clone() };
+            }
+            s["templateId"] = json!(style_id);
+            let out = s.clone();
+            save(&self.path, &items);
+            out
+        };
+        json!({ "ok": true, "segment": self.with_trigger(&out) })
+    }
+
+    /// "Add 5 min": the live segment gets `seconds` more (or fewer, negative), on screen at the next tick.
+    pub fn extend(&self, id: &str, seconds: i64) -> Value {
+        let trigger_id = {
+            let items = crate::util::lock(&self.items);
+            let Some(s) = items.iter().find(|s| s["id"] == id) else { return json!({ "error": "No such segment" }) };
+            if s["status"] != "live" {
+                return json!({ "error": "That segment isn't running" });
+            }
+            s["triggerId"].as_str().unwrap_or("").to_string()
+        };
+        if !self.triggers.extend(&trigger_id, seconds * 1000) {
+            return json!({ "error": "That segment isn't running" });
+        }
+        let out = {
+            let mut items = crate::util::lock(&self.items);
+            let s = items.iter_mut().find(|s| s["id"] == id).expect("found above");
+            let so_far = s["extendedSec"].as_i64().unwrap_or(0);
+            s["extendedSec"] = json!(so_far + seconds);
             let out = s.clone();
             save(&self.path, &items);
             out
@@ -521,10 +663,43 @@ impl Segments {
         self.set_status(id, "pending")
     }
 
+    pub fn has_live(&self) -> bool {
+        crate::util::lock(&self.items).iter().any(|s| s["status"] == "live")
+    }
+
     pub fn stop_live(&self) {
         let live = crate::util::lock(&self.items).iter().find(|s| s["status"] == "live").and_then(|s| s["id"].as_str().map(str::to_string));
         if let Some(id) = live {
             self.stop(&id, true);
         }
+    }
+}
+
+#[cfg(test)]
+mod template_tests {
+    use super::*;
+
+    #[test]
+    fn built_in_templates_are_refreshed_and_keep_their_own_slides() {
+        let dir = std::env::temp_dir().join(format!("kairo-templates-{}", new_id()));
+        std::fs::create_dir_all(dir.join("segments")).unwrap();
+        // An install from before: an old copy of a built-in, one Kairo no longer ships, and one the church saved itself.
+        let old = json!([
+            {"id": "builtin-welcome", "name": "Starting soon", "builtIn": true, "scenes": []},
+            {"id": "builtin-gone", "name": "Gone", "builtIn": true, "scenes": []},
+            {"id": "mine", "name": "Mine", "scenes": [{"name": "A"}]}
+        ]);
+        std::fs::write(dir.join("segments").join("timer_styles.json"), old.to_string()).unwrap();
+        let styles = TimerStyles::open(&dir).list();
+        let names: Vec<&str> = styles.iter().map(|s| s["name"].as_str().unwrap()).collect();
+        assert_eq!(names, ["Starting soon", "Mine", "Welcome and invite", "Reach", "Highlands", "Ember"]);
+        for s in styles.iter().filter(|s| s["builtIn"] == true) {
+            let scenes = s["scenes"].as_array().unwrap();
+            assert!(scenes.len() >= 3, "{} has {} slides", s["name"], scenes.len());
+            for sc in scenes {
+                assert!(sc["layers"].as_array().unwrap().iter().any(|l| l["binding"] == "timer"), "{} / {} has no countdown", s["name"], sc["name"]);
+            }
+        }
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

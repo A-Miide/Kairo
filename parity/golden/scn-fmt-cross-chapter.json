@@ -2,7 +2,6 @@
  "source": "scn-fmt-cross-chapter",
  "kind": "scenario",
  "lang": "en",
- "songLive": false,
  "cues": [
   {
    "text": "John three thirty six to chapter four verse two",

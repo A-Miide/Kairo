@@ -754,7 +754,13 @@
     // shows up on the real output even though Edit previewed it correctly.
     if (item.type === 'timer') {
       const timerDefault = list.find(l => l.id === 'timer-big');
-      if (timerDefault) return segmentDefaultLook(item, timerDefault);
+      // A timer with no design of its own is the plain one: its time on black (not a gradient, and not a colour per card).
+      if (timerDefault) {
+        const plain = JSON.parse(JSON.stringify(timerDefault));
+        plain.layers = (plain.layers || []).map(l => (l.type === 'background' && (l.role === 'backdrop' || !l.pos))
+          ? { ...l, fill: 'solid', src: undefined, gradientStops: undefined, color: '#000000', color2: '#000000', opacity: 100 } : l);
+        return plain;
+      }
     }
     if (typeof primaryOutputLook === 'function') {
       const primary = primaryOutputLook();
@@ -780,6 +786,11 @@
   }
   // A slide of a Slides deck can carry its own theme (block.themeId); it wins
   // over the deck's, which wins over the output's default.
+  // A plain item resized in the editor keeps its own canvas size in its slide style (__canvasSize, app_theme_studio.js).
+  function withOwnCanvas(look, item, index) {
+    const own = item && item.slideStyles && item.slideStyles[index] && item.slideStyles[index].__canvasSize;
+    return look && own && own.w > 0 && own.h > 0 ? { ...look, canvasSize: { w: own.w, h: own.h } } : look;
+  }
   function slideThemeLook(slide, item) {
     if (!slide || !slide.themeId) return null;
     return themeLookFor(item, slide.themeId);
@@ -919,13 +930,21 @@
   // fromIndex is always a SLIDE index (matching what sendSlide/slidesFor
   // use everywhere else) regardless of which engine starts — translated to
   // a block index internally for the lyrics follower, which tracks blocks.
+  // A song moves on by itself only when the operator has switched Auto-Deploy on for that song (its switch
+  // beside Actions) and the Bible tab's master Auto-Deploy is on. Until the song follower is fully polished,
+  // a song that has not been switched on is never advanced by it.
+  function songFollowOn(item) {
+    return !!(item && item.auto) && !(window.KairoAutoDeployOn && !window.KairoAutoDeployOn());
+  }
   function startFollower(item, fromIndex) {
     if (!item) return;
     if (item.type === 'song') {
       const LF = window.KairoLyricsFollow;
       if (!LF) return;
+      if (!item.auto) { stopFollower(); return; }
       follower = new LF.LyricsFollower(songShapeForFollow(item), {
         onAdvance: (e) => {
+          if (!songFollowOn(item)) return;
           const idx = firstSlideOfBlock(item, e.toBlockIdx);
           if (idx == null || `${item.id}:${idx}` === liveSlideKey) return;
           followerAdvancing = true;
@@ -1054,7 +1073,7 @@
       if (!v) return;
       ownVerseRef = v.reference;
       await fetchWithTimeout(`${SERVER}/api/service/send`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ verse: v }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ verse: v, auto: true }),   // the follower's own send, not the operator's choice
       });
     } catch (err) { debugLog('slide-follow-verse-failed', { ref, error: err.message }); }
   }
@@ -1187,6 +1206,38 @@
     contentLookup.setCandidates(playlistPool);
   }
 
+  // ── Auto-Deploy: a file (deck, song or hymn) the operator switched on is shown when a slide of it is heard ────────────────────
+  // The switch is the operator's consent, given ahead of time for that one slide. Even so it only acts while
+  // Kairo is listening, not over a verse that just went up (scripture stays on top), not for the slide already
+  // live, not twice within a few seconds, and (for a slide) only on a match stronger than an offer needs.
+  const AUTO_SHOW_CONFIDENCE = 0.7;
+  const AUTO_SHOW_GAP_MS = 4000;
+  let lastAutoShowAt = 0;
+  function autoShowOk(o) {
+    if (!autoFollow) return false;
+    // The Bible tab's Auto-Deploy is the master: off, every match is offered and nothing goes up without a click.
+    if (window.KairoAutoDeployOn && !window.KairoAutoDeployOn()) return false;
+    if (bibleOnTop && bibleLive && Date.now() - bibleLive.at < 15000) return false;
+    if (liveSlideKey === `${o.itemId}:${o.index}`) return false;
+    if (Date.now() - lastAutoShowAt < AUTO_SHOW_GAP_MS) return false;
+    return o.kind === 'song' || (o.confidence || 0) >= AUTO_SHOW_CONFIDENCE;
+  }
+  function autoShowFound(o) {
+    lastAutoShowAt = Date.now();
+    debugLog('slide-finder-auto', { itemId: o.itemId, index: o.index, playlistId: o.playlistId, confidence: o.confidence, kind: o.kind });
+    openFound({ kind: 'slide', playlistId: o.playlistId, itemId: o.itemId, index: o.index }, { send: true, auto: true });
+  }
+  // The file's Auto-Deploy switch, saved with the item so it goes wherever the item goes.
+  function setItemAuto(item, on) {
+    if (on) item.auto = true; else delete item.auto;
+    saveService();
+    // A song already on the screen starts or stops being followed as its switch is flipped.
+    if (item.type === 'song' && liveSlideKey && liveSlideKey.startsWith(`${item.id}:`)) {
+      if (on && autoFollow) startFollower(item, Number(liveSlideKey.slice(item.id.length + 1)));
+      else if (!on && followItemId === item.id) stopFollower();
+    }
+  }
+
   // Every slide of every deck in every playlist (slide_finder.js): one being
   // read from somewhere else (mid-deck, another playlist) is offered in
   // Possible Matches; clicking it opens it where it lives and sends it (owner,
@@ -1198,7 +1249,10 @@
     if (!slideFinder) {
       slideFinder = new SF.SlideFinder({
         onOffer: (o) => {
-          debugLog('slide-finder-offer', { itemId: o.itemId, index: o.index, playlistId: o.playlistId, confidence: o.confidence });
+          // A slide the operator switched on is sent as soon as it is found (when it is safe to: see autoShowOk);
+          // otherwise, and for anything not switched on, it is offered in Possible Matches.
+          if (o.auto && autoShowOk(o)) { autoShowFound(o); return; }
+          debugLog('slide-finder-offer', { itemId: o.itemId, index: o.index, playlistId: o.playlistId, confidence: o.confidence, kind: o.kind, ambiguous: !!o.ambiguous });
           window.KairoSlideOffer?.(o);
         },
       });
@@ -1210,9 +1264,15 @@
       const slides = [];
       for (const p of ordered) {
         for (const it of p.items || []) {
+          // A song or hymn is found by its title being said (offered, or sent if its Auto switch is on).
+          if (it.type === 'song' && it.title) {
+            slides.push({ playlistId: p.id, playlistName: p.name, itemId: it.id, itemTitle: it.title, index: 0, text: it.title, kind: 'song', auto: !!it.auto });
+            continue;
+          }
           if (it.type !== 'slides') continue;
           (it.blocks || []).forEach((b, i) => {
-            if (b && b.text) slides.push({ playlistId: p.id, playlistName: p.name, itemId: it.id, itemTitle: it.title || 'Slides', index: i, text: b.text });
+            // auto: the file's Auto-Deploy switch is on, so finding any of its slides sends it. A deck set to Off never does.
+            if (b && b.text) slides.push({ playlistId: p.id, playlistName: p.name, itemId: it.id, itemTitle: it.title || 'Slides', index: i, text: b.text, auto: !!it.auto && it.followMode !== 'off' });
           });
         }
       }
@@ -1271,7 +1331,7 @@
   function renderFollowHud(snap) {
     let el = document.getElementById('lyric-follow-hud');
     const liveItem = liveSlideKey && service && service.items.find(i => i.id === liveSlideKey.split(':')[0]);
-    const followable = liveItem && (liveItem.type === 'song' || sermonFollowEligible(liveItem));
+    const followable = liveItem && ((liveItem.type === 'song' && liveItem.auto) || sermonFollowEligible(liveItem));
     if (!followable) { if (el) el.remove(); return; }
     if (!el) {
       el = document.createElement('div');
@@ -1332,7 +1392,7 @@
     const slide = slidesFor(item)[index];
     if (!slide) return null;
     const translatedText = await awaitTranslatedText(item, slide);
-    const look = slide.isScene ? { layers: slide.layers || [] } : (slideThemeLook(slide, item) || itemLookOverride(item));
+    const look = slide.isScene ? { layers: slide.layers || [], ...(slide.canvasSize ? { canvasSize: slide.canvasSize } : {}) } : withOwnCanvas(slideThemeLook(slide, item) || itemLookOverride(item), item, index);
     return {
       look,
       next: nextSlideInfo(item, index),
@@ -1346,6 +1406,7 @@
         fit: item.type === 'image' ? (item.fit || 'contain') : undefined,
         slideStyle: item.slideStyles?.[index] || null,
         book: 'Service', chapter: 0, verse: index + 1,
+        songSlide: item.type === 'song' ? true : undefined,   // lyrics can quote scripture: the detector holds back for them alone
         similarity: 1, method: 'service',
       },
     };
@@ -2059,6 +2120,11 @@
   // "this is a Kairo media pick" apart from an ordinary text/file drag
   // without guessing from content.
   const MEDIA_DRAG_MIME = 'application/x-kairo-media';
+  // A slide of a deck being dragged to a new place in it, and a Media Bin card being dragged to a new
+  // place in the bin.
+  const SLIDE_DRAG_MIME = 'application/x-kairo-slide';
+  const BIN_DRAG_MIME = 'application/x-kairo-bin';
+  let slideDragFrom = null;   // the deck a slide is being dragged from (drag data is unreadable until the drop)
 
   function buildMediaBinCard(item) {
     const card = document.createElement('button');
@@ -2083,19 +2149,20 @@
     // drift silently start a real native drag session, which a confirmed
     // WebKit/macOS bug turned into the unrelated top bar going stale — even
     // when the drag was never actually completed.
-    if (item.kind === 'image') {
-      card.draggable = false;
-      card.addEventListener('mousedown', () => { card.draggable = true; });
-      card.addEventListener('mouseup', () => { card.draggable = false; });
-      card.addEventListener('dragstart', (e) => {
-        e.dataTransfer.setData(MEDIA_DRAG_MIME, JSON.stringify({ url: item.url, name: item.name }));
-        e.dataTransfer.effectAllowed = 'copy';
-      });
-      // Belt-and-suspenders: mouseup won't fire if the drag ends outside
-      // the window/over a drop target that swallows it — dragend always
-      // fires exactly once a drag session concludes, however it ends.
-      card.addEventListener('dragend', () => { card.draggable = false; });
-    }
+    card.draggable = false;
+    card.addEventListener('mousedown', () => { card.draggable = true; });
+    card.addEventListener('mouseup', () => { card.draggable = false; });
+    card.addEventListener('dragstart', (e) => {
+      // Any card can move within the bin; a picture can also be dropped into a deck.
+      e.dataTransfer.setData(BIN_DRAG_MIME, item.url);
+      if (item.kind === 'image') e.dataTransfer.setData(MEDIA_DRAG_MIME, JSON.stringify({ url: item.url, name: item.name }));
+      e.dataTransfer.effectAllowed = 'copyMove';
+      card.classList.add('svc-item-dragging');
+    });
+    // Belt-and-suspenders: mouseup won't fire if the drag ends outside
+    // the window/over a drop target that swallows it — dragend always
+    // fires exactly once a drag session concludes, however it ends.
+    card.addEventListener('dragend', () => { card.draggable = false; card.classList.remove('svc-item-dragging'); });
     // Same shared thumbnail builder the Media tab's own grid uses
     // (buildMediaThumb, defined further down with buildMediaCard) — was
     // its own separate copy that never autoplayed a video thumbnail at
@@ -2254,7 +2321,8 @@
       folderSel.value = options.some(([v]) => v === want) ? want : 'all';
     }
     const source = folderSel?.value || 'all';
-    const shown = source === 'all' ? mediaBinItems : mediaBinItems.filter(it => it.binSource === source);
+    const all = orderedBinItems(mediaBinItems);
+    const shown = source === 'all' ? all : all.filter(it => it.binSource === source);
     strip.innerHTML = '';
     const away = source === 'all' ? mediaBinUnreachable : mediaBinUnreachable.filter(n => folderSel?.selectedOptions?.[0]?.textContent === n);
     if (!shown.length && !away.length) {
@@ -2266,6 +2334,51 @@
     shown.forEach(item => strip.appendChild(buildMediaBinCard(item)));
     if (away.length) strip.appendChild(unreachableNote(away));
   }
+
+  // The bin's own order, once someone has dragged a card: saved on this computer as a list of urls.
+  // Pictures not in it yet (new ones) come first, newest first, as the server lists them.
+  const MEDIA_BIN_ORDER_KEY = 'kairo-media-bin-order';
+  function orderedBinItems(list) {
+    let order = [];
+    try { order = JSON.parse(readPref(MEDIA_BIN_ORDER_KEY) || '[]'); } catch {}
+    const pos = new Map((Array.isArray(order) ? order : []).map((u, i) => [u, i]));
+    const fresh = list.filter(it => !pos.has(it.url));
+    const known = list.filter(it => pos.has(it.url)).sort((a, b) => pos.get(a.url) - pos.get(b.url));
+    return [...fresh, ...known];
+  }
+  // Moves the card `url` to slot `index` of the cards on screen (which may be one folder of the bin).
+  function moveBinItem(url, index) {
+    const strip = document.getElementById('media-bin-strip');
+    const onScreen = [...(strip?.querySelectorAll(':scope > .media-card') || [])].map(c => c.dataset.url);
+    const from = onScreen.indexOf(url);
+    if (from < 0 || index === from || index === from + 1) return;
+    const before = onScreen[index] ?? null;   // the card it goes in front of; null is after the last shown
+    const urls = orderedBinItems(mediaBinItems).map(it => it.url).filter(u => u !== url);
+    const lastShown = onScreen.filter(u => u !== url).pop();
+    const at = before ? urls.indexOf(before) : urls.indexOf(lastShown) + 1;
+    urls.splice(at < 0 ? urls.length : at, 0, url);
+    writePref(MEDIA_BIN_ORDER_KEY, JSON.stringify(urls));
+    paintMediaBin();
+  }
+  (function wireMediaBinReorder() {
+    const strip = document.getElementById('media-bin-strip');
+    if (!strip) return;
+    strip.addEventListener('dragover', (e) => {
+      if (!e.dataTransfer.types.includes(BIN_DRAG_MIME)) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      showMediaDropLine(dropSlot(strip, '.media-card', e.clientX, e.clientY).line);
+    });
+    strip.addEventListener('dragleave', (e) => { if (!strip.contains(e.relatedTarget)) hideMediaDropLine(); });
+    strip.addEventListener('drop', (e) => {
+      const url = e.dataTransfer.getData(BIN_DRAG_MIME);
+      if (!url) return;
+      e.preventDefault();
+      const at = dropSlot(strip, '.media-card', e.clientX, e.clientY).index;
+      hideMediaDropLine();
+      moveBinItem(url, at);
+    });
+  })();
 
   async function renderMediaBinStrip() {
     const strip = document.getElementById('media-bin-strip');
@@ -2505,6 +2618,29 @@
       e.stopPropagation();
       openItemContextMenu(e.clientX, e.clientY, item, title, moreBtn);
     });
+    // One Auto-Deploy switch per file (deck, song or hymn), beside Actions. On, a slide of this file that Kairo hears
+    // goes up by itself, with no click; off, it is offered in Possible Matches.
+    if (item.type === 'song' || item.type === 'slides') {
+      const sw = document.createElement('span');
+      sw.className = 'svc-auto-switch in-head' + (item.auto ? ' on' : '');
+      sw.setAttribute('role', 'switch');
+      sw.setAttribute('aria-checked', String(!!item.auto));
+      sw.setAttribute('aria-label', 'Auto-Deploy: show this file by itself when it is heard');
+      sw.tabIndex = 0;
+      sw.innerHTML = '<span class="svc-auto-knob"></span><span class="svc-auto-text">Auto-Deploy</span>';
+      const paintSwitch = () => {
+        sw.classList.toggle('on', !!item.auto);
+        sw.setAttribute('aria-checked', String(!!item.auto));
+        sw.title = item.auto
+          ? 'On: when Kairo hears a slide of this file, it goes up by itself. Click to turn off.'
+          : 'Off: a slide of this file that Kairo hears is offered in Possible Matches. Turn on to send it by itself.';
+      };
+      paintSwitch();
+      const flip = (e) => { e.stopPropagation(); e.preventDefault(); setItemAuto(item, !item.auto); paintSwitch(); };
+      sw.addEventListener('click', flip);
+      sw.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') flip(e); });
+      head.appendChild(sw);
+    }
     head.appendChild(moreBtn);
 
     head.addEventListener('click', () => {
@@ -2528,13 +2664,10 @@
         body.innerHTML = '<div class="svc-empty-sm">No slides yet — Edit to add content.</div>';
         // Still a valid drop target — an empty announcement deck is the
         // MOST likely case someone's about to build by dragging images in.
-        // Wired on the actual .svc-empty-sm child, not `body` itself —
-        // that's what the .svc-media-drop-target highlight (styles.css)
-        // targets.
         if (item.type === 'slides') wireMediaBinDropTarget(body.firstElementChild, item);
       } else {
         const grid = document.createElement('div');
-        grid.className = 'svc-slides-grid';
+        grid.className = slideView() === 'text' ? 'svc-slides-text' : 'svc-slides-grid';
         slides.forEach((s, i) => grid.appendChild(slideCard(item, s, i)));
         if (item.type === 'slides') wireMediaBinDropTarget(grid, item);
         body.appendChild(grid);
@@ -2639,9 +2772,15 @@
     card.dataset.index = i;
     card.title = 'Send to all outputs';
 
+    const textMode = slideView() === 'text';
     const preview = document.createElement('div');
     preview.className = 'svc-slide-preview';
-    if (s.image) {
+    if (textMode) {
+      // Words only: no thumbnail is painted, so a long deck opens at once and every slide reads in one look.
+      card.classList.add('svc-slide-text');
+      preview.classList.add('svc-slide-textbody');
+      preview.textContent = s.image && !s.text ? '(picture)' : String(s.text || '').replace(/\n+/g, '\n').trim();
+    } else if (s.image) {
       preview.style.backgroundImage = `url('${window.kairoSmall(s.image, 480)}')`;
       preview.classList.add('is-image');
       // Wins over .is-image's hardcoded `background-size: cover` (styles.css)
@@ -2780,6 +2919,20 @@
       sections.push([{ label: 'Delete this slide', danger: true, onClick: () => deleteFlowSlideOrSong(item, i, s) }]);
       openContextMenu(e.clientX, e.clientY, sections);
     });
+    // A deck's slides reorder by dragging (wireMediaBinDropTarget takes the drop and draws the line).
+    // draggable only while pressed, like the Media Bin cards: a click still sends the slide.
+    if (item.type === 'slides') {
+      card.draggable = false;
+      card.addEventListener('mousedown', () => { card.draggable = true; });
+      card.addEventListener('mouseup', () => { card.draggable = false; });
+      card.addEventListener('dragstart', (e) => {
+        e.dataTransfer.setData(SLIDE_DRAG_MIME, JSON.stringify({ itemId: item.id, index: i }));
+        e.dataTransfer.effectAllowed = 'move';
+        slideDragFrom = item.id;
+        card.classList.add('svc-item-dragging');
+      });
+      card.addEventListener('dragend', () => { slideDragFrom = null; card.draggable = false; card.classList.remove('svc-item-dragging'); });
+    }
     return card;
   }
 
@@ -2966,6 +3119,7 @@
         ...(onOlderTheme(item) ? [{ label: 'Update to the current theme', onClick: () => updateToCurrentTheme(item) }] : []),
         { label: 'Edit', onClick: () => window.KairoItemStyleEditor?.open?.(item.id, 0) },
         { label: 'Quick edit', onClick: () => openFullEdit(item.id) },
+        ...(canExportPptx(item) ? [{ label: 'Export as PowerPoint', onClick: () => exportItemAsPptx(item) }, { label: 'Export for ProPresenter', onClick: () => exportItemAsPro(item) }] : []),
         // Auto-advance (src/lyrics_follow.js for songs, src/slide_follow.js for decks)
         // — opt-in per item, unlike a song (which always auto-follows once
         // Start Listening is on): a 'slides' deck is just as often
@@ -3577,6 +3731,126 @@
     if (titleEl) { titleEl.textContent = item?.title || ''; titleEl.title = item?.title || ''; }
   }
 
+  // ── Export as PowerPoint ───────────────────────────────────────────────────────────────────────
+  // Each slide as the app draws it (its look, its own changes, its words) in layers, then export_pptx.js
+  // makes real PowerPoint shapes of them: editable text, shapes and pictures.
+  function slideForExport(item, s, i) {
+    const R = window.KairoPptx;
+    if (s.image) {
+      return { items: [
+        { kind: 'shape', x: 0, y: 0, w: DESIGN_W, h: DESIGN_H, fill: { kind: 'solid', color: R.parseColor('#000000') } },
+        { kind: 'image', x: 0, y: 0, w: DESIGN_W, h: DESIGN_H, src: s.image, fit: item.fit === 'fill' ? 'fill' : (item.fit || 'contain') },
+      ], notes: [], fonts: [] };
+    }
+    const look = s.isScene ? { layers: s.layers || [], ...(s.canvasSize ? { canvasSize: s.canvasSize } : {}) } : withOwnCanvas(slideThemeLook(s, item) || themeForItem(item), item, i);
+    const style = s.isScene ? {} : (item.slideStyles?.[i] || {});
+    let layers = [...(look?.layers || []), ...(style.__customLayers || [])];
+    if (style.__layerOrder) layers = applyLayerOrder(layers, style.__layerOrder);
+    if (style.bgMedia?.src) {
+      layers = [{ id: '__bg-media', type: 'image', visible: true, src: style.bgMedia.src, fit: 'cover', opacity: 100, pos: { x: 0, y: 0, w: DESIGN_W, h: DESIGN_H } },
+        ...layers.filter(l => l.type !== 'background')];
+    }
+    const content = { verseText: s.text, referenceText: s.reference || '', translatedText: getTranslatedText(item, s, () => {}) };
+    return R.itemsFromLayers(layers, style, content, {});
+  }
+  // A picture's bytes for the file: a JPEG as it is; anything else (PNG, WebP, an SVG such as the vignette)
+  // drawn on a canvas and kept as a PNG, no larger than 2560 px (1280 for an SVG).
+  async function pictureForExport(src) {
+    const res = await fetch(typeof authedMediaUrl === 'function' ? authedMediaUrl(src) : src);
+    if (!res.ok) throw new Error('missing');
+    const blob = await res.blob();
+    if ((blob.type || '').toLowerCase() === 'image/jpeg') {
+      const bmp = await createImageBitmap(blob);
+      const out = { bytes: new Uint8Array(await blob.arrayBuffer()), ext: 'jpeg', w: bmp.width, h: bmp.height };
+      bmp.close?.();
+      return out;
+    }
+    const url = URL.createObjectURL(blob);
+    try {
+      const img = await new Promise((ok, bad) => { const el = new Image(); el.onload = () => ok(el); el.onerror = bad; el.src = url; });
+      let w = img.naturalWidth || DESIGN_W, h = img.naturalHeight || DESIGN_H;
+      // A drawn picture (SVG) is smooth at any size, so it goes in smaller than a photo does.
+      const k = Math.min(1, (/svg/i.test(blob.type || '') ? 1280 : 2560) / Math.max(w, h));
+      w = Math.round(w * k); h = Math.round(h * k);
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const png = await new Promise(ok => canvas.toBlob(ok, 'image/png'));
+      return { bytes: new Uint8Array(await png.arrayBuffer()), ext: 'png', w, h };
+    } finally { URL.revokeObjectURL(url); }
+  }
+  const COMMON_FONTS = new Set(['Arial', 'Arial Black', 'Helvetica', 'Helvetica Neue', 'Times New Roman', 'Georgia', 'Verdana', 'Tahoma', 'Trebuchet MS', 'Courier New', 'Calibri', 'Cambria', 'Impact', 'Segoe UI', 'Menlo', 'Monaco']);
+  async function exportItemAsPptx(item) {
+    const R = window.KairoPptx;
+    const all = slidesFor(item);
+    if (!R || !all.length) { window.kairoProblem?.('There are no slides to export.'); return; }
+    try {
+      const slides = [], notes = new Set(), fonts = new Set();
+      all.forEach((s, i) => {
+        const r = slideForExport(item, s, i);
+        slides.push({ items: r.items });
+        r.notes.forEach(n => notes.add(n));
+        r.fonts.forEach(f => fonts.add(f));
+      });
+      const srcs = new Set();
+      slides.forEach(sl => sl.items.forEach(it => { if (it.kind === 'image' && it.src && it.src.indexOf('glow:') !== 0) srcs.add(it.src); }));
+      const images = {};
+      let lost = 0;
+      await Promise.all([...srcs].map(async (src) => { try { images[src] = await pictureForExport(src); } catch { lost += 1; } }));
+      if (lost) notes.add(`${lost} picture${lost === 1 ? '' : 's'} that couldn’t be loaded`);
+      const bytes = R.buildPptx(slides, images, { title: item.title });
+      const name = (String(item.title || 'Kairo slides').replace(/[^\p{L}\p{N}\- ]+/gu, '').trim().replace(/\s+/g, ' ') || 'Kairo slides') + '.pptx';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }));
+      a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      const extra = [...fonts].filter(f => !COMMON_FONTS.has(f));
+      const say = [`${all.length} slide${all.length === 1 ? '' : 's'} saved as “${name}”. The text, shapes and pictures can be edited in PowerPoint, Keynote or Google Slides.`];
+      if (notes.size) say.push(`Not included, or drawn more simply: ${[...notes].join('; ')}.`);
+      if (extra.length) say.push(`Fonts used: ${extra.join(', ')}. Install them on the computer that opens the file, or it will use another font.`);
+      if (typeof confirmDialog === 'function') await confirmDialog(say.join('\n\n'), { title: 'Exported to PowerPoint', confirmLabel: 'Done', cancelLabel: 'Close' });
+    } catch (err) {
+      console.warn('[Export] PowerPoint failed:', err);
+      window.kairoProblem?.(`Couldn’t make the PowerPoint file: ${err && err.message ? err.message : err}`);
+    }
+  }
+  const canExportPptx = (item) => !!item && ['slides', 'song', 'scripture', 'image'].includes(item.type);
+
+  // ── Export for ProPresenter ────────────────────────────────────────────────────────────────────
+  // The same slides, written as a ProPresenter 7 presentation (.pro): text and shapes as ProPresenter's own
+  // elements. Pictures aren't carried (a .pro points at files on disk), and the dialog says so.
+  async function exportItemAsPro(item) {
+    const R = window.KairoProPresenter;
+    const all = slidesFor(item);
+    if (!R || !all.length) { window.kairoProblem?.('There are no slides to export.'); return; }
+    try {
+      const slides = [], notes = new Set(), fonts = new Set();
+      all.forEach((s, i) => {
+        const r = slideForExport(item, s, i);
+        slides.push({ items: r.items });
+        r.notes.forEach(n => notes.add(n));
+        r.fonts.forEach(f => fonts.add(f));
+      });
+      const out = R.buildPro(slides, { title: item.title });
+      out.notes.forEach(n => notes.add(n));
+      const name = (String(item.title || 'Kairo slides').replace(/[^\p{L}\p{N}\- ]+/gu, '').trim().replace(/\s+/g, ' ') || 'Kairo slides') + '.pro';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([out.bytes], { type: 'application/octet-stream' }));
+      a.download = name;
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+      const extra = [...fonts].filter(f => !COMMON_FONTS.has(f));
+      const say = [`${all.length} slide${all.length === 1 ? '' : 's'} saved as “${name}”. In ProPresenter, choose File → Import → File, or drop it into the library.`];
+      if (notes.size) say.push(`Not included, or drawn more simply: ${[...notes].join('; ')}.`);
+      if (extra.length) say.push(`Fonts used: ${extra.join(', ')}. Install them on the computer that runs ProPresenter, or it will use another font.`);
+      if (typeof confirmDialog === 'function') await confirmDialog(say.join('\n\n'), { title: 'Exported for ProPresenter', confirmLabel: 'Done', cancelLabel: 'Close' });
+    } catch (err) {
+      console.warn('[Export] ProPresenter failed:', err);
+      window.kairoProblem?.(`Couldn’t make the ProPresenter file: ${err && err.message ? err.message : err}`);
+    }
+  }
+
   // The Actions menu in Quick edit's header: how to edit (as slides or as text), lines per slide, the
   // theme, and the design canvas, all for this item.
   function openFullEditActions(anchor) {
@@ -3597,6 +3871,7 @@
       { label: 'Theme', onClick: () => openThemePopover(anchor, item) },
       { label: 'Edit design', onClick: () => window.KairoItemStyleEditor?.open?.(item.id, 0) },
     ]);
+    if (canExportPptx(item)) sections.push([{ label: 'Export as PowerPoint', onClick: () => exportItemAsPptx(item) }, { label: 'Export for ProPresenter', onClick: () => exportItemAsPro(item) }]);
     const r = anchor.getBoundingClientRect();
     openContextMenu(r.right, r.bottom + 2, sections);
   }
@@ -3632,13 +3907,26 @@
     paintLookLayers(host, p.look, p.style, { ...p.content, ...patch }, { ...p.opts, builds: false });
   }
 
-  function paintLookLayers(host, look, style, content, opts = {}) {
-    host.classList.remove('is-alpha');
-    host.innerHTML = '';
-    const scale = (host.clientWidth || 640) / DESIGN_W;
+  function paintLookLayers(frameHost, look, style, content, opts = {}) {
+    frameHost.classList.remove('is-alpha');
+    frameHost.innerHTML = '';
+    if (typeof lookHasNoBackdrop === 'function' && lookHasNoBackdrop(look, style)) frameHost.classList.add('is-alpha');
     // Text is sized to the host's width now — remembered, so a host that
     // changes size can be painted again at its new one (repaintAtHostWidth).
-    paintedHosts.set(host, { look, style, content, opts, width: host.clientWidth });
+    paintedHosts.set(frameHost, { look, style, content, opts, width: frameHost.clientWidth });
+    // A design of another shape than this preview (a portrait slide in a 16:9 card) is drawn in a box of its
+    // own shape, contained and centred, the way an output set to Contain shows it (layer_geometry.js canvasFitRect).
+    const hw = frameHost.clientWidth || 640, hh = frameHost.clientHeight || hw * DESIGN_H / DESIGN_W;
+    const fitBox = canvasFitRect(hw, hh, look && look.canvasSize, 'contain');
+    let host = frameHost;
+    if (Math.abs(fitBox.w - hw) > 1 || Math.abs(fitBox.h - hh) > 1) {
+      host = document.createElement('div');
+      host.className = 'look-canvas';
+      host.style.cssText = `position:absolute;left:${fitBox.left}px;top:${fitBox.top}px;width:${fitBox.w}px;height:${fitBox.h}px;overflow:hidden;`;
+      frameHost.appendChild(host);
+    }
+    // Text, corners and shadows: pixels of a canvas 1080 high, as on the outputs.
+    const scale = fitBox.h / DESIGN_H;
 
     // Item/slide-specific layers (added in Full-scale edit, see
     // src/app.js's writeItemSlideStyleFromSynthetic) ride along inside the
@@ -3680,7 +3968,7 @@
         if (layer.binding === 'reference' && hasVerseLayer && !content?.verseText) return;
         const c = content || {};
         const ref = c.versionText && c.referenceText && layer.showVersion !== false ? `${c.referenceText} (${c.versionText})` : c.referenceText;
-        host.appendChild(window.KairoPP.render(layer, { ...c, referenceText: ref }, { motion: motionMode, scale, small: true }));
+        host.appendChild(window.KairoPP.render(layer, { ...c, referenceText: ref }, { motion: motionMode, scale: (host.clientWidth || fitBox.w) / DESIGN_W, small: true }));
         return;
       }
 
@@ -3688,6 +3976,7 @@
         const bgOv = (style || {})[layer.id] || {};
         if (bgOv.visible === false) return;
         layer = withFillOverride(layer, bgOv);
+        if (layer.pos && isFullScreenFill(layer) && lookCanvasClear(look)) return;   // a clear canvas paints no full-screen background
         const d = document.createElement('div');
         d.style.position = 'absolute';
         if (layer.pos) {
@@ -3699,7 +3988,7 @@
           d.style.inset = '0';
         }
         if (layer.fill === 'none') return;   // the canvas paints nothing: its colour is the Background shape
-        if (layer.fill === 'transparent') { host.classList.add('is-alpha'); return; }
+        if (layer.fill === 'transparent') { frameHost.classList.add('is-alpha'); return; }
         if (layer.fill === 'gradient') {
           d.style.background = gradientCss(layer, c => hexA(c, layer.opacity));
         } else if (layer.fill === 'image') {
@@ -3722,7 +4011,7 @@
         d.style.top = (p.y / DESIGN_H * 100) + '%';
         d.style.width = (p.w / DESIGN_W * 100) + '%';
         d.style.height = (p.h / DESIGN_H * 100) + '%';
-        d.style.borderRadius = ((layer.radius || 0) / DESIGN_H * 100) + 'vh';
+        d.style.borderRadius = ((layer.radius || 0) * scale).toFixed(1) + 'px';
         host.appendChild(d);
         return;
       }
@@ -3736,8 +4025,8 @@
         d.style.top = (p.y / DESIGN_H * 100) + '%';
         d.style.width = (p.w / DESIGN_W * 100) + '%';
         d.style.height = (p.h / DESIGN_H * 100) + '%';
-        d.style.borderRadius = ((layer.radius || 0) / DESIGN_H * 100) + 'vh';
-        if (layer.frameWidth > 0) d.style.boxShadow = `0 0 0 ${layer.frameWidth / DESIGN_H * 100}vh ${layer.frameColor || '#ffffff'}`;
+        d.style.borderRadius = ((layer.radius || 0) * scale).toFixed(1) + 'px';
+        if (layer.frameWidth > 0) d.style.boxShadow = `0 0 0 ${(layer.frameWidth * scale).toFixed(1)}px ${layer.frameColor || '#ffffff'}`;
         host.appendChild(d);
         return;
       }
@@ -3877,7 +4166,7 @@
       // [data-binding="timer"], mirroring display.html's real output.
       if (layer.binding) d.dataset.binding = layer.binding;
       d.dataset.layerId = layer.id || '';
-      if (layer.decor) d.dataset.decor = '1';   // cropped on purpose: markClipped skips it
+      if (layer.decor || layer.rotation) d.dataset.decor = '1';   // cropped on purpose (or turned on its side, like the big ghost countdown): markClipped skips it
       if (layer.follows) d.dataset.follows = layer.follows; // stackFollowers, below
       const p = layer.pos || { x: 100, y: 400, w: DESIGN_W - 200, h: 0 };
       const box = ov.pos || p;
@@ -4810,8 +5099,10 @@
       const how = acDraft.outline.how || { mode: 'points', points: acDraft.outline.items.filter(i => i.kind === 'point').length };
       const heading = document.querySelector('#ac-sermon .ac-sermon-head b');
       const plural = (n, word) => `${n} ${word}${n === 1 ? '' : 's'}`;
-      if (heading) heading.textContent = how.mode === 'points' ? 'This reads as a sermon outline' : 'Kairo can make this into sermon slides';
-      document.getElementById('ac-sermon-detail').textContent = how.mode === 'points'
+      if (heading) heading.textContent = how.mode === 'points' || how.mode === 'roles' ? 'This reads as a sermon outline' : 'Kairo can make this into sermon slides';
+      document.getElementById('ac-sermon-detail').textContent = how.mode === 'roles'
+        ? `${plural(how.points, 'point')}${how.sections ? `, ${plural(how.sections, 'section heading')}` : ''}${how.withRefs ? `, ${how.withRefs} with scriptures` : ''}${how.verses ? ` and ${plural(how.verses, 'typed verse')} (${how.versesOn ? 'each on its own slide after its point' : 'listed in the editor, off until you pick them'})` : ''}. Check them in the editor.`
+        : how.mode === 'points'
         ? `${plural(how.points, 'point')}${how.withRefs ? `, ${how.withRefs} with scriptures,` : ''} made into designed slides you can edit.`
         : how.mode === 'headings'
           ? `No numbered points, so each of the ${plural(how.points, 'heading')} became a point, with the scriptures found under it. Check them in the editor.`
@@ -5238,36 +5529,96 @@
     return items;
   }
 
-  // Real drag-and-drop from the Media Bin strip (buildMediaBinCard) onto a
-  // 'slides' item's own slide grid (or its empty-state placeholder) in the
-  // Stack view — the ONE place Media content is visible at the same time
-  // as another view (see buildMediaBinCard's own comment for why the full
-  // Media tab can't support this). `el` is either the .svc-slides-grid or
-  // the empty-deck placeholder div, both wired identically. Highlighted
-  // via .svc-media-drop-target (styles.css) — checked with
-  // el.contains(e.relatedTarget) on dragleave so hovering over a CHILD
-  // slide card doesn't flicker the highlight off and back on.
+  // Real drag-and-drop from the Media Bin strip (buildMediaBinCard) onto a 'slides' item's slides: the grid,
+  // the Text view's list, or an empty deck's placeholder. A line in the app's colour marks the slot the
+  // picture will land in (between two slides, or before the first / after the last), and the drop copies
+  // the picture into the deck itself (a data URL in the block, as a paste does), so the slide keeps it even
+  // if the file later leaves the Media Bin.
+  let mediaDropLine = null;
+  function showMediaDropLine(rect) {
+    if (!mediaDropLine) {
+      mediaDropLine = document.createElement('div');
+      mediaDropLine.className = 'svc-media-drop-line';
+      document.body.appendChild(mediaDropLine);
+    }
+    Object.assign(mediaDropLine.style, { left: rect.x + 'px', top: rect.y + 'px', width: rect.w + 'px', height: rect.h + 'px' });
+  }
+  function hideMediaDropLine() { mediaDropLine?.remove(); mediaDropLine = null; }
+  // Where a drop at (x, y) lands among `el`'s cards (its children matching `selector`): the insert index
+  // (a position among those cards) and the line to draw for it. Cards side by side (a grid) split
+  // left/right with an upright line in the gap; cards stacked one per row (the Text view) split
+  // top/bottom with a flat line between rows.
+  function dropSlot(el, selector, x, y) {
+    const cards = [...el.querySelectorAll(`:scope > ${selector}`)];
+    if (!cards.length) { const r = el.getBoundingClientRect(); return { index: 0, line: { x: r.left + 8, y: r.top + r.height / 2 - 1.5, w: Math.max(0, r.width - 16), h: 3 } }; }
+    const rects = cards.map(c => c.getBoundingClientRect());
+    const stacked = rects.length < 2 ? rects[0].width > el.getBoundingClientRect().width * 0.7 : Math.abs(rects[0].left - rects[1].left) < 2;
+    let best = 0, bestD = Infinity;
+    rects.forEach((r, i) => {
+      const dx = x < r.left ? r.left - x : x > r.right ? x - r.right : 0;
+      const dy = y < r.top ? r.top - y : y > r.bottom ? y - r.bottom : 0;
+      const d = dy * 4 + dx;   // the row the pointer is on wins over a nearer card in the next row
+      if (d < bestD) { bestD = d; best = i; }
+    });
+    const r = rects[best];
+    const after = stacked ? y > r.top + r.height / 2 : x > r.left + r.width / 2;
+    const index = best + (after ? 1 : 0);
+    if (stacked) {
+      const nb = rects[best + (after ? 1 : -1)];
+      const edge = after ? (nb ? (r.bottom + nb.top) / 2 : r.bottom + 3) : (nb ? (nb.bottom + r.top) / 2 : r.top - 3);
+      return { index, line: { x: r.left, y: edge - 1.5, w: r.width, h: 3 } };
+    }
+    const nb = rects[best + (after ? 1 : -1)];
+    const sameRow = nb && Math.abs(nb.top - r.top) < 2;
+    const edge = after ? (sameRow ? (r.right + nb.left) / 2 : r.right + 4) : (sameRow ? (nb.right + r.left) / 2 : r.left - 4);
+    return { index, line: { x: edge - 1.5, y: r.top, w: 3, h: r.height } };
+  }
+  // Moves slide `from` of a deck to slot `to` (a position before the move), keeping what is live on it.
+  function moveDeckSlide(item, from, to) {
+    if (from === to || from + 1 === to || !item.blocks[from]) return;
+    const liveIndex = liveSlideKey && liveSlideKey.startsWith(`${item.id}:`) ? Number(liveSlideKey.slice(item.id.length + 1)) : -1;
+    const order = item.blocks.map((_, k) => k);
+    const [moved] = item.blocks.splice(from, 1); order.splice(from, 1);
+    const at = to > from ? to - 1 : to;
+    item.blocks.splice(at, 0, moved); order.splice(at, 0, from);
+    if (liveIndex >= 0) liveSlideKey = `${item.id}:${order.indexOf(liveIndex)}`;
+    if (selectedSlideIndices.size) clearSlideSelection();
+    saveService(); renderStack();
+    if (activeItemId === item.id) renderFullEdit();
+  }
   function wireMediaBinDropTarget(el, item) {
     el.addEventListener('dragover', (e) => {
-      if (!e.dataTransfer.types.includes(MEDIA_DRAG_MIME)) return;
+      const slide = e.dataTransfer.types.includes(SLIDE_DRAG_MIME);
+      if (slide ? slideDragFrom !== item.id : !e.dataTransfer.types.includes(MEDIA_DRAG_MIME)) return;
       e.preventDefault();
-      e.dataTransfer.dropEffect = 'copy';
-      el.classList.add('svc-media-drop-target');
+      e.dataTransfer.dropEffect = slide ? 'move' : 'copy';
+      showMediaDropLine(dropSlot(el, '.svc-slide', e.clientX, e.clientY).line);
     });
     el.addEventListener('dragleave', (e) => {
       if (el.contains(e.relatedTarget)) return;
-      el.classList.remove('svc-media-drop-target');
+      hideMediaDropLine();
     });
     el.addEventListener('drop', async (e) => {
+      const slideRaw = e.dataTransfer.getData(SLIDE_DRAG_MIME);
+      if (slideRaw) {
+        e.preventDefault();
+        const at = dropSlot(el, '.svc-slide', e.clientX, e.clientY).index;
+        hideMediaDropLine();
+        let d; try { d = JSON.parse(slideRaw); } catch { return; }
+        if (d.itemId === item.id) moveDeckSlide(item, d.index, at);   // a slide moves within its own deck
+        return;
+      }
       const raw = e.dataTransfer.getData(MEDIA_DRAG_MIME);
       if (!raw) return;
       e.preventDefault();
-      el.classList.remove('svc-media-drop-target');
+      const at = dropSlot(el, '.svc-slide', e.clientX, e.clientY).index;
+      hideMediaDropLine();
       let mi;
       try { mi = JSON.parse(raw); } catch { return; }
       try {
         const src = await readImageFromUrl(mi.url);
-        item.blocks.push({ label: `Slide ${item.blocks.length + 1}`, image: src, imageFileName: mi.name });
+        const index = Math.max(0, Math.min(at, item.blocks.length));
+        item.blocks.splice(index, 0, { label: `Slide ${index + 1}`, image: src, imageFileName: mi.name });
         saveService(); renderStack();
         if (activeItemId === item.id) renderFullEdit();
       } catch {
@@ -5275,6 +5626,9 @@
       }
     });
   }
+  // A drag that ends anywhere else (Esc, dropped outside) leaves no line behind.
+  document.addEventListener('dragend', hideMediaDropLine);
+  document.addEventListener('drop', hideMediaDropLine);
 
   // "Add from Media Library" for an actual SLIDE (not a Theme Studio decor
   // layer — see app.js's openMediaLibraryPicker/addMediaToCurrentSlide,
@@ -6135,6 +6489,7 @@
       // depends on item.type === 'timer' being reliably true, not
       // something that silently reverts after the first start.
       segmentList.forEach(s => { s.type = 'timer'; s.title = s.name; });
+      try { window.KairoServiceStrip?.segmentsChanged?.(segmentList); } catch {}
     } catch (err) {
       console.warn('[Timer] Could not load segments:', err);
       if (typeof toast === 'function') toast('Could not reach Kairo server', 'error');
@@ -6313,15 +6668,23 @@
   // passed today") used to only reach toast(), a permanent no-op in this
   // codebase, so every caller saw a bare failure with the real message
   // thrown away and had to fall back to a made-up generic string instead.
+  // The segment being started: starting it stops the one before, and that one's "stopped" notice must not
+  // wipe the countdown this one is about to put on screen (it sometimes arrived after, so the timer never showed).
+  let startingSegId = null;
   async function startSegmentNow(seg) {
-    const r = await fetchWithTimeout(`${SERVER}/api/segments/${seg.id}/start`, { method: 'POST' });
-    const j = await r.json();
-    if (j.error) return { ok: false, error: j.error };
+    startingSegId = seg.id;
+    let r, j;
+    try {
+      r = await fetchWithTimeout(`${SERVER}/api/segments/${seg.id}/start`, { method: 'POST' });
+      j = await r.json();
+    } catch (err) { startingSegId = null; throw err; }
+    if (j.error) { startingSegId = null; return { ok: false, error: j.error }; }
     // The themed countdown goes to its OWN layer (#timer-layer), not the
     // slide layer — whatever scripture/lyrics are on screen stay put, and
     // Clear Timer removes just this. themeForItem's timer branch resolves a
     // countdown-shaped look even for an un-customised segment.
     await sendTimerSegment(seg);
+    setTimeout(() => { if (startingSegId === seg.id) startingSegId = null; }, 1500);
     try { window.KairoVideoDirector?.timerStarted?.(seg); } catch {}
     await loadSegments(); renderTimerGrid();
     return { ok: true };
@@ -6350,6 +6713,7 @@
     // Scenes (a storyboard — see segments.js) take over entirely when
     // present; themeId/slideStyles stay exactly as they always were for
     // the plain single-theme case, which is still how most segments work.
+    // A timer plays slides (with their picture) once it has been given a design; with none it is the plain timer below.
     const scenes = (seg.scenes && seg.scenes.length)
       ? JSON.parse(JSON.stringify(seg.scenes))
       : null;
@@ -6357,10 +6721,23 @@
     if (scenes) {
       scenes.forEach(sc => foldWarnColors(sc.layers));
     } else {
-      const base = themeForItem(seg);
+      let base = themeForItem(seg);
+      // A segment with no theme, or a theme with no countdown in it (a verse or slide theme given to a segment, or one that was deleted) would send
+      // nothing the output can show as a timer: the standard big countdown stands in, so a started timer always appears.
+      if (!base || !(base.layers || []).some(l => l.binding === 'timer')) {
+        const list = (typeof looks !== 'undefined' && Array.isArray(looks)) ? looks : [];
+        const standard = list.find(l => l.id === 'timer-big');
+        if (standard) base = segmentDefaultLook(seg, standard);
+      }
       if (!base) return null;
       look = JSON.parse(JSON.stringify(base));
+      // A timer with no theme or design of its own is the plain one: its time on black, not the brand gradient or a colour per card.
+      if (!seg.themeId) look.layers = (look.layers || []).map(l => (l.type === 'background' && (l.role === 'backdrop' || !l.pos))
+        ? { ...l, fill: 'solid', src: undefined, gradientStops: undefined, color: '#000000', color2: '#000000', opacity: 100 } : l);
       foldWarnColors(look.layers);
+      // The canvas size this timer was given in its editor, if any (see renderCanvasSize).
+      const cs = seg.slideStyles?.[0]?.__canvasSize;
+      if (cs && cs.w > 0 && cs.h > 0) look.canvasSize = { w: cs.w, h: cs.h };
     }
     return {
       look,
@@ -6422,6 +6799,42 @@
   // Set (or change) a segment's end time — the only control that used to
   // live directly on the card face and now lives behind right-click /
   // the auto-prompt in toggleSegment above.
+  // ── The order of service, run from the strip on every tab (service_strip.js) ────────────────────
+  // Starting a segment always goes through startSegmentNow: the same countdown, theme and layer as clicking its card.
+  const bySegmentOrder = (a, b) => (a.order || 0) - (b.order || 0);
+  async function planStart(segId) {
+    const seg = segmentList.find(s => s.id === segId);
+    if (!seg) return { ok: false, error: 'No such segment' };
+    const p = seg.trigger?.params || {};
+    if (!(p.mode === 'duration' ? Number(p.durationSec) > 0 : !!p.endAtTime)) return { ok: false, error: 'Set a length for this segment first', needsLength: true };
+    try { return await startSegmentNow(seg); } catch { return { ok: false, error: 'Could not reach server' }; }
+  }
+  // Next: the segment after the live one starts (which finishes the live one, with its real length recorded);
+  // with none left, the live one is finished.
+  async function planNext() {
+    await loadSegments();
+    const sorted = [...segmentList].filter(s => s.included !== false || s.status === 'live').sort(bySegmentOrder);
+    const liveAt = sorted.findIndex(s => s.status === 'live');
+    const next = sorted.slice(liveAt + 1).find(s => s.status === 'pending');
+    if (next) return planStart(next.id);
+    if (liveAt < 0) return { ok: false, error: 'Nothing left in the order of service' };
+    try {
+      await fetchWithTimeout(`${SERVER}/api/segments/${sorted[liveAt].id}/stop`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ markDone: true }) });
+      await loadSegments(); renderTimerGrid();
+      return { ok: true, ended: true };
+    } catch { return { ok: false, error: 'Could not reach server' }; }
+  }
+  async function planExtend(seconds) {
+    const live = segmentList.find(s => s.status === 'live');
+    if (!live) return { ok: false, error: 'Nothing is running' };
+    try {
+      const r = await fetchWithTimeout(`${SERVER}/api/segments/${live.id}/extend`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ seconds }) });
+      const j = await r.json();
+      await loadSegments();
+      return j.error ? { ok: false, error: j.error } : { ok: true };
+    } catch { return { ok: false, error: 'Could not reach server' }; }
+  }
+
   function openSegmentTimePopover(anchor, seg, { autoStart, stage } = {}) {
     if (typeof openPopover !== 'function' || !anchor) return;
     openPopover(anchor, (pop) => {
@@ -6660,7 +7073,19 @@
     // whatever themeForItem would otherwise fall back to (there's no real
     // themeId to resolve once a segment has scenes).
     const theme = (seg.scenes && seg.scenes.length) ? { layers: seg.scenes[0].layers || [] } : themeForItem(seg);
-    if (theme) paintCardWhenSized(bg, () => paintLookLayers(bg, theme, seg.slideStyles?.[0] || {}, { timerText: '' }));
+    // A plain timer is black with the time in the middle: legible at a glance. A segment with a design of its own (the
+    // Preservice ones, with their scenes) keeps its thumbnail, with the time as a small chip at the bottom.
+    const designed = !!(seg.scenes && seg.scenes.length);
+    // A timer with no design of its own is a plain card, black with its time large in the middle: a timer is read from a
+    // distance (monitors) more often than it is looked at as a design. Preservice starts with a template; any timer given one
+    // shows it.
+    if (designed) {
+      preview.classList.add('is-designed');
+      // A slide with its own countdown (not a turned or cropped ghost one) shows it, so the card matches the slide.
+      const own = (theme?.layers || []).some(l => l.binding === 'timer' && l.visible !== false && !l.decor && !l.rotation);
+      if (own) preview.classList.add('has-own-timer');
+      if (theme) paintCardWhenSized(bg, () => paintLookLayers(bg, theme, seg.slideStyles?.[0] || {}, { timerText: own ? timerStartText(seg) : '' }));
+    }
 
     const status = document.createElement('span');
     status.className = 'timer-card-status' + (seg.status === 'live' ? ' is-live' : '');
@@ -6674,11 +7099,14 @@
       ? '…'
       : (() => {
           const p = seg.trigger?.params || {};
-          if (p.mode === 'duration' && Number(p.durationSec) > 0) return `${Math.round(p.durationSec / 60)} min`;
-          if (p.endAtTime) return `Ends ${fmtHHMM(p.endAtTime)}`;
-          return 'No time set';
+          if (p.mode === 'duration' && Number(p.durationSec) > 0) return formatTime(Number(p.durationSec));
+          if (p.endAtTime) {
+            // Set by an end time: the time left until then.
+            const at = window.KairoServicePlan?.clockToMs(p.endAtTime, Date.now());
+            return at != null && at > Date.now() ? formatTime((at - Date.now()) / 1000) : '0:00';
+          }
+          return '0:00';
         })();
-    readout.classList.toggle('is-unset', readout.textContent === 'No time set');
     const label = document.createElement('div');
     label.className = 'timer-card-label';
     label.textContent = seg.name;
@@ -6686,8 +7114,8 @@
     // instead of laying one chip over the other.
     const foot = document.createElement('div');
     foot.className = 'timer-card-foot';
-    foot.append(label, readout);
-    preview.appendChild(foot);
+    if (designed) { foot.append(label, readout); preview.appendChild(foot); }
+    else { foot.append(label); preview.append(readout, foot); }   // the timer in the middle, the name small at the bottom
 
     preview.addEventListener('click', () => { stageSegment(seg, preview); });
     preview.addEventListener('dblclick', () => toggleSegment(seg, preview));
@@ -6784,32 +7212,15 @@
     clockTriggerId = clock?.id || null;
     return clockTriggerId;
   }
+  // The Live clock is always on: it is the device's own clock, shown in the output's corner badge and what the order
+  // of service runs by. (It used to be a checkbox in the Timer tab, off until switched on; owner, 2026-11-10: it should
+  // be on permanently.) A server restart drops the trigger's interval, so it is fired again here on every load.
   async function syncClockToggle() {
-    const toggle = document.getElementById('clock-toggle');
-    if (!toggle) return;
-    // Live clock is OFF until the operator switches it on (owner, 2026-10-19: the Output is empty when the app
-    // opens, and a clock in its corner was not). Once switched on it stays on across restarts: a server
-    // restart drops the trigger's interval, so it is fired again here on load whenever it should be showing.
-    let pref = '0';
-    try { pref = localStorage.getItem('kairo-live-clock') ?? '0'; } catch {}
-    const on = pref === '1';
-    toggle.checked = on;
     try {
       const id = await ensureClockTrigger();
-      // Off means off: a clock a previous run left going (the default used to be on) is stopped too.
-      if (id) await fetchWithTimeout(`${SERVER}/api/triggers/${id}/${on ? 'fire' : 'stop'}`, { method: 'POST' });
+      if (id) await fetchWithTimeout(`${SERVER}/api/triggers/${id}/fire`, { method: 'POST' });
     } catch {}
   }
-  document.getElementById('clock-toggle')?.addEventListener('change', async (e) => {
-    try { localStorage.setItem('kairo-live-clock', e.target.checked ? '1' : '0'); } catch {}
-    const id = await ensureClockTrigger();
-    if (!id) return;
-    try {
-      await fetchWithTimeout(`${SERVER}/api/triggers/${id}/${e.target.checked ? 'fire' : 'stop'}`, { method: 'POST' });
-    } catch (err) {
-      if (typeof toast === 'function') toast('Clock toggle failed: ' + err.message, 'error');
-    }
-  });
 
   // Called from app.js's WS switch via window.KairoService.onTimerAction/
   // onClockAction (see registerActionHandler wiring in app.js) — updates
@@ -6817,23 +7228,15 @@
   // re-rendering the whole grid every second.
   // The latest countdown tick, for a resent countdown (onTimerSlide).
   let lastPreviewTick = null;   // { remainingMs, totalMs, text, at }
-  let previewCountdownEnded = false;   // see "Time's up" below
   function onTimerAction(msg) {
     const { remainingMs, cleared, totalMs } = msg.payload || {};
+    try { window.KairoServiceStrip?.tick?.(msg); } catch {}
     lastPreviewTick = !cleared && typeof totalMs === 'number' && totalMs > 0
       ? { remainingMs, totalMs, text: (remainingMs < 0 ? '+' : '') + formatTime(Math.abs(remainingMs) / 1000), at: Date.now() } : null;
 
-    // Time's up: the countdown leaves the screen — the real outputs do the
-    // same (display.html endCountdownOnScreen), so this preview of them does
-    // too, and NDI/Syphon drop it. Its card below keeps counting the overtime.
-    if (!cleared && remainingMs <= 0) {
-      if (!previewCountdownEnded) {
-        previewCountdownEnded = true;
-        onTimerSlide({ clear: true });
-        window.KairoNativeOutputs?.pushTimer('');
-      }
-    } else if (!cleared) {
-      previewCountdownEnded = false;
+    // Past zero the countdown stays up and counts upward ("+0:07", in the overtime colour) until it is stopped,
+    // on the real outputs and in this preview of them: time being over is shown, not hidden.
+    if (!cleared) {
       // Tick the Monitoring panel's timer layer regardless of which view the
       // operator is on — segmentList is only loaded when the Timer view has
       // been opened, but the countdown must keep updating everywhere.
@@ -6900,8 +7303,13 @@
         }
       }
     } else {
-      onTimerSlide({ clear: true });
-      window.KairoNativeOutputs?.pushTimer('');
+      // The stop notice of the segment before one that is starting must not blank the new one's preview.
+      const starting = startingSegId && segmentList.find(s => s.id === startingSegId);
+      const otherLive = (starting && starting.triggerId !== msg.triggerId) || segmentList.some(s => s.status === 'live' && s.triggerId !== msg.triggerId);
+      if (!otherLive) {
+        onTimerSlide({ clear: true });
+        window.KairoNativeOutputs?.pushTimer('');
+      }
     }
 
     const seg = segmentList.find(s => s.triggerId === msg.triggerId);
@@ -6928,9 +7336,15 @@
       // Belt-and-suspenders: also tell the real output to drop the timer
       // layer, in case this 'cleared' came from the segment itself rather
       // than a Clear-Timer press (which the server already routes).
-      fetchWithTimeout(`${SERVER}/api/service/send-timer`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clear: true }),
-      }).then((r) => { if (!r.ok) return resync(); }, () => resync());
+      if (startingSegId && startingSegId !== seg.id) return;   // another segment is taking the screen
+      // Only when nothing else is running: a segment that was stopped because the next one started must not
+      // wipe the next one's countdown (every open window gets this notice, so the check asks the server).
+      fetchWithTimeout(`${SERVER}/api/segments`).then(r => r.json()).then(j => {
+        if ((j.segments || j).some(x => x.status === 'live')) return null;
+        return fetchWithTimeout(`${SERVER}/api/service/send-timer`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ clear: true }),
+        });
+      }).then((r) => { if (r && !r.ok) return resync(); }, () => resync());
       return;
     }
     const overtime = remainingMs < 0;
@@ -6982,7 +7396,7 @@
     const at = t ? previewActiveSceneForElapsed(Math.max(0, t.totalMs - t.remainingMs), t.totalMs) : { index: 0, slot: 0 };
     previewActiveSceneIndex = at.index;
     previewActiveSceneSlot = at.slot ?? at.index;
-    const look = msg.look || (msg.scenes && msg.scenes[at.index] ? { layers: msg.scenes[at.index].layers || [] } : null);
+    const look = msg.look || (msg.scenes && msg.scenes[at.index] ? { layers: msg.scenes[at.index].layers || [], ...(msg.scenes[at.index].canvasSize ? { canvasSize: msg.scenes[at.index].canvasSize } : {}) } : null);
     if (msg.clear || !look) {
       previewTimerScenes = null;
       previewActiveSceneIndex = -1;
@@ -7303,17 +7717,34 @@
   }
 
   // ── Grid/List + scale, applied to expanded card previews ─────────────────
+  // Grid (thumbnails) or Text (every slide's words as plain rows). The old List view (the same thumbnails in a
+  // single column) is gone: a saved 'list' reads as the grid.
+  function slideView() {
+    return localStorage.getItem('kairo-svc-view') === 'text' ? 'text' : 'grid';
+  }
   function applyView() {
     const size = parseInt(localStorage.getItem('kairo-svc-scale') || '190', 10);
-    const view = localStorage.getItem('kairo-svc-view') || 'grid';
+    const view = slideView();
+    document.getElementById('svc-stack-view')?.setAttribute('data-view', view);
     document.querySelectorAll('#svc-stack-list .svc-slides-grid').forEach(g => {
-      g.classList.toggle('is-list', view === 'list');
       g.style.setProperty('--svc-card', size + 'px');
     });
     document.querySelectorAll('#svc-view-chips .ts-chip').forEach(b =>
       b.classList.toggle('active', b.dataset.view === view));
+    // One slider, two jobs: the thumbnail width in Grid, the text size in Text.
+    const textSize = parseInt(localStorage.getItem('kairo-svc-text') || '15', 10);
+    document.querySelectorAll('#svc-stack-list .svc-slides-text').forEach(t => t.style.setProperty('--svc-text', textSize + 'px'));
     const slider = document.getElementById('svc-scale');
-    if (slider && Number(slider.value) !== size) slider.value = size;
+    if (slider) {
+      const text = view === 'text';
+      slider.min = text ? '11' : '90';
+      slider.max = text ? '30' : '360';
+      slider.step = text ? '1' : '10';
+      slider.title = text ? 'Text size' : 'Slide size';
+      slider.setAttribute('aria-label', slider.title);
+      const want = text ? textSize : size;
+      if (Number(slider.value) !== want) slider.value = want;
+    }
     // paintLookLayers bakes its scale calc into fixed pixel values at paint
     // time — it doesn't stay relative to --svc-card afterward. Without this,
     // dragging the slider resized every card's box but left already-painted
@@ -7353,7 +7784,7 @@
       // theme to apply at all; themeForItem(item) would be either the
       // wrong theme or nothing. Same convention Full-scale Edit's own
       // thumbnail painter already uses for this (renderItemSlidesList).
-      const look = s.isScene ? { layers: s.layers || [] } : (slideThemeLook(s, item) || themeForItem(item));
+      const look = s.isScene ? { layers: s.layers || [], ...(s.canvasSize ? { canvasSize: s.canvasSize } : {}) } : withOwnCanvas(slideThemeLook(s, item) || themeForItem(item), item, i);
       const style = s.isScene ? {} : (item.slideStyles?.[i] || {});
       paintLookLayers(preview, look, style, {
         verseText: s.text, referenceText: s.reference || '',
@@ -7365,19 +7796,19 @@
   }
 
   // A slide thumbnail whose words run past a text box's edges (cut off on screen) gets a small
-  // "Cut off" tag. Measured once drawn and again when fonts have loaded (a late font changes the fit).
+  // "Text doesn't fit" tag (top left, opposite the LIVE badge). Measured once drawn and again when fonts have loaded (a late font changes the fit).
   const CLIP_ICON = '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h7"/><path d="M17 15v6M14.5 18.5 17 21l2.5-2.5"/></svg>';
   function clipCheck(host) {
     // Not laid out yet (a collapsed section, a card still sizing): nothing to measure.
     if (!host.isConnected || !host.clientWidth) return;
     const over = [...host.querySelectorAll('.svc-canvas-text:not([data-decor])')].some(t =>
-      t.style.height && t.clientHeight > 0 && (t.scrollHeight > t.clientHeight + 1 || t.scrollWidth > t.clientWidth + 1));
+      t.style.height && t.clientHeight > 0 && (t.scrollHeight > t.clientHeight * 1.08 + 2 || t.scrollWidth > t.clientWidth * 1.08 + 2));
     let tag = host.querySelector(':scope > .clip-tag');
     if (over && !tag) {
       tag = document.createElement('span');
       tag.className = 'clip-tag';
-      tag.title = 'Some words run past their text box and are cut off';
-      tag.innerHTML = CLIP_ICON + '<span>Cut off</span>';
+      tag.title = 'Some of this slide\u2019s words run past their box, so part of them won\u2019t show. Shorten the text or make it smaller.';
+      tag.innerHTML = CLIP_ICON + '<span>Text doesn\u2019t fit</span>';
       host.appendChild(tag);
     } else if (!over) tag?.remove();
   }
@@ -7409,7 +7840,7 @@
       host.style.backgroundSize = item.fit === 'fill' ? '100% 100%' : (item.fit || 'contain');
       return;
     }
-    const look = s.isScene ? { layers: s.layers || [] } : (slideThemeLook(s, item) || themeForItem(item));
+    const look = s.isScene ? { layers: s.layers || [], ...(s.canvasSize ? { canvasSize: s.canvasSize } : {}) } : withOwnCanvas(slideThemeLook(s, item) || themeForItem(item), item, i);
     const style = s.isScene ? {} : (item.slideStyles?.[i] || {});
     paintLookLayers(host, look, style, {
       verseText: s.text, referenceText: s.reference || '',
@@ -7773,11 +8204,28 @@
     document.getElementById('svc-view-chips')?.addEventListener('click', (e) => {
       const btn = e.target.closest('.ts-chip');
       if (!btn) return;
+      const before = slideView();
+      // The control is a box of two buttons with a drawer under it. One click on either button switches to that
+      // view and shows the size slider with it; a click on the view already chosen shows or hides the slider.
+      const pop = document.getElementById('svc-size-pop');
+      const chips = document.getElementById('svc-view-chips');
+      const showDrawer = (on) => { if (pop) { pop.hidden = !on; chips.classList.toggle('drawer-open', on); } };
+      if (btn.dataset.view === before) { showDrawer(!!pop && pop.hidden); return; }
+      showDrawer(true);
       localStorage.setItem('kairo-svc-view', btn.dataset.view);
+      if (slideView() !== before) {
+        // Text view is for seeing everything at once: every file opens (each can still be closed).
+        if (slideView() === 'text') (service?.items || []).forEach((i) => expanded.add(i.id));
+        renderStack();
+      }
       applyView();
     });
+    document.addEventListener('click', (e) => {
+      const pop = document.getElementById('svc-size-pop');
+      if (pop && !pop.hidden && !e.target.closest('#svc-view-chips')) { pop.hidden = true; document.getElementById('svc-view-chips')?.classList.remove('drawer-open'); }
+    });
     document.getElementById('svc-scale')?.addEventListener('input', (e) => {
-      localStorage.setItem('kairo-svc-scale', e.target.value);
+      localStorage.setItem(slideView() === 'text' ? 'kairo-svc-text' : 'kairo-svc-scale', e.target.value);
       applyView();
     });
 
@@ -8020,7 +8468,7 @@
   // Opens a search result where it lives; with send, also does what clicking
   // it there does (a slide or media goes live, a song opens Add to playlist).
   // Timers only open — starting one is a deliberate act in the Timer tab.
-  async function openFound(r, { send = false } = {}) {
+  async function openFound(r, { send = false, auto = false } = {}) {
     if (r.kind === 'item' || r.kind === 'slide') {
       const p = playlists.find(x => x.id === r.playlistId);
       const item = p?.items?.find(i => i.id === r.itemId);
@@ -8032,7 +8480,7 @@
         requestAnimationFrame(() => requestAnimationFrame(() =>
           flashFound(`.svc-card[data-id="${CSS.escape(item.id)}"] .svc-slide[data-index="${index}"]`, 'svc-stack-list')));
       }
-      if (send && slidesFor(item).length) sendSlide(item, index);
+      if (send && slidesFor(item).length) sendSlide(item, index, auto ? { auto: true, follow: true } : undefined);
       return true;
     }
     if (r.kind === 'song') {
@@ -8076,6 +8524,7 @@
     startTimer: async (seg) => { const r = await startSegmentNow(seg); if (!r.ok) flashCardError(seg, r.error || 'Could not start'); return r.ok; },
     showTimerLibrary, refreshTimerView, onTimerAction, onClockAction, getTimerItem, updateSegmentParams, saveTimerScenes, saveScenePace,
     onTranscript, setAutoFollow, get autoFollow() { return autoFollow; },
+    planStart, planNext, planExtend, loadSegments, getSegments: () => segmentList, refreshTimerGrid: () => { try { renderTimerGrid(); } catch {} },
     noteBibleVerse, onLayerState,
     themeLookFor, keepThemeVersion, themeUsage, updateToCurrentTheme,
     resendLiveForThemeEdit, resendLiveForSlideStyleEdit, onTimerSlide, refreshThumbnails, clearLive,

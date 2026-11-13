@@ -348,6 +348,17 @@ pub async fn route(State(app): State<Shared>, Query(q): Query<std::collections::
     set_progress(key, Some(0));
     tokio::spawn(async move {
         let result = if coreml { install_coreml(&app, &COREML_EN, &step_tx).await } else { install(&app, spec, &step_tx).await };
+        // The multilingual speech model comes with the multilingual meaning model (it replaces the English
+        // one for services in other languages; 39 MB). Its own failure doesn't undo the speech model: the
+        // meaning model can be fetched again, and detection works without it.
+        if multi && result.is_ok() {
+            let (quiet, _keep) = tokio::sync::mpsc::unbounded_channel::<Value>();
+            if let Err(e) = crate::meaning_multi::install(&app, &quiet).await {
+                eprintln!("[Installer] the multilingual meaning model wasn't installed: {e}");
+            }
+            let spoken = app.settings.str("sttLanguage").await.unwrap_or_default();
+            crate::meaning_multi::follow_language(&app, &spoken);
+        }
         let _ = step_tx.send(match result {
             Ok(_) => json!({ "phase": "complete", "ok": true }),
             Err(e) => json!({ "phase": "complete", "ok": false, "error": e }),

@@ -309,13 +309,21 @@ impl Engine {
         let score = if via_idf { top.score.max(0.90) } else { top.score };
         // The reading's own verse is vouched for by the passage being read (Romans 8:30 read after a
         // detour to Ephesians 1:5 was held as a lone quote).
-        let corroborated = self.ledger.has_corroboration(self.r(top.verse)) || self.read_verse_before(top.verse, now) || self.range.current == Some(top.verse);
+        // …and so is the verse after the one on screen: the reading has gone on (Genesis 24:17 quoted with
+        // 24:16 up was offered, then sent 17 s late, Oyedepo dev sermon).
+        let next_after_screen = self.screen.up_verse().is_some_and(|u| {
+            let (u, r) = (self.r(u), self.r(top.verse));
+            u.book == r.book && u.chapter == r.chapter && u.verse + 1 == r.verse
+        });
+        let corroborated = self.ledger.has_corroboration(self.r(top.verse)) || self.read_verse_before(top.verse, now) || self.range.current == Some(top.verse) || next_after_screen;
         // Certain by weight alone (a partial quote) and no other method agrees:
         // offered, never put on screen alone (03-verbatim-and-correction.md).
         // Capped, not just "intent": `intent` is never read, so a four-word
         // phrase like "Jesus Christ from the dead" (weight 18.3) put 1 Peter 1:3
         // on screen on its own (live test, 2026-10-14).
-        let mut hold = (via_idf && !corroborated).then_some(Hold::QuoteUncorroborated);
+        // Nearly all of the verse, though, is no four-word phrase: read at 0.93 it is the verse (French and
+        // Yoruba packs read Matthew 26:28 word for word at 0.93-0.95, their elisions costing the rest).
+        let mut hold = (via_idf && !corroborated && top.score < READ_SIMILARITY).then_some(Hold::QuoteUncorroborated);
         // A quote running over into the next verses of the same passage goes up with them.
         let place = |v: VerseId| (self.r(v).book, self.r(v).chapter);
         // Only the verses after it in a row: a refrain matched in several places of one chapter isn't
@@ -356,7 +364,9 @@ impl Engine {
             let times = |v: VerseId| said.iter().filter(|n| **n == self.r(v).verse).count();
             let most = all.iter().map(|v| times(*v)).max().unwrap_or(0);
             let numbered: Vec<VerseId> = all.iter().copied().filter(|v| most > 0 && times(*v) == most).collect();
-            match (numbered.len() == 1).then(|| numbered[0]).or_else(|| self.settle_stream_tie(&all, now)) {
+            // …or words only one of them has, said (Matthew 26:28 over Mark 14:24: "for the remission of sins").
+            let own_words = || all[1..].iter().all(|t| self.own_words_heard(top.verse, *t)).then_some(top.verse);
+            match (numbered.len() == 1).then(|| numbered[0]).or_else(|| self.settle_stream_tie(&all, now)).or_else(own_words) {
                 Some(w) => verses = vec![w],
                 None => {
                     verses = all;
@@ -550,7 +560,7 @@ impl Engine {
             let recent = self.t.last_words(CROSSCHECK_WORDS);
             if !recent.is_empty() {
                 let v = verbatim(&self.k.lexicon, &recent, 4, VERBATIM_LIMIT);
-                if v.first().is_some_and(|h| h.verse != lead.verse && h.matched_idf.is_some_and(|m| m >= CROSSCHECK_MIN_IDF)) {
+                if v.first().is_some_and(|h| h.verse != lead.verse && h.matched_idf.is_some_and(|m| m >= CROSSCHECK_MIN_IDF) && self.screen.recent_detections.get(&h.verse).is_none_or(|t| now.saturating_sub(*t) >= SHOWN_RECENTLY_MS)) {
                     intent = Target::Suggestions;
                     self.paths.crosscheck_rejected.insert(lead.verse, now);
                     disagreed = true;

@@ -25,6 +25,10 @@ pub fn router() -> Router<Shared> {
         .route("/api/segments/{id}/start", post(start_segment))
         .route("/api/segments/{id}/stop", post(stop_segment))
         .route("/api/segments/{id}/reset", post(reset_segment))
+        .route("/api/segments/{id}/extend", post(extend_segment))
+        .route("/api/segments/{id}/style", post(apply_segment_style))
+        .route("/api/timer-styles", get(timer_styles).post(add_timer_style))
+        .route("/api/timer-styles/{id}", delete(remove_timer_style))
         .route("/api/media/bin", get(bin))
         .route("/api/media/bin/upload", post(bin_upload))
         .route("/api/media/bin/{name}", delete(bin_delete))
@@ -256,6 +260,32 @@ async fn start_segment(State(app): State<Shared>, Path(id): Path<String>, b: Opt
 async fn stop_segment(State(app): State<Shared>, Path(id): Path<String>, b: Option<Json<Value>>) -> Response {
     let r = app.segments.stop(&id, body_or_empty(b)["markDone"] == true);
     if r.get("error").is_some() { (StatusCode::NOT_FOUND, Json(r)).into_response() } else { Json(r).into_response() }
+}
+async fn timer_styles(State(app): State<Shared>) -> Json<Value> {
+    Json(json!({ "ok": true, "styles": app.segments.styles.list() }))
+}
+/// POST /api/timer-styles {name, segmentId}: the segment's slides and design saved as a style.
+async fn add_timer_style(State(app): State<Shared>, b: Option<Json<Value>>) -> Response {
+    let b = body_or_empty(b);
+    let name = b["name"].as_str().map(str::trim).filter(|n| !n.is_empty() && n.len() <= 60);
+    let seg = app.segments.list().into_iter().find(|s| s["id"] == b["segmentId"]);
+    match (name, seg) {
+        (Some(n), Some(s)) => Json(json!({ "ok": true, "style": app.segments.styles.add(n, &s) })).into_response(),
+        (None, _) => (StatusCode::BAD_REQUEST, Json(json!({ "error": "Give the style a name" }))).into_response(),
+        _ => not_found("No such segment"),
+    }
+}
+async fn remove_timer_style(State(app): State<Shared>, Path(id): Path<String>) -> Json<Value> {
+    Json(json!({ "ok": app.segments.styles.remove(&id) }))
+}
+async fn apply_segment_style(State(app): State<Shared>, Path(id): Path<String>, b: Option<Json<Value>>) -> Response {
+    let r = app.segments.apply_style(&id, body_or_empty(b)["styleId"].as_str().unwrap_or(""));
+    if r.get("error").is_some() { (StatusCode::BAD_REQUEST, Json(r)).into_response() } else { Json(r).into_response() }
+}
+async fn extend_segment(State(app): State<Shared>, Path(id): Path<String>, b: Option<Json<Value>>) -> Response {
+    let seconds = body_or_empty(b)["seconds"].as_i64().unwrap_or(0).clamp(-3600, 3600);
+    let r = app.segments.extend(&id, seconds);
+    if r.get("error").is_some() { (StatusCode::BAD_REQUEST, Json(r)).into_response() } else { Json(r).into_response() }
 }
 async fn reset_segment(State(app): State<Shared>, Path(id): Path<String>) -> Response {
     let r = app.segments.reset(&id);

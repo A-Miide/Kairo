@@ -24,7 +24,7 @@ pub fn meaningful_words(text: &str) -> Vec<String> {
     let folded = if lower.is_ascii() { lower } else { crate::reference::i18n::fold(&lower) };
     folded
         .chars()
-        .filter(|c| c.is_ascii_lowercase() || c.is_whitespace())
+        .filter(|c| c.is_alphabetic() || c.is_whitespace())
         .collect::<String>()
         .split_whitespace()
         .filter(|w| w.len() >= 3 && !SKIP.contains(w) && !OTHER_STOP_WORDS.contains(w))

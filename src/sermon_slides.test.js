@@ -224,7 +224,7 @@ for (const [name, lines] of Object.entries(LAYOUTS_READ)) {
   test(`a sermon laid out with ${name} is read`, () => {
     const o = S.readText(lines.join('\n'));
     assert.ok(o, 'read');
-    assert.equal(o.how.mode, 'points');
+    assert.equal(o.how.mode, 'roles');
     const pts = o.items.filter(i => i.kind === 'point');
     assert.equal(pts.length, lines.filter(l => /faith (pleases|comes|works)/i.test(l) && !/^(Grace|Theme)/.test(l)).length);
     assert.equal(pts[0].text, 'Faith pleases God');
@@ -243,7 +243,7 @@ test('points without any scripture are still points, and sub-points are not slid
 
 test('headings with paragraphs under them: each heading a point, its scriptures found underneath', () => {
   const o = S.readText(['THE POWER OF FAITH', 'Pastor John', 'FAITH PLEASES GOD', 'Without faith it is impossible to please Him. Hebrews 11:6', 'FAITH COMES BY HEARING', 'So then faith comes by hearing. Romans 10:17', 'FAITH WORKS BY LOVE', 'For in Christ neither circumcision avails anything. Galatians 5:6'].join('\n'));
-  assert.equal(o.how.mode, 'headings');
+  assert.equal(o.how.mode, 'roles');
   assert.deepEqual(o.items.map(i => i.text), ['FAITH PLEASES GOD', 'FAITH COMES BY HEARING', 'FAITH WORKS BY LOVE']);
   assert.deepEqual(o.items.map(i => i.refs[0]), ['Hebrews 11:6', 'Romans 10:17', 'Galatians 5:6']);
   assert.equal(o.header[0].text, 'THE POWER OF FAITH');
@@ -280,4 +280,58 @@ test('a line the operator re-labels becomes a point, a section or an introductio
   assert.ok(after.every(b => b.gen.kind !== 'point' || /^Point \d+ of \d+$/.test(b.gen.label)));
   item.sermon.kinds = { [sect.id]: 'story' };
   assert.equal(S.regenerate(item).find(b => b.gen.part === sect.id).gen.kind, 'story');
+});
+
+test('a slides document: each bold reference with words under it is a verse slide of the point before it', () => {
+  const bold = (t) => ({ text: t, list: false, family: null, level: 0, heading: true });
+  const plain = (t) => ({ text: t, list: false, family: null, level: 0, heading: false });
+  const o = S.outlineFrom([
+    bold('I AM REDEEMED A WONDER'), plain('Isaiah 8:18'), bold('UNLOCKING THE SUPERNATURAL'), plain('John 3:8 | Week 2 – Part 2 | Pre-Shiloh Service'),
+    bold('As a man thinks in his heart, so is he'), plain('Proverbs 23:7'),
+    bold('Proverbs 23:7'), plain('7. For as he thinketh in his heart, so is he.'),
+    bold('Every child of God is born a sign'), plain('Isaiah 8:18 / John 3:8'),
+    bold('Isaiah 8:18'), plain('18. Behold, I and the children whom the Lord hath given me.'),
+    bold('1 Samuel 17:32 [Abridged]'), plain('32. And David said to Saul, Let no man’s heart fail.'),
+    bold('JOINING THE DOTS'),
+    bold('Testimonies are arrows'), plain('Revelation 12:11'),
+  ]);
+  assert.equal(o.how.mode, 'roles');
+  assert.ok(o.how.versesOn, 'a document that writes out its verses puts them on slides');
+  assert.deepEqual(o.header.map(h => h.text), ['I AM REDEEMED A WONDER', 'UNLOCKING THE SUPERNATURAL']);
+  assert.equal(o.week, 'Week 2 – Part 2');
+  assert.deepEqual(o.items.map(i => i.kind), ['point', 'point', 'section', 'point']);
+  assert.deepEqual(o.items[0].verses, [{ ref: 'Proverbs 23:7', text: 'For as he thinketh in his heart, so is he.' }]);
+  assert.deepEqual(o.items[1].refs, ['Isaiah 8:18', 'John 3:8']);
+  assert.equal(o.items[1].verses.length, 2, 'both verses belong to the point they follow');
+  const deck = S.newDeck(o).blocks;
+  // title, point 1 + its verse, point 2 + 2 verses, the section, point 3
+  assert.deepEqual(deck.map(b => b.gen.kind), ['title', 'point', 'story', 'point', 'story', 'story', 'section', 'point']);
+  assert.ok(JSON.stringify(deck[2].layers).includes('For as he thinketh in his heart, so is he.'), 'a verse slide shows the verse whole');
+});
+
+test('roles, not layouts: the same sermon written three ways reads as the same points and verses', () => {
+  const para = (text, o = {}) => ({ text, list: false, family: null, level: 0, heading: false, bold: false, ...o });
+  const point = (text) => para(text, { list: true, family: 'num' });
+  const words = (n) => `${'faith comes by hearing the word of God '.repeat(2)}${n}`;
+  // 1. numbered points, the verse on the same bold line as its reference
+  const a = S.outlineFrom([
+    point('Faith comes by hearing – Rom. 10:17'), para('Rom 10:17 ' + words(1), { bold: true }),
+    point('Faith works by love – Gal. 5:6'), para('Gal 5:6 ' + words(2), { bold: true }),
+    point('Faith pleases God – Heb. 11:6'),
+  ]);
+  // 2. bold statements, the scripture on the line under, each verse under its own bold reference
+  const b = S.outlineFrom([
+    para('Faith comes by hearing', { bold: true }), para('Romans 10:17'), para('Romans 10:17', { bold: true }), para('17. ' + words(1)),
+    para('Faith works by love', { bold: true }), para('Galatians 5:6'), para('Galatians 5:6', { bold: true }), para('6. ' + words(2)),
+    para('Faith pleases God', { bold: true }), para('Hebrews 11:6'),
+  ]);
+  // 3. plain pasted text: markers, scripture lines, a reference and its verse on one line
+  const c = S.readText(['1. Faith comes by hearing', 'Romans 10:17', 'Romans 10:17 ' + words(1), '2. Faith works by love', 'Galatians 5:6', 'Galatians 5:6 ' + words(2), '3. Faith pleases God', 'Hebrews 11:6'].join('\n'));
+  for (const o of [a, b, c]) {
+    assert.ok(o, 'read');
+    assert.equal(o.how.mode, 'roles');
+    assert.deepEqual(o.items.filter(i => i.kind === 'point').map(i => i.text), ['Faith comes by hearing', 'Faith works by love', 'Faith pleases God']);
+    assert.equal(o.how.verses, 2);
+    assert.deepEqual(o.items.filter(i => i.kind === 'point').map(i => i.refs.length > 0 || !!i.verses), [true, true, true]);
+  }
 });

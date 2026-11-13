@@ -6,6 +6,11 @@
 //!   connected one in that language through API.Bible and its chapters are saved for offline use; else
 //!   the pack in that language (downloaded, or the one that ships in `databases/bibles/packs`).
 //!
+//! - English with the church's own Bible: a file it added (Settings → Bible), or one it connected through
+//!   API.Bible and saved for offline use, when that is its Translation setting. Real NIV and NLT read aloud
+//!   went from 36% and 9% on screen (KJV and BSB wordings only) to 96% and 95% (2026-11-10). Only that wording
+//!   is held beside the KJV (the BSB isn't built for it).
+//!
 //! The KJV stays in every build: verse numbering, the book layout and the meaning models are its. Only
 //! one wording is held beside it, so a service in another language costs no more memory than an English
 //! one (the BSB isn't built for it: Spanish replays found the same with it as without).
@@ -38,9 +43,38 @@ pub fn pack_code(lang: Lang) -> Option<&'static str> {
     }
 }
 
+/// The church's Translation setting, as a code ("NIV"), when it is a Bible of its own (not the KJV or the BSB).
+fn church_code(translation: &str) -> Option<String> {
+    let code = translation.trim().to_uppercase();
+    (!code.is_empty() && code != "KJV" && code != "BSB").then_some(code)
+}
+
+/// The church's own English Bible and where it came from: an added file, else one connected through API.Bible
+/// whose chapters are saved. `None` when the setting is the KJV or BSB, or the Bible isn't here (whole enough).
+fn church_wording(app: &Shared, corpus: &Corpus, translation: &str) -> Option<(Translation, String)> {
+    let code = church_code(translation)?;
+    let data = &app.cfg.app_data_dir;
+    let file = data.join("translations").join(format!("{code}.json"));
+    if file.is_file() {
+        return corpus.load_flat(&code, &file).ok().map(|t| (t, format!("en:file:{code}")));
+    }
+    crate::api_bible::connected(data, &code)?;
+    crate::api_bible::whole(data, &code, corpus).map(|t| (t, format!("en:api:{code}")))
+}
+
+/// What `church_wording` would be built from, without building it (a cheap check for `rebuild`).
+fn church_source(app: &Shared, corpus_chapters: &Corpus, translation: &str) -> Option<String> {
+    let code = church_code(translation)?;
+    let data = &app.cfg.app_data_dir;
+    if data.join("translations").join(format!("{code}.json")).is_file() {
+        return Some(format!("en:file:{code}"));
+    }
+    (crate::api_bible::connected(data, &code).is_some() && crate::api_bible::saved_enough(data, &code, corpus_chapters)).then(|| format!("en:api:{code}"))
+}
+
 /// The wording matched beside the KJV, and where it came from.
-fn own_wording(app: &Shared, corpus: &Corpus, lang: Lang) -> Option<(Translation, String)> {
-    let code = pack_code(lang)?;
+fn own_wording(app: &Shared, corpus: &Corpus, lang: Lang, translation: &str) -> Option<(Translation, String)> {
+    let Some(code) = pack_code(lang) else { return church_wording(app, corpus, translation) };
     let data = &app.cfg.app_data_dir;
     if let Some((t, c)) = crate::api_bible::in_language(data, code).and_then(|c| crate::api_bible::whole(data, &c, corpus).map(|t| (t, c))) {
         return Some((t, format!("{code}:api:{c}")));
@@ -61,7 +95,8 @@ pub fn build(app: &Shared, spoken: &str) -> anyhow::Result<(Knowledge, Lang, Str
     let db = &app.cfg.db_dir;
     let lang = Lang::from_code(spoken);
     let corpus = Corpus::load(db)?;
-    let (wordings, from) = match own_wording(app, &corpus, lang) {
+    let translation = tokio::runtime::Handle::current().block_on(app.settings.str("translation")).unwrap_or_default();
+    let (wordings, from) = match own_wording(app, &corpus, lang, &translation) {
         Some((own, from)) => (Wordings { own: Some(own), also: Vec::new() }, from),
         None => (Wordings { own: None, also: english_modern(&corpus, db).into_iter().collect() }, "en".to_string()),
     };
@@ -88,10 +123,14 @@ pub fn rebuild(app: &Shared) {
     let spoken = tokio::runtime::Handle::current().block_on(app.settings.str("sttLanguage")).unwrap_or_else(|| "en-US".into());
     let lang = Lang::from_code(&spoken);
     // Cheap check first: the same language from the same source needs nothing built.
-    let would_be = pack_code(lang).map(|c| match crate::api_bible::in_language(&app.cfg.app_data_dir, c) {
-        Some(api) if crate::api_bible::saved_enough(&app.cfg.app_data_dir, &api, &bible.k().corpus) => format!("{c}:api:{api}"),
-        _ => format!("{c}:pack"),
-    });
+    let translation = tokio::runtime::Handle::current().block_on(app.settings.str("translation")).unwrap_or_default();
+    let would_be = match pack_code(lang) {
+        Some(c) => Some(match crate::api_bible::in_language(&app.cfg.app_data_dir, c) {
+            Some(api) if crate::api_bible::saved_enough(&app.cfg.app_data_dir, &api, &bible.k().corpus) => format!("{c}:api:{api}"),
+            _ => format!("{c}:pack"),
+        }),
+        None => church_source(app, &bible.k().corpus, &translation),
+    };
     if *crate::util::lock(&BUILT_FROM) == would_be.unwrap_or_else(|| "en".into()) {
         return;
     }

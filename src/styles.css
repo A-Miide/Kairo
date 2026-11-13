@@ -2244,24 +2244,14 @@ input.svc-item-title {
   gap: var(--space-3);
   align-content: start;
 }
-/* Dragging an image in from the Media Bin strip (wireMediaBinDropTarget,
-   service.js) — a dashed accent border + tinted fill reads distinctly as
-   "drop here" rather than .svc-drop-target's subtler reorder-highlight,
-   which means something different (where in the existing order a dragged
-   ITEM would land, not "this whole area accepts a new one"). Applies to
-   both the real grid and the empty-deck placeholder (.svc-empty-sm) —
-   an empty announcement deck is the most likely case to start by dragging
-   images straight in. */
-.svc-slides-grid.svc-media-drop-target,
-.svc-empty-sm.svc-media-drop-target {
-  outline: 2px dashed var(--blue);
-  outline-offset: -2px;
-  background: var(--blue-dim);
-  border-radius: var(--radius);
-}
-.svc-slides-grid.is-list {
-  grid-template-columns: 1fr;
-  gap: 6px;
+/* Where a picture dragged from the Media Bin will land among a deck's slides (service.js mediaDropSlot). */
+.svc-media-drop-line {
+  position: fixed;
+  z-index: 10000;
+  pointer-events: none;
+  background: var(--brand);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px rgba(245, 48, 26, 0.25);
 }
 .svc-slide {
   position: relative;
@@ -2361,21 +2351,6 @@ input.svc-item-title {
   background-position: center;
   padding: 0;
 }
-
-/* List view: preview shrinks to a thumbnail; the label stays overlaid on it
-   (same convention as grid mode), not beside it. */
-.svc-slides-grid.is-list .svc-slide {
-  flex-direction: row;
-  align-items: center;
-  gap: var(--space-3);
-  padding: 6px 10px;
-}
-.svc-slides-grid.is-list .svc-slide-preview {
-  width: var(--svc-card);
-  flex: none;
-  padding: 6px;
-}
-.svc-slides-grid.is-list .svc-slide-line { font-size: 9px; }
 
 .svc-add-line {
   margin-top: 6px;
@@ -4717,7 +4692,8 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
   padding: 2px 8px;
   border-radius: 4px;
   background: rgba(0, 0, 0, 0.65);
-  font-family: var(--mono);
+  font-family: var(--font-head);
+  font-variant-numeric: tabular-nums;
   font-size: 12px;
   font-weight: 700;
   line-height: 1.4;
@@ -6313,7 +6289,26 @@ body.ts-dragging-guide-h, body.ts-dragging-guide-h * { cursor: row-resize !impor
    frame around it (.ts-center-col) for deliberate contrast, so the stage
    itself is unmistakably its own surface. */
 .ts-preview-stage.ts-transparent-bg {
-  background: #000;
+  /* The checkerboard every design tool shows for "nothing here" (a transparent canvas). */
+  background-color: #1b1b1d;
+  background-image:
+    linear-gradient(45deg, #2c2c30 25%, transparent 25%),
+    linear-gradient(-45deg, #2c2c30 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #2c2c30 75%),
+    linear-gradient(-45deg, transparent 75%, #2c2c30 75%);
+  background-size: 28px 28px;
+  background-position: 0 0, 0 14px, 14px -14px, -14px 0;
+}
+/* The same checkerboard on thumbnails of a transparent design (paintLookLayers adds is-alpha). */
+.is-alpha {
+  background-color: #1b1b1d;
+  background-image:
+    linear-gradient(45deg, #2c2c30 25%, transparent 25%),
+    linear-gradient(-45deg, #2c2c30 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #2c2c30 75%),
+    linear-gradient(-45deg, transparent 75%, #2c2c30 75%);
+  background-size: 12px 12px;
+  background-position: 0 0, 0 6px, 6px -6px, -6px 0;
 }
 
 /* ── Free-canvas selection ── */
@@ -8818,6 +8813,8 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 .au-engine-body .lang-capability { margin: 0; }
 .bi-list .bi-credit { font-size: 11px; color: var(--text-3, var(--text-2)); line-height: 1.4; }
 .bi-list .bi-credit a { color: var(--text-2); }
+.bi-list .bi-credit details { margin-bottom: 2px; }
+.bi-list .bi-credit summary { cursor: pointer; width: fit-content; }
 /* Onboarding: the optional API.Bible key on the last step */
 .au-dot { width: 8px; height: 8px; border-radius: 50%; border: 1.5px solid var(--text-2); flex: none; }
 .toggle-btn.active .au-dot { background: #3fb950; border-color: #3fb950; }
@@ -9003,7 +9000,7 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 .ts-apply-all .modal-btn { padding: 6px 14px; font-size: 12px; }
 /* A slide thumbnail whose text runs past its box (service.js markClipped): a small dark tag, the
    icon in the brand colour; no frame around the slide. */
-.clip-tag { position: absolute; top: 6px; right: 6px; z-index: 3; display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px 2px 6px; border-radius: 999px; background: rgba(12, 12, 14, 0.82); color: #fff; font: 600 10px/1.5 var(--font); pointer-events: auto; }
+.clip-tag { position: absolute; top: 6px; left: 6px; z-index: 3; display: inline-flex; align-items: center; gap: 4px; padding: 2px 7px 2px 6px; border-radius: 999px; background: rgba(12, 12, 14, 0.82); color: #fff; font: 600 10px/1.5 var(--font); pointer-events: auto; }
 .clip-tag svg { color: var(--accent); flex: none; }
 .ssp-colors { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 10px; }
 .ssp-color { display: grid; gap: 4px; min-width: 0; }
@@ -9085,3 +9082,140 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 .svc-popover:has(.ssp-pop-grid-wrap) { max-width: none; width: 460px; max-height: min(640px, 92vh); overflow-y: auto; }
 .ac-style-group { flex: 1; min-width: 0; }
 .ac-style-slot .ssp-style-btn { width: 100%; }
+
+/* A message in the confirm dialog can run to paragraphs (the PowerPoint export's summary). */
+#gc-message { white-space: pre-line; }
+
+/* The Auto-Deploy switch on a file's header, beside Actions: on, a slide of that file is shown by itself when heard. */
+.svc-auto-switch { display: inline-flex; align-items: center; gap: 7px; flex: none; margin-left: auto; margin-right: 8px; padding: 3px 2px; color: var(--text-3); font: 600 11px/1.4 var(--font); cursor: pointer; user-select: none; }
+.svc-auto-switch:hover { color: var(--text-2); }
+.svc-auto-knob { width: 22px; height: 13px; border-radius: 999px; background: var(--border-md); position: relative; flex: none; transition: background 0.15s; }
+.svc-auto-knob::after { content: ''; position: absolute; top: 2px; left: 2px; width: 9px; height: 9px; border-radius: 50%; background: #fff; transition: transform 0.15s; }
+.svc-auto-switch.on { color: var(--text); }
+.svc-auto-switch.on .svc-auto-knob { background: var(--brand); }
+.svc-auto-switch.on .svc-auto-knob::after { transform: translateX(9px); }
+.svc-auto-switch:focus { outline: none; }
+.svc-auto-switch:focus-visible .svc-auto-knob { box-shadow: 0 0 0 2px var(--bg-card), 0 0 0 4px var(--brand); }
+
+/* Text view: every slide's words as plain rows, no thumbnails, so a whole playlist reads in one look. */
+.svc-slides-text { display: flex; flex-direction: column; gap: 3px; }
+.svc-slide.svc-slide-text { flex-direction: row; align-items: flex-start; padding: 8px 12px; gap: 0; background: transparent; border-color: transparent; border-radius: 8px; }
+.svc-slide.svc-slide-text:hover { background: var(--bg-card); }
+.svc-slide.svc-slide-text.live { background: var(--brand-dim, rgba(232, 66, 42, 0.12)); border-color: var(--brand); }
+.svc-slide-text .svc-slide-preview.svc-slide-textbody { aspect-ratio: auto; flex: 1; min-width: 0; padding: 0; background: none; display: flex; flex-direction: row; align-items: flex-start; justify-content: flex-start; gap: 12px; overflow: visible; color: var(--text); font-size: var(--svc-text, 15px); line-height: 1.5; white-space: pre-line; }
+.svc-slide-text .svc-slide-label { position: static; order: -1; flex: none; min-width: 34px; background: none; padding: 0; color: var(--text-3); font-size: 12px; font-weight: 700; }
+.svc-slide-text .svc-slide-label.sec-labeled { min-width: 0; padding: 1px 7px; border-radius: 6px; }
+.svc-slide-text .svc-live-tag { position: static; margin-left: 10px; flex: none; align-self: flex-start; }
+/* The size slider is a drawer that comes out of the Grid / Text box, joined to it (same fill and edge, no seam).
+   It sizes whichever view is chosen: the thumbnails in Grid, the words in Text. */
+#svc-view-chips { position: relative; }
+#svc-view-chips.drawer-open { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+.svc-size-drawer { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); z-index: 30; display: flex; align-items: center; gap: 10px; width: 210px; padding: 8px 14px 9px; box-sizing: border-box; background: var(--bg-input); border: 1px solid var(--border-md); border-top: 0; border-radius: 0 0 6px 6px; box-shadow: 0 10px 24px rgba(0, 0, 0, 0.4); margin-top: 0; width: 190px; }
+.svc-size-drawer[hidden] { display: none; }
+.svc-size-drawer .svc-scale { flex: 1; min-width: 0; }
+.svc-size-icon { flex: none; background: var(--text-3); opacity: 0.8; border-radius: 2px; }
+.svc-size-icon.sm { width: 7px; height: 7px; }
+.svc-size-icon.lg { width: 13px; height: 13px; border-radius: 3px; }
+/* The Text button is a "T": the words, with everything else stripped out. */
+.ts-chip-t .ts-t { font: 800 14px/1 var(--font); letter-spacing: 0; }
+
+/* The order of service on every tab (service_strip.js): one compact row in the left column, red once over time.
+   The whole plan floats over the column when opened, so nothing below is pushed out of view. */
+.svp-strip { position: relative; margin: 6px 0; padding: 7px 10px; background: var(--bg-card); border: 1px solid var(--border-md); border-radius: 10px; }
+.svp-strip[hidden] { display: none; }
+.svp-strip.over { border-color: var(--red, #ed1c24); }
+.svp-line { display: flex; align-items: center; gap: 7px; min-height: 22px; cursor: pointer; user-select: none; }
+.svp-ico { display: inline-flex; color: var(--text-3); flex: none; }
+.svp-svg { display: block; }
+.svp-strip.over .svp-ico { color: var(--red, #ed1c24); }
+.svp-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.svp-count { font-size: 15px; font-weight: 600; font-variant-numeric: tabular-nums; color: var(--text); flex: none; }
+.svp-count.dim { font-size: 12px; font-weight: 500; color: var(--text-3); }
+.svp-count.red, .svp-drift.bad, .svp-row .red { color: var(--red, #ed1c24); }
+.svp-drift { font-size: 11px; flex: none; }
+.svp-row .okc { color: var(--green, #34c759); }
+.svp-bar { height: 3px; border-radius: 2px; background: var(--border-md); margin-top: 6px; overflow: hidden; }
+.svp-bar i { display: block; height: 100%; background: var(--green, #34c759); transition: width 0.4s linear; }
+.svp-bar.red i { background: var(--red, #ed1c24); }
+.svp-btns { display: flex; gap: 5px; margin-top: 7px; }
+.svp-btns button, .svp-foot button, .svp-go, .svp-ebtns button { font: 600 11px/1.2 var(--font); padding: 5px 8px; border-radius: 6px; border: 1px solid var(--border-md); background: transparent; color: var(--text); cursor: pointer; }
+.svp-btns button { flex: 1; }
+.svp-btns button:hover, .svp-foot button:hover, .svp-go:hover, .svp-ebtns button:hover { background: var(--bg-input); }
+.svp-go { flex: none; }
+.svp-skip { flex: none; width: 24px; height: 22px; padding: 0; display: inline-flex; align-items: center; justify-content: center; border: 1px solid var(--border-md); border-radius: 6px; background: transparent; color: var(--text-2); cursor: pointer; }
+.svp-skip:hover { background: var(--bg-input); color: var(--text); }
+.svp-plan { position: absolute; left: 0; right: 0; top: calc(100% + 4px); z-index: 60; max-height: 55vh; overflow: auto; padding: 8px 10px; background: var(--bg-card); border: 1px solid var(--border-md); border-radius: 10px; box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45); }
+.svp-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; }
+.svp-row .svp-rname { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.svp-row.live { color: var(--text); font-weight: 600; }
+.svp-row .warn { color: var(--yellow, #e8a64a); }
+.svp-row .muted { color: var(--text-3); }
+.svp-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border-md); font-size: 11px; color: var(--text-3); }
+.svp-foot button { flex: none; padding: 3px 12px; }
+.svp-editor-back { position: fixed; inset: 0; z-index: 2000; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, 0.5); }
+.svp-editor { width: min(760px, 94vw); max-height: 88vh; display: flex; flex-direction: column; padding: 20px 22px 0; background: var(--bg-card); border: 1px solid var(--border-md); border-radius: 14px; color: var(--text); overflow: hidden; }
+.svp-etop { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.svp-editor h3 { margin: 0; font-size: 16px; }
+.svp-field { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+.svp-help { margin: 8px 0 12px; font-size: 12px; color: var(--text-3); }
+.svp-cols, .svp-erow { display: grid; grid-template-columns: 40px minmax(0, 1fr) 100px 110px 118px 28px 28px 58px; gap: 8px; align-items: center; }
+.svp-cols { padding: 0 0 6px; font-size: 11px; color: var(--text-3); text-transform: none; border-bottom: 1px solid var(--border-md); }
+.svp-rows { flex: 1; min-height: 0; overflow: auto; }
+.svp-erow { padding: 7px 0; border-bottom: 1px solid var(--border-md); font-size: 13px; }
+.svp-erow input, .svp-field input { font: 13px var(--font); padding: 5px 7px; border-radius: 6px; border: 1px solid var(--border-md); background: var(--bg-input); color: var(--text); min-width: 0; width: 100%; box-sizing: border-box; }
+.svp-field input { width: auto; }
+.svp-erow input[type="checkbox"] { width: auto; }
+.svp-ename { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.svp-ewhen { font-size: 12px; color: var(--text-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.svp-erow button { flex: none; padding: 4px 0; border-radius: 6px; border: 1px solid var(--border-md); background: transparent; color: var(--text); cursor: pointer; }
+.svp-erow button:disabled { opacity: 0.3; cursor: default; }
+.svp-ebtns { display: flex; justify-content: flex-end; gap: 8px; margin: 0 -22px; padding: 12px 22px; border-top: 1px solid var(--border-md); background: var(--bg-card); }
+.svp-ebtns button { flex: none; padding: 7px 16px; }
+.svp-ebtns button.primary { background: var(--brand); border-color: var(--brand); color: #fff; }
+
+.svp-erow.out .svp-ename, .svp-erow.out .svp-ewhen { opacity: 0.45; }
+.svp-erow.gone { opacity: 0.4; }
+.svp-erow.gone .svp-ename { text-decoration: line-through; }
+.svp-inc { display: flex; align-items: center; }
+.svp-newname { grid-column: auto; min-width: 0; }
+.svp-erow .svp-del { width: auto; padding: 4px 6px; font-size: 11px; color: var(--text-2); }
+.svp-addbtn { flex: none; padding: 6px 12px; font: 600 12px/1.2 var(--font); border-radius: 6px; border: 1px dashed var(--border-md); background: transparent; color: var(--text); cursor: pointer; }
+.svp-addbtn:hover { background: var(--bg-input); }
+
+/* The Timer tab's header: label, checkbox and buttons share one centre line. */
+#timer-view .svc-header-right { display: flex; align-items: center; gap: 8px; }
+#timer-view .svc-header-right .svc-edit-btn { height: 34px; display: inline-flex; align-items: center; }
+
+.svp-opts { display: grid; gap: 6px; margin: 10px 0 2px; }
+.svp-opts label { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: var(--text); }
+.svp-opts input { margin-top: 2px; flex: none; }
+
+.svp-clockrow { margin: 0 0 8px; font-size: 12px; color: var(--text-2); }
+.svp-devtime b { font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; margin-left: 4px; }
+.svp-field label { display: flex; align-items: center; gap: 10px; }
+.svp-field .svp-addbtn { padding: 5px 10px; }
+.svp-startnote { font-size: 12px; color: var(--text-2); }
+.svp-startnote.late { color: var(--red, #ed1c24); }
+.svp-erow .svp-fixed.past { border-color: var(--red, #ed1c24); }
+
+.svp-field { margin-bottom: 8px; }
+.svp-field .svp-devtime { margin-left: auto; font-size: 12px; color: var(--text-3); }
+.svp-opt { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 14px; font-size: 13px; cursor: pointer; width: fit-content; }
+
+/* Timer cards: black, with the time large in the middle (the name sits small at the bottom). A designed segment (one with
+   scenes, the Preservice ones) keeps its thumbnail and the small time chip. */
+.timer-card-preview:not(.is-designed) .timer-card-bg { display: none; }
+.timer-card-preview:not(.is-designed) .timer-card-readout { position: absolute; inset: 0 0 18px 0; z-index: 1; display: flex; align-items: center; justify-content: center; flex: none; padding: 0; background: none; border-radius: 0; font-size: clamp(30px, 3.9vw, 48px); font-weight: 800; letter-spacing: -0.01em; color: #fff; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.timer-card-preview.is-pending:not(.is-designed) .timer-card-readout { color: #fff; font-weight: 700; }
+.timer-card.is-done .timer-card-preview:not(.is-designed) .timer-card-readout { color: var(--text-3); }
+/* The foot is itself positioned, so the time would be laid out inside that one row (the bottom edge); lift it out so the
+   time can fill the card and sit in the middle, with the name staying small at the bottom left. */
+.timer-card-preview:not(.is-designed) .timer-card-foot { display: contents; }
+.timer-card-preview:not(.is-designed) .timer-card-foot > :not(.timer-card-readout) { position: absolute; left: 8px; right: 8px; bottom: 7px; z-index: 2; }
+
+/* Layers: a text layer whose words don't fit its box. */
+.ts-layer-warn { display: inline-flex; flex: none; margin-left: 6px; color: #e8a64a; }
+.ts-layer-row.active .ts-layer-warn { color: #ffcb6b; }
+
+.timer-card-preview.has-own-timer .timer-card-readout { display: none; }
+

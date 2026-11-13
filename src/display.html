@@ -4,15 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>KAIRO Display</title>
-    <!-- Non-blocking preload-then-swap — see index.html for why. This is the
-         projector/output window, so it matters even more here: a stuck render
-         means a blank screen mid-service, not just a slow app launch. -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link rel="preload" as="style"
-          href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap"
-          onload="this.onload=null;this.rel='stylesheet'">
-    <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@300;400;500;600;700;800&display=swap"></noscript>
+    <!-- The output window's fonts are kept in the app (fonts/), so a slide looks the same with or without internet. -->
+    <link rel="stylesheet" href="fonts/fonts.css">
     <style>
         *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -553,7 +546,7 @@
     // px-based pxScale like the editor canvas does — free-canvas geometry
     // here is already expressed in vh off DESIGN_H — so applyShapeGeometry
     // is called below with a vh-converting closure instead of a scale number.
-    function shapeRadiusVh(r) { return (r / DESIGN_H * 100) + 'vh'; }
+    function shapeRadiusVh(r) { return r + 'px'; }   // inside the canvas box one design pixel is one px
 
     // ── Video zone: a theme that frames the live picture ───────────────────
     // A "screen theme" (Director mode) has a video zone layer: the picture shows in that
@@ -561,8 +554,16 @@
     function zoneCoversScreen(z) { const p = z && z.pos; return !p || (p.x <= 0 && p.y <= 0 && p.x + p.w >= DESIGN_W && p.y + p.h >= DESIGN_H); }
     function hasVideoZone(look) { return !!(look && (look.layers || []).some(l => l.type === 'videozone' && l.visible !== false)); }
     let currentZone = null;   // the video zone in use (design pixels), for the stream
-    function applyVideoZone(z) {
+    let currentZoneLayer = null, currentZoneLook = null;   // to place it again when the window changes size
+    // The zone is a layer of the design, but the picture plays in #video-layer (window-wide, under the
+    // stage), so its box is mapped through the same canvas box the design is drawn in.
+    function zoneScreenBox(pos, look) {
+        const r = canvasRect(look);
+        return { x: r.left + pos.x / DESIGN_W * r.w, y: r.top + pos.y / DESIGN_H * r.h, w: pos.w / DESIGN_W * r.w, h: pos.h / DESIGN_H * r.h, k: r.k };
+    }
+    function applyVideoZone(z, look) {
         currentZone = z && z.pos ? { x: z.pos.x, y: z.pos.y, w: z.pos.w, h: z.pos.h } : null;
+        currentZoneLayer = z || null; currentZoneLook = z ? (look || null) : null;
         if (STREAM_CAP) queueStreamReport();
         const host = document.getElementById('video-layer');
         if (!host) return;
@@ -574,20 +575,21 @@
         // layers after it (a band, the verse) draw on top, as their order says. A smaller zone sits
         // over the theme's background and frames, beside the words (the splits).
         const whole = zoneCoversScreen(z);
+        const b = zoneScreenBox(p, look);
+        const px = (n) => (n * b.k) + 'px';
         host.style.setProperty('inset', 'auto');
-        host.style.setProperty('left', (p.x / DESIGN_W * 100) + '%');
-        host.style.setProperty('top', (p.y / DESIGN_H * 100) + '%');
-        host.style.setProperty('width', (p.w / DESIGN_W * 100) + '%');
-        host.style.setProperty('height', (p.h / DESIGN_H * 100) + '%');
+        host.style.setProperty('left', b.x + 'px');
+        host.style.setProperty('top', b.y + 'px');
+        host.style.setProperty('width', b.w + 'px');
+        host.style.setProperty('height', b.h + 'px');
         host.style.setProperty('z-index', whole ? '0' : '2');
-        host.style.setProperty('border-radius', ((z.radius || 0) / DESIGN_H * 100) + 'vh');
+        host.style.setProperty('border-radius', px(z.radius || 0));
         // Fill the zone (crop) or fit inside it; its opacity; its frame and a drop shadow (Theme Studio).
         host.dataset.fit = z.fit === 'contain' ? 'contain' : 'cover';
         if ((z.opacity ?? 100) < 100) host.style.setProperty('opacity', String(Math.max(0, z.opacity) / 100)); else host.style.removeProperty('opacity');
-        const vh = (n) => (n / DESIGN_H * 100) + 'vh';
         const shadows = [];
-        if (z.frameWidth > 0) shadows.push(`0 0 0 ${vh(z.frameWidth)} ${z.frameColor || '#ffffff'}`);
-        if (Number(z.shadow) > 0) shadows.push(`0 ${vh(z.shadow * 0.3)} ${vh(z.shadow)} rgba(0,0,0,${(z.shadowOpacity ?? 60) / 100})`);
+        if (z.frameWidth > 0) shadows.push(`0 0 0 ${px(z.frameWidth)} ${z.frameColor || '#ffffff'}`);
+        if (Number(z.shadow) > 0) shadows.push(`0 ${px(z.shadow * 0.3)} ${px(z.shadow)} rgba(0,0,0,${(z.shadowOpacity ?? 60) / 100})`);
         if (shadows.length) host.style.setProperty('box-shadow', shadows.join(',')); else host.style.removeProperty('box-shadow');
     }
 
@@ -618,10 +620,10 @@
                 .forEach(k => st.style.removeProperty(k));
             return;
         }
-        const sx = window.innerWidth / DESIGN_W, sy = window.innerHeight / DESIGN_H;
+        const b = zoneScreenBox(zone, currentZoneLook);
         st.style.setProperty('-webkit-mask-image', 'linear-gradient(#000, #000), linear-gradient(#000, #000)');
-        st.style.setProperty('-webkit-mask-size', `100% 100%, ${zone.w * sx}px ${zone.h * sy}px`);
-        st.style.setProperty('-webkit-mask-position', `0 0, ${zone.x * sx}px ${zone.y * sy}px`);
+        st.style.setProperty('-webkit-mask-size', `100% 100%, ${b.w}px ${b.h}px`);
+        st.style.setProperty('-webkit-mask-position', `0 0, ${b.x}px ${b.y}px`);
         st.style.setProperty('-webkit-mask-repeat', 'no-repeat');
         st.style.setProperty('-webkit-mask-composite', 'xor');
         st.style.setProperty('mask-composite', 'exclude');
@@ -852,7 +854,7 @@
                     // above), no translation to 100%/100% needed.
                     v.style.objectFit = fit;
                     v.style.opacity = (layer.opacity ?? 100) / 100;
-                    if (layer.radius) v.style.borderRadius = (layer.radius / DESIGN_H * 100) + 'vh';
+                    if (layer.radius) v.style.borderRadius = layer.radius + 'px';
                     applyPos(v, p);
                     v.style.height = (p.h / DESIGN_H * 100) + '%';
                     if (layer.rotation) v.style.transform = `rotate(${layer.rotation}deg)`;
@@ -878,7 +880,7 @@
                     wrap.className = 'display-layer';
                     wrap.style.cssText = 'position:absolute;z-index:1;overflow:hidden;';
                     wrap.style.opacity = (layer.opacity ?? 100) / 100;
-                    if (layer.radius) wrap.style.borderRadius = (layer.radius / DESIGN_H * 100) + 'vh';
+                    if (layer.radius) wrap.style.borderRadius = layer.radius + 'px';
                     applyPos(wrap, p);
                     wrap.style.height = (p.h / DESIGN_H * 100) + '%';
                     if (layer.rotation) wrap.style.transform = `rotate(${layer.rotation}deg)`;
@@ -898,7 +900,7 @@
                 div.style.backgroundImage = `url('${layer.src}')`;
                 div.style.backgroundSize  = fit === 'fill' ? '100% 100%' : fit;
                 div.style.opacity         = (layer.opacity ?? 100) / 100;
-                if (layer.radius) div.style.borderRadius = (layer.radius / DESIGN_H * 100) + 'vh';
+                if (layer.radius) div.style.borderRadius = layer.radius + 'px';
                 applyPos(div, p);
                 div.style.height = (p.h / DESIGN_H * 100) + '%';
                 if (layer.rotation) div.style.transform = `rotate(${layer.rotation}deg)`;
@@ -950,7 +952,7 @@
                 div.dataset.cycleMotion = layer.motion === 'kenburns' ? 'kenburns' : 'none';
                 div.style.cssText = 'position:absolute;z-index:1;overflow:hidden;';
                 div.style.opacity = (layer.opacity ?? 100) / 100;
-                if (layer.radius) div.style.borderRadius = (layer.radius / DESIGN_H * 100) + 'vh';
+                if (layer.radius) div.style.borderRadius = layer.radius + 'px';
                 applyPos(div, p);
                 div.style.height = (p.h / DESIGN_H * 100) + '%';
                 if (layer.rotation) div.style.transform = `rotate(${layer.rotation}deg)`;
@@ -996,6 +998,8 @@
                 const bgOv = (styleByLayerId || {})[layer.id] || {};
                 if (bgOv.visible === false) return;
                 layer = withFillOverride(layer, bgOv);
+                // A clear canvas (its eye is off) paints no full-screen background.
+                if (layer.pos && isFullScreenFill(layer) && lookCanvasClear(look)) return;
                 // A keyed output shows its key colour where the canvas would be (the Background shape stands for it).
                 if ((!layer.pos || layer.role === 'backdrop') && outputKeying !== 'none') return;
                 if (layer.fill === 'none') return;   // the canvas paints nothing: its colour is the Background shape
@@ -1377,7 +1381,7 @@
             }
         };
         // Each layer's build-in (new content only) and its idle motion — the
-        // stage fills this window, so 1vh is one percent of the output.
+        // canvas box is 1080 px high before it is scaled, so one percent of it is 10.8 px.
         // Under a whole-screen video zone, what comes before it in the theme can't be seen: not drawn,
         // or it would cover the picture (the zone goes under the stage, applyVideoZone).
         const underZone = zoneLayer && zoneCoversScreen(zoneLayer) ? layers.indexOf(zoneLayer) : -1;
@@ -1388,10 +1392,12 @@
             for (let i = before; i < frag.childNodes.length; i++) applyBlendMode(frag.childNodes[i], layer, (styleByLayerId || {})[layer.id]);
             if (!window.KairoMotion) return;
             const anim = animOf(layer);
-            for (let i = before; i < frag.childNodes.length; i++) window.KairoMotion.animateLayer(frag.childNodes[i], anim, { builds: !!opts.builds, unit: '1vh' });
+            for (let i = before; i < frag.childNodes.length; i++) window.KairoMotion.animateLayer(frag.childNodes[i], anim, { builds: !!opts.builds, unit: (DESIGN_H / 100) + 'px' });
         });
 
-        if (!frameMode && opts.zone) applyVideoZone(zoneLayer);
+        if (!frameMode && opts.zone) applyVideoZone(zoneLayer, look);
+        // No visible full-screen background in the design: the output is clear, not black.
+        if (!isTransparent && !skipBackground && typeof lookHasNoBackdrop === 'function' && lookHasNoBackdrop(look, styleByLayerId)) isTransparent = true;
         return { frag, isTransparent };
     }
 
@@ -1413,7 +1419,7 @@
         const el = stage.querySelector(`[data-binding="${binding}"]`);
         if (!el) return;
         const layout = (activeLook || FALLBACK_LOOK).layout || 'fullscreen';
-        const stageH = stage.clientHeight || window.innerHeight || 0;
+        const stageH = el.closest('.canvas-box')?.offsetHeight || stage.clientHeight || window.innerHeight || 0;
 
         // Not laid out yet (0-size stage during load / detached window). Shrinking
         // against a bogus size would collapse the text to the floor — bail and let
@@ -1688,6 +1694,22 @@
         } catch {}
         return 'none';
     }
+    // ── Fit: how a design of another shape meets this output (canvasRect) ──
+    // 'contain' | 'cover' — the output's own choice (app_outputs.js FIT_OPTIONS), same delivery as keying.
+    let outputFit = loadOutputFit();
+    function loadOutputFit() {
+        try {
+            const map = JSON.parse(localStorage.getItem('kairo-output-fit') || 'null');
+            if (map && map[OUTPUT_KEY] === 'cover') return 'cover';
+        } catch {}
+        return 'contain';
+    }
+    function applyOutputFit(f) {
+        f = f === 'cover' ? 'cover' : 'contain';
+        if (f === outputFit) return;
+        outputFit = f;
+        refitCanvases();
+    }
     function applyOutputKeying(k) {
         if (!KEYINGS.includes(k)) k = 'none';
         document.body.dataset.keying = k;
@@ -1795,7 +1817,7 @@
 
             const { frag, isTransparent } = buildLayerDOM(look, verseText, verseRef, translatedText, styleByLayerId, timerText, false, { builds: animate, zone: true });
             if (isTransparent) document.body.classList.add('transparent-bg');
-            slideLayer.appendChild(frag);
+            mountCanvas(slideLayer, look, frag);
             fitVerse();
         };
 
@@ -1865,6 +1887,35 @@
     // through a crossfade rather than a cut — the outgoing scene is lifted
     // into its own copy on top that blurs/fades away while the new scene's
     // pieces build in underneath it.
+    // ── The canvas box: how a design meets this output ──────────────────────
+    // A design is drawn at its canvas shape (canvasSize, 16:9 when unset). Layer boxes are percentages of that
+    // canvas; text sizes, corners, shadows and motion are design pixels of a canvas 1080 high (the same unit
+    // the editor and the ProPresenter import use). So each design is laid out once in a box 1080 high and its
+    // canvas's width, then scaled as one piece to this output: Contain (the whole design, bands where the
+    // shapes differ) or Cover (fills the screen, the design's edges cropped), chosen per output.
+    function canvasRect(look) {   // layer_geometry.js canvasFitRect, for this window and its Fit
+        return canvasFitRect(window.innerWidth, window.innerHeight, look && look.canvasSize, outputFit);
+    }
+    function placeCanvasBox(box) {
+        const r = canvasRect(box.__look);
+        box.style.cssText = `position:absolute;left:${r.left}px;top:${r.top}px;width:${r.uw}px;height:${r.uh}px;`
+            + `transform:scale(${r.k});transform-origin:0 0;overflow:hidden;`;
+    }
+    function mountCanvas(layerEl, look, frag) {
+        const box = document.createElement('div');
+        box.className = 'canvas-box';
+        box.__look = look;
+        placeCanvasBox(box);
+        box.appendChild(frag);
+        layerEl.appendChild(box);
+        return box;
+    }
+    function refitCanvases() {
+        document.querySelectorAll('.canvas-box').forEach(placeCanvasBox);
+        if (currentZoneLayer) applyVideoZone(currentZoneLayer, currentZoneLook);
+        fitVerse();
+    }
+    window.addEventListener('resize', refitCanvases);
     function renderTimerLayer(look, styleByLayerId, timerText, opts = {}) {
         lastTimerLayerArgs = look ? [look, styleByLayerId, timerText] : null;
         const leaving = opts.transition && opts.transition !== 'cut' && timerLayer.childNodes.length
@@ -1874,7 +1925,7 @@
         if (!look) return;
         const { frag, isTransparent } = buildLayerDOM(look, '', '', '', styleByLayerId || {}, timerText || '', false, { builds: !!opts.builds });
         if (isTransparent) timerLayer.classList.add('transparent');
-        timerLayer.appendChild(frag);
+        mountCanvas(timerLayer, look, frag);
         if (leaving) timerLayer.appendChild(leaving);
     }
     function liftForCrossfade(layerEl, kind) {
@@ -1937,7 +1988,7 @@
         // keeps showing through underneath this scene's own layers.
         if (bg) renderMediaStage(bg.src, isVideoLayerSrc(bg.src) ? 'video' : 'image', bg.fit || 'cover', bg.motion);
         else renderMediaStage(null);
-        renderTimerLayer({ layers: rest }, {}, currentTimerText, { builds: opts.builds !== false, transition: opts.transition });
+        renderTimerLayer({ layers: rest, canvasSize: scene.canvasSize }, {}, currentTimerText, { builds: opts.builds !== false, transition: opts.transition });
     }
 
     // elapsedMs counts up from 0 (segment start) — the countdown's own
@@ -2283,8 +2334,9 @@
         // back).
         const myGen = ++renderGen;
 
-        if (wasEmpty || stage.children.length === 0) {
-            // First verse or blank stage — do a full render with fade
+        // Nothing on the slide layer to swap words into (the first slide, or one sent while only a countdown
+        // was up: the countdown is on its own layer and kept wasEmpty false) — do a full render with fade.
+        if (wasEmpty || !slideLayer.querySelector('[data-binding]')) {
             renderStage(text, ref, true, translatedText, currentStyleByLayerId, timerText);
         } else if (lookHasPpText()) {
             // An imported ProPresenter text box (pp_render.js) is its own
@@ -2410,6 +2462,9 @@
         if (e.key === 'kairo-ftb') applyFadeToBlack();
         if (e.key === 'kairo-output-keying' && e.newValue) {
             try { applyOutputKeying((JSON.parse(e.newValue) || {})[OUTPUT_KEY]); } catch {}
+        }
+        if (e.key === 'kairo-output-fit' && e.newValue) {
+            try { applyOutputFit((JSON.parse(e.newValue) || {})[OUTPUT_KEY]); } catch {}
         }
         if (e.key === 'kairo-output-modes' && e.newValue) {
             try { applyOutputMode((JSON.parse(e.newValue) || {})[OUTPUT_KEY]); } catch {}
@@ -2713,6 +2768,7 @@
             if (msg.frames && typeof msg.frames === 'object' && !PREVIEW) { try { setFrame(msg.frames[OUTPUT_KEY] || null); } catch {} }
             if (msg.monitors && typeof msg.monitors === 'object') { try { setMonitorLook(msg.monitors[OUTPUT_KEY] || null); } catch {} }
             if (msg.keying && typeof msg.keying === 'object') { try { applyOutputKeying(msg.keying[OUTPUT_KEY]); } catch {} }
+            if (msg.fit && typeof msg.fit === 'object') { try { applyOutputFit(msg.fit[OUTPUT_KEY]); } catch {} }
             return;
         }
 
@@ -2831,7 +2887,7 @@
         const text = !cur ? '' : cur.text || (cur.image ? 'Picture on screen' : '');
         const { frag } = buildLayerDOM(monitorLook, text, cur ? cur.ref : '', '', {}, monitorTimer.text, false, {});
         monitorLookEl.innerHTML = '';
-        monitorLookEl.appendChild(frag);
+        mountCanvas(monitorLookEl, monitorLook, frag);
         refreshMonitorLook();
     }
     // The parts that change by themselves (the time, the countdown, the message) without a redraw.
@@ -2846,8 +2902,8 @@
     }
     // Each text as large as its box allows (from its designed size), like the verse on a screen.
     function fitMonitorLook() {
-        const H = monitorLookEl.clientHeight || window.innerHeight;
-        if (H < 50) return;
+        const H = monitorLookEl.querySelector('.canvas-box')?.offsetHeight || DESIGN_H;
+        if (!monitorLookEl.clientHeight) return;
         monitorLookEl.querySelectorAll('[data-eff-pos]').forEach(el => {
             let p; try { p = JSON.parse(el.dataset.effPos); } catch { return; }
             if (!p || !(p.h > 0)) return;
@@ -2994,28 +3050,11 @@
     // complete?") — its design, the corner badge, any {timer} text. It still
     // counts on into overtime for the operator's own view and on Monitor
     // outputs (updateConfidenceTimer), for whoever is up front.
-    let countdownEnded = false;
-    function endCountdownOnScreen() {
-        timerBadgeEl?.classList.add('hidden');
-        if (timerLayer) timerLayer.innerHTML = '';
-        lastTimerLayerArgs = null;
-        if (timerScenes && timerScenes.length) renderMediaStage(null);
-        timerScenes = null;
-        activeSceneIndex = -1;
-        activeSceneSlot = -1;
-        stage.querySelectorAll('[data-binding="timer"],[data-binding="timer-h"],[data-binding="timer-m"],[data-binding="timer-s"],[data-timer-template]')
-            .forEach(el => { el.textContent = ''; });
-        currentTimerText = '';
-    }
     function handleActionBadge(msg) {
         if (msg.actionId === 'stage-timer') {
             const { remainingMs, label, cleared, style, totalMs } = msg.payload || {};
-            if (!cleared && remainingMs <= 0) {
-                if (!countdownEnded) { countdownEnded = true; endCountdownOnScreen(); }
-                lastTimerTick = null;
-                return;
-            }
-            countdownEnded = false;
+            // Past zero the countdown stays on screen and counts up ("+0:07", in the overtime colour) until it is
+            // stopped: the operator and the room should see that time is over, not have the timer vanish.
             lastTimerTick = !cleared && typeof totalMs === 'number' && totalMs > 0 ? { remainingMs, totalMs, at: Date.now() } : null;
             // Two independent render targets share this one tick: the fixed
             // corner badge (always available, no theme needed) and — if this

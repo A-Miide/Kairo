@@ -9,6 +9,12 @@
 // candidates"). Clicking the card opens the deck where it lives and sends
 // that slide (service.js openFound). It never sends by itself.
 //
+// A slide of a file the operator has switched on (its Auto-Deploy toggle) is SENT when it is found, with no click: that is
+// the operator's consent given ahead of time, for that slide. When two or more armed slides are about equally
+// likely (the same chorus in two decks) nothing is sent: both are offered instead. A song or hymn is found by
+// its TITLE being said (two or more distinctive words of it, all heard) and is only offered unless it too has
+// its Auto-Deploy toggle on.
+//
 // Same caution as content_lookup.js: enough of the slide's own distinctive
 // words heard, a clear lead over the next-best slide, held for a moment, and
 // the same slide offered again only after a while.
@@ -23,6 +29,7 @@
   const DEFAULTS = {
     tailWords: 40,       // recent speech scored each update
     minKeys: 5,          // a slide needs this many distinctive words of its own to be findable
+    minTitleKeys: 2,     // a song or hymn is found by its title: this many distinctive words, all of them heard
     minHits: 5,          // ...and this many of them heard
     confMatch: 0.6,      // ...making at least this fraction of its distinctive words
     leadMargin: 1.5,     // the best slide must beat the next-best by this multiplier
@@ -66,7 +73,7 @@
     const seen = new Set();
     for (const s of slides || []) {
       const keys = slideKeys(s.text);
-      if (keys.length < this.cfg.minKeys) continue;
+      if (keys.length < (s.kind === 'song' ? this.cfg.minTitleKeys : this.cfg.minKeys)) continue;
       const sig = [...keys].sort().join(' ');
       if (seen.has(sig)) continue;
       seen.add(sig);
@@ -94,39 +101,49 @@
     const shared = new Map();
     for (const k of heard) for (const at of this.byKey.get(k) || []) shared.set(at, (shared.get(at) || 0) + 1);
 
-    let best = null, secondScore = 0;
+    let best = null, second = null;
     for (const [at, n] of shared) {
       if (n < 2) continue;
       const s = this.slides[at];
       if (this.exclude.has(s.itemId)) continue;
       let hits = 0;
       for (const k of s.keys) if (heard.some(h => keyMatch(h, k))) hits++;
-      if (hits < this.cfg.minHits) continue;
+      // A song's title must be heard whole; a slide needs enough of its own words.
+      if (hits < (s.kind === 'song' ? s.keys.length : this.cfg.minHits)) continue;
       const score = hits / s.keys.length;
       if (!best || score > best.score) {
-        if (best) secondScore = Math.max(secondScore, best.score);
+        second = best;
         best = { s, score };
-      } else secondScore = Math.max(secondScore, score);
+      } else if (!second || score > second.score) second = { s, score };
     }
+    const secondScore = second ? second.score : 0;
 
-    if (!best || best.score < this.cfg.confMatch || (secondScore > 0 && best.score < secondScore * this.cfg.leadMargin)) {
+    const clear = best && best.score >= this.cfg.confMatch && !(secondScore > 0 && best.score < secondScore * this.cfg.leadMargin);
+    // Armed slides that can't be told apart are offered together, not sent.
+    const ambiguous = best && second && best.score >= this.cfg.confMatch && !clear && (best.s.auto || second.s.auto);
+    if (!clear && !ambiguous) {
       if (this._bestKey && now - this._bestLastSeenAt > this.cfg.missGraceMs) this._bestKey = null;
       return;
     }
-    if (this._bestKey !== best.s.id) {
-      this._bestKey = best.s.id;
+    const group = ambiguous ? [best, second] : [best];
+    const groupKey = group.map(g => g.s.id).join('|');
+    if (this._bestKey !== groupKey) {
+      this._bestKey = groupKey;
       this._bestSince = now;
       this._bestLastSeenAt = now;
       return;
     }
     this._bestLastSeenAt = now;
     if (now - this._bestSince < this.cfg.sustainMs) return;
-    const last = this.offeredAt.get(best.s.id);
-    if (last && now - last < this.cfg.repeatMs) return;
-    this.offeredAt.set(best.s.id, now);
+    const fresh = group.filter(g => { const last = this.offeredAt.get(g.s.id); return !(last && now - last < this.cfg.repeatMs); });
+    if (!fresh.length) return;
+    for (const g of fresh) this.offeredAt.set(g.s.id, now);
     this._bestKey = null;
-    const { keys, id, ...slide } = best.s;
-    this.onOffer({ ...slide, confidence: best.score });
+    for (const g of fresh) {
+      const { keys, id, auto, ...slide } = g.s;
+      // Sent by itself only when it is the one armed slide that clearly won.
+      this.onOffer({ ...slide, auto: !!auto && !ambiguous, ambiguous: !!ambiguous, confidence: g.score });
+    }
   };
 
   const API = { SlideFinder, slideKeys, DEFAULTS };

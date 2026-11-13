@@ -104,6 +104,14 @@ impl Engine {
                 if !is_switch(&best) {
                     best = Some((TwinOutcome::Switch(t.verse), 0));
                 }
+            } else if cand_only == 0 && twin_only > 0 {
+                // The speech leans to the twin, not yet decisively: its words so far are all the
+                // candidate's too, and it may be the longer verse being read. Mark 14:24 is the first
+                // half of Matthew 26:28 ("…shed for many" + "for the remission of sins"): offered both
+                // until a word only one has settles it (Portuguese pack, 2026-11-09).
+                if best.is_none() {
+                    best = Some((TwinOutcome::Hold(t.verse), 0));
+                }
             } else if cand_only == 0 && twin_only == 0 {
                 if aff >= 2.0 && aff > cand_aff && self.passage_pointed_at(t.verse, now) {
                     if !is_switch(&best) {
@@ -320,8 +328,17 @@ impl Engine {
         }
         let twins: HashSet<VerseId> = self.k.lexicon.twins(v).iter().map(|t| t.verse).collect();
         in_play.iter().any(|(book, chapter, id)| {
-            id.is_some_and(|id| twins.contains(&id)) || (*book != r.book && chapter.is_some_and(|ch| self.k.confusable((*book, ch), (r.book, r.chapter))))
+            id.is_some_and(|id| twins.contains(&id) && !self.own_words_heard(v, id)) || (*book != r.book && chapter.is_some_and(|ch| self.k.confusable((*book, ch), (r.book, r.chapter))))
         })
+    }
+
+    /// The speech holds words only `v` has, none only `other` has: it is `v` being read, not its twin
+    /// again ("for the remission of sins" after Luke 22:20 is up is Matthew 26:28, not Luke's).
+    pub(crate) fn own_words_heard(&self, v: VerseId, other: VerseId) -> bool {
+        let speech = telling_words(&self.recent_speech_seconds(30).join(" "));
+        let (mine, theirs) = (telling_words(&self.match_text(v)), telling_words(&self.match_text(other)));
+        let heard = |own: &HashSet<String>, rival: &HashSet<String>| own.iter().filter(|w| !rival.contains(*w) && speech.contains(*w)).count();
+        heard(&mine, &theirs) >= TWIN_SPEECH_MARGIN && heard(&theirs, &mine) == 0
     }
 
     /// Meaningful words of speech in the last few seconds (or the last final).

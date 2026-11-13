@@ -144,6 +144,9 @@ function sectionTypeClass(label) {
   return `sec-${t}`;
 }
 
+// Faces kept in the app (fonts/fonts.css, loaded by each page): asked for by name, never fetched from the internet.
+const BUNDLED_FONTS = new Set(['Inter', 'Montserrat', 'Manrope', 'Raleway', 'Space Grotesk', 'Playfair Display', 'EB Garamond', 'Cormorant Garamond',
+  'Fraunces', 'Anton', 'Bebas Neue', 'Archivo Black', 'DM Serif Display', 'Yellowtail', 'Poppins']);
 const loadedFonts = new Set(['Manrope', 'system-ui']);
 // Google refuses the whole request when a weight is asked for that the family doesn't have, so a
 // family with fewer than nine weights names its own (checked 2026-11-06); others ask for all nine.
@@ -158,6 +161,11 @@ const fontSheets = new Map();   // family -> a promise kept once its stylesheet 
 function loadGoogleFont(family) {
   if (!family || loadedFonts.has(family)) return fontSheets.get(family) || Promise.resolve();
   loadedFonts.add(family);
+  if (BUNDLED_FONTS.has(family)) {
+    const ready = document.fonts ? document.fonts.load(`400 16px "${family}"`).then(() => {}, () => {}) : Promise.resolve();
+    fontSheets.set(family, ready);
+    return ready;
+  }
   const weights = family in GOOGLE_FONT_WEIGHTS ? GOOGLE_FONT_WEIGHTS[family] : '100;200;300;400;500;600;700;800;900';
   const link = document.createElement('link');
   link.rel = 'stylesheet';
@@ -168,3 +176,24 @@ function loadGoogleFont(family) {
   return ready;
 }
 
+
+
+// A design with no visible full-screen background is see-through, as in other design tools: hide or delete the Background
+// layer and the canvas is clear (a video mixer can key it out). Only a design that has a canvas layer counts.
+function lookHasNoBackdrop(look, styleByLayerId, W = window.KAIRO_DESIGN_W || 1920, H = window.KAIRO_DESIGN_H || 1080) {
+  const layers = (look && look.layers) || [];
+  if (!layers.some(l => l.type === 'background' && !l.pos)) return false;
+  const shown = (l) => l.visible !== false && ((styleByLayerId || {})[l.id] || {}).visible !== false;
+  return !layers.some(l => l.type === 'background' && shown(l) && l.fill && l.fill !== 'none' && l.fill !== 'transparent'
+    && (l.opacity == null || l.opacity > 0) && (!l.pos || (l.pos.w >= W * 0.95 && l.pos.h >= H * 0.95)));
+}
+
+// The canvas layer's eye is the transparency switch, as in design tools: eye off = transparent, so no full-screen
+// background paints and a video mixer can key the output out.
+function lookCanvasClear(look) {
+  return !!((look && look.layers) || []).find(l => l.type === 'background' && !l.pos && l.fill === 'transparent');
+}
+function isFullScreenFill(layer, W = window.KAIRO_DESIGN_W || 1920, H = window.KAIRO_DESIGN_H || 1080) {
+  return layer.type === 'background' && !!layer.fill && layer.fill !== 'none' && layer.fill !== 'transparent'
+    && (!layer.pos || (layer.pos.w >= W * 0.95 && layer.pos.h >= H * 0.95));
+}

@@ -145,12 +145,17 @@ async fn post_settings(State(app): State<Shared>, Json(body): Json<Map<String, V
     }
     let animation_changed = incoming.contains_key("outputAnimation") || incoming.contains_key("outputAnimationSpeed");
     let obs_changed = ["obsEnabled", "obsUrl", "obsPassword"].iter().any(|k| body.contains_key(*k));
+    let wording_changed = body.contains_key("sttLanguage") || body.contains_key("translation");
     let language_changed = body.contains_key("sttLanguage");
     let (s, save_error) = app.settings.merge(incoming).await;
     app.refresh_presentation().await;
-    // Detection matches the Bible of the language spoken (service_bible.rs).
-    if language_changed {
+    // Detection matches the Bible of the language spoken, and the church's own Bible in English (service_bible.rs).
+    if wording_changed {
         crate::service_bible::rebuild_soon(&app);
+    }
+    if language_changed {
+        let spoken = app.settings.str("sttLanguage").await.unwrap_or_else(|| "en-US".into());
+        crate::meaning_multi::follow_language(&app, &spoken);
     }
     if obs_changed {
         let a = app.clone();
@@ -194,6 +199,7 @@ async fn start_listening(State(app): State<Shared>, Json(body): Json<Value>) -> 
         let bible = bible.clone();
         // The Bible itself, not its knowledge now: knowledge rebuilt for another language mustn't be kept alive here.
         crate::interpretation::with(|i| i.set_known(std::sync::Arc::new(move |w: &str| bible.k().lexicon.vocab().id(w).is_some())));
+        crate::meaning_multi::follow_language(&app, &spoken);
     }
     crate::interpretation::with(|i| i.reset(&spoken));
     let started = if engine == "offline" || engine == "browser" {
@@ -644,14 +650,18 @@ pub(crate) async fn send_service_slide(app: &Shared, mut verse: Value, look: Val
         match verse["book"].as_str().and_then(|b| bible.find(b, verse["chapter"].as_u64().unwrap_or(0), verse["verse"].as_u64().unwrap_or(0))) {
             Some(v) => {
                 d.send(Event::OperatorSent(v));
-                crate::learned::operator_put_up(v);
+                // A verse the slide follower put up is not the operator's choice: it teaches no book word.
+                if !auto {
+                    crate::learned::operator_put_up(v);
+                }
                 crate::learned::shown(v);
                 song_live(&app, false);
                 crate::util::lock(&app.log).shown.push(crate::notes::Shown { verse: v, at: epoch_ms(), how: crate::notes::How::Cited });
             }
             None if !is_bible => {
-                d.send(Event::NonScriptureLive);
-                song_live(&app, true);
+                // A slide holds nothing back: scripture read over it goes up as it would over a blank screen.
+                // (Whether a song is up still tells the interpreter to stand down.)
+                song_live(&app, verse["songSlide"] == true);
             }
             None => {}
         }
@@ -695,6 +705,11 @@ async fn send_media(State(app): State<Shared>, Json(body): Json<Value>) -> Respo
 
 async fn send_timer(State(app): State<Shared>, Json(b): Json<Value>) -> Json<Value> {
     if b["clear"] == true {
+        // A window noticing that the segment before has stopped asks for the screen to be cleared; with another
+        // segment now running that would wipe its countdown, so it is ignored (Clear Timer stops the live one first).
+        if app.segments.has_live() {
+            return Json(json!({ "ok": true, "kept": true }));
+        }
         app.hub.broadcast(json!({ "type": "timer-slide", "target": "viewer", "clear": true }));
     } else {
         let or_null = |k: &str| if b[k].is_null() { Value::Null } else { b[k].clone() };
@@ -867,6 +882,12 @@ async fn look_apply(State(app): State<Shared>, Json(b): Json<Value>) -> Response
     if frames.is_object() && look.is_null() && themes.is_null() {
         app.hub.broadcast(json!({ "type": "look-update", "frames": frames }));
         return Json(json!({ "ok": true, "outputs": count(frames) })).into_response();
+    }
+    // How a design of another shape meets each output: contain or cover (display.html canvasRect).
+    let fit = &b["fit"];
+    if fit.is_object() && look.is_null() && themes.is_null() {
+        app.hub.broadcast(json!({ "type": "look-update", "fit": fit }));
+        return Json(json!({ "ok": true, "outputs": count(fit) })).into_response();
     }
     if keying.is_object() && look.is_null() {
         app.hub.broadcast(json!({ "type": "look-update", "keying": keying }));

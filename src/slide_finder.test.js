@@ -76,3 +76,69 @@ test('a slide with too few words of its own is never offered', () => {
   speak(f, 'welcome to church this morning');
   assert.equal(offers.length, 0);
 });
+
+// ── armed slides (the Auto toggle) and songs found by title ──
+function armed(extra) {
+  const offers = [];
+  const f = new SlideFinder({ onOffer: (o) => offers.push(o) });
+  f.setSlides([...SLIDES.map((s) => ({ ...s, auto: s.itemId === 'k' && s.index === 6 })), ...(extra || [])]);
+  return { f, offers };
+}
+const OBEDIENCE = 'and church I tell you obedience opens doors that prayer alone cannot open for the believer';
+
+test('an armed slide is marked to be sent when it is found; an unarmed one is only offered', () => {
+  const { f, offers } = armed();
+  speak(f, OBEDIENCE);
+  assert.equal(offers.length, 1);
+  assert.equal(offers[0].auto, true);
+  const plain = finder();
+  speak(plain.f, 'faith is the substance of things hoped for and the evidence of things not seen my friend');
+  assert.equal(plain.offers.length, 1);
+  assert.equal(plain.offers[0].auto, false);
+});
+
+test('two armed slides that read alike are offered together and neither is sent', () => {
+  const offers = [];
+  const f = new SlideFinder({ onOffer: (o) => offers.push(o) });
+  const words = 'Obedience opens doors that prayer alone cannot open for the believer';
+  f.setSlides([
+    { playlistId: 'p1', playlistName: 'Sunday', itemId: 'a', itemTitle: 'Series A', index: 1, text: words + ' today', auto: true },
+    { playlistId: 'p2', playlistName: 'Midweek', itemId: 'b', itemTitle: 'Series B', index: 4, text: words + ' tonight', auto: true },
+  ]);
+  speak(f, 'obedience opens doors that prayer alone cannot open for the believer');
+  assert.equal(offers.length, 2);
+  assert.ok(offers.every((o) => o.auto === false && o.ambiguous === true));
+  assert.deepEqual(offers.map((o) => o.itemId).sort(), ['a', 'b']);
+});
+
+test('alike slides, none armed, stay silent as before', () => {
+  const offers = [];
+  const f = new SlideFinder({ onOffer: (o) => offers.push(o) });
+  const words = 'Obedience opens doors that prayer alone cannot open for the believer';
+  f.setSlides([
+    { playlistId: 'p1', itemId: 'a', itemTitle: 'A', index: 1, text: words + ' today' },
+    { playlistId: 'p2', itemId: 'b', itemTitle: 'B', index: 4, text: words + ' tonight' },
+  ]);
+  speak(f, 'obedience opens doors that prayer alone cannot open for the believer');
+  assert.equal(offers.length, 0);
+});
+
+test('a song is found when its title is said, and offered unless it is armed', () => {
+  const song = { playlistId: 'p1', playlistName: 'Sunday', itemId: 's1', itemTitle: 'Amazing Grace', index: 0, text: 'Amazing Grace', kind: 'song' };
+  const { f, offers } = armed([song]);
+  speak(f, 'now let us all stand and sing amazing grace together', 0);
+  assert.equal(offers.length, 1);
+  assert.equal(offers[0].itemId, 's1');
+  assert.equal(offers[0].kind, 'song');
+  assert.equal(offers[0].auto, false);
+  const armedSong = armed([{ ...song, auto: true }]);
+  speak(armedSong.f, 'now let us all stand and sing amazing grace together', 0);
+  assert.equal(armedSong.offers.length, 1);
+  assert.equal(armedSong.offers[0].auto, true);
+});
+
+test('one word of a title is not a song reference', () => {
+  const { f, offers } = armed([{ playlistId: 'p1', itemId: 's1', itemTitle: 'Amazing Grace', index: 0, text: 'Amazing Grace', kind: 'song' }]);
+  speak(f, 'it is only by grace that we stand before him this morning my friends', 0);
+  assert.equal(offers.length, 0);
+});

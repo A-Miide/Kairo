@@ -339,18 +339,24 @@ impl Lexicon {
         }
         // Verses worded identically are twins however many share the wording
         // (a refrain repeated seven times has no phrase in "2 to 6" verses).
-        let mut by_wording: HashMap<&[WordId], Vec<VerseId>> = HashMap::new();
-        for v in corpus.ids() {
-            let stems = self.kjv.stems(v).unwrap_or(&[]);
-            if stems.len() >= 4 {
-                by_wording.entry(stems).or_default().push(v);
-            }
-        }
+        // In the KJV, and in the church's own wording: a refrain a Bible repeats word for word.
         let mut identical: Vec<((VerseId, VerseId), u32)> = Vec::new();
-        for (stems, group) in by_wording {
-            for x in 0..group.len() {
-                for y in x + 1..group.len() {
-                    identical.push(((group[x], group[y]), (stems.len() - 3) as u32));
+        for own in [false, true] {
+            if own && self.own().is_none() {
+                continue;
+            }
+            let mut by_wording: HashMap<&[WordId], Vec<VerseId>> = HashMap::new();
+            for v in corpus.ids() {
+                let stems = if own { self.own().and_then(|o| o.stems(v)).unwrap_or(&[]) } else { self.kjv.stems(v).unwrap_or(&[]) };
+                if stems.len() >= 4 {
+                    by_wording.entry(stems).or_default().push(v);
+                }
+            }
+            for (stems, group) in by_wording {
+                for x in 0..group.len() {
+                    for y in x + 1..group.len() {
+                        identical.push(((group[x], group[y]), (stems.len() - 3) as u32));
+                    }
                 }
             }
         }

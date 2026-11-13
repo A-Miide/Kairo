@@ -70,6 +70,7 @@ fn main() {
         offer: (l.offer.0, map(l.offer.1), l.offer.2),
         offer_in_play: (l.offer_in_play.0, map(l.offer_in_play.1), l.offer_in_play.2),
         offer_no_rerank: (map(l.offer_no_rerank.0), l.offer_no_rerank.1),
+        send_no_rerank: l.send_no_rerank,
         offer_modern: (l.offer_modern.0, map(l.offer_modern.1), l.offer_modern.2, l.offer_modern.3),
         send: (l.send.0, map(l.send.1), l.send.2, l.send.3),
         scoped: (map_scoped(l.scoped.0), l.scoped.1),
