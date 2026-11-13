@@ -42,6 +42,15 @@ pub fn measured(method: &str, screen: bool) -> f32 {
     (r as f32 + PRIOR_WEIGHT * average) / (n as f32 + PRIOR_WEIGHT)
 }
 
+/// A Possible Match is shown only when its kind was right at least this often (owner, 13 Nov 2026:
+/// "suggestions below 75 are most likely wrong"). Compared as the operator sees it, rounded.
+const OFFER_AT_LEAST_PCT: f32 = 75.0;
+
+/// Whether a match of `method` that is only offered goes in Possible Matches at all.
+pub fn worth_offering(method: &str) -> bool {
+    (measured(method, false) * 100.0).round() >= OFFER_AT_LEAST_PCT
+}
+
 /// Adds the measured accuracy (`accuracy`, 0–1) to each detected verse sent to the UI.
 pub fn mark(verses: &mut [serde_json::Value], method: &str, screen: bool) {
     let a = measured(method, screen);
@@ -73,6 +82,15 @@ mod tests {
         assert_eq!(pct("stream", false), 75);
         assert_eq!(pct("paraphrase", false), 64);
         assert!(pct("verbatim", false) < pct("verbatim", true));
+    }
+
+    #[test]
+    fn possible_matches_under_75_are_not_offered() {
+        assert!(worth_offering("verbatim"));
+        assert!(worth_offering("stream"));
+        assert!(!worth_offering("paraphrase"));
+        assert!(!worth_offering("direct"));
+        assert!(!worth_offering("fingerprint"));
     }
 
     #[test]

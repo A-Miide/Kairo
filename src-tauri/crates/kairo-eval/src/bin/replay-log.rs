@@ -211,7 +211,12 @@ fn main() {
         .filter_map(|l| match l {
             Line::Detect { at, verses, target, method } if target != "range-step" => {
                 // Auto-send off or Director mode changes where a send lands, not the decision.
-                let t = if target == "staged" { "screen" } else { target.as_str() };
+                // Hidden (an offer of a kind wrong too often) is still the engine's offer.
+                let t = match target.as_str() {
+                    "staged" => "screen",
+                    "hidden" => "suggestions",
+                    other => other,
+                };
                 Some((*at, verses.clone(), t.to_string(), method.clone()))
             }
             _ => None,

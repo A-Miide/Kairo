@@ -442,6 +442,14 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
                 if target == Target::Drop || verses.is_empty() {
                     continue;
                 }
+                // Only offered, and of a kind that is wrong too often: not shown (still in debug.log).
+                if target == Target::Suggestions && !crate::accuracy::worth_offering(method.wire()) {
+                    crate::routes::write_debug_global("server:detect", json!({
+                        "verses": verses.iter().map(|v| bible.reference(*v)).collect::<Vec<_>>(),
+                        "target": "hidden", "method": method.wire(), "score": (score * 100.0).round() / 100.0,
+                    }));
+                    continue;
+                }
                 let mut list: Vec<Value> = verses.iter().map(|v| bible.verse_json(*v, score, method.wire())).collect();
                 // The operator sees how often this kind of match is right; `similarity` stays the score.
                 crate::accuracy::mark(&mut list, method.wire(), target == Target::Screen);
