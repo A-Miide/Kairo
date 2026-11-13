@@ -202,7 +202,13 @@ async fn start_listening(State(app): State<Shared>, Json(body): Json<Value>) -> 
         crate::meaning_multi::follow_language(&app, &spoken);
     }
     crate::interpretation::with(|i| i.reset(&spoken));
-    let started = if engine == "offline" || engine == "browser" {
+    // Which recogniser this run used, so two runs of the same audio can be told apart in the log.
+    let offline = engine == "offline" || engine == "browser";
+    crate::routes::write_debug_global("server:listening", json!({
+        "engine": if !offline { "deepgram" } else if crate::offline::coreml() { "coreml" } else { "onnx" },
+        "language": spoken,
+    }));
+    let started = if offline {
         crate::offline::start(app.clone()).await.map(crate::Listening::Offline)
     } else {
         if let Some((_, d)) = app.ready() {
