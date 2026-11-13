@@ -283,21 +283,29 @@ impl Engine {
             target = Target::Suggestions;
         }
 
-        // 10. Offer a verse once per half minute, and never one the operator
-        // has on screen or just had there.
+        // 10. Offer a verse once per three minutes, and never one the operator has on screen or just
+        // had there. Another kind of match finding it again does offer it again: two kinds agreeing
+        // are shown even where one alone wouldn't be (the meaning match for Romans 10:9 was hidden,
+        // and the word-for-word match 4 s later was dropped as a repeat, 13 Nov 2026).
         if target == Target::Suggestions {
+            let method = c.method;
             let fresh: Vec<VerseId> = c
                 .verses
                 .iter()
                 .copied()
-                .filter(|v| self.screen.recent_suggestions.get(v).is_none_or(|t| now.saturating_sub(*t) >= SUGGESTION_DEDUP_MS))
+                .filter(|v| self.screen.recent_suggestions.get(v).is_none_or(|(t, kinds)| now.saturating_sub(*t) >= SUGGESTION_DEDUP_MS || !kinds.contains(&method)))
                 .filter(|v| self.screen.up_verse() != Some(*v) && self.screen.recent_detections.get(v).is_none_or(|t| now.saturating_sub(*t) >= SHOWN_RECENTLY_MS))
                 .collect();
             if self.screen.recent_suggestions.len() > 200 {
-                self.screen.recent_suggestions.retain(|_, t| now.saturating_sub(*t) < SUGGESTION_DEDUP_MS);
+                self.screen.recent_suggestions.retain(|_, (t, _)| now.saturating_sub(*t) < SUGGESTION_DEDUP_MS);
             }
             for v in &fresh {
-                self.screen.recent_suggestions.insert(*v, now);
+                let e = self.screen.recent_suggestions.entry(*v).or_insert((now, Vec::new()));
+                if now.saturating_sub(e.0) >= SUGGESTION_DEDUP_MS {
+                    e.1.clear();
+                }
+                e.0 = now;
+                e.1.push(method);
             }
             if fresh.is_empty() {
                 return Target::Drop;

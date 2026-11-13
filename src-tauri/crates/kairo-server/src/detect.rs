@@ -20,7 +20,11 @@ use crate::hub::Hub;
 
 /// What the detection thread is asked to do.
 pub enum Command {
-    Event(Event),
+    /// An input, and when it arrived (ms on the detector's clock): the engine takes it at that time
+    /// however long the thread takes to get to it.
+    Event(Event, u64),
+    /// The clock has reached this time with nothing heard: timers due by then fire.
+    Tick(u64),
     Configure(Box<dyn FnOnce(&mut Config) + Send>),
     /// The meaning models are ready (or replaced).
     Meaning(Arc<MeaningService>),
@@ -76,6 +80,8 @@ fn route(screen: bool, explicit: bool, p: &Presentation) -> Route {
 #[derive(Clone)]
 pub struct Detector {
     tx: mpsc::Sender<Command>,
+    /// The detector's clock starts here.
+    started: Instant,
     /// Told when the preacher asks for another translation ("switch to the NIV"), with what was heard.
     on_translation: Arc<std::sync::OnceLock<Box<dyn Fn(&'static str, String) + Send + Sync>>>,
     /// The last finished stretch: a request split over two ("Isaiah seven seven" | "NLT or Message").
@@ -96,11 +102,12 @@ pub use crate::util::epoch_ms;
 impl Detector {
     pub fn start(bible: Arc<Bible>, hub: Arc<Hub>, cfg: Config, presentation: Arc<std::sync::RwLock<Presentation>>, rt: tokio::runtime::Handle, log: Log) -> Detector {
         let (tx, rx) = mpsc::channel::<Command>();
-        let me = Detector { tx: tx.clone(), on_translation: Default::default(), last_final: Default::default() };
+        let started = Instant::now();
+        let me = Detector { tx: tx.clone(), started, on_translation: Default::default(), last_final: Default::default() };
         let on_translation = me.on_translation.clone();
         std::thread::Builder::new()
             .name("detection".into())
-            .spawn(move || run(bible, hub, cfg, presentation, rt, tx, rx, log, on_translation))
+            .spawn(move || run(bible, hub, cfg, presentation, rt, tx, rx, log, on_translation, started))
             .expect("detection thread");
         me
     }
@@ -111,7 +118,7 @@ impl Detector {
     }
 
     pub fn send(&self, e: Event) {
-        let _ = self.tx.send(Command::Event(e));
+        let _ = self.tx.send(Command::Event(e, self.started.elapsed().as_millis() as u64));
     }
 
     pub fn configure(&self, f: impl FnOnce(&mut Config) + Send + 'static) {
@@ -198,8 +205,17 @@ pub fn announce_interpretation(hub: &Hub, change: crate::interpretation::Change)
 struct RangeMirror {
     all: Vec<VerseId>,
     current: usize,
+    /// Verse → the kinds of match that offered it lately, and when (epoch ms).
+    offers: std::collections::HashMap<VerseId, Vec<(u64, &'static str)>>,
 }
 
+/// Two different kinds of match offering the same verse this close together agree.
+const AGREE_WITHIN_MS: u64 = 20_000;
+
+/// How long the engine waits for a meaning answer before going on without it.
+const ANSWER_WAIT: std::time::Duration = std::time::Duration::from_secs(8);
+
+#[allow(clippy::too_many_arguments)]
 fn run(
     bible: Arc<Bible>,
     hub: Arc<Hub>,
@@ -210,14 +226,16 @@ fn run(
     rx: mpsc::Receiver<Command>,
     log: Log,
     on_translation: Arc<std::sync::OnceLock<Box<dyn Fn(&'static str, String) + Send + Sync>>>,
+    started: Instant,
 ) {
-    let started = Instant::now();
     let mut engine = Engine::new(bible.k(), cfg);
+    record_config(0, engine.config(), true);
     let mut meaning: Option<Arc<MeaningService>> = None;
     let mut range = RangeMirror::default();
+    // The meaning models answer on their own thread (below speech, so the recogniser keeps its CPU).
+    // Every request gets a reply, None when answering it failed.
     let (mtx, mrx) = mpsc::channel::<Request>();
-    // The meaning models answer on their own thread; answers come back as events.
-    let back = tx.clone();
+    let (atx, arx) = mpsc::channel::<Option<Answer>>();
     let models: Arc<std::sync::RwLock<Option<Arc<MeaningService>>>> = Arc::new(std::sync::RwLock::new(None));
     let models_for_thread = models.clone();
     std::thread::Builder::new()
@@ -225,83 +243,177 @@ fn run(
         .spawn(move || {
             let _below = crate::util::below_speech();
             for r in mrx {
-                let Some(m) = models_for_thread.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone() else { continue };
+                let m = models_for_thread.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
                 // A panic answering one request costs that answer, never the meaning thread.
-                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| answer(&m, &r))) {
-                    Ok(a) => { let _ = back.send(Command::Event(Event::Answer(a))); }
-                    Err(p) => crate::routes::write_debug_global("server:meaning-panic", json!({ "message": panic_text(&p) })),
-                }
+                let a = m.and_then(|m| match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| answer(&m, &r))) {
+                    Ok(a) => Some(a),
+                    Err(p) => {
+                        crate::routes::write_debug_global("server:meaning-panic", json!({ "message": panic_text(&p) }));
+                        None
+                    }
+                });
+                let _ = atx.send(a);
             }
         })
         .expect("meaning thread");
 
+    // The engine's clock: each input is taken at the time it arrived, never earlier than the last.
+    // Timers fire on the same clock, before any input that arrived after they were due. Meaning
+    // answers are taken before the next input, at the time of the speech that asked. So the same
+    // inputs give the same decisions however busy the computer is (owner, 13 Nov 2026: "consistent
+    // result every time on every platform").
+    let mut clock = 0u64;
+    let mut wakes: Vec<(u64, kairo_detect::engine::TimerId)> = Vec::new();
     for cmd in rx {
-        let now = started.elapsed().as_millis() as u64;
-        // The operator's Next (button, remote, OSC): the verse it puts up is an explicit send.
-        let operator_step = matches!(cmd, Command::Event(Event::RangeNext));
-        let out = match cmd {
-            Command::Event(Event::Reset) => {
-                *log.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = ServiceLog::default();
-                engine.handle(Event::Reset, now)
-            }
-            Command::Event(e) => {
-                // A panic in the engine used to end detection for the rest of the service while
-                // transcripts kept scrolling. Now it costs this one stretch of speech: the engine
-                // starts again with the same settings and detection carries on.
-                match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| engine.handle(e, now))) {
-                    Ok(out) => out,
-                    Err(p) => {
-                        let cfg = engine.config().clone();
-                        crate::routes::write_debug_global("server:detection-panic", json!({ "message": panic_text(&p) }));
-                        eprintln!("[Detect] the engine panicked and was restarted: {}", panic_text(&p));
-                        engine = Engine::new(bible.k(), cfg);
-                        continue;
-                    }
-                }
-            }
+        let (event, at) = match cmd {
+            Command::Event(e, at) => (Some(e), at),
+            Command::Tick(at) => (None, at),
             Command::Configure(f) => {
                 f(engine.config_mut());
+                record_config(clock, engine.config(), false);
                 continue;
             }
             Command::Knowledge(k, lang) => {
                 let mut cfg = engine.config().clone();
                 cfg.lang = lang;
                 engine = Engine::new(k, cfg);
+                wakes.clear();
+                record_config(clock, engine.config(), true);
                 continue;
             }
             Command::Meaning(m) => {
                 *models.write().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(m.clone());
                 meaning = Some(m);
                 engine.config_mut().meaning = true;
+                record_config(clock, engine.config(), false);
                 continue;
             }
         };
-        let p = presentation.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
-        apply(&bible, &hub, &mut range, out.clone(), &p, &log, operator_step);
-        for r in out.requests {
-            if meaning.is_some() {
-                let _ = mtx.send(r);
-            }
+        let now = at.max(clock);
+        // Timers due by now, each at its own time.
+        wakes.sort_by_key(|w| w.0);
+        while wakes.first().is_some_and(|w| w.0 <= now) {
+            let (due, id) = wakes.remove(0);
+            clock = due.max(clock);
+            take(Event::Timer(id), clock, &mut engine, &mut wakes, &mut Taking { bible: &bible, hub: &hub, range: &mut range, presentation: &presentation, log: &log, meaning: meaning.is_some(), mtx: &mtx, arx: &arx, on_translation: &on_translation, rt: &rt, tx: &tx, started });
         }
+        clock = now;
+        if let Some(e) = event {
+            take(e, now, &mut engine, &mut wakes, &mut Taking { bible: &bible, hub: &hub, range: &mut range, presentation: &presentation, log: &log, meaning: meaning.is_some(), mtx: &mtx, arx: &arx, on_translation: &on_translation, rt: &rt, tx: &tx, started });
+        }
+    }
+}
+
+/// What taking an input needs besides the engine.
+struct Taking<'a> {
+    bible: &'a Arc<Bible>,
+    hub: &'a Hub,
+    range: &'a mut RangeMirror,
+    presentation: &'a std::sync::RwLock<Presentation>,
+    log: &'a Log,
+    meaning: bool,
+    mtx: &'a mpsc::Sender<Request>,
+    arx: &'a mpsc::Receiver<Option<Answer>>,
+    on_translation: &'a std::sync::OnceLock<Box<dyn Fn(&'static str, String) + Send + Sync>>,
+    rt: &'a tokio::runtime::Handle,
+    tx: &'a mpsc::Sender<Command>,
+    started: Instant,
+}
+
+/// One input into the engine at `now`, with the meaning answers it asks for, in order.
+fn take(first: Event, now: u64, engine: &mut Engine, wakes: &mut Vec<(u64, kairo_detect::engine::TimerId)>, t: &mut Taking) {
+    let mut queue = std::collections::VecDeque::from([first]);
+    while let Some(e) = queue.pop_front() {
+        // The operator's Next (button, remote, OSC): the verse it puts up is an explicit send.
+        let operator_step = matches!(e, Event::RangeNext);
+        if matches!(e, Event::Reset) {
+            *t.log.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = ServiceLog::default();
+            wakes.clear();
+        }
+        record(now, &e);
+        // A panic in the engine used to end detection for the rest of the service while
+        // transcripts kept scrolling. Now it costs this one stretch of speech: the engine
+        // starts again with the same settings and detection carries on.
+        let out = match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| engine.handle(e, now))) {
+            Ok(out) => out,
+            Err(p) => {
+                let cfg = engine.config().clone();
+                crate::routes::write_debug_global("server:detection-panic", json!({ "message": panic_text(&p) }));
+                eprintln!("[Detect] the engine panicked and was restarted: {}", panic_text(&p));
+                *engine = Engine::new(t.bible.k(), cfg);
+                wakes.clear();
+                return;
+            }
+        };
+        let p = t.presentation.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
+        apply(t.bible, t.hub, t.range, out.clone(), &p, t.log, operator_step);
         for e in &out.effects {
             // The passage is being read in another translation: shown in it as if it had been asked
             // for, back to the church's at the next passage (spoken.rs).
-            if let (Effect::ReadIn { translation, .. }, Some(f)) = (e, on_translation.get()) {
+            if let (Effect::ReadIn { translation, .. }, Some(f)) = (e, t.on_translation.get()) {
                 if let Some(code) = ["KJV", "BSB"].into_iter().find(|c| c.eq_ignore_ascii_case(translation)) {
                     f(code, format!("reading from the {code}"));
                 }
             }
             if let Effect::WakeAt { id, at_ms } = e {
-                let tx = tx.clone();
-                let delay = at_ms.saturating_sub(now);
-                let id = *id;
-                rt.spawn(async move {
+                wakes.push((*at_ms, *id));
+                // With nothing heard by then, the clock is moved on so the timer still fires.
+                let tx = t.tx.clone();
+                let (at, started) = (*at_ms, t.started);
+                t.rt.spawn(async move {
+                    let delay = at.saturating_sub(started.elapsed().as_millis() as u64);
                     tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
-                    let _ = tx.send(Command::Event(Event::Timer(id)));
+                    let _ = tx.send(Command::Tick(at));
                 });
             }
         }
+        if !t.meaning {
+            continue;
+        }
+        for r in out.requests {
+            if t.mtx.send(r).is_err() {
+                continue;
+            }
+            match t.arx.recv_timeout(ANSWER_WAIT) {
+                Ok(Some(a)) => queue.push_back(Event::Answer(a)),
+                Ok(None) => {}
+                Err(_) => crate::routes::write_debug_global("server:meaning-late", json!({ "waitedMs": ANSWER_WAIT.as_millis() as u64 })),
+            }
+        }
     }
+}
+
+/// Every input the engine takes, at the time it takes it, goes in debug.log: a live run replays
+/// exactly from it (`replay-log` in kairo-eval), meaning answers and timers included, in the order
+/// they arrived. The same inputs always give the same decisions.
+fn record(now: u64, e: &Event) {
+    if let Ok(event) = serde_json::to_value(e) {
+        crate::routes::write_debug_global("server:engine", json!({ "now": now, "event": event }));
+    }
+}
+
+/// The settings the engine decides with, after each change. `fresh`: the engine started again
+/// (new knowledge), forgetting what it was following.
+fn record_config(now: u64, c: &Config, fresh: bool) {
+    let ids = |s: &std::collections::HashSet<VerseId>| {
+        let mut v: Vec<u32> = s.iter().map(|v| v.0).collect();
+        v.sort_unstable();
+        v
+    };
+    crate::routes::write_debug_global("server:engine-config", json!({
+        "now": now,
+        "fresh": fresh,
+        "builtFrom": crate::service_bible::built_from(),
+        "lang": c.lang,
+        "autoSend": c.auto_send,
+        "autoCorrect": c.auto_correct,
+        "offline": c.offline,
+        "meaning": c.meaning,
+        "thresholds": c.meaning_thresholds,
+        "familiar": ids(&c.learned.familiar),
+        "takenDown": ids(&c.learned.taken_down),
+        "bookWords": c.learned.book_words().into_iter().map(|(w, b)| (w, b.name())).collect::<Vec<_>>(),
+    }));
 }
 
 fn panic_text(p: &Box<dyn std::any::Any + Send>) -> String {
@@ -333,6 +445,30 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
         match e {
             Effect::Show { verses, method, score, target, corrected_from } => {
                 if target == Target::Drop || verses.is_empty() {
+                    continue;
+                }
+                // Only offered, and of a kind that is wrong too often: not shown (still in debug.log),
+                // unless another kind of match offered the same verse just now: two kinds agreeing
+                // are shown (Romans 10:9 by meaning and word for word, 13 Nov 2026).
+                let agreed = target == Target::Suggestions && {
+                    let at = epoch_ms();
+                    range.offers.retain(|_, seen| {
+                        seen.retain(|(t, _)| at.saturating_sub(*t) < AGREE_WITHIN_MS);
+                        !seen.is_empty()
+                    });
+                    let mut agreed = false;
+                    for v in &verses {
+                        let seen = range.offers.entry(*v).or_default();
+                        agreed |= seen.iter().any(|(_, m)| *m != method.wire());
+                        seen.push((at, method.wire()));
+                    }
+                    agreed
+                };
+                if target == Target::Suggestions && !agreed && !crate::accuracy::worth_offering(method.wire()) {
+                    crate::routes::write_debug_global("server:detect", json!({
+                        "verses": verses.iter().map(|v| bible.reference(*v)).collect::<Vec<_>>(),
+                        "target": "hidden", "method": method.wire(), "score": (score * 100.0).round() / 100.0,
+                    }));
                     continue;
                 }
                 let mut list: Vec<Value> = verses.iter().map(|v| bible.verse_json(*v, score, method.wire())).collect();
@@ -420,7 +556,8 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
                 hub.broadcast(json!({ "type": "range-active", "activeRef": bible.reference(current) }));
             }
             Effect::RangeCleared => {
-                *range = RangeMirror::default();
+                // The passage ends; what was offered lately is kept.
+                *range = RangeMirror { offers: std::mem::take(&mut range.offers), ..Default::default() };
                 range_state(bible, hub, range);
             }
             Effect::ReadingMode { active, chapter } => {

@@ -11,7 +11,7 @@ use kairo_bible::Book;
 /// Single tokens and "<n> <stem>" pairs → book. Names and the standard typed
 /// abbreviations.
 const ALIASES: &[(&str, &str)] = &[
-    ("genesis", "Genesis"), ("gen", "Genesis"), ("exodus", "Exodus"), ("exod", "Exodus"), ("exo", "Exodus"),
+    ("genesis", "Genesis"), ("gen", "Genesis"), ("genes", "Genesis"), ("exodus", "Exodus"), ("exod", "Exodus"), ("exo", "Exodus"),
     ("leviticus", "Leviticus"), ("lev", "Leviticus"), ("numbers", "Numbers"), ("num", "Numbers"),
     ("deuteronomy", "Deuteronomy"), ("deut", "Deuteronomy"), ("deu", "Deuteronomy"),
     ("joshua", "Joshua"), ("josh", "Joshua"), ("jos", "Joshua"), ("judges", "Judges"), ("judg", "Judges"), ("jdg", "Judges"),
@@ -65,6 +65,8 @@ const NUMBERED: &[(&str, &[&str])] = &[
 /// and ordinal forms for every book are generated, not listed.
 const TITLES: &[(&str, &str)] = &[
     ("acts of the apostles", "acts"), ("acts of the apostle", "acts"), ("acts of apostles", "acts"), ("acts of apostle", "acts"),
+    // Said or heard without the s ("in the book of Act of Apostle one verse eight", 13 Nov 2026).
+    ("act of the apostles", "acts"), ("act of the apostle", "acts"), ("act of apostles", "acts"), ("act of apostle", "acts"),
     ("book of the apostles", "acts"), ("book of the apostle", "acts"), ("book of apostles", "acts"), ("book of apostle", "acts"),
     ("lamentations of jeremiah", "lamentations"),
     ("songs of solomon", "songofsolomon"), ("songs of songs", "songofsolomon"), ("song of songs", "songofsolomon"),
@@ -84,12 +86,13 @@ pub enum AmbiguityRule {
 }
 
 const AMBIGUOUS_LEGACY: &[&str] = &[
-    "numbers", "ruth", "mark", "john", "james", "acts", "judges", "job", "joel", "amos", "micah", "nahum", "titus", "jude",
+    "genes", "numbers", "ruth", "mark", "john", "james", "acts", "judges", "job", "joel", "amos", "micah", "nahum", "titus", "jude",
     "luke", "hebrews", "esther", "hosea", "jonah", "genesis", "exodus", "philemon", "obadiah", "haggai", "revelation",
 ];
 
 const EVERYDAY_WORD_BOOKS: &[&str] = &[
-    "genesis", "exodus", "numbers", "judges", "job", "acts", "mark", "revelation", "revelations", "lamentations",
+    // "genes": Genesis as the offline recogniser heard it ("genes one from verse twenty six", 13 Nov 2026).
+    "genes", "genesis", "exodus", "numbers", "judges", "job", "acts", "mark", "revelation", "revelations", "lamentations",
     // peoples, said as peoples ("the Romans", "the Hebrews")
     "romans", "hebrews",
 ];
@@ -460,6 +463,7 @@ mod tests {
         assert_eq!(m("timothy 3"), Some((b("1 Timothy"), 1)));
         let books = Books::get();
         assert_eq!(books.apply_titles("in the acts of the apostles chapter 2"), "in the acts chapter 2");
+        assert_eq!(books.apply_titles("in the book of act of apostle one verse eight"), "in the acts one verse eight");
         assert_eq!(books.apply_titles("the book of isaiah chapter 53"), "the isaiah chapter 53");
         assert_eq!(books.apply_titles("second timothy 3"), "2 timothy 3");
         assert_eq!(books.apply_titles("the song of songs 2"), "the songofsolomon 2");

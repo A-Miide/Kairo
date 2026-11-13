@@ -165,13 +165,26 @@ impl WordBuffer {
         let said: Vec<&str> = text.split_whitespace().collect();
         let at = self.rehears(&said);
         self.unconfirm_to(at);
+        let i = (at - self.base) as usize;
+        let past_end: Vec<Word> = self.words.iter().skip(i + said.len()).cloned().collect();
+        // The final repeats the live words word for word and stops short of them: the recogniser
+        // ended the segment there, and the rest belongs to the next one ("…do what? Jeremiah
+        // seven" | final "…do what?" | "17 verse seven to eight", Deepgram, 13 Nov 2026). A book
+        // named in them stays, heard but not confirmed, for the next segment's numbers; the words
+        // after it are said again by the next segment and go.
+        let plain = |w: &str| w.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase();
+        let cut_short = !past_end.is_empty() && said.iter().enumerate().all(|(n, w)| self.words.get(i + n).is_some_and(|x| plain(&x.text) == plain(w)));
         let kept_live: Vec<Word> = if continues_live {
-            self.words.iter().skip((at - self.base) as usize + said.len()).cloned().collect()
+            past_end
+        } else if cut_short {
+            let books = crate::reference::Books::get();
+            let book = past_end.iter().rposition(|w| books.alias(&plain(&w.text)).is_some());
+            past_end.into_iter().take(book.map_or(0, |b| b + 1)).map(|w| Word { status: Status::Unconfirmed, ..w }).collect()
         } else {
+            // Otherwise the final is the whole utterance: live words past its end were the same
+            // speech differently cut ("sixty seven verse three" → "67:3") and go.
             Vec::new()
         };
-        // Without `continues_live` the final is the whole utterance: live words past its end were
-        // the same speech differently cut ("sixty seven verse three" → "67:3") and go.
         self.replace_from(at, text, Status::Settled, now);
         self.words.extend(kept_live);
         self.changed_from = at;

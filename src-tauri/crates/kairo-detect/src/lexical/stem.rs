@@ -53,7 +53,10 @@ static IRREGULAR: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(
         ("knew", "kno"), ("known", "kno"), ("took", "tak"), ("taken", "tak"), ("gave", "giv"), ("given", "giv"), ("heard", "hear"),
         ("brought", "bring"), ("bought", "buy"), ("taught", "teach"), ("sought", "seek"), ("thought", "think"), ("fought", "fight"),
         ("caught", "catch"), ("wrought", "work"),
-        ("ate", "eat"), ("eaten", "eat"), ("ran", "run"), ("rose", "ris"), ("risen", "ris"), ("fell", "fall"), ("fallen", "fall"),
+        ("ate", "eat"), ("eaten", "eat"), ("ran", "run"), ("rose", "ris"), ("risen", "ris"),
+        // Raise and rise are one word to a recogniser: "that God risen from the dead" for "God hath
+        // raised him from the dead" kept Romans 10:9 off the screen (13 Nov 2026).
+        ("raise", "ris"), ("raised", "ris"), ("raiseth", "ris"), ("raising", "ris"), ("fell", "fall"), ("fallen", "fall"),
         ("spoke", "speak"), ("spoken", "speak"), ("spake", "speak"), ("broke", "break"), ("broken", "break"), ("brake", "break"),
         ("stood", "stand"), ("sat", "sit"), ("wrote", "writ"), ("written", "writ"), ("chose", "choos"), ("chosen", "choos"),
         ("brethren", "brother"), ("men", "man"), ("women", "woman"), ("children", "child"),

@@ -111,6 +111,11 @@ pub fn english_modern(corpus: &Corpus, db: &Path) -> Option<Translation> {
     corpus.load_flat("BSB", &db.join("translations/BSB.json")).ok()
 }
 
+/// What the knowledge in use was built from ("en", "en:file:NIV", "es:pack").
+pub fn built_from() -> String {
+    crate::util::lock(&BUILT_FROM).clone()
+}
+
 /// Notes what the knowledge in use was built from.
 pub fn built(from: &str) {
     *crate::util::lock(&BUILT_FROM) = from.to_string();

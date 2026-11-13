@@ -35,6 +35,13 @@ impl Learned {
         Learned { book_words, familiar, taken_down }
     }
 
+    /// The learned words for books, as (word, book).
+    pub fn book_words(&self) -> Vec<(String, Book)> {
+        let mut words: Vec<(String, Book)> = self.book_words.as_ref().map_or_else(Vec::new, |(_, m)| m.iter().map(|(w, b)| (w.clone(), *b)).collect());
+        words.sort_by(|a, b| a.0.cmp(&b.0));
+        words
+    }
+
     /// `text` with this preacher's learned words for books put back as the books, where a
     /// number follows ("san one ten" → "Psalms one ten").
     pub fn books_put_back(&self, text: &str) -> String {
