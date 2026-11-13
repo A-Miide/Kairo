@@ -205,7 +205,12 @@ pub fn announce_interpretation(hub: &Hub, change: crate::interpretation::Change)
 struct RangeMirror {
     all: Vec<VerseId>,
     current: usize,
+    /// Verse → the kinds of match that offered it lately, and when (epoch ms).
+    offers: std::collections::HashMap<VerseId, Vec<(u64, &'static str)>>,
 }
+
+/// Two different kinds of match offering the same verse this close together agree.
+const AGREE_WITHIN_MS: u64 = 20_000;
 
 /// How long the engine waits for a meaning answer before going on without it.
 const ANSWER_WAIT: std::time::Duration = std::time::Duration::from_secs(8);
@@ -442,8 +447,24 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
                 if target == Target::Drop || verses.is_empty() {
                     continue;
                 }
-                // Only offered, and of a kind that is wrong too often: not shown (still in debug.log).
-                if target == Target::Suggestions && !crate::accuracy::worth_offering(method.wire()) {
+                // Only offered, and of a kind that is wrong too often: not shown (still in debug.log),
+                // unless another kind of match offered the same verse just now: two kinds agreeing
+                // are shown (Romans 10:9 by meaning and word for word, 13 Nov 2026).
+                let agreed = target == Target::Suggestions && {
+                    let at = epoch_ms();
+                    range.offers.retain(|_, seen| {
+                        seen.retain(|(t, _)| at.saturating_sub(*t) < AGREE_WITHIN_MS);
+                        !seen.is_empty()
+                    });
+                    let mut agreed = false;
+                    for v in &verses {
+                        let seen = range.offers.entry(*v).or_default();
+                        agreed |= seen.iter().any(|(_, m)| *m != method.wire());
+                        seen.push((at, method.wire()));
+                    }
+                    agreed
+                };
+                if target == Target::Suggestions && !agreed && !crate::accuracy::worth_offering(method.wire()) {
                     crate::routes::write_debug_global("server:detect", json!({
                         "verses": verses.iter().map(|v| bible.reference(*v)).collect::<Vec<_>>(),
                         "target": "hidden", "method": method.wire(), "score": (score * 100.0).round() / 100.0,
@@ -535,7 +556,8 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
                 hub.broadcast(json!({ "type": "range-active", "activeRef": bible.reference(current) }));
             }
             Effect::RangeCleared => {
-                *range = RangeMirror::default();
+                // The passage ends; what was offered lately is kept.
+                *range = RangeMirror { offers: std::mem::take(&mut range.offers), ..Default::default() };
                 range_state(bible, hub, range);
             }
             Effect::ReadingMode { active, chapter } => {

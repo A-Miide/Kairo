@@ -217,6 +217,9 @@ impl Engine {
         let Some(p) = self.k.partials(self.cfg.lang).resolve(text, self.verse_call_context(now), false) else { return };
         let p = self.chapter_said_before(p, text, now);
         let p = self.announced_instead(p, text);
+        if names_other_chapter(text, p.citation.chapter) {
+            return;
+        }
         let Verses::One(verse) = p.citation.verses else { return };
         // A complete number ("verse twenty four") needn't be heard twice: the offline engine's next
         // interim is half a second away, and its final over a second (live 2026-10-28).
@@ -572,6 +575,9 @@ impl Engine {
         let query = if carried { format!("verse {text}") } else { text.to_string() };
         let Some(p) = self.k.partials(self.cfg.lang).resolve(&query, self.verse_call_context(now), true) else { return false };
         let p = self.chapter_said_before(p, &query, now);
+        if names_other_chapter(&query, p.citation.chapter) {
+            return false;
+        }
         let p = self.announced_instead(p, &query);
         let verses = self.citation_verses(&p.citation);
         if verses.is_empty() {
@@ -643,6 +649,19 @@ impl Engine {
         let verse: HashSet<String> = meaningful_words(&self.match_text(v)).iter().map(|w| stem_lite(w)).collect();
         verse.iter().filter(|w| said.contains(*w)).count() >= need
     }
+}
+
+/// The last "verse N" said has another chapter's number just before it ("…the throne in that one
+/// verse six" while Proverbs 18 waited: chapter one, a book misheard, not Proverbs 18:6, 13 Nov 2026).
+fn names_other_chapter(text: &str, chapter: u32) -> bool {
+    let words: Vec<String> = text.split_whitespace().map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_lowercase()).collect();
+    let Some(at) = words.iter().rposition(|w| w == "verse" || w == "verses") else { return false };
+    let before: Vec<&str> = words[at.saturating_sub(3)..at].iter().map(String::as_str).collect();
+    // The number that ends right before "verse", read from as early as it can start ("twenty one").
+    let said = (0..before.len()).find_map(|s| consume_number(&before, s, None).filter(|n| s + n.consumed == before.len()).map(|n| (s, n)));
+    // A number that is itself a verse in a list ("verse five, verse seven") isn't a chapter.
+    let listed = |s: usize| s > 0 && matches!(before[s - 1], "verse" | "verses" | "and" | "to" | "through");
+    said.is_some_and(|(s, n)| !listed(s) && n.value != i64::from(chapter))
 }
 
 fn partial_method(p: &Partial) -> Method {

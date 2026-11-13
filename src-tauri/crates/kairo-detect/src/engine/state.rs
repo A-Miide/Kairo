@@ -172,8 +172,8 @@ pub struct Screen {
     pub corrected_away: Option<CorrectedAway>,
     /// People are singing (heard, not a slide): scripture in the lyrics is only offered.
     pub singing: bool,
-    /// Verse → when it was last offered.
-    pub recent_suggestions: HashMap<VerseId, u64>,
+    /// Verse → when it was last offered, and the kinds of match that offered it since.
+    pub recent_suggestions: HashMap<VerseId, (u64, Vec<super::types::Method>)>,
     /// When a spoken citation last went through (suppresses redundant suggestions).
     pub last_citation_at: u64,
 }

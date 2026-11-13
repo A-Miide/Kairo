@@ -11,7 +11,7 @@ use kairo_bible::Book;
 /// Single tokens and "<n> <stem>" pairs → book. Names and the standard typed
 /// abbreviations.
 const ALIASES: &[(&str, &str)] = &[
-    ("genesis", "Genesis"), ("gen", "Genesis"), ("exodus", "Exodus"), ("exod", "Exodus"), ("exo", "Exodus"),
+    ("genesis", "Genesis"), ("gen", "Genesis"), ("genes", "Genesis"), ("exodus", "Exodus"), ("exod", "Exodus"), ("exo", "Exodus"),
     ("leviticus", "Leviticus"), ("lev", "Leviticus"), ("numbers", "Numbers"), ("num", "Numbers"),
     ("deuteronomy", "Deuteronomy"), ("deut", "Deuteronomy"), ("deu", "Deuteronomy"),
     ("joshua", "Joshua"), ("josh", "Joshua"), ("jos", "Joshua"), ("judges", "Judges"), ("judg", "Judges"), ("jdg", "Judges"),
@@ -86,12 +86,13 @@ pub enum AmbiguityRule {
 }
 
 const AMBIGUOUS_LEGACY: &[&str] = &[
-    "numbers", "ruth", "mark", "john", "james", "acts", "judges", "job", "joel", "amos", "micah", "nahum", "titus", "jude",
+    "genes", "numbers", "ruth", "mark", "john", "james", "acts", "judges", "job", "joel", "amos", "micah", "nahum", "titus", "jude",
     "luke", "hebrews", "esther", "hosea", "jonah", "genesis", "exodus", "philemon", "obadiah", "haggai", "revelation",
 ];
 
 const EVERYDAY_WORD_BOOKS: &[&str] = &[
-    "genesis", "exodus", "numbers", "judges", "job", "acts", "mark", "revelation", "revelations", "lamentations",
+    // "genes": Genesis as the offline recogniser heard it ("genes one from verse twenty six", 13 Nov 2026).
+    "genes", "genesis", "exodus", "numbers", "judges", "job", "acts", "mark", "revelation", "revelations", "lamentations",
     // peoples, said as peoples ("the Romans", "the Hebrews")
     "romans", "hebrews",
 ];
