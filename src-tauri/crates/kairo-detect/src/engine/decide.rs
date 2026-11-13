@@ -188,6 +188,14 @@ impl Engine {
             target = Target::Suggestions;
         }
 
+        // 5a. The same new words also matched a verse further on in the chapter on screen: a text match
+        // from another book is only offered. A lone match elsewhere never replaces the passage in play
+        // (Psalm 79:11 for Ephesians 1:19, live 13 Nov 2026).
+        if target == Target::Screen && !continuity && c.method == Method::Stream && self.paths.passage_competes.is_some_and(|p| p != (r.book, r.chapter)) {
+            self.note(|e| format!("{} offered, not sent: the passage on screen goes on in the same words", e.label(top)));
+            target = Target::Suggestions;
+        }
+
         // 5b. Said almost word for word, one verse: it goes up (owner, 2026-10-30: "if it matches 99%
         // it is correct"). Only the words matched in order (not a meaning or keyword match), only a
         // verse no other verse's wording ties with once the tie-breaker has had its say, never one

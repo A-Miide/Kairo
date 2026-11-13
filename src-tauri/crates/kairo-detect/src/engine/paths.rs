@@ -125,6 +125,10 @@ pub(crate) struct PathState {
     topic_counts: HashMap<String, f32>,
     topic_built_at: u64,
     pub(crate) topic_library: Option<HashSet<VerseId>>,
+    /// While the stream's newest words are being decided: the chapter on screen, when those same words
+    /// also matched a verse further on in it. A text match from another book then waits to be offered
+    /// (see `decide`): the preacher is going on in the passage, not leaving it.
+    pub(crate) passage_competes: Option<(Book, u16)>,
 }
 
 #[derive(Default)]
@@ -451,6 +455,17 @@ impl Engine {
         }
         self.paths.anchors.retain(|_, (_, at)| now.saturating_sub(*at) <= STREAM_RELATIVE_MS);
 
+        // Live, 13 Nov 2026: Ephesians 1:18 was up; "according to the greatness of his power which he
+        // wrought" matched Psalm 79:11 (7 words, a phrase only it has) and Ephesians 1:19 at once. The
+        // Psalm was decided first, replaced the passage on screen, and so cost 1:19 its place. When the
+        // same words also found a verse further on in the chapter on screen, the passage wins.
+        self.paths.passage_competes = self.passage_on_screen(now).filter(|&(book, chapter, verse)| {
+            ranked.iter().any(|h| {
+                let r = self.r(h.verse);
+                r.book == book && r.chapter == chapter && r.verse > verse && (h.confirmed || (h.df == 1 && h.idf >= STREAM_IDF_FULL_CONFIDENCE))
+            })
+        }).map(|(book, chapter, _)| (book, chapter));
+
         let text = words.join(" ");
         let confirmed: Vec<StreamHit> = ranked.iter().copied().filter(|h| h.confirmed).collect();
         if !confirmed.is_empty() {
@@ -464,6 +479,18 @@ impl Engine {
                 self.decide(Candidate::new(vec![unique.verse], Method::Stream, unique.similarity.max(0.90), Target::Screen).evidence(unique.evidence()), now);
             }
         }
+        self.paths.passage_competes = None;
+    }
+
+    /// The verse on screen, as (book, chapter, verse), while it is recent enough to be the passage in play.
+    fn passage_on_screen(&self, now: u64) -> Option<(Book, u16, u16)> {
+        let (up, _) = self.screen.up?;
+        let (_, sent_at) = self.screen.last_sent_book?;
+        if now.saturating_sub(sent_at) >= SAME_BOOK_WINDOW_MS {
+            return None;
+        }
+        let r = self.r(up);
+        Some((r.book, r.chapter, r.verse))
     }
 
     /// Confirmed first; then longer; the topic library; near a recent citation.
