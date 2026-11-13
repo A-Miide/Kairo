@@ -79,6 +79,14 @@ checksum (`src-tauri/crates/kairo-eval/src/bin/bundle-data.rs`):
   [`Xenova/ms-marco-MiniLM-L-6-v2`](https://huggingface.co/Xenova/ms-marco-MiniLM-L-6-v2)
   — the cross-encoder that rereads the shortlist.
 
+Downloaded on demand for services in other languages (not bundled), from Kairo's
+`meaning-pack` release; it replaces the English meaning model for those services:
+
+- **multilingual-e5-small** by the intfloat authors / Microsoft (MIT), as the int8 ONNX export
+  [`Xenova/multilingual-e5-small`](https://huggingface.co/Xenova/multilingual-e5-small),
+  with its word list cut from 250,000 to the 50,556 words Kairo's Bibles and sermons use
+  (the transformer is untouched) — the sentence embedder, and the KJV verse index built from it.
+
 ## Sound models (`databases/vad`)
 
 - **Silero VAD** (`silero_vad.onnx`, MIT, <https://github.com/snakers4/silero-vad>):
