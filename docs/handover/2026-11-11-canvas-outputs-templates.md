@@ -22,7 +22,7 @@ Also fixed: a verse sent while only a countdown was up never reached the screen 
 ## Open (needs the owner)
 
 - ~~Highlands and Ember as built-ins~~ **Done 12 Nov** (`8fbed66`): both ship; Ember keeps its script face over HOME (owner's call); Reach stays.
-- **Documents folder.** Typing a name for a new media folder creates `Documents/Kairo Media/<name>` (`create_folder`, `media.rs`). The agreed fix, not done: create it inside Kairo's data folder (`media/folders/<name>`), keep linked folders as references only.
+- ~~Documents folder~~ **Decided 12 Nov: leave it.** New media folders stay at `Documents/Kairo Media/<name>`; the owner is happy with that. Do not move them into the data folder.
 - **Pull request.** One for everything, or the detector commits first.
 
 ## Not verified
