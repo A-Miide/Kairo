@@ -8,6 +8,8 @@
 //! - `--run N`: which run of the app (1 = the first in the log, -1 = the last; default -1).
 //! - `--explain a..b`: print why each decision went where it did, for inputs between these clock times.
 //! - `--twice`: replay twice and check both give the same decisions (the engine is deterministic).
+//! - `--speech 12:42:30..12:45:40`: a run from before the recorder (4.6.1 and earlier), rebuilt from the
+//!   speech it logged between these times. Close, not exact: no meaning answers, timers or settings.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -188,12 +190,51 @@ fn replay(lines: &[Line], data: &Path, explain: Option<(u64, u64)>) -> Vec<(u64,
     out
 }
 
+/// The speech logged between two clock times, as a run: default settings, then each interim and
+/// final at the time it was logged, and what the live app decided.
+fn from_speech(log: &Path, range: &str) -> Vec<Line> {
+    let text = std::fs::read_to_string(log).expect("read debug.log");
+    // The times are on the day of the log's newest line.
+    let first = text.lines().rev().find_map(|l| serde_json::from_str::<Value>(l).ok()?["t"].as_u64()).unwrap_or(0);
+    let (a, b) = range.split_once("..").expect("a range like 12:42:30..12:45:40");
+    let (a, b) = (at_time(first, a), at_time(first, b));
+    let mut lines = vec![Line::Config(serde_json::json!({ "fresh": true, "builtFrom": "en", "lang": "en" }))];
+    for l in text.lines() {
+        let Ok(v) = serde_json::from_str::<Value>(l) else { continue };
+        let at = v["t"].as_u64().unwrap_or(0);
+        if at < a || at > b {
+            continue;
+        }
+        let d = &v["data"];
+        let now = at - a + 10_000;
+        let speech = |is_final: bool| Event::Speech(kairo_detect::engine::Segment {
+            text: d["text"].as_str().unwrap_or("").to_string(),
+            is_final,
+            speech_final: if is_final { d["speechFinal"].as_bool().unwrap_or(true) } else { false },
+            continues_live: d["continues"].as_bool().unwrap_or(false),
+        });
+        match v["event"].as_str().unwrap_or("") {
+            "server:interim" => lines.push(Line::Input { now, at, event: speech(false) }),
+            "server:transcript" => lines.push(Line::Input { now, at, event: speech(true) }),
+            "server:detect" => {
+                let verses = d["verses"].as_array().map(|a| a.iter().filter_map(|x| x.as_str().map(str::to_string)).collect()).unwrap_or_default();
+                lines.push(Line::Detect { at, verses, target: d["target"].as_str().unwrap_or("").into(), method: d["method"].as_str().unwrap_or("").into() });
+            }
+            _ => {}
+        }
+    }
+    lines
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let opt = |n: &str| args.iter().position(|a| a == n).and_then(|i| args.get(i + 1)).cloned();
-    let log = args.iter().enumerate().find(|(i, a)| !a.starts_with("--") && (*i == 0 || !["--run", "--explain"].contains(&args[i - 1].as_str()))).map(|(_, a)| PathBuf::from(a)).unwrap_or_else(app_log);
+    let log = args.iter().enumerate().find(|(i, a)| !a.starts_with("--") && (*i == 0 || !["--run", "--explain", "--speech"].contains(&args[i - 1].as_str()))).map(|(_, a)| PathBuf::from(a)).unwrap_or_else(app_log);
     let data = app_data(&log);
-    let all = runs(&log);
+    let all = match opt("--speech") {
+        Some(range) => vec![from_speech(&log, &range)],
+        None => runs(&log),
+    };
     if all.is_empty() {
         eprintln!("No recorded runs in {} (the app records its engine inputs from 4.6.2 on).", log.display());
         std::process::exit(1);
@@ -228,11 +269,28 @@ fn main() {
         println!("Same {} decisions as the live app.", a.len());
     } else {
         println!("Live and replay differ ({} live, {} replay):", a.len(), b.len());
-        let width = a.len().max(b.len());
-        for i in 0..width {
-            let (l, r) = (a.get(i).cloned().unwrap_or_default(), b.get(i).cloned().unwrap_or_default());
-            let at = live.get(i).or(ours.get(i)).map_or(String::new(), |d| clock(d.0));
-            println!("{} {at}  live: {l:<50} replay: {r}", if l == r { " " } else { "≠" });
+        // Lined up where they agree (longest common subsequence), so one extra or missing decision
+        // doesn't shift every line after it.
+        let (n, m) = (a.len(), b.len());
+        let mut lcs = vec![vec![0usize; m + 1]; n + 1];
+        for i in (0..n).rev() {
+            for j in (0..m).rev() {
+                lcs[i][j] = if a[i] == b[j] { lcs[i + 1][j + 1] + 1 } else { lcs[i + 1][j].max(lcs[i][j + 1]) };
+            }
+        }
+        let (mut i, mut j) = (0, 0);
+        while i < n || j < m {
+            if i < n && j < m && a[i] == b[j] {
+                println!("  {}  both:   {}", clock(live[i].0), a[i]);
+                i += 1;
+                j += 1;
+            } else if j < m && (i == n || lcs[i][j + 1] >= lcs[i + 1][j]) {
+                println!("+ {}  replay: {}", clock(ours[j].0), b[j]);
+                j += 1;
+            } else {
+                println!("- {}  live:   {}", clock(live[i].0), a[i]);
+                i += 1;
+            }
         }
     }
     if args.iter().any(|a| a == "--twice") {

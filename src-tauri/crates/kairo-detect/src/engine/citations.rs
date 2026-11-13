@@ -168,7 +168,10 @@ pub(crate) fn opens_with_number(text: &str) -> bool {
 fn ends_mid_citation(text: &str) -> bool {
     let t = text.trim().trim_end_matches(['.', ',', '!', '?']);
     let tail = t.split_whitespace().last().unwrap_or("").to_lowercase();
-    DANGLING.contains(&tail.as_str()) || t.ends_with(|c: char| c.is_ascii_digit()) || consume_number(&[tail.as_str()], 0, None).is_some()
+    // A book named last, its numbers in the next segment ("…safe and protected. Deuteronomy" |
+    // "31 verse six", Deepgram, 13 Nov 2026).
+    let book = || crate::reference::Books::get().alias(&tail.chars().filter(|c| c.is_alphanumeric()).collect::<String>()).is_some();
+    DANGLING.contains(&tail.as_str()) || t.ends_with(|c: char| c.is_ascii_digit()) || consume_number(&[tail.as_str()], 0, None).is_some() || book()
 }
 
 /// The text after the last mention of a book (or else of its chapter number).
@@ -396,6 +399,17 @@ impl Engine {
                 _ => s.to_string(),
             }
         };
+        // "verse" then a book's name then numbers is a slip or a mishearing, never a new citation:
+        // the numbers are the verse ("Psalm one twenty five verse Psalm" | "one and two" is 125:1-2,
+        // offline, 13 Nov 2026; it put up Psalm 1:2).
+        static VERSE_THEN_BOOK: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
+            let n = r"(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)";
+            re(&format!(r"(?i)\b({n}\s+verse)\s+([a-z]+)\s+({n})\b"))
+        });
+        let books = crate::reference::Books::get();
+        let text = VERSE_THEN_BOOK.replace_all(&text, |c: &regex::Captures| {
+            if books.alias(&c[2].to_lowercase()).is_some() { format!("{} {}", &c[1], &c[3]) } else { c[0].to_string() }
+        });
         let text = self.cfg.learned.books_put_back(&text);
         let text = PSALM_HEARD.replace_all(&text, |c: &regex::Captures| format!("Psalm {} verse {}", digits(&c[1]), digits(&c[2])));
         self.k.parser(self.cfg.lang).parse_all(&text, self.active(now))
@@ -666,13 +680,15 @@ impl Engine {
             && (self.chapter_pending.as_ref().is_some_and(|p| p.book == c.book && p.chapter == ch) || self.chapter_resolved_for == Some((c.book, ch)))
     }
 
-    /// Of those, the ones a final settled (up to the first it didn't): their citations were
-    /// handled with that final. Words only an interim heard may hold one never acted on
-    /// ("…John chapter three verse sixteen" | "for God so loved the world").
+    /// Of those, the ones up to the last a final settled: their citations were handled with that
+    /// final (a book only an interim heard, before numbers a later final settled, was joined to
+    /// them then: "Jeremiah" | "17 verse seven to eight"). Words only an interim heard after the
+    /// last settled one may hold one never acted on ("…John chapter three verse sixteen" | "for
+    /// God so loved the world").
     fn prev_settled_words(&self) -> String {
         let w = &self.t.words;
         let r = w.before(w.changed().start, JOIN_WORDS, self.t.segment_started, PREV_FINAL_JOIN_WINDOW_MS);
-        let end = (r.start..r.end).find(|&i| w.word(i).is_none_or(|x| x.status != super::words::Status::Settled)).unwrap_or(r.end);
+        let end = (r.start..r.end).rev().find(|&i| w.word(i).is_some_and(|x| x.status == super::words::Status::Settled)).map_or(r.start, |i| i + 1);
         w.text(r.start..end)
     }
 
@@ -790,7 +806,11 @@ impl Engine {
             return false;
         }
         let a = self.verse_call_context(now);
-        if a.book != Some(pending.book) || a.chapter != Some(pending.chapter as u32) {
+        // Named after the verse now up, it is the newer call: the words that follow pick its verse
+        // ("In Romans 10, whosoever call upon the name of Jesus shall be saved" with Matthew 11:28 up
+        // is Romans 10:13; it waited, and went up 12 s late over Deuteronomy, 13 Nov 2026).
+        let named_since_up = self.screen.up.is_none_or(|(_, at)| pending.at > at);
+        if !named_since_up && (a.book != Some(pending.book) || a.chapter != Some(pending.chapter as u32)) {
             self.note(|_| format!("chapter {} of {} is waiting, but the reading context moved on", pending.chapter, pending.book.name()));
             return false;
         }

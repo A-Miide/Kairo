@@ -65,6 +65,8 @@ const NUMBERED: &[(&str, &[&str])] = &[
 /// and ordinal forms for every book are generated, not listed.
 const TITLES: &[(&str, &str)] = &[
     ("acts of the apostles", "acts"), ("acts of the apostle", "acts"), ("acts of apostles", "acts"), ("acts of apostle", "acts"),
+    // Said or heard without the s ("in the book of Act of Apostle one verse eight", 13 Nov 2026).
+    ("act of the apostles", "acts"), ("act of the apostle", "acts"), ("act of apostles", "acts"), ("act of apostle", "acts"),
     ("book of the apostles", "acts"), ("book of the apostle", "acts"), ("book of apostles", "acts"), ("book of apostle", "acts"),
     ("lamentations of jeremiah", "lamentations"),
     ("songs of solomon", "songofsolomon"), ("songs of songs", "songofsolomon"), ("song of songs", "songofsolomon"),
@@ -460,6 +462,7 @@ mod tests {
         assert_eq!(m("timothy 3"), Some((b("1 Timothy"), 1)));
         let books = Books::get();
         assert_eq!(books.apply_titles("in the acts of the apostles chapter 2"), "in the acts chapter 2");
+        assert_eq!(books.apply_titles("in the book of act of apostle one verse eight"), "in the book of acts one verse eight");
         assert_eq!(books.apply_titles("the book of isaiah chapter 53"), "the isaiah chapter 53");
         assert_eq!(books.apply_titles("second timothy 3"), "2 timothy 3");
         assert_eq!(books.apply_titles("the song of songs 2"), "the songofsolomon 2");
