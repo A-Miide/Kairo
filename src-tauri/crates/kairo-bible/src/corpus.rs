@@ -32,7 +32,8 @@ impl fmt::Display for VerseRef {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Debug, serde::Serialize, serde::Deserialize)]
+#[serde(transparent)]
 pub struct VerseId(pub u32);
 
 impl VerseId {

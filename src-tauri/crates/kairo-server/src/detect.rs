@@ -213,6 +213,7 @@ fn run(
 ) {
     let started = Instant::now();
     let mut engine = Engine::new(bible.k(), cfg);
+    record_config(0, engine.config(), true);
     let mut meaning: Option<Arc<MeaningService>> = None;
     let mut range = RangeMirror::default();
     let (mtx, mrx) = mpsc::channel::<Request>();
@@ -245,6 +246,7 @@ fn run(
                 engine.handle(Event::Reset, now)
             }
             Command::Event(e) => {
+                record(now, &e);
                 // A panic in the engine used to end detection for the rest of the service while
                 // transcripts kept scrolling. Now it costs this one stretch of speech: the engine
                 // starts again with the same settings and detection carries on.
@@ -261,18 +263,21 @@ fn run(
             }
             Command::Configure(f) => {
                 f(engine.config_mut());
+                record_config(now, engine.config(), false);
                 continue;
             }
             Command::Knowledge(k, lang) => {
                 let mut cfg = engine.config().clone();
                 cfg.lang = lang;
                 engine = Engine::new(k, cfg);
+                record_config(now, engine.config(), true);
                 continue;
             }
             Command::Meaning(m) => {
                 *models.write().unwrap_or_else(std::sync::PoisonError::into_inner) = Some(m.clone());
                 meaning = Some(m);
                 engine.config_mut().meaning = true;
+                record_config(now, engine.config(), false);
                 continue;
             }
         };
@@ -302,6 +307,39 @@ fn run(
             }
         }
     }
+}
+
+/// Every input the engine takes, at the time it takes it, goes in debug.log: a live run replays
+/// exactly from it (`replay-log` in kairo-eval), meaning answers and timers included, in the order
+/// they arrived. The same inputs always give the same decisions.
+fn record(now: u64, e: &Event) {
+    if let Ok(event) = serde_json::to_value(e) {
+        crate::routes::write_debug_global("server:engine", json!({ "now": now, "event": event }));
+    }
+}
+
+/// The settings the engine decides with, after each change. `fresh`: the engine started again
+/// (new knowledge), forgetting what it was following.
+fn record_config(now: u64, c: &Config, fresh: bool) {
+    let ids = |s: &std::collections::HashSet<VerseId>| {
+        let mut v: Vec<u32> = s.iter().map(|v| v.0).collect();
+        v.sort_unstable();
+        v
+    };
+    crate::routes::write_debug_global("server:engine-config", json!({
+        "now": now,
+        "fresh": fresh,
+        "builtFrom": crate::service_bible::built_from(),
+        "lang": c.lang,
+        "autoSend": c.auto_send,
+        "autoCorrect": c.auto_correct,
+        "offline": c.offline,
+        "meaning": c.meaning,
+        "thresholds": c.meaning_thresholds,
+        "familiar": ids(&c.learned.familiar),
+        "takenDown": ids(&c.learned.taken_down),
+        "bookWords": c.learned.book_words().into_iter().map(|(w, b)| (w, b.name())).collect::<Vec<_>>(),
+    }));
 }
 
 fn panic_text(p: &Box<dyn std::any::Any + Send>) -> String {

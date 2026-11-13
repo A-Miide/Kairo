@@ -17,7 +17,8 @@ use unicode_normalization::UnicodeNormalization;
 
 use crate::re::re;
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "lowercase")]
 pub enum Lang {
     #[default]
     En,

@@ -5,7 +5,7 @@ use kairo_bible::VerseId;
 use super::types::{Method, Target};
 
 /// One recognised stretch of speech.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Segment {
     pub text: String,
     /// Settled (true) or still growing (an interim).
@@ -17,7 +17,7 @@ pub struct Segment {
     pub continues_live: bool,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Event {
     /// Speech from the primary recogniser.
     Speech(Segment),
@@ -50,7 +50,7 @@ pub enum Event {
     Reset,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
 pub enum TimerId {
     /// A chapter said twice: the hold for the words read after it is over.
     RestatedChapter(u32),
@@ -96,7 +96,7 @@ pub enum Request {
     Compare { id: u32, texts: Vec<String>, verses: Vec<VerseId> },
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum Answer {
     Paraphrase { id: u32, candidates: Vec<MeaningHit> },
     Scoped { id: u32, hits: Vec<(VerseId, f32)> },
@@ -104,7 +104,7 @@ pub enum Answer {
 }
 
 /// A verse found by meaning, with the evidence the paraphrase decision weighs.
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MeaningHit {
     pub verse: VerseId,
     /// Best cosine over the windows.
