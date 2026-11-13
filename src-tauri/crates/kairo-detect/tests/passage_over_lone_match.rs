@@ -118,3 +118,24 @@ fn the_passage_on_screen_is_not_replaced_by_a_lone_match_from_another_book() {
     let (i18, i19, i20) = (order.iter().position(|v| *v == "Ephesians 1:18"), order.iter().position(|v| *v == "Ephesians 1:19"), order.iter().position(|v| *v == "Ephesians 1:20"));
     assert!(i18 < i19 && i19 < i20 && i20.is_some(), "{s:?}");
 }
+
+/// The speech `text` arriving a word at a time at the live pace, from `start` ms.
+fn grow(text: &str, start: u64) -> Vec<(u64, bool, String)> {
+    let words: Vec<&str> = text.split_whitespace().collect();
+    (1..=words.len()).map(|n| (start + n as u64 * 570, n == words.len(), words[..n].join(" "))).collect()
+}
+
+/// Ephesians 1:18 read, then a real move to Psalm 79:11 (nothing in Ephesians says these words): the
+/// Psalm still goes straight up. The competing-passage rule only holds back a match when the same words
+/// also found the passage's own next verse.
+#[test]
+fn a_real_move_to_another_verse_still_sends() {
+    let mut ev = grow("the eyes of your understanding being enlightened that ye may know what is the hope of his calling and what the riches of the glory of his inheritance in the saints", 0);
+    let t = ev.last().map_or(0, |e| e.0);
+    ev.extend(grow("now David prayed let the sighing of the prisoner come before thee according to the greatness of thy power preserve thou those that are appointed to die", t + 2_000));
+    let owned: Vec<(u64, bool, &str)> = ev.iter().map(|(ms, f, tx)| (*ms, *f, tx.as_str())).collect();
+    let s = sends(&owned);
+    let screen: Vec<&str> = s.iter().filter(|(on, _)| *on).map(|(_, v)| v.as_str()).collect();
+    assert!(screen.contains(&"Ephesians 1:18"), "{s:?}");
+    assert!(screen.contains(&"Psalms 79:11"), "a real move to Psalm 79:11 must still send: {s:?}");
+}
