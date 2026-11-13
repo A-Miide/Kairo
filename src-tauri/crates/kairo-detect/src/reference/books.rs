@@ -462,7 +462,7 @@ mod tests {
         assert_eq!(m("timothy 3"), Some((b("1 Timothy"), 1)));
         let books = Books::get();
         assert_eq!(books.apply_titles("in the acts of the apostles chapter 2"), "in the acts chapter 2");
-        assert_eq!(books.apply_titles("in the book of act of apostle one verse eight"), "in the book of acts one verse eight");
+        assert_eq!(books.apply_titles("in the book of act of apostle one verse eight"), "in the acts one verse eight");
         assert_eq!(books.apply_titles("the book of isaiah chapter 53"), "the isaiah chapter 53");
         assert_eq!(books.apply_titles("second timothy 3"), "2 timothy 3");
         assert_eq!(books.apply_titles("the song of songs 2"), "the songofsolomon 2");

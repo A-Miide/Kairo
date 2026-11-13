@@ -837,8 +837,11 @@ impl Engine {
         let recent_direct = now.saturating_sub(self.screen.last_citation_at) < DIRECT_REF_SUPPRESS_MS;
         let confidence = best.confidence;
         let evidence = move |score: f32| Evidence { similarity: Some(score), confidence: Some(confidence), ..Default::default() };
+        // Numbers just said without a book ("the Vien two verse ten"): a hit at exactly those numbers
+        // is confirmed by them, whatever its score (Philippians 2:10 at 0.77, 12:38 run, 13 Nov 2026).
+        let at_bare = |v: VerseId| self.at_bare_numbers(v, now);
         if !recent_direct {
-            let qualifying: Vec<(VerseId, f32)> = best.hits.iter().copied().filter(|(_, s)| *s >= SUGGESTION_MIN_SCORE).take(3).collect();
+            let qualifying: Vec<(VerseId, f32)> = best.hits.iter().copied().filter(|&(v, s)| s >= SUGGESTION_MIN_SCORE || at_bare(v)).take(3).collect();
             if let Some(&(v, s)) = qualifying.first() {
                 let verses = qualifying.iter().map(|h| h.0).collect();
                 let mut c = Candidate::new(verses, Method::Fingerprint, s, Target::Suggestions).evidence(evidence(s)).from_text(&found_in);

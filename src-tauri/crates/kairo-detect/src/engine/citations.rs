@@ -733,6 +733,14 @@ impl Engine {
         !c.verses.iter().map(|v| self.r(*v)).any(|r| r.chapter == b.chapter && (b.from..=b.to).contains(&r.verse))
     }
 
+    /// `v` is at the chapter and verse just said without a book, not yet matched to one.
+    pub(crate) fn at_bare_numbers(&self, v: VerseId, now: u64) -> bool {
+        self.cites.bare.filter(|b| b.resolved.is_none() && now.saturating_sub(b.at) < BARE_CITATION_MS).is_some_and(|b| {
+            let r = self.r(v);
+            r.chapter == b.chapter && (b.from..=b.to).contains(&r.verse)
+        })
+    }
+
     pub(crate) fn bare_citation_quoted(&mut self, c: &Candidate, now: u64) -> Option<Candidate> {
         let b = self.cites.bare.filter(|b| now.saturating_sub(b.at) < BARE_CITATION_MS && b.resolved.is_none())?;
         // …or its twin: "chapter seven verse twenty two … unless the beast of the field multiply" is
