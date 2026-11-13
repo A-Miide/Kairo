@@ -6513,7 +6513,7 @@ function restyleScenes(scenes, sources) {
 }
 
 // Templates: what a timer looks like, kept under a name, so any timer can use it. Choosing one restyles this timer's
-// slides (its words stay); edit freely, then "Save as template" to keep what you made. Three ship with Kairo.
+// slides (its words stay); edit freely, then "Save as template" to keep what you made. Five ship with Kairo.
 function timerStyleSection(item) {
   const sel = document.createElement('select');
   sel.className = 'ts-select';

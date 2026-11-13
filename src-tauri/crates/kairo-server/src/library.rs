@@ -316,12 +316,15 @@ pub struct Segments {
 
 /// Saved looks for a timer: the slides (scenes), their pace, and the design under them. The two designs Kairo shipped
 /// as "Preservice" and "Preservice 2" are the first two; anything edited can be saved as another and applied to any timer.
-/// (id, name, key in the announcement pack): a welcome with invitations, a plain starting-soon countdown, and Reach
-/// (a raised hand in blue light, with the big words behind it).
-const BUILT_IN_TEMPLATES: [(&str, &str, &str); 3] = [
+/// (id, name, key in the announcement pack): a welcome with invitations, a plain starting-soon countdown, Reach
+/// (a raised hand in blue light, with the big words behind it), Highlands (a lake and a mountain path in blue, one
+/// serif and one sans) and Ember (warm red, the tree in front of the words).
+const BUILT_IN_TEMPLATES: [(&str, &str, &str); 5] = [
     ("builtin-welcome-to-church", "Welcome and invite", "preservice"),
     ("builtin-welcome", "Starting soon", "preservice2"),
     ("builtin-reach", "Reach", "reach"),
+    ("builtin-highlands", "Highlands", "highlands"),
+    ("builtin-ember", "Ember", "ember"),
 ];
 
 /// The names of a timer's slides, in order: two designs with the same ones are the same design.
@@ -689,10 +692,10 @@ mod template_tests {
         std::fs::write(dir.join("segments").join("timer_styles.json"), old.to_string()).unwrap();
         let styles = TimerStyles::open(&dir).list();
         let names: Vec<&str> = styles.iter().map(|s| s["name"].as_str().unwrap()).collect();
-        assert_eq!(names, ["Starting soon", "Mine", "Welcome and invite", "Reach"]);
+        assert_eq!(names, ["Starting soon", "Mine", "Welcome and invite", "Reach", "Highlands", "Ember"]);
         for s in styles.iter().filter(|s| s["builtIn"] == true) {
             let scenes = s["scenes"].as_array().unwrap();
-            assert!(scenes.len() >= 4, "{} has {} slides", s["name"], scenes.len());
+            assert!(scenes.len() >= 3, "{} has {} slides", s["name"], scenes.len());
             for sc in scenes {
                 assert!(sc["layers"].as_array().unwrap().iter().any(|l| l["binding"] == "timer"), "{} / {} has no countdown", s["name"], sc["name"]);
             }
