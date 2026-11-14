@@ -24,6 +24,8 @@ const GAP_AUDIO_MAX_BYTES: usize = 16_000 * 2 * 30;
 const SPEECH_PEAK_MIN: i32 = 1500;
 /// This much speech with no transcript back: the connection is stuck.
 const STUCK_SPEECH_MS: f64 = 30_000.0;
+/// One frame not sent in this long is a dead connection.
+const SEND_TIMEOUT: Duration = Duration::from_secs(5);
 
 const MSG_AUTH: &str = "Deepgram rejected the API key. Open Settings → paste a valid key.";
 const MSG_CREDITS: &str = "Your Deepgram account is out of credit, so listening stopped. Add credit at console.deepgram.com — or switch the Speech Engine to Offline in Settings to keep going without it.";
@@ -151,8 +153,9 @@ pub async fn start(app: Shared) -> Result<Session, Value> {
         app.hub.broadcast(json!({ "type": "listening-error", "error": "No Deepgram API key yet. Paste one in Settings → Audio, or switch the Speech Engine to Offline." }));
         return Err(json!({ "error": "No Deepgram API key" }));
     }
-    let Some((_, detector)) = app.ready() else { return Err(json!({ "error": "The detection engine is still loading" })) };
-    detector.send(kairo_detect::engine::Event::Reset);
+    if app.ready().is_none() {
+        return Err(json!({ "error": "The detection engine is still loading" }));
+    }
     let (audio_tx, audio_rx) = mpsc::channel::<Bytes>(512);
     *app.audio.lock().await = Some(audio_tx);
     let (stop_tx, stop_rx) = oneshot::channel();
@@ -246,6 +249,9 @@ async fn run(app: Shared, key: String, mut audio: mpsc::Receiver<Bytes>, mut sto
         state(&app, "connected", None);
         if let Some(f) = first.take() {
             eprintln!("[Deepgram] Connected.");
+            // A new service for the detector only once listening has started: a refused connection
+            // used to wipe what it knew of the service (and the verse up) all the same.
+            detector.send(kairo_detect::engine::Event::Reset);
             let _ = f.send(Ok(()));
         } else {
             detector.send(kairo_detect::engine::Event::Reconnected);
@@ -264,8 +270,12 @@ async fn run(app: Shared, key: String, mut audio: mpsc::Receiver<Bytes>, mut sto
             tokio::select! {
                 Some(chunk) = audio.recv() => {
                     speech_ms_since_transcript += speech_ms(&chunk);
-                    if tx.send(Message::Binary(chunk)).await.is_err() {
-                        break "send failed".into();
+                    // A send that never completes (a half-dead connection) held everything up,
+                    // Stop included: it counts as a dropped connection after SEND_TIMEOUT.
+                    match tokio::time::timeout(SEND_TIMEOUT, tx.send(Message::Binary(chunk))).await {
+                        Ok(Ok(())) => {}
+                        Ok(Err(_)) => break "send failed".into(),
+                        Err(_) => break "send stalled".into(),
                     }
                     crate::audio_stats::STATS.engine_frames.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
                     if speech_ms_since_transcript > STUCK_SPEECH_MS {

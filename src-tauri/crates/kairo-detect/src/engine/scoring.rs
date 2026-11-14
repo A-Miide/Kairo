@@ -179,11 +179,10 @@ impl Ledger {
         c.last_at = now_ms;
     }
 
-    pub fn agreement_bonus(&self, v: VerseRef) -> f32 {
-        match self.by_verse.get(&v) {
-            Some(e) if e.methods.len() >= 2 => e.methods.len().min(2) as f32 * ENSEMBLE_BOOST,
-            _ => 0.0,
-        }
+    /// +ENSEMBLE_BOOST for each other method (at most two) that found `v` and may vouch for a
+    /// candidate of `method` (see `vouches`).
+    pub fn agreement_bonus(&self, v: VerseRef, method: Method) -> f32 {
+        self.by_verse.get(&v).map_or(0.0, |e| e.methods.iter().filter(|m| vouches(**m, method)).count().min(2) as f32 * ENSEMBLE_BOOST)
     }
 
     pub fn repeat_bonus(&self, v: VerseRef) -> f32 {
@@ -197,12 +196,21 @@ impl Ledger {
         }
     }
 
-    pub fn total(&self, v: VerseRef) -> f32 {
-        self.agreement_bonus(v) + self.repeat_bonus(v) + self.momentum_bonus(v)
+    pub fn total(&self, v: VerseRef, method: Method) -> f32 {
+        self.agreement_bonus(v, method) + self.repeat_bonus(v) + self.momentum_bonus(v)
     }
 
-    /// Two or more methods have independently landed this verse. Read it
-    /// before recording the candidate being decided — nothing corroborates itself.
+    /// Another method than `method` has landed this verse in the window: a second opinion for a
+    /// candidate of `method`. Read it before recording the candidate — nothing corroborates itself.
+    /// It used to take two landed methods, so the second method to find a verse was never
+    /// corroborated and only a third sighting was: whether a verse went up then turned on how
+    /// often a path happened to search again, which is how the recogniser cut the speech.
+    /// Only a method that may vouch for it counts (see `vouches`).
+    pub fn corroborated(&self, v: VerseRef, method: Method) -> bool {
+        self.by_verse.get(&v).is_some_and(|e| e.landed.iter().any(|m| vouches(*m, method)))
+    }
+
+    /// Two or more methods have landed this verse: the stricter bar a meaning-only match needs.
     pub fn has_corroboration(&self, v: VerseRef) -> bool {
         self.by_verse.get(&v).is_some_and(|e| e.landed.len() >= 2)
     }
@@ -244,6 +252,9 @@ pub struct Score {
     pub d: f32,
     pub a: f32,
     pub very_high: bool,
+    /// Held under the screen bar by a cited range or a twin chapter on screen: nothing after the
+    /// score may put it up.
+    pub capped: bool,
 }
 
 pub fn score(candidate: VerseRef, method: Method, e: &Evidence, ctx: &ScoreContext, ledger: &Ledger) -> Score {
@@ -256,24 +267,43 @@ pub fn score(candidate: VerseRef, method: Method, e: &Evidence, ctx: &ScoreConte
     let explicit = method.is_explicit_book_citation();
     let self_sufficient = b >= VIEWER_MIN_SCORE && !(colliding_with_range && !explicit);
     let d = if self_sufficient { 0.0 } else { distance(candidate, ctx.now_ms, ctx.on_screen, ctx.already_shown) };
-    let a = ledger.total(candidate) + if ctx.named_person_in_chapter { NAMED_ENTITY_BOOST } else { 0.0 };
+    let a = ledger.total(candidate, method) + if ctx.named_person_in_chapter { NAMED_ENTITY_BOOST } else { 0.0 };
     let mut total = clamp01(b + d + a);
     // A cited range holds against coincidental collisions; a near-duplicate
     // passage never takes over from its twin chapter on screen. Absolute: no
     // amount of time or repetition buys past them; a new citation always does.
-    if !explicit && (colliding_with_range || (ctx.confusable_with_screen && ctx.on_screen.is_some_and(|s| s.verse.book != candidate.book))) {
+    let capped = !explicit && (colliding_with_range || (ctx.confusable_with_screen && ctx.on_screen.is_some_and(|s| s.verse.book != candidate.book)));
+    if capped {
         total = total.min(CAPPED);
     }
-    Score { total, b, d, a, very_high: very_high_raw_confidence(method, e) }
+    Score { total, b, d, a, very_high: very_high_raw_confidence(method, e), capped }
 }
 
-/// Screen, Possible Matches or drop. Meaning-only matches reach the screen
-/// only corroborated or at very high confidence. A verse's identifying words
+/// Found by meaning (the preacher's own words), not by the verse's words or its reference.
+pub fn by_meaning(m: Method) -> bool {
+    matches!(m, Method::Paraphrase | Method::Semantic)
+}
+
+/// A hit of method `by` is a second opinion for a candidate of method `of`: another method, and not
+/// a match by meaning, except for a quote of the verse's own words (owner, 14 Nov 2026: no wrong sends
+/// from paraphrase; meaning may confirm a quote). A part-quote and a meaning match landing the same
+/// verse were right every time on the recorded sermons (Mark 11:23, Romans 10:9 said in the preacher's
+/// own order); without it, 5 right verses of the dev sermons were only offered.
+pub fn vouches(by: Method, of: Method) -> bool {
+    by != of && (!by_meaning(by) || of == Method::Verbatim)
+}
+
+/// Screen, Possible Matches or drop. A meaning search within the chapters in play
+/// never reaches the screen (a paraphrase decides for itself, meaning.rs). A verse's identifying words
 /// said in any order (fingerprint) never put it up alone: in a sermon those
 /// words recur every few seconds, and a short verse made of them matches the
 /// preaching itself — it needs a second method (or the chapter on screen).
-pub fn target(total: f32, method: Method, corroborated: bool, very_high: bool) -> Target {
-    if method == Method::Semantic && total >= VIEWER_MIN_SCORE && !(corroborated || very_high) {
+/// `_very_high` no longer sends anything on its own: kept so callers pass what the score found.
+pub fn target(total: f32, method: Method, corroborated: bool, _very_high: bool) -> Target {
+    // A meaning search within the chapters in play is never sent, corroborated or not: on its own it
+    // was right 0 times in 21 (dev sermons), and it can't tell which verse of a passage is meant
+    // (owner, 14 Nov 2026: no wrong sends from natural language).
+    if method == Method::Semantic && total >= VIEWER_MIN_SCORE {
         return Target::Suggestions;
     }
     if method == Method::Fingerprint && total >= VIEWER_MIN_SCORE && !corroborated {
