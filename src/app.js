@@ -410,6 +410,14 @@ function handleServerMessage(msg) {
     // forward into service.js, which owns the Media tab's DOM.
     // The offline engine fell behind live speech and skipped ahead (offline.rs MAX_BEHIND).
     // Counted, one line in the strip: detection only works on live words.
+    // Detection itself in trouble (detect.rs): it restarted after an error, matching by meaning is
+    // too slow here, or audio was dropped before the speech engine. Through the problem strip like
+    // every other problem; `ok` says that one is over.
+    case 'detection-problem':
+      if (msg.ok) window.kairoProblemCleared?.(`detection-${msg.key}`);
+      else window.kairoProblem?.(msg.message, `detection-${msg.key}`);
+      break;
+
     case 'speech-behind': {
       // (The strip counts repeats itself; the total skipped is kept here.)
       window.__speechSkippedMs = (window.__speechSkippedMs || 0) + (msg.skippedMs || 0);

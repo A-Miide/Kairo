@@ -487,8 +487,8 @@ impl Engine {
         if self.range.current.is_some() || c.verses.len() != 1 {
             return false;
         }
-        let Some((up, _)) = self.screen.up else { return false };
-        if self.screen.last_sent_book.is_none_or(|(_, t)| now.saturating_sub(t) >= SAME_BOOK_WINDOW_MS) {
+        let Some((up, at)) = self.screen.up else { return false };
+        if now.saturating_sub(at) >= SAME_BOOK_WINDOW_MS {
             return false;
         }
         let min = if matches!(c.method, Method::Semantic | Method::Fingerprint) { super::scoring::VERY_HIGH_RAW_CONFIDENCE } else { ADVANCE_MIN_SCORE };

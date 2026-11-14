@@ -176,6 +176,8 @@ pub struct Screen {
     pub recent_suggestions: HashMap<VerseId, (u64, Vec<super::types::Method>)>,
     /// When a spoken citation last went through (suppresses redundant suggestions).
     pub last_citation_at: u64,
+    /// Verse → the kinds of match that offered it lately, and when: two kinds agreeing are shown.
+    pub offers: HashMap<VerseId, Vec<(u64, super::types::Method)>>,
 }
 
 impl Screen {

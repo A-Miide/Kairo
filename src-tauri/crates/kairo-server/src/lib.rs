@@ -266,7 +266,7 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         let modern = service_bible::english_modern(&k.corpus, db).unwrap_or_else(|| k.corpus.kjv().clone());
         let bible = Arc::new(Bible::new(k, modern, db.clone(), starting.cfg.app_data_dir.join("packs")));
         let p = starting.presentation.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
-        let cfg = kairo_detect::engine::Config { auto_send: p.auto_send, lang, ..Default::default() };
+        let cfg = kairo_detect::engine::Config { auto_send: p.auto_send, lang, hidden_offers: detect::hidden_offers(), ..Default::default() };
         let detector = Detector::start(bible.clone(), starting.hub.clone(), cfg, starting.presentation.clone(), rt.clone(), starting.log.clone());
         let (a, h) = (starting.clone(), rt);
         let (a2, h2, h3) = (a.clone(), h.clone(), h.clone());

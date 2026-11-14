@@ -514,8 +514,15 @@ impl Engine {
                 // that only those go on screen unasked. Measured 2026-10-16 (replay, meaning on,
                 // dev): paraphrase-to-screen was 8 right and 2 wrong, and live a passing "thank God
                 // victory is here" put 1 Corinthians 15:57 up. Sure ones head Possible Matches.
+                // The surest paraphrase goes up when the sermon is in its passage (a chapter named or
+                // announced, the range being read, the chapter on screen): context makes it the verse
+                // meant. Anywhere else it heads Possible Matches. Sent anywhere, 8 were right and 2
+                // wrong (dev, 2026-10-16), and live a passing "thank God victory is here", with no
+                // passage in play, put 1 Corinthians 15:57 up (owner, 14 Nov 2026: natural language
+                // is knowing when to send and when to offer).
                 if sendable && margin >= s_margin {
-                    return out(Target::Suggestions, SEND_SCORE);
+                    let target = if self.passage_named_in_play(top.hit.verse, now) { Target::Screen } else { Target::Suggestions };
+                    return out(target, SEND_SCORE);
                 }
                 if sendable && second.is_some_and(|s| affinity(top.hit.verse) >= 2.0 && affinity(s.hit.verse) < 2.0) {
                     return out(Target::Suggestions, SEND_SCORE);
@@ -546,6 +553,24 @@ impl Engine {
                 (top.hit.cos >= n_cos && top.lex >= n_lex).then_some((top.hit.verse, Target::Suggestions, OFFER_SCORE, None, top.lex))
             }
         }
+    }
+}
+
+impl Engine {
+    /// `v`'s chapter is the passage the sermon is on, by what was said or put up, not by matches
+    /// alone: in a range being read, announced, named in the last few minutes, waiting for its
+    /// verse, or on screen in the last minute.
+    pub(crate) fn passage_named_in_play(&self, v: VerseId, now: u64) -> bool {
+        let r = self.r(v);
+        let same = |x: VerseId| {
+            let x = self.r(x);
+            (x.book, x.chapter) == (r.book, r.chapter)
+        };
+        self.range.all.iter().any(|x| same(*x))
+            || self.in_announced_passage(r.book, r.chapter)
+            || self.sermon.iter().any(|c| c.named && c.book == r.book && c.chapter == Some(r.chapter) && now.saturating_sub(c.at) < super::core::CONTEXT_WINDOW_MS)
+            || self.chapter_pending.as_ref().is_some_and(|p| (p.book, p.chapter) == (r.book, r.chapter))
+            || self.screen.up.is_some_and(|(u, at)| same(u) && now.saturating_sub(at) < super::scoring::SAME_BOOK_WINDOW_MS)
     }
 }
 

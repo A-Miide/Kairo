@@ -16,7 +16,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use kairo_bible::{Book, Corpus, VerseId};
-use kairo_detect::engine::{Config, Effect, Engine, Event, Learned, MeaningThresholds, Target};
+use kairo_detect::engine::{Config, Effect, Engine, Event, Learned, MeaningThresholds, Method, Target};
 use kairo_detect::knowledge::Knowledge;
 use kairo_detect::lexical::Wordings;
 use kairo_detect::reference::Lang;
@@ -113,6 +113,7 @@ fn config(c: &Value, k: &Knowledge) -> Config {
         explain: false,
         meaning_thresholds: serde_json::from_value::<MeaningThresholds>(c["thresholds"].clone()).unwrap_or(MeaningThresholds::LEGACY),
         learned: Arc::new(Learned::new(book_words, ids("familiar"), ids("takenDown"))),
+        hidden_offers: c["hiddenOffers"].as_array().map(|a| a.iter().filter_map(|m| Method::ALL.into_iter().find(|x| Some(x.wire()) == m.as_str())).collect()).unwrap_or_default(),
     }
 }
 
@@ -149,7 +150,9 @@ fn replay(lines: &[Line], data: &Path, explain: Option<(u64, u64)>) -> Vec<(u64,
                 cfg.explain = explain.is_some();
                 match (&mut engine, c["fresh"].as_bool() == Some(true)) {
                     (Some((e, _)), false) => *e.config_mut() = cfg,
-                    _ => engine = Some((Engine::new(k.clone(), cfg), k)),
+                    // Started again live keeps what is true of the room (Engine::restarted).
+                    (Some((e, _)), true) => engine = Some((e.restarted(k.clone(), cfg), k)),
+                    (None, _) => engine = Some((Engine::new(k.clone(), cfg), k)),
                 }
             }
             Line::Input { now, at, event } => {

@@ -83,14 +83,15 @@ fn run(k: &Arc<Knowledge>, golden: &Value, inputs: &[Input], m: Option<&MeaningS
     let mut rng = Rng(shake.map_or(1, |s| s.1));
     let mut sends = Vec::new();
     let mut wakes: Vec<(u64, Event)> = Vec::new();
-    // Requests waiting for their answer: (inputs still to go before it lands, request).
-    let mut pending: VecDeque<(u64, Request)> = VecDeque::new();
+    // Requests waiting for their answer: (inputs still to go before it may land, request, the input it was asked at).
+    let mut pending: VecDeque<(u64, Request, u64)> = VecDeque::new();
+    let input = std::cell::Cell::new(0u64);
     let mut last_t = 0u64;
     let label = |v| {
         let r = k.verse_ref(v);
         format!("{} {}:{}", r.book.name(), r.chapter, r.verse)
     };
-    let mut take = |o: kairo_detect::engine::Output, wakes: &mut Vec<(u64, Event)>, pending: &mut VecDeque<(u64, Request)>, rng: &mut Rng, sends: &mut Vec<String>| {
+    let take = |o: kairo_detect::engine::Output, wakes: &mut Vec<(u64, Event)>, pending: &mut VecDeque<(u64, Request, u64)>, rng: &mut Rng, sends: &mut Vec<String>| {
         for e in o.effects {
             match e {
                 Effect::Show { verses, target: Target::Screen, .. } if !verses.is_empty() => sends.push(label(verses[0])),
@@ -101,11 +102,12 @@ fn run(k: &Arc<Knowledge>, golden: &Value, inputs: &[Input], m: Option<&MeaningS
         if m.is_some() {
             for r in o.requests {
                 let lag = shake.map_or(0, |s| rng.below(s.0.answer_lag + 1));
-                pending.push_back((lag, r));
+                pending.push_back((lag, r, input.get()));
             }
         }
     };
     for (i, (t, text, fin, speech_final, continues)) in inputs.iter().enumerate() {
+        input.set(i as u64);
         let (shake_now, _) = match shake {
             Some((s, _)) => (Some(s), ()),
             None => (None, ()),
@@ -119,6 +121,18 @@ fn run(k: &Arc<Knowledge>, golden: &Value, inputs: &[Input], m: Option<&MeaningS
         }
         let jitter = shake_now.map_or(0, |s| rng.below(2 * s.jitter + 1)) as i64 - shake_now.map_or(0, |s| s.jitter) as i64;
         let now = ((*t as i64 + jitter).max(last_t as i64)) as u64;
+        // Answers due land before a finished stretch (never before words still being said), in the
+        // order they were asked, at the time of the input before (detect.rs settle); one landing may
+        // ask again.
+        // …or once owed more than OWED_INPUTS inputs.
+        if *fin || pending.iter().any(|(_, _, at)| (i as u64).saturating_sub(*at) > kairo_server::detect::OWED_INPUTS) {
+            while let Some(m) = m {
+                let Some(pos) = pending.iter().position(|(lag, _, _)| *lag == 0) else { break };
+                let (_, r, _) = pending.remove(pos).unwrap();
+                let o = engine.handle(Event::Answer(answer(m, &r)), last_t);
+                take(o, &mut wakes, &mut pending, &mut rng, &mut sends);
+            }
+        }
         last_t = now;
         wakes.sort_by_key(|w| w.0);
         while wakes.first().is_some_and(|w| w.0 <= now) {
@@ -128,14 +142,7 @@ fn run(k: &Arc<Knowledge>, golden: &Value, inputs: &[Input], m: Option<&MeaningS
         }
         let o = engine.handle(Event::Speech(Segment { text: text.clone(), is_final: *fin, speech_final: *speech_final, continues_live: *continues }), now);
         take(o, &mut wakes, &mut pending, &mut rng, &mut sends);
-        // Answers due now land, in the order they were asked; one landing may ask again.
-        while let Some(m) = m {
-            let Some(pos) = pending.iter().position(|(lag, _)| *lag == 0) else { break };
-            let (_, r) = pending.remove(pos).unwrap();
-            let o = engine.handle(Event::Answer(answer(m, &r)), now);
-            take(o, &mut wakes, &mut pending, &mut rng, &mut sends);
-        }
-        pending.iter_mut().for_each(|(lag, _)| *lag = lag.saturating_sub(1));
+        pending.iter_mut().for_each(|(lag, _, _)| *lag = lag.saturating_sub(1));
     }
     sends
 }

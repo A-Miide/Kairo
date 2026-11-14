@@ -32,6 +32,20 @@ pub enum Method {
 }
 
 impl Method {
+    pub const ALL: [Method; 11] = [
+        Method::Direct,
+        Method::ContextCitation,
+        Method::Continuation,
+        Method::DirectPartial,
+        Method::ChapterKeyword,
+        Method::Verbatim,
+        Method::Stream,
+        Method::Fingerprint,
+        Method::Semantic,
+        Method::Paraphrase,
+        Method::NamedPassage,
+    ];
+
     /// Names its own passage — a spoken citation or trigger, not a text match.
     pub fn is_explicit_book_citation(self) -> bool {
         matches!(self, Method::Direct | Method::ChapterKeyword | Method::Continuation | Method::ContextCitation)

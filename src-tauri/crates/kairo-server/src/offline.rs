@@ -829,19 +829,43 @@ const RESTARTS_PER_MINUTE: usize = 3;
 /// 64 ms frames).
 const REPLAY_FRAMES: usize = 125;
 /// Settled words remembered, so a restarted engine doesn't repeat them.
-const REMEMBERED_WORDS: usize = 40;
+const REMEMBERED_WORDS: usize = 60;
+/// Speech fed to the engine with nothing back for this long: it is alive but stuck, and is
+/// restarted (as Deepgram's connection is after STUCK_SPEECH_MS).
+const STUCK_SPEECH: Duration = Duration::from_secs(30);
+/// A frame this loud somewhere is speech (or song), not room tone (deepgram.rs SPEECH_PEAK_MIN).
+const SPEECH_PEAK_MIN: i32 = 1500;
+
+/// Milliseconds of sound in a frame of 16 kHz 16-bit PCM (0 if it's quiet).
+fn sound_ms(chunk: &[u8]) -> u64 {
+    let peak = chunk.chunks_exact(2).step_by(4).map(|b| (i16::from_le_bytes([b[0], b[1]]) as i32).abs()).max().unwrap_or(0);
+    if peak >= SPEECH_PEAK_MIN { (chunk.len() / 2) as u64 / 16 } else { 0 }
+}
 
 fn plain(w: &str) -> String {
     w.chars().filter(|c| c.is_alphanumeric()).collect::<String>().to_lowercase()
 }
 
-/// `text` without its opening words that are the end of what was already
-/// settled (`said`): a restarted engine re-hears the last few seconds.
-fn without_repeat(said: &std::collections::VecDeque<String>, text: &str) -> String {
+/// `text` without its opening words that were already settled (`said`): a restarted engine re-hears
+/// the last few seconds. Its first words may be the end of what was settled (they're cut off), or
+/// lie wholly inside it, the replay having started further back (then all of it is a repeat, and
+/// `None` says the engine hasn't caught up yet). Only the end of what was settled was looked for, so
+/// a replay starting mid-way went to the detector again, as new speech.
+fn without_repeat(said: &std::collections::VecDeque<String>, text: &str) -> (String, bool) {
     let words: Vec<&str> = text.split_whitespace().collect();
+    let said: Vec<&String> = said.iter().collect();
     let max = words.len().min(said.len());
-    let k = (1..=max).rev().find(|&k| said.iter().skip(said.len() - k).zip(&words[..k]).all(|(a, b)| *a == plain(b))).unwrap_or(0);
-    words[k..].join(" ")
+    // The end of what was settled.
+    let k = (1..=max).rev().find(|&k| said[said.len() - k..].iter().zip(&words[..k]).all(|(a, b)| **a == plain(b))).unwrap_or(0);
+    if k > 0 {
+        return (words[k..].join(" "), true);
+    }
+    // All of it inside what was settled, further back.
+    let inside = !words.is_empty() && said.windows(words.len()).any(|w| w.iter().zip(&words).all(|(a, b)| **a == plain(b)));
+    if inside {
+        return (String::new(), false);
+    }
+    (text.to_string(), true)
 }
 
 /// Windows' counterpart of the worker's QoS: the whole process above normal (Windows threads don't
@@ -1069,12 +1093,22 @@ fn supervise(
     let mut tell = |h: Heard| {
         crate::audio_stats::STATS.engine_results.fetch_add(1, Ordering::Relaxed);
         let h = if catching_up.get() {
-            let strip = |t: &str| without_repeat(&said, t);
-            match h {
+            // Still re-hearing what was settled: nothing new yet, and still catching up.
+            let mut caught = true;
+            let mut strip = |t: &str| {
+                let (rest, past) = without_repeat(&said, t);
+                caught = past;
+                rest
+            };
+            let h = match h {
                 Heard::Interim(t) => Heard::Interim(strip(&t)),
                 Heard::Locked(t) => Heard::Locked(strip(&t)),
                 Heard::Final(t) => Heard::Final(strip(&t)),
+            };
+            if !caught {
+                return;
             }
+            h
         } else {
             h
         };
@@ -1129,6 +1163,8 @@ fn supervise(
         }
         let mut input = child.stdin.take();
         let mut dead = false;
+        // Sound fed since the engine last said anything: an engine alive but stuck is restarted.
+        let mut unanswered_ms = 0u64;
         // What this engine was last told about singing (a restarted one starts out not told).
         let mut told_singing = false;
         // After a restart: the last seconds again first (see REPLAY_FRAMES).
@@ -1145,10 +1181,17 @@ fn supervise(
         loop {
             while let Ok(m) = from.try_recv() {
                 match m {
-                    FromWorker::Heard(h) => tell(h),
+                    FromWorker::Heard(h) => {
+                        unanswered_ms = 0;
+                        tell(h)
+                    }
                     // A song dropped to stay live is no loss: logged, not put to the operator.
-                    FromWorker::Skipped(ms, true) => crate::routes::write_debug_global("server:singing-skipped", json!({ "skippedMs": ms })),
+                    FromWorker::Skipped(ms, true) => {
+                        unanswered_ms = 0;
+                        crate::routes::write_debug_global("server:singing-skipped", json!({ "skippedMs": ms }))
+                    }
                     FromWorker::Skipped(ms, false) => {
+                        unanswered_ms = 0;
                         // Said, in the log and to the operator: this computer can't keep up.
                         crate::routes::write_debug_global("server:speech-behind", json!({ "skippedMs": ms }));
                         hub.broadcast(json!({ "type": "speech-behind", "skippedMs": ms }));
@@ -1198,12 +1241,19 @@ fn supervise(
                     break;
                 }
                 crate::audio_stats::STATS.engine_frames.fetch_add(1, Ordering::Relaxed);
+                // Music without words (a band playing, singing heard) is sound an engine rightly says nothing to.
+                if crate::music::SINGING.load(Ordering::Relaxed) { unanswered_ms = 0 } else { unanswered_ms += sound_ms(&chunk) }
                 recent.push_back(chunk);
                 if recent.len() > REPLAY_FRAMES {
                     recent.pop_front();
                 }
             }
             if dead {
+                break;
+            }
+            if unanswered_ms > STUCK_SPEECH.as_millis() as u64 {
+                eprintln!("[Offline] {} s of sound with nothing heard back: restarting the speech engine", unanswered_ms / 1000);
+                crate::routes::write_debug_global("server:speech-engine-stuck", json!({ "soundMs": unanswered_ms }));
                 break;
             }
             if !got {
@@ -1272,9 +1322,18 @@ mod tests {
     #[test]
     fn a_restarted_engine_does_not_repeat_settled_words() {
         let said: std::collections::VecDeque<String> = ["through", "this", "testimony"].iter().map(|w| w.to_string()).collect();
-        assert_eq!(super::without_repeat(&said, "this testimony, Ephesians two six came"), "Ephesians two six came");
-        assert_eq!(super::without_repeat(&said, "Ephesians two six"), "Ephesians two six");
-        assert_eq!(super::without_repeat(&said, "Testimony."), "");
+        let rest = |t: &str| super::without_repeat(&said, t).0;
+        assert_eq!(rest("this testimony, Ephesians two six came"), "Ephesians two six came");
+        assert_eq!(rest("Ephesians two six"), "Ephesians two six");
+        assert_eq!(rest("Testimony."), "");
+    }
+
+    #[test]
+    fn a_restarted_engine_replaying_from_further_back_says_nothing_new_yet() {
+        // Remembered as the app remembers settled words: plain, lowercase.
+        let said: std::collections::VecDeque<String> = "we read in Romans eight that all things work together".split(' ').map(super::plain).collect();
+        assert_eq!(super::without_repeat(&said, "Romans eight that all"), (String::new(), false), "inside what was settled: still catching up");
+        assert_eq!(super::without_repeat(&said, "work together for good"), ("for good".to_string(), true));
     }
 
     #[test]

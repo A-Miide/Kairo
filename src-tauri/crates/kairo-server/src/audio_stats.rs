@@ -52,6 +52,10 @@ pub fn spawn_reporter(app: Shared) {
             if !listening && frames == 0 {
                 continue;
             }
+            // Frames the engine's queue had no room for are speech never heard: the operator is told.
+            if dropped > 0 && listening {
+                app.hub.broadcast(json!({ "type": "detection-problem", "key": "audio-dropped", "message": "Some audio couldn't reach the speech engine in time, so a few words weren't heard." }));
+            }
             let peak_db = if peak == 0 { None } else { Some(((peak as f64 / 32768.0).log10() * 20.0).round()) };
             crate::routes::write_debug_line(&app, "server:audio", json!({
                 "framesIn": frames, "zeroFrames": zeros, "peakDb": peak_db, "dropped": dropped,

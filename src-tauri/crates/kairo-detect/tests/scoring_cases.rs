@@ -180,7 +180,7 @@ fn meaning_only_matches_have_a_ceiling() {
     let s = score(v("Romans", 8, 28), Method::Semantic, &sem(0.90), &ctx(T0, None), &l);
     assert!(!s.very_high && target(s.total, Method::Semantic, false, s.very_high) != Target::Screen);
     let s = score(v("Romans", 8, 28), Method::Semantic, &sem(0.99), &ctx(T0, None), &l);
-    assert!(s.very_high && target(s.total, Method::Semantic, false, s.very_high) == Target::Screen);
+    assert!(s.very_high && target(s.total, Method::Semantic, false, s.very_high) == Target::Suggestions, "even a very sure meaning search is only offered");
     let fp = |sim: f32, c: Confidence| Evidence { similarity: Some(sim), confidence: Some(c), ..Default::default() };
     assert!(!sends(score(v("Romans", 8, 28), Method::Fingerprint, &fp(0.90, Confidence::High), &ctx(T0, None), &l).total));
     assert!(sends(score(v("Romans", 8, 28), Method::Fingerprint, &fp(0.97, Confidence::High), &ctx(T0, None), &l).total));
@@ -192,14 +192,14 @@ fn meaning_only_matches_have_a_ceiling() {
 }
 
 #[test]
-fn corroboration_lifts_the_meaning_ceiling_not_the_bar() {
+fn a_meaning_search_is_never_sent_even_corroborated() {
     let mut l = Ledger::default();
     l.record(v("Romans", 8, 28), Method::Stream, T0 - 3000, true);
     l.record(v("Romans", 8, 28), Method::Fingerprint, T0 - 2000, true);
     let corroborated = l.has_corroboration(v("Romans", 8, 28));
     assert!(corroborated);
     let s = score(v("Romans", 8, 28), Method::Semantic, &Evidence { similarity: Some(0.99), ..Default::default() }, &ctx(T0, None), &l);
-    assert_eq!(target(s.total, Method::Semantic, corroborated, s.very_high), Target::Screen);
+    assert_eq!(target(s.total, Method::Semantic, corroborated, s.very_high), Target::Suggestions);
     let s = score(v("Romans", 8, 28), Method::Semantic, &Evidence { similarity: Some(0.3), ..Default::default() }, &ctx(T0, None), &l);
     assert!(target(s.total, Method::Semantic, corroborated, s.very_high) != Target::Screen);
 }
@@ -209,10 +209,32 @@ fn only_hits_that_landed_corroborate() {
     let mut l = Ledger::default();
     l.record(v("1 Peter", 1, 3), Method::Stream, T0 - 3000, true);
     l.record(v("1 Peter", 1, 3), Method::Verbatim, T0 - 2000, false);
-    assert!(!l.has_corroboration(v("1 Peter", 1, 3)));
-    assert!(l.agreement_bonus(v("1 Peter", 1, 3)) > 0.0);
+    assert!(!l.corroborated(v("1 Peter", 1, 3), Method::Stream), "its own method is no second opinion, and the quote didn't land");
+    assert!(l.agreement_bonus(v("1 Peter", 1, 3), Method::Semantic) > 0.0);
     l.record(v("1 Peter", 1, 3), Method::Semantic, T0 - 1000, true);
     assert!(l.has_corroboration(v("1 Peter", 1, 3)));
+}
+
+#[test]
+fn the_second_method_to_land_a_verse_is_corroborated() {
+    let mut l = Ledger::default();
+    l.record(v("Romans", 10, 9), Method::Fingerprint, T0 - 2000, true);
+    assert!(l.corroborated(v("Romans", 10, 9), Method::Verbatim), "one other method that landed is a second opinion");
+    assert!(!l.corroborated(v("Romans", 10, 9), Method::Fingerprint), "the same method again is not");
+    assert!((l.agreement_bonus(v("Romans", 10, 9), Method::Verbatim) - 0.08).abs() < 1e-6);
+    assert_eq!(l.agreement_bonus(v("Romans", 10, 9), Method::Fingerprint), 0.0);
+}
+
+#[test]
+fn a_match_by_meaning_helps_only_a_quote_onto_the_screen() {
+    let mut l = Ledger::default();
+    l.record(v("Romans", 10, 9), Method::Paraphrase, T0 - 2000, true);
+    l.record(v("Romans", 10, 9), Method::Semantic, T0 - 1000, true);
+    assert!(!l.corroborated(v("Romans", 10, 9), Method::Stream));
+    assert_eq!(l.agreement_bonus(v("Romans", 10, 9), Method::Fingerprint), 0.0);
+    // …except for a quote of the verse's own words.
+    assert!(l.corroborated(v("Romans", 10, 9), Method::Verbatim));
+    assert!(l.agreement_bonus(v("Romans", 10, 9), Method::Verbatim) > 0.0);
 }
 
 #[test]
