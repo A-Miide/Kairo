@@ -202,6 +202,7 @@ async fn start_listening(State(app): State<Shared>, Json(body): Json<Value>) -> 
         crate::meaning_multi::follow_language(&app, &spoken);
     }
     crate::interpretation::with(|i| i.reset(&spoken));
+    crate::music::reset();
     // Which recogniser this run used, so two runs of the same audio can be told apart in the log.
     let offline = engine == "offline" || engine == "browser";
     crate::routes::write_debug_global("server:listening", json!({

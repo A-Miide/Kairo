@@ -27,7 +27,14 @@ fn main() {
     let k = Arc::new(knowledge());
     let m = opt("--meaning").map(|e| meaning(&e, Some("minilm.json"), &["KJV"]));
     // `--offline`: as the app runs it with the offline speech engine (its interims' last word still growing).
-    let mut engine = Engine::new(k.clone(), Config { explain, meaning: m.is_some(), offline: args.iter().any(|a| a == "--offline"), ..Config::default() });
+    // The thresholds the app uses with this embedder (replay.rs): with the defaults, tuned for another
+    // model, a bge-small run offered far fewer paraphrases than the app does.
+    let thresholds = opt("--meaning")
+        .and_then(|e| std::fs::read(kairo_eval::root().join("src-tauri/crates/kairo-semantic/bench").join(e)).ok())
+        .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+        .and_then(|v| v["name"].as_str().map(kairo_detect::engine::MeaningThresholds::for_embedder))
+        .unwrap_or_default();
+    let mut engine = Engine::new(k.clone(), Config { explain, meaning: m.is_some(), meaning_thresholds: thresholds, offline: args.iter().any(|a| a == "--offline"), ..Config::default() });
 
     // `--segments`: one line per segment as the speech engine sent it; a line starting "~ " is an
     // interim, any other line a final (reproduces what a live log shows, which re-splitting can't).

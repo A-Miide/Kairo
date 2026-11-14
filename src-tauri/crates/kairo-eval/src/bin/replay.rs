@@ -391,6 +391,10 @@ fn replay(k: &Arc<Knowledge>, golden: &Value, audio: bool, m: Option<&MeaningSer
     let mut out = Vec::new();
     let mut wakes: Vec<(u64, Event)> = Vec::new();
     let started = Instant::now();
+    // Meaning requests sent and not yet answered, oldest first; and the time of the last input.
+    let mut owed: std::collections::VecDeque<(kairo_detect::engine::Request, u64)> = std::collections::VecDeque::new();
+    let mut last_t = 0u64;
+    let mut heard = 0u64;
     let collect = |o: Output, cue: usize, wakes: &mut Vec<(u64, Event)>, out: &mut Vec<Decision>| {
         for e in o.effects {
             match e {
@@ -426,6 +430,40 @@ fn replay(k: &Arc<Knowledge>, golden: &Value, audio: bool, m: Option<&MeaningSer
             }
             engine.handle(Event::Singing(on), at);
         }
+        // The answers owed, before anything but words still being said, at the time of the input
+        // before (detect.rs settle): the app no longer waits for them on words still being said.
+        heard += 1;
+        if fin || owed.front().is_some_and(|(_, at)| heard.saturating_sub(*at) > kairo_server::detect::OWED_INPUTS) {
+            let mut requests: std::collections::VecDeque<kairo_detect::engine::Request> = std::mem::take(&mut owed).into_iter().map(|(r, _)| r).collect();
+            while let (Some(m), Some(r)) = (m, requests.pop_front()) {
+                if let (Ok(path), kairo_detect::engine::Request::Scoped { text, verses, .. }) = (std::env::var("SCOPED_LOG"), &r) {
+                    use std::io::Write;
+                    let line = serde_json::json!({ "text": text, "verses": verses.iter().map(|v| v.0).collect::<Vec<_>>() });
+                    let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path).unwrap();
+                    writeln!(f, "{line}").unwrap();
+                }
+                let a = answer(m, &r);
+                // `MEANING_LOG=<file>`: every meaning search and what it found, one JSON line each.
+                if let (Ok(path), kairo_detect::engine::Request::Paraphrase { windows, .. }, kairo_detect::engine::Answer::Paraphrase { candidates, .. }) = (std::env::var("MEANING_LOG"), &r, &a) {
+                    use std::io::Write;
+                    let hits: Vec<Value> = candidates.iter().map(|h| json!({ "verse": label(k, h.verse), "cos": h.cos, "rr": h.rerank, "rrm": h.rerank_modern, "window": h.window })).collect();
+                    let line = json!({ "sermon": golden["source"].as_str().unwrap_or(""), "t": t, "windows": windows, "hits": hits });
+                    let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path).unwrap();
+                    writeln!(f, "{line}").unwrap();
+                }
+                let o = engine.handle(Event::Answer(a), last_t);
+                if trace.is_some_and(|(a, b)| cue >= a && cue <= b) {
+                    for n in &o.notes {
+                        println!("      .. {n}");
+                    }
+                    for e in &o.effects {
+                        println!("      -> {e:?}");
+                    }
+                }
+                requests.extend(o.requests.iter().cloned());
+                collect(o, cue, &mut wakes, &mut out);
+            }
+        }
         // Timers due before this input fire first.
         wakes.sort_by_key(|w| w.0);
         while wakes.first().is_some_and(|w| w.0 <= t) {
@@ -455,37 +493,9 @@ fn replay(k: &Arc<Knowledge>, golden: &Value, audio: bool, m: Option<&MeaningSer
                 }
             }
         }
-        let mut requests = o.requests.clone();
+        owed.extend(o.requests.iter().cloned().map(|r| (r, heard)));
         collect(o, cue, &mut wakes, &mut out);
-        // The models answer at once (their latency is the runtime's concern).
-        while let (Some(m), Some(r)) = (m, requests.pop()) {
-            if let (Ok(path), kairo_detect::engine::Request::Scoped { text, verses, .. }) = (std::env::var("SCOPED_LOG"), &r) {
-                use std::io::Write;
-                let line = serde_json::json!({ "text": text, "verses": verses.iter().map(|v| v.0).collect::<Vec<_>>() });
-                let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path).unwrap();
-                writeln!(f, "{line}").unwrap();
-            }
-            let a = answer(m, &r);
-            // `MEANING_LOG=<file>`: every meaning search and what it found, one JSON line each.
-            if let (Ok(path), kairo_detect::engine::Request::Paraphrase { windows, .. }, kairo_detect::engine::Answer::Paraphrase { candidates, .. }) = (std::env::var("MEANING_LOG"), &r, &a) {
-                use std::io::Write;
-                let hits: Vec<Value> = candidates.iter().map(|h| json!({ "verse": label(k, h.verse), "cos": h.cos, "rr": h.rerank, "rrm": h.rerank_modern, "window": h.window })).collect();
-                let line = json!({ "sermon": golden["source"].as_str().unwrap_or(""), "t": t, "windows": windows, "hits": hits });
-                let mut f = std::fs::OpenOptions::new().create(true).append(true).open(path).unwrap();
-                writeln!(f, "{line}").unwrap();
-            }
-            let o = engine.handle(Event::Answer(a), t);
-            if traced {
-                for n in &o.notes {
-                    println!("      .. {n}");
-                }
-                for e in &o.effects {
-                    println!("      -> {e:?}");
-                }
-            }
-            requests.extend(o.requests.iter().cloned());
-            collect(o, cue, &mut wakes, &mut out);
-        }
+        last_t = t;
     }
     (out, started.elapsed().as_secs_f64())
 }

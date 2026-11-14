@@ -30,6 +30,15 @@ const MUSIC: usize = 132;
 
 static AUDIO: OnceLock<SyncSender<Vec<f32>>> = OnceLock::new();
 
+/// Listening is starting: what the classifier last heard was before Stop (no audio reaches it while
+/// not listening), so it starts again, not singing, and hears the room afresh.
+static FRESH: AtomicBool = AtomicBool::new(false);
+
+pub fn reset() {
+    SINGING.store(false, Ordering::Relaxed);
+    FRESH.store(true, Ordering::Relaxed);
+}
+
 /// Starts the classifier when the model is installed.
 pub fn start(model: &Path, app: Shared) {
     if !model.exists() {
@@ -61,6 +70,11 @@ fn run(mut session: Session, rx: Receiver<Vec<f32>>, app: Shared) {
     let mut fresh = 0;
     let mut gate = MusicGate::default();
     for chunk in rx {
+        if FRESH.swap(false, Ordering::Relaxed) {
+            buf.clear();
+            fresh = 0;
+            gate = MusicGate::default();
+        }
         fresh += chunk.len();
         buf.extend(chunk);
         while buf.len() > FRAME {

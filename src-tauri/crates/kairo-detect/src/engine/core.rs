@@ -34,11 +34,14 @@ pub struct Config {
     pub meaning_thresholds: MeaningThresholds,
     /// What this church's services taught (learned.rs); empty by default.
     pub learned: std::sync::Arc<super::learned::Learned>,
+    /// Kinds of match that are only offered and wrong too often to show alone (the server's measured
+    /// accuracy): kept out of Possible Matches unless another kind offers the same verse (decide.rs).
+    pub hidden_offers: Vec<Method>,
 }
 
 impl Default for Config {
     fn default() -> Self {
-        Config { lang: Lang::En, auto_send: true, auto_correct: true, offline: false, meaning: false, explain: false, meaning_thresholds: MeaningThresholds::LEGACY, learned: Default::default() }
+        Config { lang: Lang::En, auto_send: true, auto_correct: true, offline: false, meaning: false, explain: false, meaning_thresholds: MeaningThresholds::LEGACY, learned: Default::default(), hidden_offers: Vec::new() }
     }
 }
 
@@ -336,9 +339,29 @@ impl Engine {
         self.screen.last_citation_at = 0;
     }
 
+    /// A new service (listening started): everything about the last one is forgotten but the verse
+    /// on the output, which is still showing. Singing is heard afresh (the classifier starts again
+    /// with listening, music.rs), and request ids carry on, so a meaning answer to the last
+    /// service's request can't pass for one of this one's.
     fn reset(&mut self) {
-        let (k, cfg) = (self.k.clone(), std::mem::take(&mut self.cfg));
-        *self = Engine::new(k, cfg);
+        let (k, cfg) = (self.k.clone(), self.cfg.clone());
+        let mut e = Engine::new(k, cfg);
+        e.screen.up = self.screen.up;
+        e.next_id = self.next_id;
+        e.last_now = self.last_now;
+        *self = e;
+    }
+
+    /// A fresh engine mid-service (new knowledge, or after a panic) that keeps what is true of the
+    /// room: singing heard, and the verse on the output. Started blank, a song going on was taken for
+    /// speech (its lyrics could auto-send) and the verse up was forgotten.
+    pub fn restarted(&self, k: Arc<Knowledge>, cfg: Config) -> Engine {
+        let mut e = Engine::new(k, cfg);
+        e.screen.singing = self.screen.singing;
+        e.screen.up = self.screen.up;
+        e.next_id = self.next_id;
+        e.last_now = self.last_now;
+        e
     }
 
     pub(crate) fn effect(&mut self, e: Effect) {
@@ -566,6 +589,7 @@ impl Engine {
         self.t.interim.clear();
         self.t.words.settle(&text, now, seg.continues_live);
         self.t.push_final(&text, now);
+        self.lapse_reading_mode(now);
         let pace = self.t.pace_factor();
         self.reading.set_pace(pace);
         self.stream_new_words(&text, true, seg.continues_live, now);

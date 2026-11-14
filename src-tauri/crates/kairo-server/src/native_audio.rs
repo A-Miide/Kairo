@@ -26,6 +26,18 @@ use crate::Shared;
 const RATE: u32 = 16_000;
 const FRAME: usize = 1024;
 
+/// The gain each input settled on, by name: a new session starts from it instead of 1.0, as the
+/// page's capture does (app.js), so its first sentences aren't heard while the gain climbs back.
+static SETTLED_GAIN: std::sync::Mutex<Option<std::collections::HashMap<String, f32>>> = std::sync::Mutex::new(None);
+
+fn settled_gain(name: &str) -> f32 {
+    crate::util::lock(&SETTLED_GAIN).as_ref().and_then(|m| m.get(name).copied()).unwrap_or(1.0)
+}
+
+fn remember_gain(name: &str, gain: f32) {
+    crate::util::lock(&SETTLED_GAIN).get_or_insert_with(Default::default).insert(name.to_string(), gain);
+}
+
 /// The names of the sound inputs, as the system names them.
 pub fn inputs() -> Vec<String> {
     let host = cpal::default_host();
@@ -105,6 +117,7 @@ pub fn start(app: Shared, want: &str, feed: bool) -> Result<Capture, String> {
             let mut lowpass = Biquad::lowpass(opened.rate as f32, 7000.0);
             let mut resample = Resampler::new(opened.rate, RATE);
             let mut level = LevelControl::new(is_digital(&name));
+            level.gain = settled_gain(&name).clamp(1.0, level.max_gain);
             let mut pending: Vec<f32> = Vec::with_capacity(FRAME * 2);
             let mut resampled = Vec::with_capacity(FRAME);
             let mut frames = 0u64;
@@ -150,6 +163,7 @@ pub fn start(app: Shared, want: &str, feed: bool) -> Result<Capture, String> {
                     frames += 1;
                     // The page's meters and silence watch, about six times a second.
                     if frames % 3 == 0 {
+                        remember_gain(&name, level.gain);
                         app.hub.broadcast(json!({ "type": "input-level", "peak": peak, "clipped": clipped, "gain": level.gain, "device": name }));
                     }
                 }

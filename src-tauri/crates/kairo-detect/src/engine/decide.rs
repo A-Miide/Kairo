@@ -20,6 +20,10 @@ const NEAR_EXACT_SCORE: f32 = 0.95;
 /// How long a finished range (its last verse reached) still holds off other books.
 const FINISHED_RANGE_HOLD_MS: u64 = 30_000;
 const SUGGESTION_DEDUP_MS: u64 = 180_000;
+/// Two different kinds of match offering the same verse this close together agree.
+const AGREE_WITHIN_MS: u64 = 20_000;
+/// A word-for-word quote held for a second opinion keeps its passage in play this long.
+const HELD_QUOTE_MS: u64 = 20_000;
 /// A verse shown this recently is still in the operator's hands.
 const SHOWN_RECENTLY_MS: u64 = 60_000;
 /// "What is being said now", for a text match against the verse on screen: this much speech.
@@ -110,7 +114,8 @@ impl Engine {
 
         // 3. One score.
         let r = self.r(top);
-        let on_screen = self.screen.up.map(|(v, _)| OnScreen { verse: self.r(v), at_ms: self.screen.last_sent_book.map_or(0, |(_, t)| t) });
+        // When the verse up went up, however it got there (an operator's send counts as much as Kairo's).
+        let on_screen = self.screen.up.map(|(v, at)| OnScreen { verse: self.r(v), at_ms: at });
         // A range read to its last verse holds only a little while after:
         // with nothing left to read, a quote from elsewhere is the sermon
         // moving on (Joel 2 finished, then Acts 2:16 "spoken by the prophet Joel").
@@ -143,15 +148,17 @@ impl Engine {
             }),
         };
         let s = scoring::score(r, c.method, &c.evidence, &ctx, &self.ledger);
-        let corroborated = self.ledger.has_corroboration(r);
+        // A second opinion: another method that landed the verse and may vouch for this one (scoring::vouches).
+        let corroborated = self.ledger.corroborated(r, c.method);
         let decided = scoring::target(s.total, c.method, corroborated, s.very_high);
         let second_opinion = (decided != Target::Drop || continuity)
             && !(c.method == Method::Verbatim && c.evidence.similarity.unwrap_or(0.0) < CORROBORATING_QUOTE_COVERAGE);
         let evidence = c.source.as_deref().map(|s| self.evidence_key(top, s));
         self.ledger.record_evidence(r, c.method, now, second_opinion, evidence);
 
-        // 4. A stream match held for want of a second method: now it has one.
-        if c.method != Method::Stream && second_opinion {
+        // 4. A match held for want of a second method (running words, or a quote of the verse's own
+        // words): another method has now landed it on the verse's words or its reference.
+        if second_opinion && self.awaiting.get(&top).is_some_and(|h| scoring::vouches(c.method, h.candidate.method)) {
             if let Some(held) = self.awaiting.remove(&top) {
                 if now.saturating_sub(held.at) < LATE_CORROBORATION_WINDOW_MS {
                     self.redo.push(held.candidate);
@@ -191,16 +198,38 @@ impl Engine {
         // 5a. The same new words also matched a verse further on in the chapter on screen: a text match
         // from another book is only offered. A lone match elsewhere never replaces the passage in play
         // (Psalm 79:11 for Ephesians 1:19, live 13 Nov 2026).
+        let mut demoted = false;
         if target == Target::Screen && !continuity && c.method == Method::Stream && self.paths.passage_competes.is_some_and(|p| p != (r.book, r.chapter)) {
             self.note(|e| format!("{} offered, not sent: the passage on screen goes on in the same words", e.label(top)));
             target = Target::Suggestions;
+            demoted = true;
+        }
+        // …and while a word-for-word quote of one passage is held for a second opinion, a lone
+        // running-words match in another passage is only offered: Ephesians 1:18 held, Psalm 79:11
+        // went up on seven words it shares (handover 13 Nov 2026, open item 1).
+        if target == Target::Screen && !continuity && !corroborated && c.method == Method::Stream && self.held_quote_elsewhere(r, now) {
+            self.note(|e| format!("{} offered, not sent: a quote of another passage is being held", e.label(top)));
+            target = Target::Suggestions;
+            demoted = true;
+        }
+        // A word-for-word quote held for want of a second opinion is the passage the speech is in, and
+        // waits for that opinion (step 4): the meaning match of the same verse often comes after it.
+        if target == Target::Suggestions && c.method == Method::Verbatim && c.verses.len() == 1 && matches!(c.hold, Some(Hold::QuoteUncorroborated | Hold::QuoteBelowBar)) {
+            if c.hold == Some(Hold::QuoteUncorroborated) {
+                self.paths.held_quote = Some((r.book, r.chapter, now));
+            }
+            self.hold_for_corroboration(c.clone(), now);
         }
 
         // 5b. Said almost word for word, one verse: it goes up (owner, 2026-10-30: "if it matches 99%
         // it is correct"). Only the words matched in order (not a meaning or keyword match), only a
         // verse no other verse's wording ties with once the tie-breaker has had its say, never one
         // held for a reason of its own, already up, or behind the passage being read.
+        // Never past a cap (a cited range, a twin chapter on screen) or step 5a's demotion: 5b used to
+        // run after them and could undo both.
         if target == Target::Suggestions
+            && !s.capped
+            && !demoted
             && matches!(c.method, Method::Stream | Method::Verbatim)
             && c.score >= NEAR_EXACT_SCORE
             && c.verses.len() == 1
@@ -289,6 +318,26 @@ impl Engine {
         // and the word-for-word match 4 s later was dropped as a repeat, 13 Nov 2026).
         if target == Target::Suggestions {
             let method = c.method;
+            // Kinds of match wrong too often to show alone (Config::hidden_offers) are kept out of
+            // Possible Matches, unless another kind offered the same verse within AGREE_WITHIN_MS:
+            // two kinds agreeing are shown (Romans 10:9 by meaning and word for word, 13 Nov 2026).
+            // This was the server's, on its own wall clock, outside what a replay sees; and a hidden
+            // offer still counted as offered here, so the verse couldn't be offered for 3 minutes.
+            let mut agreed = false;
+            self.screen.offers.retain(|_, seen| {
+                seen.retain(|(t, _)| now.saturating_sub(*t) < AGREE_WITHIN_MS);
+                !seen.is_empty()
+            });
+            for v in &c.verses {
+                let seen = self.screen.offers.entry(*v).or_default();
+                agreed |= seen.iter().any(|(_, m)| *m != method);
+                seen.push((now, method));
+            }
+            if !agreed && self.cfg.hidden_offers.contains(&method) {
+                self.note(|e| format!("{} offer of {} hidden: that kind is right too seldom alone", method.wire(), e.label(top)));
+                self.show(c.verses.clone(), method, score, Target::Drop, c.corrected_from);
+                return Target::Drop;
+            }
             let fresh: Vec<VerseId> = c
                 .verses
                 .iter()
@@ -396,6 +445,11 @@ impl Engine {
             }
         }
         target
+    }
+
+    /// A quote of another chapter than `r`'s was held for a second opinion just now.
+    fn held_quote_elsewhere(&self, r: kairo_bible::VerseRef, now: u64) -> bool {
+        self.paths.held_quote.is_some_and(|(b, ch, at)| (b, ch) != (r.book, r.chapter) && now.saturating_sub(at) < HELD_QUOTE_MS)
     }
 
     /// A text match resting on only part of a verse's wording.

@@ -80,6 +80,8 @@ const TOPIC_MAX_WORDS: usize = 20;
 const TOPIC_DECAY: f32 = 0.5;
 const READING_MODE_WINDOW_MS: u64 = 30_000;
 const READING_MODE_HITS: u32 = 3;
+/// Reading mode ends after this long with no passage read word for word.
+const READING_MODE_LAPSE_MS: u64 = 90_000;
 
 /// A stream hit, as ranked and remembered.
 #[derive(Clone, Copy, Debug)]
@@ -129,6 +131,8 @@ pub(crate) struct PathState {
     /// also matched a verse further on in it. A text match from another book then waits to be offered
     /// (see `decide`): the preacher is going on in the passage, not leaving it.
     pub(crate) passage_competes: Option<(Book, u16)>,
+    /// A word-for-word quote held for a second opinion: its chapter, and when (decide.rs).
+    pub(crate) held_quote: Option<(Book, u16, u64)>,
 }
 
 #[derive(Default)]
@@ -137,6 +141,8 @@ pub(crate) struct ReadingMode {
     chapter: Option<(Book, u16)>,
     hits: u32,
     last_reset: u64,
+    /// The last near-complete quote.
+    last_hit: u64,
 }
 
 impl ReadingMode {
@@ -319,7 +325,7 @@ impl Engine {
             let (u, r) = (self.r(u), self.r(top.verse));
             u.book == r.book && u.chapter == r.chapter && u.verse + 1 == r.verse
         });
-        let corroborated = self.ledger.has_corroboration(self.r(top.verse)) || self.read_verse_before(top.verse, now) || self.range.current == Some(top.verse) || next_after_screen;
+        let corroborated = self.ledger.corroborated(self.r(top.verse), Method::Verbatim) || self.read_verse_before(top.verse, now) || self.range.current == Some(top.verse) || next_after_screen;
         // Certain by weight alone (a partial quote) and no other method agrees:
         // offered, never put on screen alone (03-verbatim-and-correction.md).
         // Capped, not just "intent": `intent` is never read, so a four-word
@@ -484,8 +490,7 @@ impl Engine {
 
     /// The verse on screen, as (book, chapter, verse), while it is recent enough to be the passage in play.
     fn passage_on_screen(&self, now: u64) -> Option<(Book, u16, u16)> {
-        let (up, _) = self.screen.up?;
-        let (_, sent_at) = self.screen.last_sent_book?;
+        let (up, sent_at) = self.screen.up?;
         if now.saturating_sub(sent_at) >= SAME_BOOK_WINDOW_MS {
             return None;
         }
@@ -526,7 +531,7 @@ impl Engine {
         // Shared opening wording: a different verse aligned nearly as far.
         if let Some(runner) = top.iter().copied().find(|h| h.verse != top[0].verse) {
             if top[0].matched.abs_diff(runner.matched) < TIE_MATCHED {
-                let fresh = self.screen.up.is_some() && self.screen.last_sent_book.is_some_and(|(_, at)| now.saturating_sub(at) < TIE_BREAK_CONTINUITY_WINDOW_MS);
+                let fresh = self.screen.up.is_some_and(|(_, at)| now.saturating_sub(at) < TIE_BREAK_CONTINUITY_WINDOW_MS);
                 let up_book = self.screen.up_verse().map(|u| self.r(u).book);
                 let active = |e: &Engine, v: VerseId| fresh && up_book == Some(e.r(v).book) && !behind(e, v);
                 let (top_active, runner_active) = (active(self, top[0].verse), active(self, runner.verse));
@@ -565,7 +570,7 @@ impl Engine {
         let verses: Vec<VerseId> = top.iter().map(|h| h.verse).filter(|v| (self.r(*v).book, self.r(*v).chapter) == lead_place).collect();
         let candidate = |verses: Vec<VerseId>, intent: Target| Candidate::new(verses, Method::Stream, lead.similarity, intent).evidence(lead.evidence());
         let lead_ref = self.r(lead.verse);
-        let corroborated = self.ledger.has_corroboration(lead_ref);
+        let corroborated = self.ledger.corroborated(lead_ref, Method::Stream);
         let mut intent = Target::Screen;
         if lead.via_backward && !corroborated {
             intent = Target::Suggestions;
@@ -574,7 +579,7 @@ impl Engine {
 
         // A verbatim search of recent speech picking another verse disagrees
         // (not for reading on in the chapter on screen).
-        let sequential = self.screen.last_sent_book.is_some_and(|(_, at)| now.saturating_sub(at) < SAME_BOOK_WINDOW_MS)
+        let sequential = self.screen.up.is_some_and(|(_, at)| now.saturating_sub(at) < SAME_BOOK_WINDOW_MS)
             && self.screen.up_verse().is_some_and(|u| {
                 let u = self.r(u);
                 lead_ref.book == u.book && lead_ref.chapter == u.chapter && lead_ref.verse >= u.verse
@@ -763,6 +768,7 @@ impl Engine {
         }
         let m = &mut self.reading_mode;
         m.hits += 1;
+        m.last_hit = now;
         if now.saturating_sub(m.last_reset) < READING_MODE_WINDOW_MS {
             return;
         }
@@ -777,6 +783,17 @@ impl Engine {
         if was != m.active {
             let (active, chapter) = (m.active, m.active.then_some(v));
             self.effect(Effect::ReadingMode { active, chapter });
+        }
+    }
+
+    /// Reading mode ends once nothing has been read word for word for a while: it used to be judged
+    /// only when the next quote came, so a reading an hour back still counted as the passage in play.
+    pub(crate) fn lapse_reading_mode(&mut self, now: u64) {
+        let m = &mut self.reading_mode;
+        if m.active && now.saturating_sub(m.last_hit) > READING_MODE_LAPSE_MS {
+            m.active = false;
+            m.hits = 0;
+            self.effect(Effect::ReadingMode { active: false, chapter: None });
         }
     }
 
@@ -850,9 +867,12 @@ impl Engine {
                 if self.behind_up(v) && !self.said_again(v, now) {
                     c = c.held(Hold::QuoteBehindReading);
                 }
-                self.decide(c, now);
-                let r = self.r(v);
-                self.note_cited(r.book, Some(r.chapter), Some(r.verse), false, now);
+                // Only a match that landed puts its passage in play: one dropped (a keyword match
+                // alone always is) pointed the next five minutes' searches at a chapter never shown.
+                if self.decide(c, now) != Target::Drop {
+                    let r = self.r(v);
+                    self.note_cited(r.book, Some(r.chapter), Some(r.verse), false, now);
+                }
             }
         }
         // Within the chapters the sermon points at.
@@ -936,7 +956,7 @@ impl Engine {
                 }
             }
         }
-        if let (Some(up), Some((_, at))) = (self.screen.up_verse(), self.screen.last_sent_book) {
+        if let Some((up, at)) = self.screen.up {
             if now.saturating_sub(at) < SAME_BOOK_WINDOW_MS {
                 let u = self.r(up);
                 for c in [u.chapter.saturating_sub(1), u.chapter, u.chapter + 1] {
