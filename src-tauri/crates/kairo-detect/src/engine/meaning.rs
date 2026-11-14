@@ -13,7 +13,7 @@ use std::sync::LazyLock;
 use kairo_bible::VerseId;
 
 use super::core::{Candidate, Engine};
-use super::event::{MeaningHit, Request};
+use super::event::{Effect, MeaningHit, Request, TimerId};
 use super::types::{Evidence, Hold, Method, Target};
 use crate::lexical::stem::heal;
 use crate::lexical::text::{is_stop_word, norm};
@@ -189,12 +189,14 @@ impl Engine {
         if s.len() > 2 && s[s.len() - 2].split_whitespace().count() <= SHORT_SENTENCE_WORDS {
             add(&mut out, &format!("{} {}", s[s.len() - 3], s[s.len() - 1]));
         }
-        // The last few seconds regardless of punctuation.
+        // The last few seconds regardless of punctuation, and the last breath of them: with no sentence
+        // ends (the offline engine can run a minute without one) every other window is 24-30 words of
+        // several thoughts, and a verse said in passing ("with him all things are possible") was lost
+        // in them (14 Nov 2026). Kept within MAX_WINDOWS, the short one before the rest is cut.
+        let short = raw[raw.len().saturating_sub(SHORT_TAIL_WORDS)..].join(" ");
         add(&mut out, &raw[raw.len().saturating_sub(TAIL_WORDS)..].join(" "));
-        if out.len() < 3 {
-            add(&mut out, &raw[raw.len().saturating_sub(SHORT_TAIL_WORDS)..].join(" "));
-        }
-        out.truncate(MAX_WINDOWS);
+        out.truncate(MAX_WINDOWS - 1);
+        add(&mut out, &short);
         out
     }
 }
@@ -339,7 +341,15 @@ pub(crate) struct MeaningState {
     prev: Option<Decision>,
     /// The previous search's cross-encoder top, when it nearly made a decision.
     prev_near: Option<VerseId>,
+    /// The newest search asked.
+    last_asked: u32,
+    /// The newest search's decision, not yet confirmed by a second search: its id, the decision, the
+    /// window it was found in, and whether a citation had just been heard.
+    single: Option<(u32, Decision, String, bool)>,
 }
+
+/// A meaning search's words followed by this much quiet stand on their own (on_paraphrase_pause).
+const PAUSE_MS: u64 = 2_500;
 
 /// A paraphrase decision: (verse, where, score, cross-encoder, shared wording).
 type Decision = (VerseId, Target, f32, Option<f32>, f32);
@@ -387,6 +397,35 @@ impl Engine {
         let id = self.next_request_id();
         self.out.requests.push(Request::Paraphrase { id, windows: windows.clone(), limit: PARAPHRASE_LIMIT, rerank_from: self.cfg.meaning_thresholds.rerank_from() });
         self.meaning.asked = Some((id, windows, just_cited));
+        self.meaning.last_asked = id;
+        // If too little more is said for another search, none comes to confirm this one: a pause will.
+        self.effect(Effect::WakeAt { id: TimerId::ParaphrasePause(id), at_ms: now + PAUSE_MS });
+    }
+
+    /// The newest meaning search's decision, followed by a pause: no second search will come to confirm
+    /// it, so the pause does. "The Bible says God did not give us a spirit that makes us afraid, he gave
+    /// us power and love and a sound mind" and then quiet was never offered: a decision must hold for
+    /// two searches running, and the last few words were too few to ask again (14 Nov 2026). The
+    /// decision met every bar of its own; where it goes is decided as for any other (sent only inside
+    /// the passage in play, else offered). While words are still coming, the check waits for them.
+    pub(crate) fn on_paraphrase_pause(&mut self, id: u32, now: u64) {
+        let Some((single, d, window, just_cited)) = self.meaning.single.take() else { return };
+        if single != id || self.meaning.last_asked != id {
+            // A newer search has its own say.
+            if self.meaning.last_asked == single {
+                self.meaning.single = Some((single, d, window, just_cited));
+            }
+            return;
+        }
+        let w = &self.t.words;
+        let last_word = w.end().checked_sub(1).and_then(|i| w.word(i)).map_or(0, |x| x.at);
+        if now.saturating_sub(last_word) < PAUSE_MS {
+            self.meaning.single = Some((single, d, window, just_cited));
+            self.effect(Effect::WakeAt { id: TimerId::ParaphrasePause(id), at_ms: last_word + PAUSE_MS });
+            return;
+        }
+        self.note(|e| format!("paraphrase {} stands on its own: a pause followed it", e.label(d.0)));
+        self.apply_paraphrase(d, &window, just_cited, now);
     }
 
     /// For the evaluation tools: the wording a window shares with a verse.
@@ -425,14 +464,41 @@ impl Engine {
         let weighed: Vec<Weighed> = hits.into_iter().map(|hit| Weighed { lex: self.shared_identifying_weight(windows.get(hit.window).map_or("", String::as_str), hit.verse), hit }).collect();
         let decision = self.decide_paraphrase(&weighed, now);
         let near = self.near_top(&weighed);
+        // Two searches running on the same verse, or on two verses worded alike: Deuteronomy 31:6 and
+        // 1 Chronicles 28:20 ("be strong and of good courage… he will not fail thee") took turns at the
+        // top, so neither held twice and nothing was offered (24 Sep clip, 14 Nov 2026). The verses
+        // worded alike are offered together (apply_paraphrase).
+        let same = |a: VerseId, b: VerseId| a == b || self.k.lexicon.twins(a).iter().any(|t| t.verse == b);
         let held = match (decision, self.meaning.prev) {
-            (Some(d), prev) if prev.map(|p| p.0) == Some(d.0) || self.meaning.prev_near == Some(d.0) => Some(d),
-            (None, Some(p)) if near == Some(p.0) => Some(p),
+            (Some(d), prev) if prev.is_some_and(|p| same(p.0, d.0)) || self.meaning.prev_near.is_some_and(|n| same(n, d.0)) => Some(d),
+            (None, Some(p)) if near.is_some_and(|n| same(n, p.0)) => Some(p),
             _ => None,
         };
         self.meaning.prev = decision;
         self.meaning.prev_near = near;
-        if let Some((v, target, score, rr, lex)) = held {
+        // A decision no second search has confirmed yet: a pause may (on_paraphrase_pause).
+        self.meaning.single = match (held, decision) {
+            (None, Some(d)) => Some((id, d, windows[0].clone(), just_cited)),
+            _ => None,
+        };
+        if let Some(d) = held {
+            self.apply_paraphrase(d, &windows[0], just_cited, now);
+        }
+        // Then within the chapters the sermon points at.
+        if !just_cited {
+            if let Some(scope) = self.scope_verses(now) {
+                let id = self.next_request_id();
+                let mut verses: Vec<VerseId> = scope.into_iter().collect();
+                verses.sort();
+                self.out.requests.push(Request::Scoped { id, text: windows[0].clone(), verses, limit: SCOPED_LIMIT });
+                self.meaning.scoped = Some((id, found));
+            }
+        }
+    }
+
+    /// A paraphrase decision, confirmed: to the screen or Possible Matches.
+    fn apply_paraphrase(&mut self, (v, target, score, rr, lex): Decision, window: &str, just_cited: bool, now: u64) {
+        {
             let target = if just_cited { Target::Suggestions } else { target };
             let on_screen = self.screen.last_detected.map(|(d, _, _)| d) == Some(v);
             let r = self.r(v);
@@ -450,19 +516,9 @@ impl Engine {
                 }
                 let mut c = Candidate::new(verses, Method::Paraphrase, score, target)
                     .evidence(Evidence { paraphrase_score: Some(score), rerank: rr, similarity: Some(score), matched_idf: Some(lex), ..Default::default() })
-                    .from_text(&windows[0]);
+                    .from_text(window);
                 c.hold = (target == Target::Suggestions).then_some(Hold::ParaphraseUnsure);
                 self.decide(c, now);
-            }
-        }
-        // Then within the chapters the sermon points at.
-        if !just_cited {
-            if let Some(scope) = self.scope_verses(now) {
-                let id = self.next_request_id();
-                let mut verses: Vec<VerseId> = scope.into_iter().collect();
-                verses.sort();
-                self.out.requests.push(Request::Scoped { id, text: windows[0].clone(), verses, limit: SCOPED_LIMIT });
-                self.meaning.scoped = Some((id, found));
             }
         }
     }

@@ -433,7 +433,7 @@ fn replay(k: &Arc<Knowledge>, golden: &Value, audio: bool, m: Option<&MeaningSer
         // The answers owed, before anything but words still being said, at the time of the input
         // before (detect.rs settle): the app no longer waits for them on words still being said.
         heard += 1;
-        if fin || owed.front().is_some_and(|(_, at)| heard.saturating_sub(*at) > kairo_server::detect::OWED_INPUTS) {
+        if fin || owed.front().is_some_and(|(_, at)| heard.saturating_sub(*at) > kairo_server::detect::OWED_INPUTS) || wakes.iter().any(|w| w.0 <= t) {
             let mut requests: std::collections::VecDeque<kairo_detect::engine::Request> = std::mem::take(&mut owed).into_iter().map(|(r, _)| r).collect();
             while let (Some(m), Some(r)) = (m, requests.pop_front()) {
                 if let (Ok(path), kairo_detect::engine::Request::Scoped { text, verses, .. }) = (std::env::var("SCOPED_LOG"), &r) {
