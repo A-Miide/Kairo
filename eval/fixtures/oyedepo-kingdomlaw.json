@@ -4979,6 +4979,14 @@
     {
       "book": "Genesis",
       "chapter": 26,
+      "verse": 3,
+      "kind": "quote",
+      "startMs": 5197000,
+      "addedBy": "read against the transcript (2026-11-14): \"abide in the land that I tell you of here and I'm going to bless you and all this will be given to\" after \"Genesis 26 and 1 to 3\"; was counted as a wrong send"
+    },
+    {
+      "book": "Genesis",
+      "chapter": 26,
       "verse": 12,
       "kind": "citation",
       "startMs": 5219000,
