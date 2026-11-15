@@ -71,7 +71,7 @@ test('a gradient keeps its colours and ProPresenter\'s angle (counter-clockwise 
 
 test('the words are RTF with the font, size, colours, case and an accent run', () => {
   const { bytes, notes } = build(['For *God* so loved']);
-  assert.ok(notes.includes('Pictures and picture backgrounds'));
+  assert.ok(notes.includes('Pictures that couldn’t be loaded'));   // no picture bytes given
   const cue = fields(all(fields(bytes), 13)[0].v);
   const els = all(sub(sub(sub(sub(cue, 10), 23), 2), 1), 1);
   const text = sub(sub(fields(els[0].v), 1), 13);
@@ -91,4 +91,44 @@ test('non-Latin and special characters are escaped in the RTF', () => {
   assert.match(rtf, /a\\\{b\\\}\\\\ /);
   assert.match(rtf, /\\u8220 q\\uc0\\u8221 /);
   assert.match(rtf, /\\\n2\}$/);
+});
+
+test('a shape carries an empty text block, as ProPresenter writes one (no "Text" placeholder)', () => {
+  const { bytes } = build(['x']);
+  const cue = fields(all(fields(bytes), 13)[0].v);
+  const els = all(sub(sub(sub(sub(cue, 10), 23), 2), 1), 1);
+  const bg = sub(fields(els[1].v), 1);
+  const text = sub(bg, 13);
+  assert.ok(text, 'the background shape has a text block');
+  assert.match(str(text, 5), /^\{\\rtf1/);
+  assert.doesNotMatch(str(text, 5), /\\cf1/, 'with no words in it');
+});
+
+test('a glow becomes a radial gradient fading to clear, not a dropped picture', () => {
+  const items = [{ kind: 'image', x: 100, y: 50, w: 800, h: 600, fit: 'fill', src: 'glow:6B2313:80' }];
+  const { bytes, notes } = R.buildPro([{ items }], { title: 't' });
+  assert.ok(!notes.some(n => /Picture/.test(n)));
+  const cue = fields(all(fields(bytes), 13)[0].v);
+  const el = sub(fields(all(sub(sub(sub(sub(cue, 10), 23), 2), 1), 1)[0].v), 1);
+  const g = sub(sub(el, 9), 2);
+  assert.equal(one(g, 1).v, 1);                       // radial
+  const stops = all(g, 4).map(x => fields(x.v));
+  const alpha = (st) => one(sub(st, 1), 4).v;
+  assert.ok(Math.abs(alpha(stops[0]) - 0.8) < 1e-6);
+  assert.equal(alpha(stops[1]), 0);                  // clear at the edge
+});
+
+test('a picture becomes a media fill, and its file is handed back to pack in a .probundle', () => {
+  const png = Uint8Array.from([137, 80, 78, 71]);
+  const items = [{ kind: 'image', x: 0, y: 0, w: 1920, h: 1080, fit: 'cover', src: '/media/bg.png' }];
+  const out = R.buildPro([{ items }], { title: 't', images: { '/media/bg.png': { bytes: png, ext: 'png', w: 1920, h: 1080 } }, mediaDir: '/Users/x/Documents/ProPresenter/Media/Assets' });
+  assert.equal(out.media.length, 1);
+  assert.match(out.media[0].rel, /^Media\/Assets\/[0-9A-F-]+\.png$/);
+  const cue = fields(all(fields(out.bytes), 13)[0].v);
+  const el = sub(fields(all(sub(sub(sub(sub(cue, 10), 23), 2), 1), 1)[0].v), 1);
+  const m = sub(sub(el, 9), 3);
+  const url = sub(m, 2);
+  assert.equal(str(url, 1), 'file:///Users/x/Documents/ProPresenter/Media/Assets/' + out.media[0].rel.split('/').pop());
+  assert.equal(str(sub(url, 4), 2), out.media[0].rel);
+  assert.equal(one(sub(sub(m, 5), 1), 1).v, 1);       // cover = ProPresenter "fill"
 });

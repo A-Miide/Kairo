@@ -9219,3 +9219,13 @@ div.bi-field { color: var(--text-2); overflow: hidden; text-overflow: ellipsis; 
 
 .timer-card-preview.has-own-timer .timer-card-readout { display: none; }
 
+
+/* ── Export dialog (service.js openExportDialog) ── */
+#export-modal .ex-box { width: 460px; }
+#export-modal .ex-body { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 16px 20px; }
+#export-modal .ex-body .setting-label { margin-top: 6px; }
+#export-modal .ex-name-row, #export-modal .ex-dir-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+#export-modal .ex-name-row .setting-input { flex: 1; min-width: 0; }
+#export-modal .ex-ext { color: var(--text-3); font-size: 13px; }
+#export-modal .ex-dir { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: rtl; text-align: left; color: var(--text-2); font-size: 13px; }
+#export-modal .ex-error { margin: 4px 0 0; color: var(--red); font-size: 13px; }
