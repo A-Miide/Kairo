@@ -52,17 +52,20 @@ impl MeaningService {
 
     fn queries(&self, texts: &[&str]) -> Result<Vec<Vec<f32>>, SemanticError> {
         let mut cache = self.cache.lock().unwrap();
-        let missing: Vec<&str> = texts.iter().copied().filter(|t| !cache.contains_key(*t)).collect();
-        if !missing.is_empty() {
-            let vecs = self.embedder.embed_queries(&missing)?;
-            if cache.len() + missing.len() > CACHE_MAX {
-                cache.clear();
-            }
-            for (t, v) in missing.iter().zip(vecs) {
-                cache.insert(t.to_string(), v);
-            }
+        let mut missing: Vec<&str> = texts.iter().copied().filter(|t| !cache.contains_key(*t)).collect();
+        missing.dedup();
+        let vecs = if missing.is_empty() { Vec::new() } else { self.embedder.embed_queries(&missing)? };
+        let fresh: HashMap<&str, Vec<f32>> = missing.iter().copied().zip(vecs).collect();
+        // Read before the cache may be cleared: clearing it first lost the windows found in it a
+        // moment ago, and the lookup below panicked ("no entry found for key"), costing that answer.
+        let out: Vec<Vec<f32>> = texts.iter().map(|t| fresh.get(*t).or_else(|| cache.get(*t)).cloned().unwrap_or_default()).collect();
+        if cache.len() + fresh.len() > CACHE_MAX {
+            cache.clear();
         }
-        Ok(texts.iter().map(|t| cache[*t].clone()).collect())
+        for (t, v) in fresh {
+            cache.insert(t.to_string(), v);
+        }
+        Ok(out)
     }
 
     fn kjv_text(&self, v: VerseId) -> &str {
