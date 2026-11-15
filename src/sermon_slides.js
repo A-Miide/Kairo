@@ -1187,7 +1187,11 @@
     const style = BACKGROUNDS.some(b => b.id === opts.style) ? opts.style : 'glow';
     const layout = layoutOf(opts.layout);
     const header = (outline.header || []).filter(h => h && h.text);
-    const footerLine = outline.titleIndex === 0 ? header[1] : header[0];
+    // Word's own marks above the heading ("Edited", "615272739793Edited", "Draft") are no church's name:
+    // they put "Edited" in every slide's footer (owner's outline, 15 Nov 2026).
+    const mark = (t) => /^[\d\s]*(edited|draft|final|revised|confidential|copy)\.?$/i.test(String(t).trim()) || !/\p{L}{2}/u.test(t);
+    const named = header.filter((h, i) => i !== outline.titleIndex && !mark(h.text));
+    const footerLine = named[0];
     const footer = opts.footer != null ? opts.footer : (footerLine ? footerLine.text.replace(/\.?\s*inc\.?$/i, '').trim() : '');
     // What the operator said a line is, over what the reader made of it.
     const parts = partsOf(outline).map(p => (opts.kinds && opts.kinds[p.id] ? { ...p, kind: opts.kinds[p.id] } : p));

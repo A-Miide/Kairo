@@ -6860,6 +6860,9 @@ function buildSyntheticLook(item, slideIndex) {
 // Renders into the same #looks-list container renderLooksList() uses — the
 // two are mutually exclusive by mode, never both rendered for the same open
 // modal, so reusing the element is simpler than adding a parallel one.
+// The slide shown last time the list was drawn: a new one is scrolled into view, the same one isn't
+// (an edit redraws the list too, and mustn't pull it back from where the operator scrolled it).
+let tsListedSlide = null;
 function renderItemSlidesList() {
   const el = document.getElementById('looks-list');
   if (!el || !tsItemCtx || !window.KairoService) return;
@@ -7030,6 +7033,22 @@ function renderItemSlidesList() {
   });
   // A slide whose words run past a text box is tagged (service.js markClipped).
   el.querySelectorAll('.ts-item-slide-thumb').forEach(t => window.KairoService.markClipped(t));
+
+  // The slide shown is in view: a sermon deck's contents list (and Next) pick a slide the list may
+  // have scrolled past (owner, 15 Nov 2026). Only the list scrolls, only as far as needed, and only
+  // when the slide changed.
+  const listed = `${item.id}:${slideIndex}`;
+  if (listed !== tsListedSlide) {
+    tsListedSlide = listed;
+    const row = el.children[slideIndex];
+    let scroller = el;
+    while (scroller && !(scroller.scrollHeight > scroller.clientHeight && /auto|scroll/.test(getComputedStyle(scroller).overflowY))) scroller = scroller.parentElement;
+    if (row && scroller) {
+      const r = row.getBoundingClientRect(), s = scroller.getBoundingClientRect();
+      if (r.top < s.top) scroller.scrollTop -= s.top - r.top + 8;
+      else if (r.bottom > s.bottom) scroller.scrollTop += r.bottom - s.bottom + 8;
+    }
+  }
 
   // "+ Add Slide" — a Timer segment's own affordance for building a
   // storyboard, right where the slides it creates will actually show up.
