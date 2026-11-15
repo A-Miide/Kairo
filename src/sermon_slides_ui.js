@@ -176,15 +176,20 @@
     touched = null;
   }
 
-  // Scrolls the panel just enough to show `part`'s row.
+  // Scrolls just enough to show `part`'s row: in the contents list, and in the panel around it (the list
+  // can itself sit partly below the panel's fold, so a row at its end stayed hidden; owner, 15 Nov 2026).
   function showRow(host, part) {
     const row = host.querySelector(`.ssp-part[data-part="${CSS.escape(part)}"]`);
-    const scroller = listScroller(host);
-    if (!row || !scroller) return;
-    const r = row.getBoundingClientRect(), b = scroller.getBoundingClientRect();
-    if (r.top < b.top) scroller.scrollTop -= b.top - r.top + 8;
-    else if (r.bottom > b.bottom) scroller.scrollTop += r.bottom - b.bottom + 8;
+    if (!row) return;
+    for (let n = row.parentElement; n && n !== document.body; n = n.parentElement) {
+      const o = getComputedStyle(n).overflowY;
+      if (!((o === 'auto' || o === 'scroll') && n.scrollHeight > n.clientHeight)) continue;
+      const r = row.getBoundingClientRect(), b = n.getBoundingClientRect();
+      if (r.top < b.top) n.scrollTop -= b.top - r.top + 8;
+      else if (r.bottom > b.bottom) n.scrollTop += r.bottom - b.bottom + 8;
+    }
   }
+
 
   // Background, second tone, text and accent: the editor's own colour field (a swatch and its hex).
   let colorTimer = null;
