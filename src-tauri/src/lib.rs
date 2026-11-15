@@ -569,6 +569,48 @@ fn signal_main_ready(app: AppHandle) {
     }
 }
 
+/// macOS: an output window is kept out of Mission Control, Exposé and Space switching. It goes on every
+/// Space, stays put when Mission Control opens ("stationary"), is left out of ⌘-Tab, and sits above the
+/// menu bar and Dock at the screen-saver level, filling its screen without native fullscreen (which gives
+/// a window a Space of its own, the one Mission Control rearranges). Returns whether it was applied: the
+/// page falls back to native fullscreen when not (any other system).
+#[tauri::command]
+fn pin_output_window(app: AppHandle, label: String) -> Result<bool, String> {
+    #[cfg(target_os = "macos")]
+    {
+        let win = app.get_webview_window(&label).ok_or_else(|| format!("no window named {label}"))?;
+        // Only the output windows: never the operator's own.
+        if !label.starts_with("kairo-") {
+            return Ok(false);
+        }
+        let ptr = win.ns_window().map_err(|e| e.to_string())? as usize;
+        let (tx, rx) = std::sync::mpsc::channel();
+        app.run_on_main_thread(move || {
+            use objc2::runtime::AnyObject;
+            use objc2::msg_send;
+            // NSWindowCollectionBehavior: canJoinAllSpaces 1<<0, stationary 1<<4, ignoresCycle 1<<6, fullScreenAuxiliary 1<<8.
+            const BEHAVIOR: usize = (1 << 0) | (1 << 4) | (1 << 6) | (1 << 8);
+            // CGShieldingWindowLevel-like: above the menu bar, the Dock and Mission Control's own chrome.
+            const LEVEL: isize = 1000;
+            // SAFETY: `ptr` is this window's NSWindow, used on the main thread, which AppKit requires.
+            unsafe {
+                let w = &*(ptr as *mut AnyObject);
+                let _: () = msg_send![w, setCollectionBehavior: BEHAVIOR];
+                let _: () = msg_send![w, setLevel: LEVEL];
+            }
+            let _ = tx.send(());
+        })
+        .map_err(|e| e.to_string())?;
+        rx.recv().map_err(|e| e.to_string())?;
+        Ok(true)
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let _ = (app, label);
+        Ok(false)
+    }
+}
+
 /// Settings → About → "Check for updates": the same check as the Help menu's, answered either way.
 #[tauri::command]
 fn check_updates(app: AppHandle) {
@@ -1250,6 +1292,7 @@ pub fn run() {
             get_server_config,
             list_monitors,
             signal_main_ready,
+            pin_output_window,
             fonts::list_system_fonts,
             install_update,
             check_updates,

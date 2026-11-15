@@ -256,7 +256,11 @@
     ]);
     const noFill = fMsg(9, [mColor(1, { hex: '000000', a: 0 })]);
     const noStroke = fMsg(10, [fDbl(2, 3), mColor(3, { hex: 'FFFFFF', a: 1 })]);
-    const box = fullBox({ ...it, h: it.h > 0 ? it.h : Math.round(num(it.font.size, 48) * num(it.font.lineHeight, 1.15) * (String(it.text).split('\n').length + 1)) });
+    // Room around the words: the box keeps its centre but is taller, because ProPresenter's output cuts text at the box's edge
+    // (the thumbnail doesn't), and its idea of a line is a little taller than ours.
+    const own = it.h > 0 ? it.h : Math.round(num(it.font.size, 48) * num(it.font.lineHeight, 1.15) * (String(it.text).split('\n').length + 1));
+    const grown = Math.round(own * 1.3);
+    const box = fullBox({ ...it, y: it.y - (grown - own) / 2, h: grown });
     return elementBase('Text', box, noFill, noStroke, null, pathMsg(1, 0), textM);
   }
 
@@ -287,7 +291,7 @@
       let skippedPicture = false;
       (sl.items || []).forEach((it) => {
         if (it.kind === 'shape') elements.push(shapeElement(it, notes));
-        else if (it.kind === 'text') elements.push(textElement(it, notes));
+        else if (it.kind === 'text') { if (String(it.text || '').trim()) elements.push(textElement(it, notes)); }   // an empty one shows as a stray “Text” in ProPresenter's editor
         else if (it.kind === 'image' && String(it.src || '').indexOf('glow:') === 0) { const g = glowElement(it); if (g) elements.push(g); }
         else if (it.kind === 'image') { const f = fileFor(it.src); if (f) elements.push(imageElement(it, f)); else skippedPicture = true; }
       });

@@ -21,6 +21,9 @@ const NEXT_VERSE_MAX_GAP_MS: u64 = 180_000;
 const BARE_NUMBER_COOLDOWN_MS: u64 = 2_000;
 const BARE_NUMBER_TAIL_WORDS: usize = 4;
 const BARE_NUMBER_MAX_GAP_MS: u64 = 15_000;
+/// With a range still queued the gap is longer (a long verse takes time to read), but never minutes:
+/// "which was later reduced to five", three and a half minutes after Revelation 19:10, went up as 19:5 (live 15 Nov 2026).
+const BARE_NUMBER_MAX_GAP_RANGE_MS: u64 = 45_000;
 const VERSE_END_NUMBER_WINDOW_MS: u64 = 8_000;
 const VERSE_JUMP_MAX_WORDS: usize = 4;
 const VERSE_JUMP_COOLDOWN_MS: u64 = 2_000;
@@ -141,10 +144,12 @@ impl Engine {
         let Some(base) = (if self.range_is_up() { self.range.current } else { None }).or(self.screen.up_verse()) else { return false };
         // A lead-in ("go to") may name any verse near the reading; a number on its own only the next.
         let step = num.value - self.r(base).verse as i64;
-        if !(step == 1 || led && step != 0 && step.abs() <= LED_NUMBER_REACH) {
+        // "goes to twenty three" reads on; a number before the verse being read ("reduced to five") is talk.
+        if !(step == 1 || led && step > 0 && step <= LED_NUMBER_REACH) {
             return false;
         }
-        if self.range.queue.is_empty() && self.screen.up.is_none_or(|(_, at)| now.saturating_sub(at) > BARE_NUMBER_MAX_GAP_MS) {
+        let gap = if self.range.queue.is_empty() { BARE_NUMBER_MAX_GAP_MS } else { BARE_NUMBER_MAX_GAP_RANGE_MS };
+        if self.screen.up.is_none_or(|(_, at)| now.saturating_sub(at) > gap) {
             return false;
         }
         self.throttle.bare_number_at = now;

@@ -507,6 +507,12 @@
           "markdownDescription": "Enables the output_video command without any pre-configured scope."
         },
         {
+          "description": "Enables the pin_output_window command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pin-output-window",
+          "markdownDescription": "Enables the pin_output_window command without any pre-configured scope."
+        },
+        {
           "description": "Enables the record_reveal command without any pre-configured scope.",
           "type": "string",
           "const": "allow-record-reveal",
@@ -727,6 +733,12 @@
           "type": "string",
           "const": "deny-output-video",
           "markdownDescription": "Denies the output_video command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pin_output_window command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pin-output-window",
+          "markdownDescription": "Denies the pin_output_window command without any pre-configured scope."
         },
         {
           "description": "Denies the record_reveal command without any pre-configured scope.",

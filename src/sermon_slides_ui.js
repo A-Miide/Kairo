@@ -110,12 +110,6 @@
 
     // ── this slide: only what to review (its background is the Background layer, set under Style) ──
     const review = [];
-    if (block?.gen?.shortened && block.notes) {
-      // Cut from a longer sentence: the whole of it, one click away.
-      const d = el('details', 'ssp-cut');
-      d.append(el('summary', null, 'Shortened · show the whole sentence'), el('p', null, block.notes));
-      review.push(d);
-    }
     if (block?.gen?.tooLong) review.push(el('p', 'ssp-flag', 'Too long to fit at a readable size'));
     // What this slide's line is: a point, a section line or an introduction. The reader's guess, changed in one click.
     const part = api.partsOf(deck.outline).find(x => x.id === block?.gen?.part);

@@ -48,12 +48,49 @@ pub struct Video {
     jobs: Mutex<HashMap<String, Job>>,
     /// One conversion at a time: a folder of files all asking at once would otherwise start them all.
     gate: Mutex<()>,
+    /// One poster frame is cut at a time.
+    poster_gate: Mutex<()>,
 }
 
 impl Video {
     /// The ffmpeg this copy of Kairo uses, if any.
     pub fn ffmpeg_path(&self) -> Option<&std::path::Path> {
         self.ffmpeg.as_deref()
+    }
+
+    /// One frame of `source`, `width` pixels wide (a multiple of 160, at most 1280), as a JPEG kept under `dir`:
+    /// what a Media Bin card shows for a video, so no video element (and no decoder) sits behind each card.
+    /// `None` without an ffmpeg, or when the file can't be read: the card then falls back to the video itself.
+    pub fn poster(&self, dir: &Path, source: &Path, width: u32) -> Option<PathBuf> {
+        let ff = self.ffmpeg.as_deref()?;
+        let width = width.clamp(160, 1280).div_ceil(160) * 160;
+        let out = dir.join(format!("poster-{}-{width}.jpg", Self::key(source)?));
+        if out.is_file() {
+            return Some(out);
+        }
+        std::fs::create_dir_all(dir).ok()?;
+        // One at a time: a folder of videos opening at once would start an ffmpeg for each.
+        let _one = self.poster_gate.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if out.is_file() {
+            return Some(out);
+        }
+        let tmp = out.with_extension("jpg.tmp");
+        let ok = Command::new(ff)
+            .args(["-hide_banner", "-nostdin", "-loglevel", "error", "-y", "-ss", "0.5", "-i"]).arg(source)
+            .args(["-frames:v", "1", "-an", "-sn", "-vf"]).arg(format!("scale={width}:-2"))
+            .args(["-q:v", "5", "-f", "image2"]).arg(&tmp)
+            .stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success());
+        // A clip shorter than the seek has no frame there: the first frame, then.
+        let ok = ok && tmp.is_file() || Command::new(ff)
+            .args(["-hide_banner", "-nostdin", "-loglevel", "error", "-y", "-i"]).arg(source)
+            .args(["-frames:v", "1", "-an", "-sn", "-vf"]).arg(format!("scale={width}:-2"))
+            .args(["-q:v", "5", "-f", "image2"]).arg(&tmp)
+            .stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success());
+        if !ok || !tmp.is_file() || std::fs::rename(&tmp, &out).is_err() {
+            let _ = std::fs::remove_file(&tmp);
+            return None;
+        }
+        Some(out)
     }
 
     /// `ui_dir` is the app's `src` folder; the bundled ffmpeg sits beside it in `bin`.
@@ -64,7 +101,7 @@ impl Video {
             cache,
             ffmpeg: find_ffmpeg(ui_dir),
             encoder: OnceLock::new(),
-            forced_encoder: std::env::var("KAIRO_VIDEO_ENCODER").ok().filter(|e| !e.is_empty()), jobs: Mutex::new(HashMap::new()), gate: Mutex::new(()) })
+            forced_encoder: std::env::var("KAIRO_VIDEO_ENCODER").ok().filter(|e| !e.is_empty()), jobs: Mutex::new(HashMap::new()), gate: Mutex::new(()), poster_gate: Mutex::new(()) })
     }
 
     /// The cache key for a file: changes when the file does.

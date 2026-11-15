@@ -3,8 +3,8 @@
 // docs/handover/slides-phase1-spec.md is the brief. In short:
 //   - The design is made once, by hand, here: five layouts and six colour sets ("looks"). Kairo only
 //     fills them with the sermon's words. It never invents a layout, a colour, a font or a word.
-//   - The preacher's words, never Kairo's. A long point is cut at a natural break, marked
-//     "shortened" for review, and its whole sentence kept in the slide's notes.
+//   - The preacher's words, never Kairo's, and all of them: text too long for one slide goes on the next
+//     ("Point 3 of 9 · 2 of 2"), never cut, and the whole line is kept in the slide's notes.
 //   - Scripture appears as reference chips written out the same way ("Romans 4:16–21"); the verses
 //     go up live from Kairo's Bible when they're read.
 //   - Restraint: one accent colour (label, rule, chips), two fonts, 5% safe margins.
@@ -20,6 +20,8 @@
 
   const W = 1920, H = 1080;
   const M = 120;                       // left/right margin (over the 5% safe area)
+  const LONG_TEXT_WORDS = 24;          // past this a slide is a passage, not a headline
+  const LONG_FLOOR_PX = 38;            // the smallest a passage goes (still readable on a 1080p screen)
   const MIN_HEADLINE_PX = 60;          // readable from the back row on a 1080p slide
   const POINT_WORDS = 12;              // a point line aims for this many words or fewer
 
@@ -649,26 +651,6 @@
 
   // ── words on a slide ────────────────────────────────────────────────────────────────────────────
   const STOP = new Set('the a an of to and as with from for that who which in on at is are was were be been had have has his her their our your my i we you they it this these those not only also but or so than then when while into by up out over all one every each whole even most there here just very really some what will would could should must can may through about after before because being does done him them its itself himself herself themselves us me'.split(' '));
-  // A long point cut at its first natural break that leaves a whole thought of 12 words or fewer.
-  // Never reworded: the words kept are the preacher's, in order. Returns { text, shortened }.
-  function shortenPoint(text) {
-    const t = String(text || '').trim();
-    if (wordCount(t) <= POINT_WORDS) return { text: t, shortened: false };
-    // A cut must leave a whole thought: six words or more, not ending on a small word ("of", "the").
-    const whole = (i) => {
-      const kept = t.slice(0, i).replace(/[,;:–—\s]+$/, '');
-      const n = wordCount(kept);
-      const last = (kept.match(/[A-Za-z’']+$/) || [''])[0].toLowerCase();
-      return n >= 6 && n <= POINT_WORDS && !STOP.has(last);
-    };
-    const at = (re) => { const found = []; let m; while ((m = re.exec(t))) if (whole(m.index)) found.push(m.index); return found.length ? found[found.length - 1] : -1; };
-    // Punctuation first; then before a joining word.
-    let cut = at(/[,;:–—](?=\s)/g);
-    if (cut < 0) cut = at(/\s(?=(?:to|as|with|among|and|but|from|that|who|which|including|because|while|when|so) )/g);
-    if (cut < 0) return { text: t, shortened: false };
-    return { text: t.slice(0, cut).replace(/[,;:–—\s]+$/, ''), shortened: true };
-  }
-
   // ── layers ──────────────────────────────────────────────────────────────────────────────────────
   // The slide editor's own layers (the ones a theme is made of): a text layer of custom text with its
   // own font, size and colour, and shapes (background layers with a box). So a sermon slide is
@@ -754,7 +736,7 @@
   function fitSize(kit, text, w, h, size, lineHeight) {
     const t = String(text || '');
     const caps = t.replace(/[^A-Za-z]/g, '').length && t === t.toUpperCase() ? 1.22 : 1;
-    const em = (kit.display.width || 0.55) * caps;
+    const em = (kit.display.width || 0.55) * caps * 1.06;   // a little room: bold faces run wider than their average
     let s = size;
     const lines = (px) => {
       const perLine = Math.max(1, Math.floor(w / (px * em)));
@@ -769,8 +751,12 @@
   }
   // A headline layer at the size that fits its box; `gen.tooLong` when even the minimum doesn't.
   function headline(kit, gen, pos, text, size, color, align, lineHeight) {
+    // A whole verse or a long passage may go smaller than a headline would, rather than run off the slide.
+    const longText = String(text || '').trim().split(/\s+/).length > LONG_TEXT_WORDS;
+    if (longText && !(kit.display.floor < LONG_FLOOR_PX)) kit = { ...kit, display: { ...kit.display, floor: LONG_FLOOR_PX } };
+    const floorPx = Math.min(kit.display.floor || MIN_HEADLINE_PX, size);
     const px = fitSize(kit, text, pos.w, pos.h, size, lineHeight);
-    if (px === MIN_HEADLINE_PX && fitSize(kit, text, pos.w, pos.h, MIN_HEADLINE_PX + 4, lineHeight) === MIN_HEADLINE_PX) {
+    if (px === floorPx && fitSize(kit, text, pos.w, pos.h, floorPx + 4, lineHeight) === floorPx) {
       const em = (kit.display.width || 0.55);
       const perLine = Math.floor(pos.w / (px * em));
       if (Math.ceil(text.length / Math.max(1, perLine)) * px * lineHeight > pos.h) gen.tooLong = true;
@@ -802,7 +788,7 @@
         L.push(headline(kit, gen, { x: 200, y: 300, w: W - 400, h: 500 }, lines.join(' '), 104, kit.text, 'center', 1.08));
         L.push(...chipLayers(kit, refs, 0, 840, 'center'));
       } else {
-        L.push(headline(kit, gen, { x: 240, y: 400, w: W - 480, h: 460 }, lines.join(' '), 76, kit.text, 'center', 1.2));
+        L.push(headline(kit, gen, { x: 240, y: 400, w: W - 480, h: 540 }, lines.join(' '), 76, kit.text, 'center', 1.2));
       }
       L.push(...footerLayer(kit, footer, { x: M, y: 990, w: W - 2 * M, h: 36 }, 'center'));
       return L;
@@ -824,7 +810,7 @@
     } else if (gen.kind === 'story') {
       L.push(ruleLayer(kit, M, 300, 96));
       if (gen.label) L.push(labelLayer(kit, gen.label, { x: M, y: 330, w: 900, h: 48 }, 'left'));
-      L.push(headline(kit, gen, { x: M, y: 400, w: 1380, h: 460 }, lines.join(' '), 76, kit.text, 'left', 1.2));
+      L.push(headline(kit, gen, { x: M, y: 400, w: 1380, h: 540 }, lines.join(' '), 76, kit.text, 'left', 1.2));
     } else {
       // section / closing: one line, centred, with a short accent rule above
       L.push(ruleLayer(kit, (W - 120) / 2, 340, 120));
@@ -1141,12 +1127,11 @@
       refs = lines.pop().replace(/^scriptures?\s*:/i, '').split(/\s*[·|;]\s*/).map(r => normaliseRef(r) || r.trim()).filter(Boolean);
     }
     const label = gen.label && lines.length > 1 ? lines.shift() : (gen.label ? gen.label : '');
-    return { ...gen, label, lines: lines.length ? lines : gen.lines, refs, shortened: false };
+    return { ...gen, label, lines: lines.length ? lines : gen.lines, refs };
   }
   // The slide's words checked against the rules (fit is checked after drawing: see checkFit).
   function issues(gen, kit) {
     const out = kitWarnings(kit);
-    if (gen.shortened) out.push('Shortened: check the cut. The whole sentence is in the notes.');
     if (gen.tooLong) out.push('Too long to fit at a readable size: shorten the words.');
     if ((gen.refs || []).some(r => !normaliseRef(r))) out.push('A scripture reference isn’t recognised.');
     return out;
@@ -1182,6 +1167,34 @@
   // unless picked (the verses go up live from Kairo's Bible); the notes go to the last slide's notes.
   //   opts: { kit, style, footer, include: Set of part ids (default: the parts on by default),
   //           kinds: { part id: 'point' | 'section' | 'story' } for lines the operator re-labelled }
+  // The document's own words, all of them. A slide holds this many words at a size a back row can read; more
+  // goes on the next slide (cut at a sentence, else a comma, else a word), never dropped.
+  const SLIDE_WORDS = { point: 40, text: 45 };
+  function chunks(text, max) {
+    const t = String(text || '').trim();
+    if (wordCount(t) <= max) return [t];
+    const out = [];
+    let cur = [];
+    const flush = () => { if (cur.length) out.push(cur.join(' ')); cur = []; };
+    const pieces = t.split(/(?<=[.!?])\s+/);
+    for (const sentence of pieces) {
+      const words = sentence.split(/\s+/);
+      if (cur.length && cur.length + words.length > max) flush();
+      if (words.length <= max) { cur.push(...words); continue; }
+      // One sentence longer than a slide: at its commas and semicolons, then at the word.
+      for (const clause of sentence.split(/(?<=[,;:])\s+/)) {
+        const cw = clause.split(/\s+/);
+        if (cur.length && cur.length + cw.length > max) flush();
+        if (cw.length <= max) { cur.push(...cw); continue; }
+        for (let k = 0; k < cw.length; k += max) { flush(); cur.push(...cw.slice(k, k + max)); }
+      }
+    }
+    flush();
+    // A last slide of a word or two is carried back onto the one before it.
+    if (out.length > 1 && wordCount(out[out.length - 1]) < 4) out.splice(out.length - 2, 2, out[out.length - 2] + ' ' + out[out.length - 1]);
+    return out;
+  }
+
   function build(outline, opts = {}) {
     const kit = withColors(kitById(opts.kit), opts.colors);
     const style = BACKGROUNDS.some(b => b.id === opts.style) ? opts.style : 'glow';
@@ -1201,7 +1214,6 @@
     const themeLine = header.find(h => /theme/i.test(h.text)) || header[outline.titleIndex != null ? outline.titleIndex : 1] || header[0];
     const seriesLine = header.find(h => /series|topic|title/i.test(h.text) && h !== themeLine);
     const refsOf = (list) => [...new Set(list.map(r => normaliseRef(r) || null).filter(Boolean))];
-    const opening = (text, words) => { const first = String(text).split(/(?<=[.!?])\s+/)[0]; return wordCount(first) > words ? first.split(/\s+/).slice(0, words).join(' ') + '…' : first; };
     const total = parts.filter(p => p.kind === 'point' && on(p)).length;
     let n = 0;
     for (const p of parts) {
@@ -1214,20 +1226,19 @@
         const label = week || (/:/.test(themeLine.text) ? themeLine.text.split(':')[0].trim() : '');
         make({ kind: 'title', label, lines: [head, sub].filter(Boolean), refs: refsOf([...(themeLine.refs || []), ...((seriesLine && seriesLine.refs) || [])]) });
       } else if (p.kind === 'story') {
-        const cut = opening(p.text, 28);
-        make({ kind: 'story', label: 'Introduction', lines: [cut], refs: refsOf(p.refs), shortened: cut !== p.text }, { notes: p.text });
+        const pages = chunks(p.text, SLIDE_WORDS.text);
+        pages.forEach((t, k) => make({ kind: 'story', label: pages.length > 1 ? `Introduction · ${k + 1} of ${pages.length}` : 'Introduction', lines: [t], refs: k === 0 ? refsOf(p.refs) : [] }, { notes: p.text }));
       } else if (p.kind === 'point') {
         n += 1;
-        const { text, shortened } = shortenPoint(p.text);
-        make({ kind: 'point', n, label: `Point ${n} of ${total}`, lines: [text], refs: refsOf(p.refs), shortened }, { notes: p.notes || p.text });
+        const pages = chunks(p.text, SLIDE_WORDS.point);
+        pages.forEach((t, k) => make({ kind: 'point', n, label: `Point ${n} of ${total}${pages.length > 1 ? ` · ${k + 1} of ${pages.length}` : ''}`, lines: [t], refs: k === pages.length - 1 ? refsOf(p.refs) : [] }, { notes: p.notes || p.text }));
       } else if (p.kind === 'section' || p.kind === 'closing') {
         make({ kind: p.kind, label: '', lines: [p.text], refs: [] });
       } else {
-        // A line, note or typed verse the operator chose: the quieter left-hand layout.
-        const whole = p.kind === 'verse' && outline.how && outline.how.versesOn;   // a verse the document wrote out is read whole
-        const cut = whole ? p.text : opening(p.text, 28);
+        // A line, note or typed verse the operator chose: the quieter left-hand layout, in full.
         const ref = p.kind === 'verse' ? refsOf(p.refs)[0] || '' : '';
-        make({ kind: 'story', label: ref, lines: [cut], refs: [], shortened: cut !== p.text }, { notes: p.text });
+        const pages = chunks(p.text, SLIDE_WORDS.text);
+        pages.forEach((t, k) => make({ kind: 'story', label: ref && pages.length > 1 ? `${ref} · ${k + 1} of ${pages.length}` : ref, lines: [t], refs: [] }, { notes: p.text }));
       }
     }
     const notes = parts.filter(p => p.kind === 'note' && !on(p)).map(p => p.text);
@@ -1257,7 +1268,7 @@
       const k = kept.get(b.gen.part);
       if (k && !restyleEdited) return k;
       if (k) {
-        const gen = { ...b.gen, label: k.gen.label, lines: k.gen.lines, refs: k.gen.refs, shortened: k.gen.shortened, tooLong: false };
+        const gen = { ...b.gen, label: k.gen.label, lines: k.gen.lines, refs: k.gen.refs, tooLong: false };
         b = makeBlock(gen, kit, d.style, d.footer, { notes: k.notes ?? b.notes, presenterNote: k.presenterNote ?? b.presenterNote });
       }
       // What the operator applied to every slide stays on every new slide too.
@@ -1335,7 +1346,7 @@
   }
 
   const api = { W, H, KITS, BACKGROUNDS, LAYOUTS, DESIGNS, backgroundLayers, kitById, withColors, kitWarnings, contrast, bookName, normaliseRef,
-    docxParagraphs, textParagraphs, labelParagraphs, outlineFrom, partsOf, readDocx, readText, shortenPoint, build, newDeck, regenerate, commonChanges, applyCommon, sharedWith, withText, serialize, parse, issues };
+    docxParagraphs, textParagraphs, labelParagraphs, outlineFrom, partsOf, readDocx, readText, build, newDeck, regenerate, commonChanges, applyCommon, sharedWith, withText, serialize, parse, issues };
   if (typeof window !== 'undefined') window.KairoSermonSlides = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
 })();

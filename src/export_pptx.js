@@ -85,6 +85,30 @@
   const fullBox = { x: 0, y: 0, w: W, h: H };
 
   // opts: { fillKeys, layerKeys } (the app's own lists, when given). Returns { items, notes: [strings], fonts: [families] }.
+  // The words of an imported ProPresenter element (a `pp` layer with text): its box, face, size, colour and
+  // lines, as a text item. null for a shape or picture, or an element with no words.
+  const hex2 = (n) => Math.round(clamp(num(n, 0), 0, 1) * 255).toString(16).padStart(2, '0');
+  const ppColor = (c) => (Array.isArray(c) && c.length >= 3 ? parseColor('#' + hex2(c[0]) + hex2(c[1]) + hex2(c[2]), (c[3] != null ? c[3] : 1) * 100) : null);
+  function ppText(layer) {
+    const t = layer && layer.text;
+    if (!t || !Array.isArray(t.paragraphs)) return null;
+    const lines = t.paragraphs.map(p => (p.runs || []).map(r => r.t || '').join(''));
+    let text = lines.join('\n');
+    if (!text.trim()) return null;
+    const run = (t.paragraphs.find(p => (p.runs || []).length) || {}).runs[0] || {};
+    const f = t.font || {};
+    const caps = t.caps === 'all' ? 'uppercase' : t.caps === 'lower' ? 'lowercase' : 'none';
+    if (caps === 'uppercase') text = text.toUpperCase();
+    const color = ppColor(run.color) || ppColor(t.fill) || { hex: 'FFFFFF', a: 1 };
+    const box = layer.pos || { x: 0, y: 0, w: W, h: 0 };
+    return { kind: 'text', x: box.x, y: box.y, w: box.w, h: num(box.h), rotation: num(layer.rotation), text, accent: null,
+      font: { family: f.family || 'Arial', size: num(run.size, num(f.size, 48)), weight: (run.b || f.bold) ? 700 : 400, italic: !!f.italic, lineHeight: 1.15,
+        letterSpacing: num(run.kern, num(t.kerning)), caps: false },
+      align: (t.paragraphs[0] && t.paragraphs[0].align) || (t.paragraph && t.paragraph.align) || 'left',
+      fill: { kind: 'solid', color },
+      shadow: t.shadow && t.shadow.enable ? { enabled: true, color: ppColor(t.shadow.color) ? '#' + ppColor(t.shadow.color).hex : '#000000', opacity: Math.round(num(t.shadow.opacity, 0.75) * 100), blur: num(t.shadow.radius, 5), x: 0, y: num(t.shadow.offset, 5) } : null };
+  }
+
   function itemsFromLayers(layers, style, content, opts) {
     opts = opts || {};
     style = style || {};
@@ -182,6 +206,10 @@
         continue;
       }
 
+      if (layer.type === 'pp') {
+        const t = ppText(layer);
+        if (t) { fonts.add(t.font.family); items.push(t); continue; }
+      }
       if (layer.type === 'pp' || layer.type === 'motion' || layer.type === 'image-cycle') note('Imported ProPresenter elements and motion graphics');
     }
     // The colour behind everything: the first full-slide background (a gradient's middle stop).
@@ -451,7 +479,7 @@
     return out;
   }
 
-  const api = { itemsFromLayers, buildPptx, parseColor, crc32, zip };
+  const api = { itemsFromLayers, ppText, buildPptx, parseColor, crc32, zip };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.KairoPptx = api;
 })(typeof window !== 'undefined' ? window : globalThis);

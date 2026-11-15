@@ -3076,14 +3076,14 @@ function tsBeginDrag(e, layer, mode, dir) {
   if (activeLayer !== layer) { activeLayer = layer; renderLayersList(); renderProps(); renderPreview(); }
   const stage = tsStageEl();
   if (!stage) return;
-  // Moving or resizing a layer that follows another places it yourself:
-  // it keeps the spot it's showing at, and stops following.
+  // Moving or resizing a layer that follows another places it yourself: it keeps the spot it's showing
+  // at, and stops following. Only once the pointer really drags (tsDragMove), never on a click that
+  // just selects it: selecting must not move anything.
+  let followY = null;
   if (layer.follows) {
     const el = stage.querySelector(`[data-layer-id="${CSS.escape(layer.id)}"]`);
     const top = el ? parseFloat(el.style.top) : NaN;
-    if (layer.pos && Number.isFinite(top)) layer.pos.y = Math.round(top / 100 * TS_DESIGN_H);
-    delete layer.follows;
-    renderProps();
+    if (layer.pos && Number.isFinite(top)) followY = Math.round(top / 100 * TS_DESIGN_H);
   }
   const pos = ensurePos(layer);
   // Moving (not resizing — group-resize isn't supported) a layer that's
@@ -3096,9 +3096,9 @@ function tsBeginDrag(e, layer, mode, dir) {
     ? tsSelectedLayers().filter(l => l !== layer).map(l => ({ layer: l, start: { ...ensurePos(l) } }))
     : [];
   tsDrag = {
-    layer, mode, dir: dir || 'se',
+    layer, mode, dir: dir || 'se', followY,
     startX: e.clientX, startY: e.clientY,
-    start: { ...pos },
+    start: { ...pos, ...(followY != null ? { y: followY } : {}) },
     stageRect: stage.getBoundingClientRect(),
     group,
     // A corner scales a text layer's type with its box (see tsDragMove).
@@ -3150,6 +3150,12 @@ function tsDragMove(e) {
   if (!tsDrag.armed) {
     if (Math.hypot(e.clientX - tsDrag.startX, e.clientY - tsDrag.startY) < 3) return;
     tsDrag.armed = true;
+    if (tsDrag.followY != null) {
+      tsDrag.layer.pos.y = tsDrag.followY;
+      delete tsDrag.layer.follows;
+      tsDrag.followY = null;
+      renderProps();
+    }
   }
   const { layer, mode, start, stageRect } = tsDrag;
   const dx = (e.clientX - tsDrag.startX) / stageRect.width  * TS_DESIGN_W;
@@ -5775,7 +5781,7 @@ async function openCycleImagePicker(layer) {
     const card = document.createElement('button');
     card.className = 'media-card';
     const img = document.createElement('img');
-    img.src = item.url;
+    img.src = item.url + (item.url.includes('?') ? '&' : '?') + 'w=640';   // a card shows the server's small copy, not the original
     card.appendChild(img);
     const label = document.createElement('div');
     label.className = 'media-card-label';
@@ -8348,7 +8354,7 @@ async function openMediaLibraryPicker() {
     const card = document.createElement('button');
     card.className = 'media-card';
     const img = document.createElement('img');
-    img.src = item.url;
+    img.src = item.url + (item.url.includes('?') ? '&' : '?') + 'w=640';   // a card shows the server's small copy, not the original
     card.appendChild(img);
     const label = document.createElement('div');
     label.className = 'media-card-label';

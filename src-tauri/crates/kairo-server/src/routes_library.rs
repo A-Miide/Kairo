@@ -74,6 +74,11 @@ async fn pp_asset(State(app): State<Shared>, Path(file): Path<String>, req: Requ
 /// made once and kept under `dir/small/`. `None` when it is already that small, isn't a PNG or
 /// JPEG, or can't be read: the caller then serves the original.
 fn smaller_copy(dir: &std::path::Path, source: &std::path::Path, width: u32) -> Option<std::path::PathBuf> {
+    smaller_copy_named(dir, source, width, source.file_stem()?.to_str()?)
+}
+
+/// [`smaller_copy`] with the copy filed under `stem` (a media file's name alone is not unique across folders).
+fn smaller_copy_named(dir: &std::path::Path, source: &std::path::Path, width: u32, stem: &str) -> Option<std::path::PathBuf> {
     let width = width.clamp(160, 1920).div_ceil(160) * 160;
     let ext = source.extension()?.to_str()?.to_ascii_lowercase();
     let format = match ext.as_str() {
@@ -81,7 +86,7 @@ fn smaller_copy(dir: &std::path::Path, source: &std::path::Path, width: u32) -> 
         "jpg" | "jpeg" => image::ImageFormat::Jpeg,
         _ => return None,
     };
-    let out = dir.join("small").join(format!("{}-{width}.{ext}", source.file_stem()?.to_str()?));
+    let out = dir.join("small").join(format!("{stem}-{width}.{ext}"));
     if out.is_file() {
         return Some(out);
     }
@@ -322,9 +327,53 @@ async fn bin_delete(State(app): State<Shared>, Path(name): Path<String>) -> Json
 }
 async fn bin_file(State(app): State<Shared>, Path(name): Path<String>, req: Request) -> Response {
     match app.media.bin_file(&name) {
-        Some(p) => send_file(p, req).await,
+        Some(p) => {
+            let p = media_thumb(&app, p, thumb_width(&req)).await;
+            send_file(p, req).await
+        }
         None => StatusCode::NOT_FOUND.into_response(),
     }
+}
+
+/// What a media address asks for beyond the file itself: a small copy of a picture (`w=`), or one frame of a video (`poster=`).
+#[derive(Clone, Copy)]
+enum Thumb {
+    Picture(u32),
+    Poster(u32),
+}
+
+fn thumb_width(req: &Request) -> Option<Thumb> {
+    let ask = |key: &str| req.uri().query().and_then(|q| q.split('&').find_map(|kv| kv.strip_prefix(key))).and_then(|w| w.parse::<u32>().ok());
+    ask("poster=").map(Thumb::Poster).or_else(|| ask("w=").map(Thumb::Picture))
+}
+
+/// `?w=640` on a media address: a card in the Media Bin or Media tab shows a small copy of the picture, made
+/// once and kept under the app's data folder, not the original (a 4800×2700 PNG is 52 MB once decoded, for a
+/// card the size of a stamp; church PC, 15 Nov 2026). The output and the sends use the address without `w`.
+async fn media_thumb(app: &Shared, original: std::path::PathBuf, ask: Option<Thumb>) -> std::path::PathBuf {
+    let Some(ask) = ask else { return original };
+    let dir = app.cfg.app_data_dir.join("media-thumbs");
+    let source = original.clone();
+    if let Thumb::Poster(width) = ask {
+        let video = app.video.clone();
+        let is_video = source.file_name().and_then(|n| n.to_str()).and_then(crate::media::kind_for) == Some("video");
+        // Not a video, or no ffmpeg: the file itself, which the card cannot draw as a picture, so it shows the video instead.
+        return if is_video { tokio::task::spawn_blocking(move || video.poster(&dir, &source, width)).await.ok().flatten().unwrap_or(original) } else { original };
+    }
+    let Thumb::Picture(width) = ask else { return original };
+    tokio::task::spawn_blocking(move || {
+        // Named for the file's place, size and age, so another folder's picture of the same name, or an edited file, gets its own.
+        let meta = std::fs::metadata(&source).ok()?;
+        let modified = meta.modified().ok().and_then(|m| m.duration_since(std::time::UNIX_EPOCH).ok()).map_or(0, |d| d.as_secs());
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        std::hash::Hash::hash(&(source.to_string_lossy().as_ref(), meta.len(), modified), &mut h);
+        let stem = format!("{:016x}", std::hash::Hasher::finish(&h));
+        smaller_copy_named(&dir, &source, width, &stem)
+    })
+    .await
+    .ok()
+    .flatten()
+    .unwrap_or(original)
 }
 async fn audio_tracks(State(app): State<Shared>) -> Json<Value> {
     let m = app.media.clone();
@@ -391,7 +440,10 @@ async fn folder_upload(State(app): State<Shared>, Path(id): Path<String>, b: Opt
 async fn folder_file(State(app): State<Shared>, Path((id, name)): Path<(String, String)>, req: Request) -> Response {
     let m = app.media.clone();
     match tokio::task::spawn_blocking(move || m.folder_file(&id, &name)).await.ok().flatten() {
-        Some(crate::media::FolderFile::Here(p)) => send_file(p, req).await,
+        Some(crate::media::FolderFile::Here(p)) => {
+            let p = media_thumb(&app, p, thumb_width(&req)).await;
+            send_file(p, req).await
+        }
         Some(crate::media::FolderFile::Downloading) => (StatusCode::ACCEPTED, Json(json!({ "ok": true, "downloading": true }))).into_response(),
         None => StatusCode::NOT_FOUND.into_response(),
     }
@@ -399,7 +451,7 @@ async fn folder_file(State(app): State<Shared>, Path((id, name)): Path<(String, 
 
 #[cfg(test)]
 mod pp_asset_tests {
-    use super::smaller_copy;
+    use super::{smaller_copy, smaller_copy_named};
 
     fn temp(name: &str) -> std::path::PathBuf {
         let d = std::env::temp_dir().join(format!("kairo-pp-{name}-{}", std::process::id()));
@@ -425,5 +477,19 @@ mod pp_asset_tests {
         assert_eq!(image::open(&j).unwrap().width(), 480);
         assert!(smaller_copy(&dir, &dir.join("x.gif"), 480).is_none());
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn two_pictures_with_the_same_file_name_get_their_own_small_copies() {
+        let dir = temp("named");
+        let (a, b) = (dir.join("a"), dir.join("b"));
+        std::fs::create_dir_all(&a).unwrap();
+        std::fs::create_dir_all(&b).unwrap();
+        image::RgbaImage::from_pixel(1600, 900, image::Rgba([255, 0, 0, 255])).save(a.join("photo.png")).unwrap();
+        image::RgbaImage::from_pixel(1600, 900, image::Rgba([0, 0, 255, 255])).save(b.join("photo.png")).unwrap();
+        let (ca, cb) = (smaller_copy_named(&dir, &a.join("photo.png"), 320, "one").unwrap(), smaller_copy_named(&dir, &b.join("photo.png"), 320, "two").unwrap());
+        assert_ne!(ca, cb);
+        assert_eq!(image::open(&ca).unwrap().to_rgba8().get_pixel(0, 0).0[0], 255);
+        assert_eq!(image::open(&cb).unwrap().to_rgba8().get_pixel(0, 0).0[2], 255);
     }
 }

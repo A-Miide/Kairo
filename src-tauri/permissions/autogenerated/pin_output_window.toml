@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-pin-output-window"
+description = "Enables the pin_output_window command without any pre-configured scope."
+commands.allow = ["pin_output_window"]
+
+[[permission]]
+identifier = "deny-pin-output-window"
+description = "Denies the pin_output_window command without any pre-configured scope."
+commands.deny = ["pin_output_window"]

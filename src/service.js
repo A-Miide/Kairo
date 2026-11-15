@@ -933,6 +933,9 @@
   // A song moves on by itself only when the operator has switched Auto-Deploy on for that song (its switch
   // beside Actions) and the Bible tab's master Auto-Deploy is on. Until the song follower is fully polished,
   // a song that has not been switched on is never advanced by it.
+  // The Bible tab's Auto-Deploy is the master for everything Kairo puts up by itself: with it off, a deck's
+  // follower does not move the deck either (it used to, ignoring the master).
+  const autoDeployMasterOn = () => !(window.KairoAutoDeployOn && !window.KairoAutoDeployOn());
   function songFollowOn(item) {
     return !!(item && item.auto) && !(window.KairoAutoDeployOn && !window.KairoAutoDeployOn());
   }
@@ -966,13 +969,17 @@
       follower = f;
       followItemId = item.id;
       if (fromIndex != null) follower.resync(fromIndex);
+      debugLog('slide-follow-start', { itemId: item.id, slides: texts.length, fromIndex: fromIndex == null ? null : fromIndex });
       slideScriptureRefs(texts).then((refs) => { if (follower === f && refs) f.setRefs(refs); });
     } else {
       return;
     }
     renderFollowHud(follower.snapshot());
   }
-  function stopFollower() { follower = null; followItemId = null; renderFollowHud(null); }
+  function stopFollower() {
+    if (follower) debugLog('slide-follow-stop', { itemId: followItemId });
+    follower = null; followItemId = null; renderFollowHud(null);
+  }
 
   // ── Slide follow and the Bible layer ──────────────────────────────────────
   // Bible is the top layer: a verse covers the live slide. What's up there
@@ -997,7 +1004,7 @@
     bibleLive = { book: v.book, chapter: Number(v.chapter), verse: Number(v.verse), text: v.text || '', auto: !!auto || own, at: Date.now() };
     if (pendingTakeover) { clearTimeout(pendingTakeover); pendingTakeover = null; } // a new verse: it stays
     bibleOnTop = true;
-    if (bibleLive.auto && !own && follower && follower.noteVerse) follower.noteVerse({ book: v.book, chapter: bibleLive.chapter, verse: bibleLive.verse });
+    if (bibleLive.auto && !own && follower && follower.noteVerse && autoDeployMasterOn()) follower.noteVerse({ book: v.book, chapter: bibleLive.chapter, verse: bibleLive.verse });
   }
 
   const slideRefsCache = new Map();
@@ -1024,6 +1031,7 @@
   function onSlideFollowAdvance(item, e) {
     const idx = e.toIndex;
     if (idx == null || `${item.id}:${idx}` === liveSlideKey) return;
+    debugLog('slide-follow-advance', { itemId: item.id, from: liveSlideKey ? Number(liveSlideKey.split(':')[1]) : null, to: idx, by: e.by, confidence: e.confidence, heard: e.heard ? e.heard.join(' ') : null });
     const s = follower && follower.slides ? follower.slides[idx] : null;
     const refs = (s && s.refs) || [];
     const covers = (v) => !!v && (window.KairoSlideMarkers ? window.KairoSlideMarkers.carries(s, v) : refs.some(r => r.book === v.book && r.chapter === v.chapter && v.verse >= r.verse && v.verse <= r.verseEnd));
@@ -1236,6 +1244,11 @@
       if (on && autoFollow) startFollower(item, Number(liveSlideKey.slice(item.id.length + 1)));
       else if (!on && followItemId === item.id) stopFollower();
     }
+    // A deck already on screen starts following as its switch goes on (it keeps following when it goes off:
+    // that is the deck's own "Follow the speaker" setting).
+    if (item.type === 'slides' && on && autoFollow && sermonFollowEligible(item) && liveSlideKey && liveSlideKey.startsWith(`${item.id}:`) && followItemId !== item.id) {
+      startFollower(item, Number(liveSlideKey.slice(item.id.length + 1)));
+    }
   }
 
   // Every slide of every deck in every playlist (slide_finder.js): one being
@@ -1293,7 +1306,7 @@
     const meta = { isFinal: !!(msg && msg.isFinal), words: msg && msg.words,
       // A Bible verse went up a moment ago: the speaker is in scripture, so a number is a verse, not a point.
       scriptureActive: !!(bibleOnTop && bibleLive && Date.now() - bibleLive.at < 15000) };
-    if (follower && autoFollow) follower.ingest(text, meta);
+    if (follower && autoFollow && (follower.slides == null || autoDeployMasterOn())) follower.ingest(text, meta);
     if (autoFollow) {
       if (!contentLookup) {
         const CL = window.KairoContentLookup;
@@ -1454,6 +1467,8 @@
       fit: item.type === 'image' ? (item.fit || 'contain') : null,
       hasText: !!(slide.text && slide.text.trim()),
       index,
+      // who sent it: the operator's click, or Kairo (follower / finder / lookup)
+      by: follow ? 'follower' : auto ? 'auto' : 'operator',
     });
     try {
       const res = await fetchWithTimeout(`${SERVER}/api/service/send`, {
@@ -1536,10 +1551,13 @@
   // auto-lookup's candidate pool since it still thought it was live. Also
   // stops a follower tracking the now-cleared item, same as removeItem —
   // nothing is live for it to sync position against anymore.
-  function clearLive() {
+  // keepFollower: a Bible verse went off with no slide under it. The speaker is still in the deck, so the
+  // follower keeps its place and the next slide it hears goes up (it used to stop here and never advance again).
+  function clearLive({ keepFollower = false } = {}) {
     if (!liveSlideKey) return;
     liveSlideKey = null;
-    if (follower) stopFollower(); // already calls renderFollowHud(null) internally
+    if (keepFollower && follower) renderFollowHud(follower.snapshot());
+    else if (follower) stopFollower(); // already calls renderFollowHud(null) internally
     else renderFollowHud(null);
     renderStack();
     renderSidebar();
@@ -3779,6 +3797,37 @@
       return { bytes: new Uint8Array(await png.arrayBuffer()), ext: 'png', w, h };
     } finally { URL.revokeObjectURL(url); }
   }
+  // One slide as a picture: painted off screen at 1920 × 1080 exactly as the thumbnail and the output paint it.
+  async function slidePictureForExport(item, s, i, { withoutText = false } = {}) {
+    const R = window.KairoDomRaster;
+    if (!R) throw new Error('Pictures are not available in this build.');
+    const host = document.createElement('div');
+    host.style.cssText = `position:fixed;left:-20000px;top:0;width:${DESIGN_W}px;height:${DESIGN_H}px;overflow:hidden;`;
+    document.body.appendChild(host);
+    try {
+      if (s.image) {
+        host.style.background = '#000';
+        const img = document.createElement('div');
+        img.style.cssText = `position:absolute;inset:0;background:center / ${item.fit === 'fill' ? '100% 100%' : (item.fit || 'contain')} no-repeat url("${String(s.image).replace(/"/g, '%22')}")`;
+        host.appendChild(img);
+      } else {
+        let look = s.isScene ? { layers: s.layers || [], ...(s.canvasSize ? { canvasSize: s.canvasSize } : {}) } : withOwnCanvas(slideThemeLook(s, item) || themeForItem(item), item, i);
+        let style = s.isScene ? {} : (item.slideStyles?.[i] || {});
+        // The words stay real text in the file (editable there), so the picture is everything but them.
+        if (withoutText) {
+          const isWords = (l) => l.type === 'text' || (l.type === 'pp' && !!window.KairoPptx.ppText(l));
+          look = { ...look, layers: (look.layers || []).filter(l => !isWords(l)) };
+          style = { ...style, __customLayers: (style.__customLayers || []).filter(l => !isWords(l)) };
+        }
+        const content = { verseText: s.text, referenceText: s.reference || '', translatedText: getTranslatedText(item, s, () => {}) };
+        paintLookLayers(host, look, style, content, { builds: false });
+      }
+      if (document.fonts && document.fonts.ready) await document.fonts.ready;
+      await new Promise(ok => setTimeout(ok, 30));   // not requestAnimationFrame: it never fires while the window is hidden
+      const png = await R.elementToPng(host, DESIGN_W, DESIGN_H, 1);
+      return { bytes: png.bytes, ext: png.ext, w: png.w, h: png.h };
+    } finally { host.remove(); }
+  }
   // Every slide's export items, and the fonts, notes and pictures they use.
   function exportSlides(item) {
     const all = slidesFor(item);
@@ -3799,10 +3848,26 @@
   }
   // The file for `format`: { bytes, ext }. A ProPresenter export with pictures is a .probundle, the
   // presentation with its pictures packed beside it, as ProPresenter itself exports one.
-  async function buildExportFile(item, format, base, places) {
-    const { slides, srcs } = exportSlides(item);
+  async function buildExportFile(item, format, base, places, look, onProgress) {
+    let { slides, srcs } = exportSlides(item);
     if (!slides.length) throw new Error('There are no slides to export.');
-    const images = await picturesForExport(srcs);
+    let images;
+    if (look === 'picture') {
+      // Each slide drawn as the app draws it, and put in the file as one full picture.
+      images = {};
+      const native = slides;
+      slides = [];
+      const all = slidesFor(item);
+      for (let i = 0; i < all.length; i++) {
+        const key = `slide:${i}`;
+        if (onProgress) onProgress(i + 1, all.length);
+        try { images[key] = await slidePictureForExport(item, all[i], i, { withoutText: !all[i].image }); }
+        catch (err) { throw new Error(`Slide ${i + 1} could not be drawn as a picture here. Choose “All native” instead. (${err && err.message ? err.message : err})`); }
+        // The picture, then the slide's own words on top as real text with their colours, fonts and places.
+        const words = all[i].image ? [] : native[i].items.filter(it => it.kind === 'text');
+        slides.push({ items: [{ kind: 'image', x: 0, y: 0, w: DESIGN_W, h: DESIGN_H, src: key, fit: 'fill' }, ...words] });
+      }
+    } else images = await picturesForExport(srcs);
     if (format === 'pptx') return { bytes: window.KairoPptx.buildPptx(slides, images, { title: item.title }), ext: 'pptx' };
     const out = window.KairoProPresenter.buildPro(slides, { title: item.title, images, mediaDir: places && places.proMedia });
     if (!out.media.length) return { bytes: out.bytes, ext: 'pro' };
@@ -3826,12 +3891,14 @@
     const places = await fetchWithTimeout(`${SERVER}/api/export/places`).then(r => r.json()).catch(() => ({}));
     const prefs = exportPrefs();
     let format = prefs.format === 'pro' ? 'pro' : 'pptx';
+    let look = prefs.look === 'text' ? 'text' : 'picture';
     let dir = prefs.dir || places.exports || '';
     const pictures = exportSlides(item).srcs.size > 0;
     nameIn.value = exportBaseName(item.title) || 'Kairo slides';
     const draw = () => {
       $('ex-format').querySelectorAll('.toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.format === format));
-      extEl.textContent = format === 'pptx' ? '.pptx' : (pictures ? '.probundle' : '.pro');
+      $('ex-look').querySelectorAll('.toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.look === look));
+      extEl.textContent = format === 'pptx' ? '.pptx' : (pictures || look === 'picture' ? '.probundle' : '.pro');
       dirEl.textContent = dir || 'No folder chosen';
       dirEl.title = dir;
       errEl.hidden = true;
@@ -3839,13 +3906,14 @@
     const dlg = window.__TAURI__?.dialog;
     change.hidden = !dlg?.open;
     const onFormat = (e) => { const b = e.target.closest('.toggle-btn'); if (b) { format = b.dataset.format; draw(); } };
+    const onLook = (e) => { const b = e.target.closest('.toggle-btn'); if (b) { look = b.dataset.look; draw(); } };
     const onChange = async () => {
       let picked;
       try { picked = await dlg.open({ directory: true, multiple: false, title: 'Choose where exports go', defaultPath: dir || undefined, canCreateDirectories: true }); } catch { return; }
       if (picked) { dir = Array.isArray(picked) ? picked[0] : picked; draw(); }
     };
     const fail = (msg) => { errEl.textContent = msg; errEl.hidden = false; go.disabled = false; go.textContent = 'Export'; };
-    const save = (name, bytes, replace) => fetchWithTimeout(`${SERVER}/api/export/save?dir=${encodeURIComponent(dir)}&name=${encodeURIComponent(name)}${replace ? '&replace=1' : ''}`,
+    const save = (name, bytes, replace) => fetchWithTimeout(`${SERVER}/api/export/save?dir=${encodeURIComponent(dir)}&name=${encodeURIComponent(name)}${replace ? '&replace=true' : ''}`,
       { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: bytes }, MEDIA_UPLOAD_TIMEOUT_MS);
     const onGo = async () => {
       const base = exportBaseName(nameIn.value);
@@ -3853,7 +3921,7 @@
       if (!dir) { fail('Choose a folder for the file.'); return; }
       go.disabled = true; go.textContent = 'Exporting…'; errEl.hidden = true;
       try {
-        const file = await buildExportFile(item, format, base, places);
+        const file = await buildExportFile(item, format, base, places, look, (n, of) => { go.textContent = `Exporting ${n} of ${of}…`; });
         const name = `${base}.${file.ext}`;
         let r = await save(name, file.bytes, false);
         if (r.status === 409) {
@@ -3864,7 +3932,7 @@
         }
         const d = await r.json().catch(() => ({}));
         if (!r.ok || d.error) throw new Error(d.error || 'The file couldn’t be saved.');
-        saveExportPrefs({ format, dir });
+        saveExportPrefs({ format, dir, look });
         close();
       } catch (err) {
         console.warn('[Export] failed:', err);
@@ -3876,6 +3944,7 @@
     function close() {
       modal.classList.add('hidden');
       $('ex-format').removeEventListener('click', onFormat);
+      $('ex-look').removeEventListener('click', onLook);
       change.removeEventListener('click', onChange);
       go.removeEventListener('click', onGo);
       $('ex-cancel').removeEventListener('click', close);
@@ -3883,6 +3952,7 @@
       modal.removeEventListener('keydown', onKey);
     }
     $('ex-format').addEventListener('click', onFormat);
+    $('ex-look').addEventListener('click', onLook);
     change.addEventListener('click', onChange);
     go.addEventListener('click', onGo);
     $('ex-cancel').addEventListener('click', close);
@@ -6146,6 +6216,7 @@
   // in the app (Media tab's own grid via buildMediaCard, the Media Bin via
   // buildMediaBinCard below) — was two near-identical copies that could
   // silently drift.
+  const MEDIA_THUMB_WIDTH = 640;   // the server rounds to a multiple of 160; wide enough for a card at twice the pixel density
   function buildMediaThumb(item) {
     // Still in iCloud: a placeholder, not the file (loading it here would download every one).
     if (item.cloud) {
@@ -6155,6 +6226,23 @@
       return ph;
     }
     if (item.kind === 'video') {
+      // A card shows one frame the server cut once (a picture), not a video element: with a few dozen clips in
+      // a folder the page held 59 of them at once, 160 MB of decoded frames, each with a decoder of its own
+      // (church PC, 15 Nov 2026). Where the server can't cut one (no ffmpeg, a file it can't read) the card
+      // falls back to the video element, as before.
+      const poster = document.createElement('img');
+      poster.loading = 'lazy';
+      poster.decoding = 'async';
+      poster.className = 'media-poster';
+      poster.dataset.src = authedMediaUrl(item.url + (item.url.includes('?') ? '&' : '?') + 'poster=' + MEDIA_THUMB_WIDTH);
+      poster.addEventListener('error', () => { poster.replaceWith(buildVideoThumb(item)); }, { once: true });
+      lazyMediaObserver.observe(poster);
+      return poster;
+    }
+    return buildImageThumb(item);
+  }
+  function buildVideoThumb(item) {
+    {
       const v = document.createElement('video');
       // preload:'metadata' (not 'none') + lazy src, and deliberately never
       // played — see lazyMediaObserver's own comment on why a shelf/grid
@@ -6186,10 +6274,14 @@
       lazyMediaObserver.observe(v);
       return v;
     }
+  }
+  function buildImageThumb(item) {
     const img = document.createElement('img');
     img.loading = 'lazy';
     img.decoding = 'async';
-    img.dataset.src = item.url;
+    // A card is small: it shows a small copy the server made once, never the original (a 4800×2700 PNG is 52 MB
+    // once decoded). The picture sent to the output is still the original, by its own address.
+    img.dataset.src = item.url + (item.url.includes('?') ? '&' : '?') + 'w=' + MEDIA_THUMB_WIDTH;
     lazyMediaObserver.observe(img);
     return img;
   }
@@ -6210,11 +6302,13 @@
     // thumbnail just won't load. Self-heal instead of leaving a dead
     // tile around: drop it from the card, its recent entry, and re-check.
     if (isRecent) {
-      card.querySelector('img,video')?.addEventListener('error', () => {
+      // (A video card's poster failing only means the server couldn't cut a frame: the card then shows the video.)
+      card.addEventListener('error', (e) => {
+        if (e.target?.classList?.contains('media-poster')) return;
         let list = getRecents('media').filter(e => e.key !== item.url);
         try { localStorage.setItem(recentsStorageKey('media'), JSON.stringify(list)); } catch {}
         card.remove();
-      });
+      }, true);
     }
     const label = document.createElement('div');
     label.className = 'media-card-label';

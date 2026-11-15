@@ -14,7 +14,7 @@
 //! (raised when quiet, a loopback further than a microphone, never clipped).
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{mpsc, Arc};
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
@@ -25,6 +25,20 @@ use crate::Shared;
 
 const RATE: u32 = 16_000;
 const FRAME: usize = 1024;
+
+/// How long to wait before the next try at an input that dropped: at once the first time (a glitch on
+/// Windows, a sample-rate change by another app, a jack touched, is back in a moment), then 0.25 s, 0.5 s,
+/// 1 s, and every 2 s after that. It used to wait 2 s before even the first try, so any one-second hiccup
+/// left a hole in the words at least that long (church PC, 15 Nov 2026: "audio input randomly goes off").
+fn retry_after(failed_tries: u32) -> Duration {
+    match failed_tries {
+        0 => Duration::ZERO,
+        1 => Duration::from_millis(250),
+        2 => Duration::from_millis(500),
+        3 => Duration::from_secs(1),
+        _ => Duration::from_secs(2),
+    }
+}
 
 /// The gain each input settled on, by name: a new session starts from it instead of 1.0, as the
 /// page's capture does (app.js), so its first sentences aren't heard while the gain climbs back.
@@ -112,6 +126,7 @@ pub fn start(app: Shared, want: &str, feed: bool) -> Result<Capture, String> {
                 }
             };
             let name = opened.name.clone();
+            crate::routes::write_debug_global("server:native-capture-opened", json!({ "device": name, "rate": opened.rate, "channels": opened.channels, "format": opened.format }));
             let _ = ready_tx.send(Ok(name.clone()));
 
             let mut lowpass = Biquad::lowpass(opened.rate as f32, 7000.0);
@@ -123,25 +138,54 @@ pub fn start(app: Shared, want: &str, feed: bool) -> Result<Capture, String> {
             let mut frames = 0u64;
             let mut last_block = std::time::Instant::now();
             let mut lost_since: Option<std::time::Instant> = None;
+            // Tries at the input that failed since it dropped, and whether the page was told.
+            let mut failed_tries = 0u32;
+            let mut told = false;
             while !stop_t.load(Ordering::Relaxed) {
-                // The input went away (unplugged, or the system stopped it): say so, and open it
-                // again as soon as it can be, every 2 s.
-                let gone = opened.failed.load(Ordering::Relaxed) || last_block.elapsed() > Duration::from_secs(3);
+                // The input went away (unplugged, or the system stopped it): open it again at once, then
+                // at growing gaps; the page is told only if the first try doesn't bring it back, so a
+                // glitch that mends in a moment doesn't flash "No audio!".
+                let silent_for = last_block.elapsed();
+                let errored = opened.failed.load(Ordering::Relaxed);
+                let gone = errored || silent_for > Duration::from_secs(3);
                 if gone {
                     if lost_since.is_none() {
                         lost_since = Some(std::time::Instant::now());
-                        crate::routes::write_debug_global("server:native-capture-lost", json!({ "device": name }));
-                        app.hub.broadcast(json!({ "type": "input-lost", "device": name }));
+                        failed_tries = 0;
+                        told = false;
+                        // Why, in the log: the system's own words for an error, else how long nothing came.
+                        let why = if errored { crate::util::lock(&opened.why).clone() } else { format!("no sound arrived for {:.1} s", silent_for.as_secs_f32()) };
+                        crate::routes::write_debug_global("server:native-capture-lost", json!({ "device": name, "why": why, "rate": opened.rate, "channels": opened.channels, "format": opened.format }));
                     }
-                    std::thread::sleep(Duration::from_secs(2));
-                    if let Ok(o) = open(&host, &name) {
-                        lowpass = Biquad::lowpass(o.rate as f32, 7000.0);
-                        resample = Resampler::new(o.rate, RATE);
-                        opened = o;
-                        last_block = std::time::Instant::now();
-                        lost_since = None;
-                        crate::routes::write_debug_global("server:native-capture-back", json!({ "device": name }));
-                        app.hub.broadcast(json!({ "type": "input-back", "device": name }));
+                    let wait = retry_after(failed_tries);
+                    let until = std::time::Instant::now() + wait;
+                    while std::time::Instant::now() < until && !stop_t.load(Ordering::Relaxed) {
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
+                    match open(&host, &name) {
+                        Ok(o) => {
+                            lowpass = Biquad::lowpass(o.rate as f32, 7000.0);
+                            resample = Resampler::new(o.rate, RATE);
+                            let (rate, channels, format) = (o.rate, o.channels, o.format.clone());
+                            opened = o;
+                            last_block = std::time::Instant::now();
+                            let away_ms = lost_since.take().map_or(0, |t| t.elapsed().as_millis() as u64);
+                            crate::routes::write_debug_global("server:native-capture-back", json!({ "device": name, "awayMs": away_ms, "tries": failed_tries + 1, "rate": rate, "channels": channels, "format": format }));
+                            if told {
+                                app.hub.broadcast(json!({ "type": "input-back", "device": name }));
+                            }
+                        }
+                        Err(e) => {
+                            failed_tries += 1;
+                            // The first few failures and then now and again, so a long outage isn't a long log.
+                            if failed_tries <= 3 || failed_tries % 15 == 0 {
+                                crate::routes::write_debug_global("server:native-capture-retry", json!({ "device": name, "tries": failed_tries, "error": e }));
+                            }
+                            if !told {
+                                told = true;
+                                app.hub.broadcast(json!({ "type": "input-lost", "device": name }));
+                            }
+                        }
                     }
                     continue;
                 }
@@ -191,8 +235,13 @@ pub fn start(app: Shared, want: &str, feed: bool) -> Result<Capture, String> {
 struct Opened {
     name: String,
     rate: u32,
+    channels: usize,
+    /// The sample format the system gave ("F32", "I16"…), for the log.
+    format: String,
     rx: mpsc::Receiver<Vec<f32>>,
     failed: Arc<AtomicBool>,
+    /// What the system said when the stream failed.
+    why: Arc<Mutex<String>>,
     _stream: cpal::Stream,
 }
 
@@ -206,10 +255,14 @@ fn open(host: &cpal::Host, want: &str) -> Result<Opened, String> {
     let (tx, rx) = mpsc::channel::<Vec<f32>>();
     let failed = Arc::new(AtomicBool::new(false));
     let f2 = failed.clone();
-    let err_fn = move |e| {
+    let why = Arc::new(Mutex::new(String::new()));
+    let w2 = why.clone();
+    let err_fn = move |e: cpal::StreamError| {
         eprintln!("[Audio] capture error: {e}");
+        *crate::util::lock(&w2) = e.to_string();
         f2.store(true, Ordering::Relaxed);
     };
+    let format = format!("{:?}", cfg.sample_format());
     let sc: cpal::StreamConfig = cfg.clone().into();
     // Each block becomes mono f32 and is queued; sending never blocks the audio thread.
     let stream = match cfg.sample_format() {
@@ -221,7 +274,7 @@ fn open(host: &cpal::Host, want: &str) -> Result<Opened, String> {
     }
     .map_err(|e| format!("{name}: {e}"))?;
     stream.play().map_err(|e| format!("{name}: {e}"))?;
-    Ok(Opened { name, rate, rx, failed, _stream: stream })
+    Ok(Opened { name, rate, channels, format, rx, failed, why, _stream: stream })
 }
 
 fn mono<T: Copy>(data: &[T], channels: usize, f: impl Fn(T) -> f32) -> Vec<f32> {
@@ -376,6 +429,14 @@ impl LevelControl {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_dropped_input_is_tried_again_at_once_then_less_often() {
+        assert_eq!(retry_after(0), Duration::ZERO, "the first try is immediate");
+        assert!(retry_after(1) < retry_after(3));
+        assert_eq!(retry_after(4), Duration::from_secs(2));
+        assert_eq!(retry_after(400), Duration::from_secs(2), "never longer than 2 s");
+    }
 
     #[test]
     fn resampling_48k_to_16k_keeps_a_third_of_the_samples() {

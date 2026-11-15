@@ -49,14 +49,12 @@ test('every reference is written out the same way', () => {
   assert.equal(S.normaliseRef('the next point'), null);
 });
 
-test('a long point is cut at a natural break, never mid-thought, and marked', () => {
-  const long = S.shortenPoint('Abraham had to suspend his natural senses to obtain the promise, against hope believing in hope');
-  assert.equal(long.text, 'Abraham had to suspend his natural senses to obtain the promise');
-  assert.equal(long.shortened, true);
-  const short = S.shortenPoint('I am redeemed, a spirit being in human flesh');
-  assert.equal(short.shortened, false);
-  // No cut that would end on a small word ("of"): the point stays whole.
-  assert.equal(S.shortenPoint('But the knowledge of who we are is what determines what we can do in life today').shortened, false);
+test('no word of the document is dropped: a long point goes on a second slide', () => {
+  const long = 'Abraham had to suspend his natural senses to obtain the promise, against hope believing in hope. ' + 'And he did not waver through unbelief regarding the promise of God, but was strengthened in faith giving glory to God, '.repeat(3);
+  const deck = S.build({ header: [{ text: 'T' }], titleIndex: 0, how: {}, points: [], items: [{ kind: 'point', text: long, refs: [] }] }, { kit: 'midnight', style: 'gradient' });
+  const said = deck.filter(b => b.gen.kind === 'point').map(b => b.gen.lines[0]).join(' ');
+  assert.equal(said.replace(/\s+/g, ' '), long.trim().replace(/\s+/g, ' '), 'every word is on a slide, in order');
+  assert.ok(deck.filter(b => b.gen.kind === 'point').length >= 2);
 });
 
 test('the deck: a title, the story, a slide per point with chips, the section and the closing', () => {
@@ -65,8 +63,8 @@ test('the deck: a title, the story, a slide per point with chips, the section an
   const p1 = deck[2].gen;
   assert.equal(p1.label, 'Point 1 of 4');
   assert.deepEqual(p1.refs, ['Romans 4:16–21', 'Hebrews 11:17–19']);
-  assert.equal(p1.shortened, true);
   assert.equal(deck[2].layers.find(l => l.id === 'ss-headline').customText, p1.lines[0]);
+  assert.match(p1.lines[0], /against hope/, 'the whole point is on the slide');
   assert.match(deck[2].notes, /against hope/);
   assert.deepEqual(deck[0].gen.refs, ['Isaiah 8:18', 'John 3:8']);
   // The note is the presenter's, not a slide.
@@ -333,5 +331,23 @@ test('roles, not layouts: the same sermon written three ways reads as the same p
     assert.deepEqual(o.items.filter(i => i.kind === 'point').map(i => i.text), ['Faith comes by hearing', 'Faith works by love', 'Faith pleases God']);
     assert.equal(o.how.verses, 2);
     assert.deepEqual(o.items.filter(i => i.kind === 'point').map(i => i.refs.length > 0 || !!i.verses), [true, true, true]);
+  }
+});
+
+test('a long verse shrinks to fit its box instead of running off the slide', () => {
+  const verse = 'For the word of God is quick, and powerful, and sharper than any twoedged sword, piercing even to the dividing asunder of soul and spirit, and of the joints and marrow, and is a discerner of the thoughts and intents of the heart.';
+  for (const layout of ['left', 'centred']) {
+    const outline = { header: [{ text: 'Test' }], titleIndex: 0, how: { versesOn: true }, points: [], items: [{ kind: 'verse', text: verse, refs: ['Hebrews 4:12'] }] };
+    const parts = S.partsOf(outline).filter(p => p.kind === 'verse');
+    const deck = S.newDeck(outline, { kit: S.KITS[0].id, layout });
+    const block = deck.blocks.find(b => b.gen.lines && b.gen.lines.join(' ').includes('quick, and powerful')) || deck.blocks[deck.blocks.length - 1];
+    assert.ok(parts.length >= 0);
+    const h = block.layers.find(l => l.id === 'ss-headline');
+    if (!h) return;   // a layout without a headline layer has nothing to measure
+    const kit = S.kitById(block.gen.kit);
+    const chars = verse.length, em = (kit.display.width || 0.55) * 1.06;
+    const perLine = Math.max(1, Math.floor(h.pos.w / (h.font.size * em)));
+    assert.ok(Math.ceil(chars / perLine) * h.font.size * 1.2 <= h.pos.h * 1.05, `${layout}: ${h.font.size}px does not fit ${h.pos.h}px`);
+    assert.ok(!block.gen.tooLong);
   }
 });

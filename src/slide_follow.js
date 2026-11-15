@@ -103,19 +103,45 @@
     + 'just now all if then than there here what who whom which when how why from by up out into over about '
     + 'him them us its also very say said says let thee thou thy ye unto hath lord god jesus christ amen yes'));
 
+  // What identifies a slide when it is spoken: its own words, whatever the deck's make. Two things on a slide
+  // are not words to hear, in any deck (church log, 15 Nov 2026: a slide whose statement was said in full looked
+  // a third heard, and the deck never moved):
+  //  - chrome the deck repeats: a line that has the same shape on several slides ("Point 9 of 30", "Slide 4 of 20",
+  //    "Pastor X · Nov 15", a big number on its own, with the numbers aside) says which slide, not what it is about;
+  //  - references to scripture, which come by detection (noteVerse), where something else is left to say.
+  // Neither is dropped when that would leave the slide nearly empty.
+  const lineShape = (l) => l.toLowerCase().replace(/\d+/g, '#').replace(/\s+/g, ' ').trim();
+  function chromeShapes(texts) {
+    const seen = new Map();
+    texts.forEach((t) => new Set(String(t || '').split('\n').map(lineShape).filter((x) => x.length > 2 || x === '#')).forEach((sh) => seen.set(sh, (seen.get(sh) || 0) + 1)));
+    const many = Math.max(3, Math.ceil(texts.length * 0.15));
+    return new Set([...seen].filter(([, n]) => n >= many).map(([sh]) => sh));
+  }
+  const contentWordCount = (t) => keysOf(t).filter((k) => !STOP.has(k) && (k.length >= 3 || /^\d+$/.test(k))).length;
+  const MIN_OWN_WORDS = 2;   // a slide of two telling words ("Anointing Session") keeps its identity once the deck's chrome is aside
+  function identityText(text, chrome, refs) {
+    const whole = String(text || '');
+    let own = whole.split('\n').filter((l) => !chrome.has(lineShape(l))).join('\n').trim();
+    if (contentWordCount(own) < MIN_OWN_WORDS && contentWordCount(whole) >= MIN_OWN_WORDS) own = whole;   // not at the cost of the slide itself
+    let bare = own;
+    for (const r of refs || []) if (r && r.raw) bare = bare.split(r.raw).join(' ');
+    return contentWordCount(bare) >= MIN_OWN_WORDS ? bare : own;
+  }
+
   // slides: [text] or [{ text, refs: [{ book, chapter, verse, verseEnd, raw }] }]
   // (refs from /api/slides/scripture). A written reference is matched as it
   // is said: "Eph. 2:6" is heard as "Ephesians two six".
   function buildDeck(slides) {
+    const chrome = chromeShapes(slides.map((s) => (typeof s === 'string' ? s : (s && s.text) || '')));
     const list = slides.map((s, idx) => {
-      const text = typeof s === 'string' ? s : (s && s.text) || '';
-      const original = text;
+      const original = typeof s === 'string' ? s : (s && s.text) || '';
       const refs = (s && Array.isArray(s.refs)) ? s.refs : [];
+      const text = identityText(original, chrome, refs);
       let spoken = text;
       for (const r of refs) if (r.raw) spoken = spoken.split(r.raw).join(`${r.book} ${r.chapter} ${r.verse}${r.verseEnd !== r.verse ? ' ' + r.verseEnd : ''}`);
       // The slide's own verse number (the big "48." of a scripture slide) or list index.
       const m = SM ? SM.parse(original) : { marker: null };
-      return { idx, keys: keysOf(spoken), refs, text: original, marker: m.marker, markerEnd: m.markerEnd, markerKind: m.kind };
+      return { idx, keys: keysOf(spoken), refs, text: original, own: text, marker: m.marker, markerEnd: m.markerEnd, markerKind: m.kind };
     });
     const df = new Map();
     list.forEach((s) => new Set(s.keys).forEach((k) => df.set(k, (df.get(k) || 0) + 1)));
@@ -126,15 +152,20 @@
       // slide — "faith" in a faith sermon — still counts, just less)
       s.weight = s.keys.map((k, i) => (s.content[i] ? Math.min(1, 0.35 + Math.log(n / (df.get(k) || 1)) / Math.log(Math.max(2, n))) : 0));
       s.contentCount = s.content.filter(Boolean).length;
+      // What the preacher has to say to prove the slide: words that most of the deck shares ("scriptures",
+      // "through") are not part of the ask, however many a slide happens to hold.
+      const common = Math.max(4, Math.ceil(n * 0.25));
+      s.needCount = new Set(s.keys.filter((k, i) => s.content[i] && (df.get(k) || 0) < common)).size || s.contentCount;
       // The slide's opening: its first two content words (within the opening
       // clause: up to ":", "—", "." or a line break). Heard
       // exactly, in order, it's how an operator knows the next slide has begun.
-      const opening = keysOf(String(s.text || '').split(/[:—–.\n]/)[0]);
+      const opening = keysOf(s.own.split(/[:—–.\n]/)[0]);
       s.openCount = Math.min(2, opening.filter((k) => !STOP.has(k) && (k.length >= 3 || /^\d+$/.test(k))).length);
     });
     return list;
   }
 
+  const TELLING_PAIR_WEIGHT = 1.3;   // two words that few slides share weigh about this much together
   const DEFAULTS = {
     windowTokens: 40,      // recent speech scored against each slide
     recentTokens: 10,      // a match must end within the last N words heard (it's happening NOW)
@@ -328,7 +359,10 @@
       const need = needFor(k - this.index, s);
       // the next slide may also go on its opening alone, heard exactly
       const openingHeard = k === this.index + 1 && s.openCount >= 2 && mt.opening >= s.openCount;
-      if (!openingHeard && (mt.hits < need.hits || mt.cover < need.cover)) continue;
+      // …or the next slide's two telling words, together and in order, with half of what it says ("the next is
+      // tru joy and rejoicin" for "Through Joy and rejoicing": one word garbled, the slide plain).
+      const tellingPair = k === this.index + 1 && mt.hits >= 2 && mt.span <= mt.hits + 1 && mt.cover >= 0.5 && mt.weight >= TELLING_PAIR_WEIGHT;
+      if (!openingHeard && !tellingPair && (mt.hits < need.hits || mt.cover < need.cover)) continue;
       if (mt.last < win.length - this.cfg.recentTokens) continue;      // heard a while ago, not now
       if (mt.span > mt.hits * 3 + 4) continue;                          // scattered words, not the slide
       // the current slide explains these same words at least as well → stay
