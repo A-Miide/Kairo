@@ -3119,7 +3119,7 @@
         ...(onOlderTheme(item) ? [{ label: 'Update to the current theme', onClick: () => updateToCurrentTheme(item) }] : []),
         { label: 'Edit', onClick: () => window.KairoItemStyleEditor?.open?.(item.id, 0) },
         { label: 'Quick edit', onClick: () => openFullEdit(item.id) },
-        ...(canExportPptx(item) ? [{ label: 'Export as PowerPoint', onClick: () => exportItemAsPptx(item) }, { label: 'Export for ProPresenter', onClick: () => exportItemAsPro(item) }] : []),
+        ...(canExportPptx(item) ? [{ label: 'Export…', onClick: () => openExportDialog(item) }] : []),
         // Auto-advance (src/lyrics_follow.js for songs, src/slide_follow.js for decks)
         // — opt-in per item, unlike a song (which always auto-follows once
         // Start Listening is on): a 'slides' deck is just as often
@@ -3731,7 +3731,7 @@
     if (titleEl) { titleEl.textContent = item?.title || ''; titleEl.title = item?.title || ''; }
   }
 
-  // ── Export as PowerPoint ───────────────────────────────────────────────────────────────────────
+  // ── Export: each slide as export items ───────────────────────────────────────────────────────────────────────
   // Each slide as the app draws it (its look, its own changes, its words) in layers, then export_pptx.js
   // makes real PowerPoint shapes of them: editable text, shapes and pictures.
   function slideForExport(item, s, i) {
@@ -3779,77 +3779,123 @@
       return { bytes: new Uint8Array(await png.arrayBuffer()), ext: 'png', w, h };
     } finally { URL.revokeObjectURL(url); }
   }
-  const COMMON_FONTS = new Set(['Arial', 'Arial Black', 'Helvetica', 'Helvetica Neue', 'Times New Roman', 'Georgia', 'Verdana', 'Tahoma', 'Trebuchet MS', 'Courier New', 'Calibri', 'Cambria', 'Impact', 'Segoe UI', 'Menlo', 'Monaco']);
-  async function exportItemAsPptx(item) {
-    const R = window.KairoPptx;
+  // Every slide's export items, and the fonts, notes and pictures they use.
+  function exportSlides(item) {
     const all = slidesFor(item);
-    if (!R || !all.length) { window.kairoProblem?.('There are no slides to export.'); return; }
-    try {
-      const slides = [], notes = new Set(), fonts = new Set();
-      all.forEach((s, i) => {
-        const r = slideForExport(item, s, i);
-        slides.push({ items: r.items });
-        r.notes.forEach(n => notes.add(n));
-        r.fonts.forEach(f => fonts.add(f));
-      });
-      const srcs = new Set();
-      slides.forEach(sl => sl.items.forEach(it => { if (it.kind === 'image' && it.src && it.src.indexOf('glow:') !== 0) srcs.add(it.src); }));
-      const images = {};
-      let lost = 0;
-      await Promise.all([...srcs].map(async (src) => { try { images[src] = await pictureForExport(src); } catch { lost += 1; } }));
-      if (lost) notes.add(`${lost} picture${lost === 1 ? '' : 's'} that couldn’t be loaded`);
-      const bytes = R.buildPptx(slides, images, { title: item.title });
-      const name = (String(item.title || 'Kairo slides').replace(/[^\p{L}\p{N}\- ]+/gu, '').trim().replace(/\s+/g, ' ') || 'Kairo slides') + '.pptx';
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.presentationml.presentation' }));
-      a.download = name;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-      const extra = [...fonts].filter(f => !COMMON_FONTS.has(f));
-      const say = [`${all.length} slide${all.length === 1 ? '' : 's'} saved as “${name}”. The text, shapes and pictures can be edited in PowerPoint, Keynote or Google Slides.`];
-      if (notes.size) say.push(`Not included, or drawn more simply: ${[...notes].join('; ')}.`);
-      if (extra.length) say.push(`Fonts used: ${extra.join(', ')}. Install them on the computer that opens the file, or it will use another font.`);
-      if (typeof confirmDialog === 'function') await confirmDialog(say.join('\n\n'), { title: 'Exported to PowerPoint', confirmLabel: 'Done', cancelLabel: 'Close' });
-    } catch (err) {
-      console.warn('[Export] PowerPoint failed:', err);
-      window.kairoProblem?.(`Couldn’t make the PowerPoint file: ${err && err.message ? err.message : err}`);
-    }
+    const slides = [], notes = new Set(), fonts = new Set(), srcs = new Set();
+    all.forEach((s, i) => {
+      const r = slideForExport(item, s, i);
+      slides.push({ items: r.items });
+      r.notes.forEach(n => notes.add(n));
+      r.fonts.forEach(f => fonts.add(f));
+      r.items.forEach(it => { if (it.kind === 'image' && it.src && it.src.indexOf('glow:') !== 0) srcs.add(it.src); });
+    });
+    return { slides, notes, fonts, srcs };
   }
-  const canExportPptx = (item) => !!item && ['slides', 'song', 'scripture', 'image'].includes(item.type);
+  async function picturesForExport(srcs) {
+    const images = {};
+    await Promise.all([...srcs].map(async (src) => { try { images[src] = await pictureForExport(src); } catch { /* left out */ } }));
+    return images;
+  }
+  // The file for `format`: { bytes, ext }. A ProPresenter export with pictures is a .probundle, the
+  // presentation with its pictures packed beside it, as ProPresenter itself exports one.
+  async function buildExportFile(item, format, base, places) {
+    const { slides, srcs } = exportSlides(item);
+    if (!slides.length) throw new Error('There are no slides to export.');
+    const images = await picturesForExport(srcs);
+    if (format === 'pptx') return { bytes: window.KairoPptx.buildPptx(slides, images, { title: item.title }), ext: 'pptx' };
+    const out = window.KairoProPresenter.buildPro(slides, { title: item.title, images, mediaDir: places && places.proMedia });
+    if (!out.media.length) return { bytes: out.bytes, ext: 'pro' };
+    const files = [{ name: `${base}.pro`, data: out.bytes }, ...out.media.map(m => ({ name: m.rel, data: m.data }))];
+    return { bytes: window.KairoPptx.zip(files), ext: 'probundle' };
+  }
 
-  // ── Export for ProPresenter ────────────────────────────────────────────────────────────────────
-  // The same slides, written as a ProPresenter 7 presentation (.pro): text and shapes as ProPresenter's own
-  // elements. Pictures aren't carried (a .pro points at files on disk), and the dialog says so.
-  async function exportItemAsPro(item) {
-    const R = window.KairoProPresenter;
-    const all = slidesFor(item);
-    if (!R || !all.length) { window.kairoProblem?.('There are no slides to export.'); return; }
-    try {
-      const slides = [], notes = new Set(), fonts = new Set();
-      all.forEach((s, i) => {
-        const r = slideForExport(item, s, i);
-        slides.push({ items: r.items });
-        r.notes.forEach(n => notes.add(n));
-        r.fonts.forEach(f => fonts.add(f));
-      });
-      const out = R.buildPro(slides, { title: item.title });
-      out.notes.forEach(n => notes.add(n));
-      const name = (String(item.title || 'Kairo slides').replace(/[^\p{L}\p{N}\- ]+/gu, '').trim().replace(/\s+/g, ' ') || 'Kairo slides') + '.pro';
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([out.bytes], { type: 'application/octet-stream' }));
-      a.download = name;
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-      const extra = [...fonts].filter(f => !COMMON_FONTS.has(f));
-      const say = [`${all.length} slide${all.length === 1 ? '' : 's'} saved as “${name}”. In ProPresenter, choose File → Import → File, or drop it into the library.`];
-      if (notes.size) say.push(`Not included, or drawn more simply: ${[...notes].join('; ')}.`);
-      if (extra.length) say.push(`Fonts used: ${extra.join(', ')}. Install them on the computer that runs ProPresenter, or it will use another font.`);
-      if (typeof confirmDialog === 'function') await confirmDialog(say.join('\n\n'), { title: 'Exported for ProPresenter', confirmLabel: 'Done', cancelLabel: 'Close' });
-    } catch (err) {
-      console.warn('[Export] ProPresenter failed:', err);
-      window.kairoProblem?.(`Couldn’t make the ProPresenter file: ${err && err.message ? err.message : err}`);
+  // ── Export: one dialog for every kind of file (owner, 15 Nov 2026) ─────────────────────────────
+  // The format, a name the operator can change, and the folder it goes in (Documents/Kairo Exports
+  // unless another was picked; the last choice is remembered). Saved there by the server, never
+  // replacing a file of the same name without asking. A good export just closes the dialog.
+  const EXPORT_PREFS = 'kairo.export';
+  const exportPrefs = () => { try { return JSON.parse(localStorage.getItem(EXPORT_PREFS) || '{}') || {}; } catch { return {}; } };
+  const saveExportPrefs = (p) => { try { localStorage.setItem(EXPORT_PREFS, JSON.stringify(p)); } catch { /* not kept */ } };
+  const exportBaseName = (t) => String(t || '').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^\.+/, '');
+  async function openExportDialog(item) {
+    const modal = document.getElementById('export-modal');
+    if (!modal || !slidesFor(item).length) { window.kairoProblem?.('There are no slides to export.'); return; }
+    const $ = (id) => document.getElementById(id);
+    const nameIn = $('ex-name'), dirEl = $('ex-dir'), extEl = $('ex-ext'), errEl = $('ex-error'), go = $('ex-go'), change = $('ex-change');
+    const places = await fetchWithTimeout(`${SERVER}/api/export/places`).then(r => r.json()).catch(() => ({}));
+    const prefs = exportPrefs();
+    let format = prefs.format === 'pro' ? 'pro' : 'pptx';
+    let dir = prefs.dir || places.exports || '';
+    const pictures = exportSlides(item).srcs.size > 0;
+    nameIn.value = exportBaseName(item.title) || 'Kairo slides';
+    const draw = () => {
+      $('ex-format').querySelectorAll('.toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.format === format));
+      extEl.textContent = format === 'pptx' ? '.pptx' : (pictures ? '.probundle' : '.pro');
+      dirEl.textContent = dir || 'No folder chosen';
+      dirEl.title = dir;
+      errEl.hidden = true;
+    };
+    const dlg = window.__TAURI__?.dialog;
+    change.hidden = !dlg?.open;
+    const onFormat = (e) => { const b = e.target.closest('.toggle-btn'); if (b) { format = b.dataset.format; draw(); } };
+    const onChange = async () => {
+      let picked;
+      try { picked = await dlg.open({ directory: true, multiple: false, title: 'Choose where exports go', defaultPath: dir || undefined, canCreateDirectories: true }); } catch { return; }
+      if (picked) { dir = Array.isArray(picked) ? picked[0] : picked; draw(); }
+    };
+    const fail = (msg) => { errEl.textContent = msg; errEl.hidden = false; go.disabled = false; go.textContent = 'Export'; };
+    const save = (name, bytes, replace) => fetchWithTimeout(`${SERVER}/api/export/save?dir=${encodeURIComponent(dir)}&name=${encodeURIComponent(name)}${replace ? '&replace=1' : ''}`,
+      { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: bytes }, MEDIA_UPLOAD_TIMEOUT_MS);
+    const onGo = async () => {
+      const base = exportBaseName(nameIn.value);
+      if (!base) { fail('Give the file a name.'); nameIn.focus(); return; }
+      if (!dir) { fail('Choose a folder for the file.'); return; }
+      go.disabled = true; go.textContent = 'Exporting…'; errEl.hidden = true;
+      try {
+        const file = await buildExportFile(item, format, base, places);
+        const name = `${base}.${file.ext}`;
+        let r = await save(name, file.bytes, false);
+        if (r.status === 409) {
+          close();
+          const replace = typeof confirmDialog === 'function' && await confirmDialog(`“${name}” is already in this folder. Replace it?`, { title: 'Replace file?', confirmLabel: 'Replace', cancelLabel: 'Cancel' });
+          if (!replace) { openExportDialog(item); return; }
+          r = await save(name, file.bytes, true);
+        }
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || d.error) throw new Error(d.error || 'The file couldn’t be saved.');
+        saveExportPrefs({ format, dir });
+        close();
+      } catch (err) {
+        console.warn('[Export] failed:', err);
+        if (modal.classList.contains('hidden')) window.kairoProblem?.(`Couldn’t export: ${err && err.message ? err.message : err}`);
+        else fail(err && err.message ? err.message : String(err));
+      }
+    };
+    const onKey = (e) => { if (e.key === 'Escape') close(); else if (e.key === 'Enter' && e.target === nameIn) onGo(); };
+    function close() {
+      modal.classList.add('hidden');
+      $('ex-format').removeEventListener('click', onFormat);
+      change.removeEventListener('click', onChange);
+      go.removeEventListener('click', onGo);
+      $('ex-cancel').removeEventListener('click', close);
+      modal.querySelector('.modal-overlay').removeEventListener('click', close);
+      modal.removeEventListener('keydown', onKey);
     }
+    $('ex-format').addEventListener('click', onFormat);
+    change.addEventListener('click', onChange);
+    go.addEventListener('click', onGo);
+    $('ex-cancel').addEventListener('click', close);
+    modal.querySelector('.modal-overlay').addEventListener('click', close);
+    modal.addEventListener('keydown', onKey);
+    go.disabled = false; go.textContent = 'Export';
+    draw();
+    modal.classList.remove('hidden');
+    nameIn.focus();
+    nameIn.select();
   }
+
+  const canExportPptx = (item) => !!item && ['slides', 'song', 'scripture', 'image'].includes(item.type);
 
   // The Actions menu in Quick edit's header: how to edit (as slides or as text), lines per slide, the
   // theme, and the design canvas, all for this item.
@@ -3871,7 +3917,7 @@
       { label: 'Theme', onClick: () => openThemePopover(anchor, item) },
       { label: 'Edit design', onClick: () => window.KairoItemStyleEditor?.open?.(item.id, 0) },
     ]);
-    if (canExportPptx(item)) sections.push([{ label: 'Export as PowerPoint', onClick: () => exportItemAsPptx(item) }, { label: 'Export for ProPresenter', onClick: () => exportItemAsPro(item) }]);
+    if (canExportPptx(item)) sections.push([{ label: 'Export…', onClick: () => openExportDialog(item) }]);
     const r = anchor.getBoundingClientRect();
     openContextMenu(r.right, r.bottom + 2, sections);
   }

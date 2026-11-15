@@ -1119,7 +1119,32 @@ impl Engine {
             }
             let group: Vec<Book> = std::iter::once(c.book).chain(c.alternatives.iter().copied()).collect();
             let word = c.book.name().to_lowercase().split(' ').next_back().unwrap_or("").to_string();
-            let ordinal = self.ordinal_said_before(&word).and_then(|n| group.iter().copied().find(|b| b.name().starts_with(&format!("{n} "))));
+            let said = self.ordinal_said_before(&word, c.chapter);
+            let ordinal = said.and_then(|n| group.iter().copied().find(|b| b.name().starts_with(&format!("{n} "))));
+            // A number was said before the book, but no book of that number has this chapter ("third
+            // John five verse nineteen": 3 John has one chapter): it was still a numbered book, never the
+            // plain one. The one numbered book that has it is meant; with several, each is offered. The
+            // plain John 5:19 went up when "John three verse thirty one" followed (live clip, 14 Nov 2026).
+            if said.is_some() && ordinal.is_none() {
+                let plain = group.iter().copied().filter(|b| !b.name().starts_with(|ch: char| ch.is_ascii_digit())).collect::<Vec<_>>();
+                let numbered: Vec<Book> = group.iter().copied().filter(|b| !plain.contains(b)).collect();
+                match numbered.as_slice() {
+                    [one] => {
+                        c.book = *one;
+                        c.alternatives.clear();
+                        out.push(Cite { c, unresolved: false });
+                    }
+                    many => {
+                        for b in many.iter().copied() {
+                            let mut v = c.clone();
+                            v.book = b;
+                            v.alternatives.clear();
+                            out.push(Cite { c: v, unresolved: true });
+                        }
+                    }
+                }
+                continue;
+            }
             let active = self.active(now).book.filter(|b| group.contains(b));
             let last_cited = self.sermon.iter().rev().find(|s| s.named && now.saturating_sub(s.at) < LAST_CITED_CHOOSES_MS).map(|s| s.book).filter(|b| group.contains(b));
             match ordinal.or(active).or(last_cited) {
@@ -1166,15 +1191,26 @@ impl Engine {
 
     /// "first"/"second"/"third" said right before the last mention of `word`
     /// in the last few seconds, across segment breaks.
-    fn ordinal_said_before(&self, word: &str) -> Option<u8> {
+    /// The number said before `word` where it was followed by `chapter` ("third John five"): the book
+    /// named again later with another chapter ("…John three verse thirty one") is another citation.
+    fn ordinal_said_before(&self, word: &str, chapter: u32) -> Option<u8> {
         let all = tokens(&self.t.words.recent(self.last_now, ORDINAL_LOOKBACK_MS));
-        let at = all.iter().rposition(|w| w == word)?;
-        match all.get(at.checked_sub(1)?)?.as_str() {
+        let words: Vec<&str> = all.iter().map(String::as_str).collect();
+        let ordinal = |w: &str| match w {
             "first" | "1st" => Some(1),
             "second" | "2nd" => Some(2),
             "third" | "3rd" => Some(3),
             _ => None,
-        }
+        };
+        let followed = |at: usize| {
+            words.get(at + 1).is_some_and(|w| *w == "chapter")
+                || crate::reference::numbers::consume_number(&words, at + 1, Some(150)).is_some_and(|n| n.value == chapter as i64)
+                || crate::reference::numbers::consume_number(&words, at + 2, Some(150)).is_some_and(|n| n.value == chapter as i64 && words[at + 1] == "chapter")
+        };
+        let mentions: Vec<usize> = words.iter().enumerate().filter(|(_, w)| **w == word).map(|(i, _)| i).collect();
+        // The mention followed by this chapter, else (as before) the last one.
+        let at = mentions.iter().rev().copied().find(|&i| followed(i)).or(mentions.last().copied())?;
+        ordinal(words.get(at.checked_sub(1)?)?)
     }
 
     /// Is a different book being announced (followed by a chapter number, or

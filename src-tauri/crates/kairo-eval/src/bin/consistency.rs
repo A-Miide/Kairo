@@ -125,7 +125,7 @@ fn run(k: &Arc<Knowledge>, golden: &Value, inputs: &[Input], m: Option<&MeaningS
         // order they were asked, at the time of the input before (detect.rs settle); one landing may
         // ask again.
         // …or once owed more than OWED_INPUTS inputs.
-        if *fin || pending.iter().any(|(_, _, at)| (i as u64).saturating_sub(*at) > kairo_server::detect::OWED_INPUTS) {
+        if *fin || pending.iter().any(|(_, _, at)| (i as u64).saturating_sub(*at) > kairo_server::detect::OWED_INPUTS) || wakes.iter().any(|w| w.0 <= now) {
             while let Some(m) = m {
                 let Some(pos) = pending.iter().position(|(lag, _, _)| *lag == 0) else { break };
                 let (_, r, _) = pending.remove(pos).unwrap();

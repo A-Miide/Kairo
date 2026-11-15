@@ -161,6 +161,20 @@
     const angle = (((90 - num(fill.angle, 135)) % 360) + 360) % 360;
     return fMsg(2, [fVar(1, 0), fDbl(2, angle), fDbl(3, 1), ...stops]);
   }
+  // ProPresenter gives every element a text block, an empty one when the element has no words; without
+  // it ProPresenter's editor showed its "Text" placeholder over each shape (a reference pill read "Text
+  // Psalms 114:1-8"; owner, 15 Nov 2026). This is the block ProPresenter itself writes on a plain shape.
+  const EMPTY_RTF = '{\\rtf1\\ansi\\ansicpg1252\\cocoartf2908\n\\cocoatextscaling0\\cocoaplatform0{\\fonttbl}\n{\\colortbl;\\red255\\green255\\blue255;}\n{\\*\\expandedcolortbl;;}\n}';
+  function emptyText() {
+    const white = { hex: 'FFFFFF', a: 1 };
+    return fMsg(13, [
+      fMsg(3, [fMsg(1, [fStr(1, 'HelveticaNeue'), fDbl(2, 42), fStr(9, 'Helvetica Neue')]), mColor(3, white), fMsg(6, [fVar(1, 2), fDbl(5, 1)])]),
+      fMsg(4, [fDbl(2, 315), fDbl(3, 5), fDbl(4, 5), mColor(5, { hex: '000000', a: 1 }), fDbl(6, 0.75)]),
+      fStr(5, EMPTY_RTF),
+      fVar(6, 1),
+    ]);
+  }
+
   function shapeElement(it, notes) {
     const fill = it.fill;
     let fillM;
@@ -182,7 +196,39 @@
       roundness = clamp(r / Math.max(1, Math.min(it.w, it.h)), 0, 0.5);
     }
     if (it.clip) notes.add('Shapes cut to a custom outline (drawn as plain boxes)');
-    return elementBase('Shape', fullBox(it), fillM, strokeM, it.drop, pathMsg(typeNum, roundness), null);
+    return elementBase('Shape', fullBox(it), fillM, strokeM, it.drop, pathMsg(typeNum, roundness), emptyText());
+  }
+
+  // A soft spot of light (export_pptx.js makes it a "glow:RRGGBB:alpha" picture): here a box filled with a
+  // radial gradient, the colour at its centre fading to clear at its edge. Skipped as a picture, every
+  // deck's warm background light was lost and ProPresenter showed it near black (owner, 15 Nov 2026).
+  function glowElement(it) {
+    const m = /^glow:([0-9A-Fa-f]{6}):(\d+)$/.exec(it.src || '');
+    if (!m) return null;
+    const a = clamp(+m[2], 0, 100) / 100;
+    const stop = (alpha, pos) => fMsg(4, [mColor(1, { hex: m[1].toUpperCase(), a: alpha }), fDbl(2, pos), fDbl(3, 0.5)]);
+    const fillM = fMsg(9, [fMsg(2, [fVar(1, 1), fDbl(2, 0), fDbl(3, 1), stop(a, 0), stop(0, 1)]), fBool(4, true)]);
+    const noStroke = fMsg(10, [fDbl(2, 3), mColor(3, { hex: 'FFFFFF', a: 1 })]);
+    return elementBase('Glow', fullBox(it), fillM, noStroke, null, pathMsg(2, 0), emptyText());
+  }
+
+  // A picture: a media fill pointing at its file, which the caller packs beside the .pro in a .probundle
+  // under Media/Assets/, as ProPresenter packs its own (a full path where ProPresenter keeps media on this
+  // computer, and the same path relative to ProPresenter's folder, which it resolves on any computer).
+  const SCALE = { contain: 0, cover: 1, fill: 2 };
+  function urlMsg(n, file) {
+    return fMsg(n, [fStr(1, 'file://' + encodeURI(file.abs)), fVar(3, 1), fMsg(4, [fVar(1, 10), fStr(2, file.rel)])]);
+  }
+  function imageElement(it, file) {
+    const drawing = fMsg(1, [
+      it.fit && SCALE[it.fit] ? fVar(1, SCALE[it.fit]) : null,
+      fMsg(5, [fDbl(1, file.w || W), fDbl(2, file.h || H)]),
+      fVar(15, 1),
+    ]);
+    const media = fMsg(3, [mUuid(1), urlMsg(2, file), fMsg(3, [fStr(5, file.ext), fVar(6, 1)]), fMsg(5, [drawing, fMsg(2, [urlMsg(1, file)])])]);
+    const fillM = fMsg(9, [media, fBool(4, true)]);
+    const noStroke = fMsg(10, [fDbl(2, 3), mColor(3, { hex: 'FFFFFF', a: 1 })]);
+    return elementBase('Picture', fullBox(it), fillM, noStroke, null, pathMsg(1, 0), emptyText());
   }
 
   function textElement(it, notes) {
@@ -215,10 +261,25 @@
   }
 
   // ── presentation ────────────────────────────────────────────────────────────────────────────────
-  // slides: [{ items }]; images are not carried. Returns { bytes, notes }.
+  // slides: [{ items }]. opts.images: picture src → { bytes, ext, w, h } (as for the PowerPoint export);
+  // opts.mediaDir: where ProPresenter keeps media on this computer (…/Documents/ProPresenter/Media/Assets).
+  // Returns { bytes, notes, media: [{ rel, data }] }: the .pro, and the pictures to pack beside it.
   function buildPro(slides, opts) {
     opts = opts || {};
     const notes = new Set();
+    const images = opts.images || {};
+    const mediaDir = String(opts.mediaDir || '/Media/Assets').replace(/\/+$/, '');
+    const media = [], packed = new Map();
+    const fileFor = (src) => {
+      if (packed.has(src)) return packed.get(src);
+      const img = images[src];
+      if (!img) return null;
+      const name = uuid() + '.' + img.ext;
+      const file = { rel: 'Media/Assets/' + name, abs: mediaDir + '/' + name, ext: img.ext, w: img.w, h: img.h };
+      media.push({ rel: file.rel, data: img.bytes });
+      packed.set(src, file);
+      return file;
+    };
     const groupId = uuid();
     const cueIds = slides.map(() => uuid());
     const cues = slides.map((sl, i) => {
@@ -227,9 +288,10 @@
       (sl.items || []).forEach((it) => {
         if (it.kind === 'shape') elements.push(shapeElement(it, notes));
         else if (it.kind === 'text') elements.push(textElement(it, notes));
-        else if (it.kind === 'image') skippedPicture = true;
+        else if (it.kind === 'image' && String(it.src || '').indexOf('glow:') === 0) { const g = glowElement(it); if (g) elements.push(g); }
+        else if (it.kind === 'image') { const f = fileFor(it.src); if (f) elements.push(imageElement(it, f)); else skippedPicture = true; }
       });
-      if (skippedPicture) notes.add('Pictures and picture backgrounds');
+      if (skippedPicture) notes.add('Pictures that couldn’t be loaded');
       // Elements are listed top first in a ProPresenter slide; Kairo's items run bottom first.
       elements.reverse();
       const base = fMsg(1, [
@@ -257,7 +319,7 @@
       fMsg(14, []),
       fMsg(17, [fDbl(5, 300)]),
     ]);
-    return { bytes, notes: [...notes] };
+    return { bytes, notes: [...notes], media };
   }
 
   const api = { buildPro, buildRtf, uuid };

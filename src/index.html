@@ -907,6 +907,38 @@
          since Tauri's webview doesn't reliably show native JS dialogs (see
          confirmDialog in app.js). Shared by every delete-style confirmation
          in the app rather than a bespoke modal per caller. -->
+    <!-- Export a deck or song (service.js openExportDialog): the kind of file, its name, and the folder it goes in. -->
+    <div id="export-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="ex-title">
+        <div class="modal-overlay"></div>
+        <div class="modal-content ex-box">
+            <div class="modal-header">
+                <h2 id="ex-title">Export</h2>
+            </div>
+            <div class="modal-body ex-body">
+                <span class="setting-label">Format</span>
+                <div class="toggle-group ob-seg" id="ex-format" role="group" aria-label="Format">
+                    <button type="button" class="toggle-btn active" data-format="pptx">PowerPoint<small>Keynote, Google Slides</small></button>
+                    <button type="button" class="toggle-btn" data-format="pro">ProPresenter<small>ProPresenter 7</small></button>
+                </div>
+                <label for="ex-name" class="setting-label">Name</label>
+                <div class="ex-name-row">
+                    <input id="ex-name" class="setting-input" type="text" spellcheck="false" autocomplete="off">
+                    <span id="ex-ext" class="ex-ext">.pptx</span>
+                </div>
+                <span class="setting-label">Folder</span>
+                <div class="ex-dir-row">
+                    <span id="ex-dir" class="ex-dir" title=""></span>
+                    <button type="button" id="ex-change" class="modal-btn secondary">Change…</button>
+                </div>
+                <p id="ex-error" class="ex-error" hidden></p>
+            </div>
+            <div class="modal-footer">
+                <button type="button" id="ex-cancel" class="modal-btn secondary">Cancel</button>
+                <button type="button" id="ex-go" class="modal-btn primary">Export</button>
+            </div>
+        </div>
+    </div>
+
     <div id="generic-confirm-modal" class="modal hidden">
         <div class="modal-overlay"></div>
         <div class="modal-content" style="width:420px;">
@@ -1659,8 +1691,8 @@
                                     <li><strong>Paste from clipboard</strong> — pasted lyrics/text, split into slides automatically.</li>
                                 </ul>
                                 <p><strong>ProPresenter files are handled specially.</strong> Kairo auto-detects them and preserves the file's own design exactly as authored — fonts, colors, positions, images, layer structure — instead of reformatting it into a Kairo theme. The Add dialog shows a notice confirming this rather than asking you to pick a theme, since none is needed. A playlist file with several presentations imports all of them at once, each keeping its own original layout.</p>
-                                <p><strong>Exporting.</strong> Right-click a deck or song in the playlist (or open <strong>Actions</strong> in Quick edit) and choose <strong>Export as PowerPoint</strong>. You get a <code>.pptx</code> that opens in PowerPoint, Keynote and Google Slides, with every slide's words as real text and its shapes and pictures kept, so you can still edit them. Kairo tells you what couldn&rsquo;t come across (blended grain textures, frosted glass, live clocks) and which fonts to install on the computer that opens it, since a file can't carry Kairo's fonts.</p>
-                                <p><strong>For ProPresenter.</strong> The same menu has <strong>Export for ProPresenter</strong>, which saves a <code>.pro</code> file: every slide with its words as ProPresenter text and its shapes and gradients as ProPresenter shapes. Import it in ProPresenter (File &rarr; Import &rarr; File). Pictures aren&rsquo;t carried across, because ProPresenter keeps those as separate files.</p>
+                                <p><strong>Exporting.</strong> Right-click a deck or song in the playlist (or open <strong>Actions</strong> in Quick edit) and choose <strong>Export…</strong>. Pick <strong>PowerPoint</strong> (opens in PowerPoint, Keynote and Google Slides) or <strong>ProPresenter</strong>, change the name if you like, and choose the folder: exports go to <strong>Documents &rarr; Kairo Exports</strong> unless you pick another, and Kairo remembers your choice. Words stay real text and shapes stay shapes, so you can still edit them. Install the slides' fonts on the computer that opens the file.</p>
+                                <p><strong>For ProPresenter.</strong> A deck with pictures is saved as a <code>.probundle</code> (the presentation with its pictures inside), otherwise as a <code>.pro</code>. Import it in ProPresenter (File &rarr; Import &rarr; File).</p>
                                 <p>A plain text/Word import instead asks how to split it into slides (by paragraph, or a fixed number of lines each) and which theme to render it with, since there's no original design to preserve.</p>
                                 <p><strong>Sermon slides.</strong> A Word file always offers <strong>Make sermon slides</strong>, and so does pasted text that reads like a sermon. Kairo reads numbered or lettered points (<code>1.</code> <code>1)</code> <code>I.</code> <code>A.</code> <code>Point 1:</code>), bullets and dashes, with the scriptures after a dash, in brackets or on the line below. A document with headings and no points becomes one point per heading, and a plain document becomes one slide per paragraph. The import window says how it was read; check the result in the slide editor, where <strong>In the deck</strong> lists every line (tick one to add it) and <strong>This slide</strong> can treat a line as a Point, Section or Introduction. Before making the deck, choose its <strong>Style</strong> and, beside it, its four <strong>Colours</strong> (background, second tone, text, accent: click one to open the colour picker, where you can also type its hex code).</p>
                                 <p><strong>Style</strong> opens one panel with a preview of your first point. Switch between <strong>Look</strong> (colours, fonts and background) and <strong>Layout</strong> (Left, Centred, Lower third, Split, Editorial, Statement, Card, Quote, Badge card, Worthy or Light); each is shown on your own words. What you pick is only tried out until you press <strong>Apply</strong>.</p>

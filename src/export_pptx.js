@@ -1,7 +1,7 @@
 // KAIRO — a deck as a PowerPoint file (.pptx).
 //
 // Pure: layers in, bytes out. No DOM and no network, so it runs the same in the app and in tests.
-// The caller (service.js, "Export as PowerPoint") resolves each slide's look, its own overrides and its
+// The caller (service.js, the Export dialog) resolves each slide's look, its own overrides and its
 // words into layers, and fetches the pictures; this turns them into real, editable PowerPoint shapes:
 //   text      → a text box (font, size, bold, italic, colour, spacing, alignment, shadow, case)
 //   shapes    → rectangles, rounded or ellipse shapes, cut-out shapes, gradients, strokes, shadows

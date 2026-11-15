@@ -116,12 +116,32 @@ fn main() {
         }
         t += 600;
     }
+    // The words end: what was waiting on a pause (as `--segments` does) still fires.
+    wakes.sort_by_key(|w| w.0);
+    while !wakes.is_empty() {
+        let (at, ev) = wakes.remove(0);
+        let o = engine.handle(ev, at);
+        let mut pending = Vec::new();
+        report(&k, o, m.is_some(), &mut wakes, &mut pending);
+        drain(&mut engine, &k, m.as_ref(), at, &mut wakes, pending);
+        wakes.sort_by_key(|w| w.0);
+    }
 }
 
 /// The meaning models answer at once.
 fn drain(engine: &mut Engine, k: &Knowledge, m: Option<&MeaningService>, t: u64, wakes: &mut Vec<(u64, Event)>, mut pending: Vec<Request>) {
     while let (Some(m), Some(r)) = (m, pending.pop()) {
-        let o = engine.handle(Event::Answer(answer(m, &r)), t);
+        let a = answer(m, &r);
+        // `--hits`: what each meaning search found (top three by cross-encoder).
+        if std::env::args().any(|x| x == "--hits") {
+            if let (Request::Paraphrase { windows, .. }, kairo_detect::engine::Answer::Paraphrase { candidates, .. }) = (&r, &a) {
+                let mut c = candidates.clone();
+                c.sort_by(|x, y| y.rerank.unwrap_or(-1.0).total_cmp(&x.rerank.unwrap_or(-1.0)));
+                let top: Vec<String> = c.iter().take(3).map(|h| { let v = k.verse_ref(h.verse); format!("{} {}:{} cos {:.3} rr {:.3} lex {:.1}", v.book.name(), v.chapter, v.verse, h.cos, h.rerank.unwrap_or(-1.0), engine.shared_wording(windows.get(h.window).map_or("", String::as_str), h.verse)) }).collect();
+                println!("          ?? meaning «{}»: {}", windows.first().map_or("", String::as_str), top.join(" | "));
+            }
+        }
+        let o = engine.handle(Event::Answer(a), t);
         report(k, o, true, wakes, &mut pending);
     }
 }

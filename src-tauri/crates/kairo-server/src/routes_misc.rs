@@ -39,6 +39,9 @@ pub fn router() -> Router<Shared> {
         .route("/api/translate/languages", get(translate_languages))
         .route("/api/service/import", post(service_import))
         .route("/api/export", post(export))
+        .route("/api/export/places", get(export_places))
+        .route("/api/export/save", post(export_save).layer(axum::extract::DefaultBodyLimit::max(400 * 1024 * 1024)))
+        .route("/api/export/reveal", post(export_reveal))
         .route("/api/notes/capability", get(notes_capability))
         .route("/api/semantic-model/install", post(bundled_install))
         .route("/api/reranker-model/install", post(bundled_install))
@@ -301,6 +304,117 @@ async fn export(axum::extract::State(app): axum::extract::State<Shared>, Json(b)
         let _ = std::process::Command::new("open").arg(&file).spawn();
     }
     Json(json!({ "ok": true, "path": file, "file": file.file_name().and_then(|n| n.to_str()) })).into_response()
+}
+
+// ── Slide exports (PowerPoint, ProPresenter): saved where the operator chose, under the name they gave ──
+
+fn home_dir() -> Option<std::path::PathBuf> {
+    std::env::var_os("HOME").or_else(|| std::env::var_os("USERPROFILE")).map(std::path::PathBuf::from)
+}
+
+/// Where exports go unless the operator picks another folder (Documents/Kairo Exports, made if missing),
+/// and where ProPresenter keeps its media on this computer (a .probundle's pictures point there).
+async fn export_places() -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let Some(home) = home_dir() else {
+        return (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": "No home folder" }))).into_response();
+    };
+    let exports = home.join("Documents").join("Kairo Exports");
+    let made = exports.clone();
+    let _ = crate::util::blocking(move || std::fs::create_dir_all(&made)).await;
+    let media = home.join("Documents").join("ProPresenter").join("Media").join("Assets");
+    Json(json!({ "exports": exports, "proMedia": media })).into_response()
+}
+
+/// Kinds of file the export writes; nothing else is written here.
+const EXPORT_KINDS: [&str; 3] = ["pptx", "pro", "probundle"];
+
+/// The file in `dir` named `name`, if both are acceptable: an existing folder given as a full path, and a
+/// plain file name (no folders in it) of a kind the export writes.
+fn export_target(dir: &str, name: &str) -> Result<std::path::PathBuf, &'static str> {
+    let dir = std::path::Path::new(dir);
+    if !dir.is_absolute() || !dir.is_dir() {
+        return Err("That folder can't be found.");
+    }
+    let clean = crate::util::safe_file_name(name);
+    let clean = clean.trim().trim_start_matches('.').to_string();
+    let ext = std::path::Path::new(&clean).extension().and_then(|e| e.to_str()).map(str::to_lowercase).unwrap_or_default();
+    if clean.is_empty() || clean != name.trim() || !EXPORT_KINDS.contains(&ext.as_str()) {
+        return Err("That file name can't be used.");
+    }
+    Ok(dir.join(clean))
+}
+
+#[derive(serde::Deserialize)]
+struct SaveQuery {
+    dir: String,
+    name: String,
+    #[serde(default)]
+    replace: bool,
+}
+
+/// Writes the export's bytes to `dir`/`name`. A file already there is replaced only when asked (`replace`);
+/// otherwise the answer says it exists, and the app asks the operator.
+async fn export_save(Query(q): Query<SaveQuery>, body: axum::body::Bytes) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let path = match export_target(&q.dir, &q.name) {
+        Ok(p) => p,
+        Err(e) => return (axum::http::StatusCode::BAD_REQUEST, Json(json!({ "error": e }))).into_response(),
+    };
+    if path.exists() && !q.replace {
+        return (axum::http::StatusCode::CONFLICT, Json(json!({ "exists": true }))).into_response();
+    }
+    let p = path.clone();
+    match crate::util::blocking(move || {
+        // Written beside, then moved into place: a half-written file never replaces a good one.
+        let tmp = p.with_extension("kairo-part");
+        std::fs::write(&tmp, &body).and_then(|()| std::fs::rename(&tmp, &p))
+    })
+    .await
+    {
+        Ok(Ok(())) => Json(json!({ "ok": true, "path": path })).into_response(),
+        Ok(Err(e)) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() }))).into_response(),
+        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e }))).into_response(),
+    }
+}
+
+/// Shows an exported file in Finder / Explorer (selected), or its folder elsewhere. Only a file of a kind
+/// the export writes.
+async fn export_reveal(Json(b): Json<Value>) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let path = std::path::PathBuf::from(b["path"].as_str().unwrap_or(""));
+    let ext = path.extension().and_then(|e| e.to_str()).map(str::to_lowercase).unwrap_or_default();
+    if !path.is_absolute() || !path.is_file() || !EXPORT_KINDS.contains(&ext.as_str()) {
+        return (axum::http::StatusCode::BAD_REQUEST, Json(json!({ "error": "That file can't be found." }))).into_response();
+    }
+    #[cfg(target_os = "macos")]
+    let r = crate::proc::Command::new("open").arg("-R").arg(&path).spawn();
+    #[cfg(windows)]
+    let r = crate::proc::Command::new("explorer").arg(format!("/select,{}", path.display())).spawn();
+    #[cfg(all(not(target_os = "macos"), not(windows)))]
+    let r = crate::proc::Command::new("xdg-open").arg(path.parent().unwrap_or(&path)).spawn();
+    match r {
+        Ok(_) => Json(json!({ "ok": true })).into_response(),
+        Err(e) => (axum::http::StatusCode::INTERNAL_SERVER_ERROR, Json(json!({ "error": e.to_string() }))).into_response(),
+    }
+}
+
+#[cfg(test)]
+mod export_tests {
+    use super::export_target;
+
+    #[test]
+    fn only_a_plain_name_of_an_export_kind_in_a_real_folder() {
+        let dir = std::env::temp_dir();
+        let d = dir.to_str().unwrap();
+        assert!(export_target(d, "Sunday deck.pptx").is_ok());
+        assert!(export_target(d, "Sunday deck.probundle").is_ok());
+        assert!(export_target(d, "../escape.pptx").is_err(), "no folders in the name");
+        assert!(export_target(d, "notes.txt").is_err(), "only slide files");
+        assert!(export_target(d, ".pptx").is_err());
+        assert!(export_target("relative/dir", "a.pro").is_err(), "a full path only");
+        assert!(export_target("/no/such/folder/here", "a.pro").is_err());
+    }
 }
 
 /// The meaning models ship with the app: nothing to download.

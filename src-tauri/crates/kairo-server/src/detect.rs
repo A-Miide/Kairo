@@ -318,7 +318,9 @@ fn run(
         if matches!(event, Some(Event::Speech(_))) {
             heard += 1;
         }
-        let overdue = owed.front().is_some_and(|(_, at)| heard.saturating_sub(*at) > OWED_INPUTS);
+        // A timer due by now is taken knowing the answers asked before it (a meaning search's pause
+        // check reads its answer), as in the replay tools.
+        let overdue = owed.front().is_some_and(|(_, at)| heard.saturating_sub(*at) > OWED_INPUTS) || wakes.iter().any(|w| w.0 <= now);
         let mut t = Taking { bible: &bible, hub: &hub, range: &mut range, presentation: &presentation, log: &log, meaning: meaning.is_some(), mtx: &mtx, on_translation: &on_translation, rt: &rt, tx: &tx, started, owed: &mut owed, heard };
         // The answers owed, before anything but words still being said, or once owed too long.
         if waits_for_answers(&event) || overdue {

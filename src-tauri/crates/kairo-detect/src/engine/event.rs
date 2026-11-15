@@ -56,6 +56,8 @@ pub enum TimerId {
     RestatedChapter(u32),
     /// The sentence buffer has gone quiet.
     SentenceBuffer,
+    /// A meaning search's words were followed by a pause (meaning.rs).
+    ParaphrasePause(u32),
 }
 
 /// What the server shows or tells the UI.

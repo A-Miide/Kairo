@@ -11,11 +11,49 @@
   const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
   const TAG = { title: 'Title', story: 'Introduction', section: 'Section', closing: 'Closing', note: 'Note', line: 'Line' };
 
+  // The panel is drawn anew after every change, and the "This slide" section above the contents list
+  // comes and goes with the slide selected: the list jumped under the pointer at every tick (owner,
+  // 15 Nov 2026). The row last touched (else the first one in view) keeps its place on screen.
+  let touched = null;
+  // The part whose slide was shown last time: a slide picked elsewhere (the slide list on the left)
+  // brings its row into view, so its highlight can be seen.
+  let shownPart = null;
+  const scrollerOf = (node) => {
+    for (let n = node?.parentElement; n; n = n.parentElement) {
+      const o = getComputedStyle(n).overflowY;
+      if ((o === 'auto' || o === 'scroll') && n.scrollHeight > n.clientHeight) return n;
+    }
+    return null;
+  };
+  // The contents list scrolls inside the panel (and is drawn anew with it); else the panel scrolls.
+  const listScroller = (host) => {
+    const l = host.querySelector('.ssp-parts');
+    if (l && l.scrollHeight > l.clientHeight && /auto|scroll/.test(getComputedStyle(l).overflowY)) return l;
+    return scrollerOf(host);
+  };
+  function anchorOf(host) {
+    const scroller = listScroller(host);
+    if (!scroller) return null;
+    const top = scroller.getBoundingClientRect().top;
+    const rows = [...host.querySelectorAll('.ssp-part')];
+    const row = rows.find(r => r.dataset.part === touched) || rows.find(r => r.getBoundingClientRect().bottom > top);
+    return row ? { part: row.dataset.part, y: row.getBoundingClientRect().top, focused: document.activeElement?.closest?.('.ssp-part') === row } : null;
+  }
+  function restoreAnchor(host, a) {
+    if (!a) return;
+    const row = host.querySelector(`.ssp-part[data-part="${CSS.escape(a.part)}"]`);
+    const scroller = listScroller(host);
+    if (!row || !scroller) return;
+    scroller.scrollTop += row.getBoundingClientRect().top - a.y;
+    if (a.focused) row.querySelector('input')?.focus({ preventScroll: true });
+  }
+
   // ctx: { item, slideIndex }, onChange(newSlideIndex): the editor draws the deck again.
   function mountPanel(host, ctx, onChange) {
     const api = S();
     const { item } = ctx;
     const deck = item.sermon;
+    const anchor = anchorOf(host);
     host.replaceChildren();
     if (!deck) { host.hidden = true; return; }
     host.hidden = false;
@@ -106,6 +144,7 @@
       const p = deck.kinds && deck.kinds[base.id] ? { ...base, kind: deck.kinds[base.id] } : base;
       if (p.kind === 'point') p.n = ++pointNo;
       const li = el('li', 'ssp-part' + (include.has(p.id) ? '' : ' is-off') + (block?.gen?.part === p.id ? ' is-current' : ''));
+      li.dataset.part = p.id;
       const box = el('input');
       box.type = 'checkbox';
       box.checked = include.has(p.id);
@@ -115,12 +154,14 @@
       const tag = p.kind === 'point' ? `Point ${p.n}` : p.kind === 'verse' ? (api.normaliseRef(p.refs[0]) || p.refs[0] || 'Verse') : TAG[p.kind] || p.kind;
       lab.append(el('span', 'ssp-part-tag', tag), el('span', 'ssp-part-text', p.text));
       box.addEventListener('change', () => {
+        touched = p.id;
         if (box.checked) include.add(p.id); else include.delete(p.id);
         deck.include = [...include];
         apply(box.checked ? p.id : block?.gen?.part, false);
       });
       // The words open that part's slide.
       lab.addEventListener('click', (e) => {
+        touched = p.id;
         const at = item.blocks.findIndex(b => b.gen?.part === p.id);
         if (at >= 0) { e.preventDefault(); onChange(at); }
       });
@@ -128,7 +169,27 @@
       list.append(li);
     }
     host.append(...[deckSec, colorSec, slideSec, section('In the deck', list)].filter(Boolean));
+    const current = block?.gen?.part || null;
+    if (current && current !== shownPart && current !== touched) showRow(host, current);
+    else restoreAnchor(host, anchor);
+    shownPart = current;
+    touched = null;
   }
+
+  // Scrolls just enough to show `part`'s row: in the contents list, and in the panel around it (the list
+  // can itself sit partly below the panel's fold, so a row at its end stayed hidden; owner, 15 Nov 2026).
+  function showRow(host, part) {
+    const row = host.querySelector(`.ssp-part[data-part="${CSS.escape(part)}"]`);
+    if (!row) return;
+    for (let n = row.parentElement; n && n !== document.body; n = n.parentElement) {
+      const o = getComputedStyle(n).overflowY;
+      if (!((o === 'auto' || o === 'scroll') && n.scrollHeight > n.clientHeight)) continue;
+      const r = row.getBoundingClientRect(), b = n.getBoundingClientRect();
+      if (r.top < b.top) n.scrollTop -= b.top - r.top + 8;
+      else if (r.bottom > b.bottom) n.scrollTop += r.bottom - b.bottom + 8;
+    }
+  }
+
 
   // Background, second tone, text and accent: the editor's own colour field (a swatch and its hex).
   let colorTimer = null;

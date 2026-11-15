@@ -275,6 +275,7 @@ impl Engine {
             }
             Event::Reconnected => self.forget_utterance(),
             Event::Timer(TimerId::RestatedChapter(id)) => self.on_restated_timer(id, now),
+            Event::Timer(TimerId::ParaphrasePause(id)) => self.on_paraphrase_pause(id, now),
             Event::Answer(Answer::Compare { id, scores }) => self.on_compare(id, &scores, now),
             Event::Answer(Answer::Paraphrase { id, candidates }) => self.on_paraphrase(id, candidates, now),
             Event::Answer(Answer::Scoped { id, hits }) => self.on_scoped(id, &hits, now),
