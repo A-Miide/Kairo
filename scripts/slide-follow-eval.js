@@ -43,7 +43,7 @@ const EARLY_GRACE_MS = 2000;
 const NO_VERSES = has('--no-verses');
 const SENDS = val('--sends', null); // dir of <sermon>.json from replay with SENDS_JSON
 const REFS_URL = val('--server', 'http://127.0.0.1:7790');
-const only = args.filter((a, i) => !a.startsWith('--') && !['--mode'].includes(args[i - 1]));
+const only = args.filter((a, i) => !a.startsWith('--') && !['--mode', '--server', '--sends'].includes(args[i - 1]));
 
 // A scripture slide opens with its reference ("Romans 4:20-21 …", "1 John 5:4 …").
 const isScripture = (text) => /^(?:[1-3]\s)?[A-Z][a-z]+(?:\s(?:of\s)?[A-Z][a-z]+)?\s\d+:\d+/.test(text);

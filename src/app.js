@@ -458,7 +458,7 @@ function handleServerMessage(msg) {
       if (msg.layer === 'slide' || msg.layer === 'all') {
         clearPreviewScreen(); screenVerseRef = ''; screenSlide = null; renderVerseBar();
         // Cleared from anywhere (the output, a remote, Back): nothing is live for the slide follower to follow.
-        window.KairoService?.clearLive?.();
+        window.KairoService?.clearLive?.({ keepFollower: !!msg.viaBible });
       }
       if (msg.layer === 'media' || msg.layer === 'all') { clearMediaPreview(); window.KairoService?.onMediaLive?.(null); }
       if (msg.layer === 'timer' || msg.layer === 'all') window.KairoService?.onTimerSlide?.({ clear: true });

@@ -28,6 +28,7 @@ fn main() {
                 "list_monitors",
                 "list_system_fonts",
                 "signal_main_ready",
+                "pin_output_window",
                 "install_update",
                 "check_updates",
                 "ndi_available",

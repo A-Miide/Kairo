@@ -349,8 +349,14 @@ fn export_target(dir: &str, name: &str) -> Result<std::path::PathBuf, &'static s
 struct SaveQuery {
     dir: String,
     name: String,
-    #[serde(default)]
+    #[serde(default, deserialize_with = "flag")]
     replace: bool,
+}
+
+/// A yes/no in a query string: `1` or `true` is yes (a plain bool would refuse `replace=1` and the replace never happened).
+fn flag<'de, D: serde::Deserializer<'de>>(d: D) -> Result<bool, D::Error> {
+    let v = <String as serde::Deserialize>::deserialize(d)?;
+    Ok(matches!(v.as_str(), "1" | "true"))
 }
 
 /// Writes the export's bytes to `dir`/`name`. A file already there is replaced only when asked (`replace`);
@@ -401,7 +407,16 @@ async fn export_reveal(Json(b): Json<Value>) -> axum::response::Response {
 
 #[cfg(test)]
 mod export_tests {
-    use super::export_target;
+    use super::{export_target, SaveQuery};
+
+    #[test]
+    fn the_replace_flag_reads_one_and_true() {
+        let q = |s: &str| serde_urlencoded::from_str::<SaveQuery>(s).unwrap().replace;
+        assert!(q("dir=/x&name=a.pro&replace=1"));
+        assert!(q("dir=/x&name=a.pro&replace=true"));
+        assert!(!q("dir=/x&name=a.pro"));
+        assert!(!q("dir=/x&name=a.pro&replace=0"));
+    }
 
     #[test]
     fn only_a_plain_name_of_an_export_kind_in_a_real_folder() {

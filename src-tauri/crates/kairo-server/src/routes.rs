@@ -746,7 +746,8 @@ pub(crate) async fn clear_layer(app: &Shared, layer: &str) -> Value {
             Box::pin(send_service_slide(app, u.verse, u.look, false, false, u.next)).await;
             return json!({ "restored": true });
         }
-        app.hub.broadcast(json!({ "type": "clear-layer", "target": "viewer", "layer": "slide" }));
+        // viaBible: the verse went off with no slide beneath it, so the deck's follower keeps following.
+        app.hub.broadcast(json!({ "type": "clear-layer", "target": "viewer", "layer": "slide", "viaBible": true }));
         screen_cleared(app);
         return json!({ "restored": false });
     }

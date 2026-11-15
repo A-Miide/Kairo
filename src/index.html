@@ -920,6 +920,11 @@
                     <button type="button" class="toggle-btn active" data-format="pptx">PowerPoint<small>Keynote, Google Slides</small></button>
                     <button type="button" class="toggle-btn" data-format="pro">ProPresenter<small>ProPresenter 7</small></button>
                 </div>
+                <span class="setting-label">Slides</span>
+                <div class="toggle-group ob-seg" id="ex-look" role="group" aria-label="Slides">
+                    <button type="button" class="toggle-btn active" data-look="picture">Picture + text<small>Looks like Kairo, text editable</small></button>
+                    <button type="button" class="toggle-btn" data-look="text">All native<small>Simpler look</small></button>
+                </div>
                 <label for="ex-name" class="setting-label">Name</label>
                 <div class="ex-name-row">
                     <input id="ex-name" class="setting-input" type="text" spellcheck="false" autocomplete="off">
@@ -2457,7 +2462,9 @@
                         // requests fullscreen itself, right after show() —
                         // once real dark content already exists to fade FROM.
                         fullscreen:   false,
-                        skipTaskbar:  false,
+                        // Not in the taskbar: its own icon-thumbnail made Windows show two Kairo windows, and hovering that
+                        // thumbnail (Aero Peek) hid every other window, the output on the external screen included.
+                        skipTaskbar:  true,
                         // Same fix as the main window's own splash->show
                         // sequence (see signal_main_ready in app.js): a
                         // newly-created window is visible immediately by
@@ -2611,6 +2618,7 @@
     <script src="pp_render.js"></script>
     <script src="sermon_slides.js"></script>
     <script src="export_pptx.js"></script>
+    <script src="dom_raster.js"></script>
     <script src="export_propresenter.js"></script>
     <script src="sermon_slides_ui.js"></script>
     <script src="announcement_pack.js"></script>

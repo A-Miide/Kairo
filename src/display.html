@@ -649,7 +649,7 @@
         try {
             if (!timerLayer.childElementCount && !(timerScenes && timerScenes.length)) return;
             timerLayer.innerHTML = '';
-            if (timerScenes && timerScenes.length) renderMediaStage(null);
+            releaseSceneMedia();
             timerScenes = null; activeSceneIndex = -1; activeSceneSlot = -1;
         } catch {}
     }
@@ -1737,6 +1737,7 @@
     // Dropped when it is cleared.
     let lastLiveSlide = null;   // { msg, isBible }
     let lastLiveMedia = null;
+    let sceneOwnsMedia = false;   // see releaseSceneMedia
     function applyOutputLayers(next) {
         const prev = outputLayers;
         outputLayers = next;
@@ -1759,7 +1760,8 @@
             timerBadgeEl?.classList.add('hidden');
             clockBadgeEl?.classList.add('hidden');
             if (timerLayer) timerLayer.innerHTML = '';
-            if (timerScenes && timerScenes.length) renderMediaStage(null);
+            lastTimerLayerArgs = null;   // a later mode change must not paint it back
+            releaseSceneMedia();
             timerScenes = null;
             activeSceneIndex = -1;
             activeSceneSlot = -1;
@@ -1793,6 +1795,7 @@
     // Targets #slide-layer specifically, not the whole #stage — the media
     // layer behind it (an independently-sent image/video) must not fade or
     // clear just because the slide's text changed.
+    const QUICK_OUT_MS = 90;   // how long what scripture replaces takes to fade out
     function renderStage(verseText, verseRef, animate = true, translatedText = '', styleByLayerId = {}, timerText = '') {
         const myGen = ++renderGen;
         const look = activeLook || FALLBACK_LOOK;
@@ -1845,7 +1848,11 @@
             // trick that made the plain opacity fade work without any extra
             // reflow step, now covering slide-up's transform too.
             const outY = animType === 'slide-up' ? '-16px' : '0px';
-            slideLayer.style.transition = `opacity ${speedMs}ms ease, transform ${speedMs}ms ease`;
+            // Scripture does not wait out a whole fade of what it replaces (a slide the operator had just clicked
+            // held the verse back by the full transition, church PC 15 Nov 2026): the old content goes in a
+            // fraction of the time, and the new fades in at the full speed.
+            const outMs = currentSlideIsBible ? Math.min(speedMs, QUICK_OUT_MS) : speedMs;
+            slideLayer.style.transition = `opacity ${outMs}ms ease, transform ${outMs}ms ease`;
             slideLayer.style.opacity    = '0';
             slideLayer.style.transform  = animType === 'slide-up' ? `translateY(${outY})` : 'none';
 
@@ -1864,8 +1871,9 @@
                     slideLayer.style.transition = `opacity ${speedMs}ms ease, transform ${speedMs}ms ease`;
                     slideLayer.style.transform  = 'none';
                 }
+                slideLayer.style.transition = `opacity ${speedMs}ms ease, transform ${speedMs}ms ease`;
                 slideLayer.style.opacity = '1';
-            }, speedMs + 20);
+            }, outMs + 20);
         } else {
             doRender();
         }
@@ -1974,6 +1982,14 @@
     // backdrop slot, with the scene's own copy/countdown still layered on
     // top exactly as designed, instead of two competing, inconsistent
     // paths for "what's the background."
+    // A countdown scene's backdrop shares the media layer with media the operator sends. It is the
+    // scene's to take down only while it is still the scene's: a video sent from the Media Bin while the
+    // timer ran owns the layer, and clearing the timer (or the next scene) must leave it up.
+    function releaseSceneMedia() {
+        if (!sceneOwnsMedia) return;
+        sceneOwnsMedia = false;
+        renderMediaStage(null);
+    }
     function renderTimerScene(index, opts = {}) {
         const scene = timerScenes && timerScenes[index];
         if (!scene) return;
@@ -1986,8 +2002,9 @@
         // A scene switch FROM one with a bg backdrop TO one without must
         // clear the media layer too, or the previous scene's image/video
         // keeps showing through underneath this scene's own layers.
-        if (bg) renderMediaStage(bg.src, isVideoLayerSrc(bg.src) ? 'video' : 'image', bg.fit || 'cover', bg.motion);
-        else renderMediaStage(null);
+        if (lastLiveMedia && outputLayers.media) { /* the operator's own media is up: the scene's backdrop stays off it */ }
+        else if (bg) { sceneOwnsMedia = true; renderMediaStage(bg.src, isVideoLayerSrc(bg.src) ? 'video' : 'image', bg.fit || 'cover', bg.motion); }
+        else releaseSceneMedia();
         renderTimerLayer({ layers: rest, canvasSize: scene.canvasSize }, {}, currentTimerText, { builds: opts.builds !== false, transition: opts.transition });
     }
 
@@ -2376,9 +2393,11 @@
                 return;
             }
 
+            // Scripture does not wait out a whole fade of the words it replaces (see renderStage).
+            const outMs = currentSlideIsBible ? Math.min(speedMs, QUICK_OUT_MS) : speedMs;
             const textEls = stage.querySelectorAll('[data-binding]');
             textEls.forEach(el => {
-                el.style.transition = `opacity ${speedMs}ms ease, transform ${speedMs}ms ease`;
+                el.style.transition = `opacity ${outMs}ms ease, transform ${outMs}ms ease`;
                 el.style.opacity    = '0';
                 if (animType === 'slide-up') el.style.transform = 'translateY(-16px)';
             });
@@ -2396,8 +2415,8 @@
                     stage.offsetHeight; // force layout
                     textEls.forEach(el => { el.style.transition = `opacity ${speedMs}ms ease, transform ${speedMs}ms ease`; el.style.transform = 'none'; });
                 }
-                textEls.forEach(el => { el.style.opacity = ''; });
-            }, speedMs + 10);
+                textEls.forEach(el => { el.style.transition = `opacity ${speedMs}ms ease, transform ${speedMs}ms ease`; el.style.opacity = ''; });
+            }, outMs + 10);
         }
 
         // Range active highlight
@@ -2674,7 +2693,7 @@
                 // timer-slide{clear:true}), so it needs the same media/state
                 // reset that branch already does, or a scene's image/video
                 // stays stuck full-screen after the countdown is cleared.
-                if (timerScenes && timerScenes.length) renderMediaStage(null);
+                releaseSceneMedia();
                 timerScenes = null;
                 activeSceneIndex = -1;
                 activeSceneSlot = -1;
@@ -2684,6 +2703,7 @@
 
         if (msg.type === 'media' && msg.target === 'viewer') {
             lastLiveMedia = msg.src ? msg : null;
+            if (msg.src) sceneOwnsMedia = false;   // the layer is the operator's now
             if (!outputLayers.media) return;
             transitionMedia(msg.src, msg.kind, msg.fit);
             return;
@@ -2702,7 +2722,7 @@
                 // A scene's backdrop lives on the shared media layer now
                 // (see renderTimerScene) — clear that too, or it'd be left
                 // showing with nothing on top once the countdown stops.
-                if (timerScenes && timerScenes.length) renderMediaStage(null);
+                releaseSceneMedia();
                 timerScenes = null;
                 activeSceneIndex = -1;
                 activeSceneSlot = -1;
@@ -2724,7 +2744,7 @@
                 // segment was live — clear any scene backdrop the previous
                 // segment left on the shared media layer, or it stays stuck
                 // full-screen underneath this segment's own theme.
-                if (timerScenes && timerScenes.length) renderMediaStage(null);
+                releaseSceneMedia();
                 timerScenes = null;
                 activeSceneIndex = -1;
                 activeSceneSlot = -1;
@@ -3051,6 +3071,12 @@
     // counts on into overtime for the operator's own view and on Monitor
     // outputs (updateConfidenceTimer), for whoever is up front.
     function handleActionBadge(msg) {
+        // The corner countdown and clock belong to the Timer layer: with it off for this output they never show.
+        if (!outputLayers.timer) {
+            timerBadgeEl?.classList.add('hidden');
+            clockBadgeEl?.classList.add('hidden');
+            return;
+        }
         if (msg.actionId === 'stage-timer') {
             const { remainingMs, label, cleared, style, totalMs } = msg.payload || {};
             // Past zero the countdown stays on screen and counts up ("+0:07", in the overtime colour) until it is
@@ -3421,7 +3447,13 @@
         // frame from the window's default backing store, before this
         // page had painted anything dark at all. Doing it now means real
         // dark content already exists to fade FROM.
-        if (params.get('fs') === '1') w.setFullscreen(true).catch(() => {});
+        // On a Mac the window is pinned instead (Rust pin_output_window): native fullscreen would give it a Space
+        // of its own that Mission Control moves and shows. It fills its screen, so it needs no fullscreen.
+        if (params.get('fs') === '1') {
+            const invoke = window.__TAURI__?.core?.invoke;
+            const pinned = invoke ? invoke('pin_output_window', { label: w.label }).catch(() => false) : Promise.resolve(false);
+            pinned.then((done) => { if (!done) w.setFullscreen(true).catch(() => {}); });
+        }
     }, 50);
 
     </script>

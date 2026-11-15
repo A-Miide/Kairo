@@ -168,3 +168,18 @@ test('a real sermon deck becomes slides whose words are all there', () => {
     assert.match(all, /Hebrews 11:6/);
   }
 });
+
+test('an imported ProPresenter text element keeps its words, colour, size and place as real text', () => {
+  const layer = { type: 'pp', binding: 'custom', visible: true, id: 'pp-1', pos: { x: 120, y: 230, w: 900, h: 48 },
+    text: { caps: 'all', font: { family: 'Inter', bold: true, size: 30 }, kerning: 6, fill: [1, 0.5, 0, 1], shadow: { enable: false },
+      paragraphs: [{ align: 'left', runs: [{ t: 'Point 6 of 20', b: true, size: 30, color: [0.95686, 0.65882, 0.37255, 1], kern: 6 }] }] } };
+  const { items } = P.itemsFromLayers([layer], {}, {}, {});
+  assert.equal(items.length, 1);
+  const t = items[0];
+  assert.equal(t.kind, 'text');
+  assert.equal(t.text, 'POINT 6 OF 20');
+  assert.equal(t.fill.color.hex, 'F4A85F');
+  assert.deepEqual([t.x, t.y, t.w, t.font.size], [120, 230, 900, 30]);
+  const shape = { type: 'pp', binding: 'none', visible: true, id: 'pp-2', pos: { x: 0, y: 0, w: 10, h: 10 }, text: { paragraphs: [] } };
+  assert.equal(P.itemsFromLayers([shape], {}, {}, {}).items.length, 0);
+});
