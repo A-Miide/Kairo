@@ -2302,7 +2302,7 @@ async function applyOutputThemes() {
 // Video input (live camera / capture card, see video_sources.js) is the fifth
 // layer, drawn UNDER the rest so scripture and slides sit over the picture. It
 // is the one layer that defaults OFF: nothing changes until it is turned on.
-const OUTPUT_LAYER_KEYS = [['bible', 'Bible'], ['slide', 'Slide'], ['timer', 'Timer'], ['media', 'Media'], ['overlay', 'Overlays'], ['message', 'Messages'], ['video', 'Video input']];
+const OUTPUT_LAYER_KEYS = [['bible', 'Bible'], ['slide', 'Slide'], ['timer', 'Timer'], ['media', 'Media'], ['overlay', 'Overlays'], ['message', 'Alerts'], ['video', 'Video input']];
 const DEFAULT_OUTPUT_LAYERS = { bible: true, slide: true, media: true, timer: true, overlay: true, message: true, video: false };
 
 // Video input goes to display windows and the Monitor only (Phase 1). NDI,
@@ -2507,7 +2507,7 @@ const OC_ROWS = [
   { key: 'timer', label: 'Timer' },
   { key: 'media', label: 'Media' },
   { key: 'overlay', label: 'Overlays' },
-  { key: 'message', label: 'Messages' },
+  { key: 'message', label: 'Alerts' },
   { key: 'video', label: 'Video input' },
   { key: 'textOnly', label: 'Words only' },
 ];
@@ -2597,6 +2597,12 @@ function renderOutputControlMatrix() {
   const rows = OC_ROWS;
   const mk = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text) e.textContent = text; return e; };
 
+  // Cards or Routing: the same switches, laid out per output or as lines from each layer to its outputs.
+  const routing = ocView() === 'routing';
+  host.classList.toggle('is-routing', routing);
+  host.appendChild(ocViewSwitch(mk, renderOutputControlMatrix));
+  if (routing) { host.appendChild(buildOutputRouting(outputs, map, textOnly, mk)); return; }
+
   outputs.forEach((o) => {
     const card = mk('div', 'oc-card');
     const head = mk('div', 'oc-card-head');
@@ -2646,7 +2652,7 @@ function renderOutputControlMatrix() {
     });
     card.appendChild(grid);
 
-    if (o.monitor) shown.push('Messages');
+    if (o.monitor) shown.push('Alerts');
     const words = ocChipState(rows.find(r => r.key === 'textOnly'), o, map, textOnly).on;
     const line = shown.length
       ? `${words ? 'Words only: ' : 'Shows '}${shown.join(', ')}${hidden.length ? `. Hidden: ${hidden.join(', ')}` : ''}.`
