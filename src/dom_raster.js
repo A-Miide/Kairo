@@ -89,8 +89,8 @@
     return copy;
   }
 
-  // `el` (laid out at w × h CSS pixels, attached to the page) as picture bytes (JPEG, or PNG when part of it is see-through) at `scale` times that size.
-  async function elementToPng(el, w, h, scale) {
+  // `el` (laid out at w × h CSS pixels, attached to the page) as a full slide picture, a JPEG at `scale` times that size.
+  async function elementToPicture(el, w, h, scale) {
     const families = new Set();
     const copy = await styledCopy(el, families);
     // Where the element sat on the page (off screen, say) is not part of the picture.
@@ -101,26 +101,26 @@
     copy.style.setProperty('transform', 'none');
     copy.style.setProperty('z-index', 'auto');
     const fonts = await fontCss(families);
-    const xhtml = new XMLSerializer().serializeToString(copy).replace(/^<(\w+)/, '<$1 xmlns="http://www.w3.org/1999/xhtml"');
+    // Safari's WebKit (the Mac app) writes the namespace itself; Chrome doesn't. Written twice, the picture is not
+    // valid XML and WebKit refuses to draw it ("Slide 1 could not be drawn as a picture", owner, 18 Nov 2026).
+    let xhtml = new XMLSerializer().serializeToString(copy);
+    if (!/^<\w+[^>]*?\sxmlns="/.test(xhtml)) xhtml = xhtml.replace(/^<(\w+)/, '<$1 xmlns="http://www.w3.org/1999/xhtml"');
     const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs><style>${fonts}</style></defs><foreignObject x="0" y="0" width="${w}" height="${h}">${xhtml}</foreignObject></svg>`;
     const url = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
     const img = await new Promise((ok, bad) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => bad(new Error('The slide could not be drawn.')); i.src = url; });
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(w * scale); canvas.height = Math.round(h * scale);
     const g = canvas.getContext('2d');
+    // A slide is a full screen on black, as the output shows it. Over black it's opaque, so it's kept as a JPEG:
+    // WebKit leaves the edge of a drawn page a little see-through, and as a PNG each slide was 2.9 MB (18 Nov 2026).
+    g.fillStyle = '#000';
+    g.fillRect(0, 0, canvas.width, canvas.height);
     g.drawImage(img, 0, 0, canvas.width, canvas.height);
-    // A slide with nothing see-through is kept as a JPEG: a smooth gradient is an eighth of the size as a PNG.
-    let opaque = true;
-    try {
-      const d = g.getImageData(0, 0, canvas.width, canvas.height).data;
-      for (let i = 3; i < d.length; i += 4) if (d[i] !== 255) { opaque = false; break; }
-    } catch { opaque = false; }
-    const type = opaque ? 'image/jpeg' : 'image/png';
-    const blob = await new Promise((ok, bad) => { try { canvas.toBlob(b => (b ? ok(b) : bad(new Error('The slide could not be saved as a picture.'))), type, 0.92); } catch (e) { bad(e); } });
-    return { bytes: new Uint8Array(await blob.arrayBuffer()), w: canvas.width, h: canvas.height, ext: opaque ? 'jpeg' : 'png' };
+    const blob = await new Promise((ok, bad) => { try { canvas.toBlob(b => (b ? ok(b) : bad(new Error('The slide could not be saved as a picture.'))), 'image/jpeg', 0.92); } catch (e) { bad(e); } });
+    return { bytes: new Uint8Array(await blob.arrayBuffer()), w: canvas.width, h: canvas.height, ext: 'jpeg' };
   }
 
-  const API = { elementToPng, toDataUrl };
+  const API = { elementToPicture, toDataUrl };
   if (root) root.KairoDomRaster = API;
   if (typeof module !== 'undefined' && module.exports) module.exports = API;
 

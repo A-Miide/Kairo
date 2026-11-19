@@ -197,7 +197,7 @@
         const color = ov.color || layer.color;
         const opacity = ov.opacity != null ? ov.opacity : layer.opacity;
         fonts.add(family);
-        items.push({ kind: 'text', x: box.x, y: box.y, w: box.w, h: num(box.h), rotation: num(layer.rotation), text, accent: layer.accentColor || null,
+        items.push({ kind: 'text', layerId: layer.id, x: box.x, y: box.y, w: box.w, h: num(box.h), rotation: num(layer.rotation), text, accent: layer.accentColor || null,
           font: { family, size, weight: num(ov.font && ov.font.weight != null ? ov.font.weight : f.weight, 400), italic: !!(ov.font && ov.font.italic != null ? ov.font.italic : f.italic),
             lineHeight: num(ov.font && ov.font.lineHeight != null ? ov.font.lineHeight : f.lineHeight, 1.15), letterSpacing: num(ov.font && ov.font.letterSpacing != null ? ov.font.letterSpacing : f.letterSpacing), caps: transform === 'uppercase' },
           align: ov.align || layer.align || 'left',
@@ -208,7 +208,7 @@
 
       if (layer.type === 'pp') {
         const t = ppText(layer);
-        if (t) { fonts.add(t.font.family); items.push(t); continue; }
+        if (t) { t.layerId = layer.id; fonts.add(t.font.family); items.push(t); continue; }
       }
       if (layer.type === 'pp' || layer.type === 'motion' || layer.type === 'image-cycle') note('Imported ProPresenter elements and motion graphics');
     }
@@ -223,12 +223,15 @@
       }
       return null;
     })();
+    // Faint words are mixed into a flat colour against the slide's base colour, because Keynote and Google Slides ignore a text
+    // colour's alpha. ProPresenter fades the element itself, so it keeps the real colour (opts.keepTextAlpha): mixed in advance,
+    // a 7% numeral came out as one dark flat colour that didn't match the gradient under it (owner, 18 Nov 2026).
     const mix = (c, under) => {
       const m = (a, b) => Math.round(parseInt(a, 16) * c.a + parseInt(b, 16) * (1 - c.a)).toString(16).padStart(2, '0');
       return { hex: (m(c.hex.slice(0, 2), under.hex.slice(0, 2)) + m(c.hex.slice(2, 4), under.hex.slice(2, 4)) + m(c.hex.slice(4, 6), under.hex.slice(4, 6))).toUpperCase(), a: 1 };
     };
     for (const it of items) {
-      if (it.kind === 'text' && it.fill && it.fill.kind === 'solid' && it.fill.color && it.fill.color.a < 0.6 && base) it.fill = { kind: 'solid', color: mix(it.fill.color, base) };
+      if (!opts.keepTextAlpha && it.kind === 'text' && it.fill && it.fill.kind === 'solid' && it.fill.color && it.fill.color.a < 0.6 && base) it.fill = { kind: 'solid', color: mix(it.fill.color, base) };
     }
     return { items, notes: [...notes], fonts: [...fonts] };
   }

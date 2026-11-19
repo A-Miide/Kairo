@@ -153,3 +153,23 @@ fn plain_speech_is_unchanged() {
     }
     assert!(wrong.is_empty(), "\n{}\n", wrong.join("\n"));
 }
+
+/// "Matthew eleven second twenty eight": a stray ordinal before the verse (heard for "verse") must not run into it as
+/// 228. Preacher at 8:37 on 18 Nov 2026: Matthew 11:28 never reached the screen.
+#[test]
+fn a_stray_ordinal_before_the_verse_is_dropped_when_it_would_make_a_verse_the_chapter_has_not_got() {
+    assert_eq!(first("all things are possible in Matthew eleven second twenty eight all you that are in pain").as_deref(), Some("Matthew 11:28"));
+    assert_eq!(first("Romans eight third twenty eight we know").as_deref(), Some("Romans 8:28"));
+    // A real verse stays as it was said.
+    assert_eq!(first("John three sixteen for God so loved").as_deref(), Some("John 3:16"));
+    assert_eq!(first("Matthew eleven twenty eight come unto me").as_deref(), Some("Matthew 11:28"));
+}
+
+/// Speech engines write "verse" many ways; a citation must not lose its verse to the spelling.
+#[test]
+fn a_clipped_verse_word_still_gives_the_verse() {
+    assert_eq!(first("turn to Matthew eleven ver twenty eight").as_deref(), Some("Matthew 11:28"));
+    assert_eq!(first("turn to Matthew eleven vers twenty eight").as_deref(), Some("Matthew 11:28"));
+    assert_eq!(first("turn to Matthew eleven vs twenty eight").as_deref(), Some("Matthew 11:28"));
+}
+

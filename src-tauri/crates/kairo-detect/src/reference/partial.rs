@@ -65,7 +65,7 @@ fn get<'a>(w: &[&'a str], i: usize) -> &'a str {
 }
 
 fn is_verse_word(w: &str) -> bool {
-    matches!(w, "verse" | "verses" | "vers")
+    matches!(w, "verse" | "verses" | "vers" | "ver")
 }
 
 fn n32(v: i64) -> u32 {

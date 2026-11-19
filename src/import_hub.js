@@ -7,6 +7,7 @@
   if (!modal) return;
 
   const KINDS = {
+    kairo: ['kairo'],
     propresenter: ['pro', 'pro6', 'pro7', 'probundle', 'proplaylist'],
     // A schedule on its own, or a song library's two files picked together (easyworship.rs).
     easyworship: ['ewsx', 'ews', 'db', 'mb'],
@@ -15,7 +16,7 @@
     text: ['txt', 'md', 'rtf'],
     theme: ['protheme', 'kairotheme', 'json'],
   };
-  const CONTENT_EXTS = [...KINDS.propresenter, ...KINDS.easyworship, ...KINDS.pptx, ...KINDS.docx, ...KINDS.text];
+  const CONTENT_EXTS = [...KINDS.kairo, ...KINDS.propresenter, ...KINDS.easyworship, ...KINDS.pptx, ...KINDS.docx, ...KINDS.text];
   const THEME_EXTS = ['protheme', 'kairotheme'];
   const extOf = (name) => (name.toLowerCase().match(/\.([a-z0-9]+)$/) || [])[1] || '';
 
@@ -72,6 +73,7 @@
     const ext = extOf(file.name);
     const isTheme = THEME_EXTS.includes(ext) || (ext === 'json' && kind === 'theme');
     if (isTheme) { close(); importTheme(file); return; }
+    if (ext === 'kairo') { close(); window.KairoService?.importKairoDeck?.(file); return; }
     if (CONTENT_EXTS.includes(ext) || ext === 'json') {
       close();
       window.KairoService?.quickImportFile?.(file, destination);

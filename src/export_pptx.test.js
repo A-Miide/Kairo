@@ -183,3 +183,26 @@ test('an imported ProPresenter text element keeps its words, colour, size and pl
   const shape = { type: 'pp', binding: 'none', visible: true, id: 'pp-2', pos: { x: 0, y: 0, w: 10, h: 10 }, text: { paragraphs: [] } };
   assert.equal(P.itemsFromLayers([shape], {}, {}, {}).items.length, 0);
 });
+
+test('faint text is mixed into a flat colour for PowerPoint, and keeps its real colour and strength for ProPresenter', () => {
+  const layers = [
+    { id: 'bg', type: 'background', fill: 'solid', color: '#0A1712', opacity: 100, pos: { x: 0, y: 0, w: 1920, h: 1080 } },
+    { id: 'n', type: 'text', binding: 'custom', customText: '05', color: '#F2EFE3', opacity: 7, font: { family: 'Inter', size: 300, weight: 700 }, pos: { x: 0, y: 0, w: 800, h: 400 } },
+  ];
+  const words = (opts) => P.itemsFromLayers(layers, {}, {}, opts).items.find(i => i.kind === 'text').fill.color;
+  assert.equal(words({}).a, 1);
+  assert.notEqual(words({}).hex, 'F2EFE3');
+  const kept = words({ keepTextAlpha: true });
+  assert.equal(kept.hex, 'F2EFE3');
+  assert.ok(Math.abs(kept.a - 0.07) < 1e-9);
+});
+
+test('each text item carries the id of the layer it came from, so an export can leave exactly those out of a picture', () => {
+  const layers = [
+    { id: 'ss-number', type: 'text', binding: 'custom', customText: '05', color: '#F2EFE3', opacity: 7, font: { family: 'Inter', size: 480 }, pos: { x: 0, y: 0, w: 800, h: 400 } },
+    { id: 'ss-headline', type: 'text', binding: 'custom', customText: 'Hello', color: '#F2EFE3', opacity: 100, font: { family: 'Inter', size: 104 }, pos: { x: 0, y: 0, w: 800, h: 400 } },
+  ];
+  const ids = P.itemsFromLayers(layers, {}, {}, { keepTextAlpha: true }).items.filter(i => i.kind === 'text').map(i => i.layerId);
+  assert.deepEqual(ids, ['ss-number', 'ss-headline']);
+});
+

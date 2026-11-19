@@ -104,6 +104,20 @@ test('a shape carries an empty text block, as ProPresenter writes one (no "Text"
   assert.doesNotMatch(str(text, 5), /\\cf1/, 'with no words in it');
 });
 
+test('a shape is marked as a shape and words as a text box, as ProPresenter marks them (no "Text" placeholder)', () => {
+  const { bytes } = build(['x']);
+  const cue = fields(all(fields(bytes), 13)[0].v);
+  const els = all(sub(sub(sub(sub(cue, 10), 23), 2), 1), 1);
+  assert.equal(one(fields(els[0].v), 4).v, 3, 'the words');
+  assert.equal(one(fields(els[1].v), 4).v, 1, 'the background shape');
+});
+
+test('line height is written as a multiple of single spacing, as ProPresenter writes it', () => {
+  const rtf = R.buildRtf({ text: 'a', font: { size: 132, weight: 700, lineHeight: 1 }, align: 'center' }, 'Arial', { hex: 'FFFFFF', a: 1 }, null);
+  assert.match(rtf, /\\sl200\\slmult1/);
+  assert.match(R.buildRtf({ text: 'a', font: { size: 40, lineHeight: 0.8 }, align: 'left' }, 'Arial', { hex: 'FFFFFF', a: 1 }, null), /\\sl160\\slmult1/);
+});
+
 test('a glow becomes a radial gradient fading to clear, not a dropped picture', () => {
   const items = [{ kind: 'image', x: 100, y: 50, w: 800, h: 600, fit: 'fill', src: 'glow:6B2313:80' }];
   const { bytes, notes } = R.buildPro([{ items }], { title: 't' });
@@ -131,4 +145,30 @@ test('a picture becomes a media fill, and its file is handed back to pack in a .
   assert.equal(str(url, 1), 'file:///Users/x/Documents/ProPresenter/Media/Assets/' + out.media[0].rel.split('/').pop());
   assert.equal(str(sub(url, 4), 2), out.media[0].rel);
   assert.equal(one(sub(sub(m, 5), 1), 1).v, 1);       // cover = ProPresenter "fill"
+});
+
+test('every corner of a shape has both curve handles on the corner, so its edges stay straight in ProPresenter\'s thumbnails', () => {
+  const { bytes } = build(['x']);
+  const cue = fields(all(fields(bytes), 13)[0].v);
+  const els = all(sub(sub(sub(sub(cue, 10), 23), 2), 1), 1);
+  const path = sub(sub(fields(els[1].v), 1), 8);
+  const corners = all(path, 2).map(c => fields(c.v));
+  assert.equal(corners.length, 4);
+  corners.forEach((c) => {
+    const at = (n) => { const m = sub(c, n); return [(m && one(m, 1) || { v: 0 }).v, (m && one(m, 2) || { v: 0 }).v]; };
+    assert.deepEqual(at(2), at(1));
+    assert.deepEqual(at(3), at(1));
+  });
+});
+
+test('words that are faint in Kairo (a 7% numeral) keep their real colour, faded in the text colour and not in the RTF', () => {
+  const faint = [{ items: [{ kind: 'text', x: 0, y: 0, w: 500, h: 200, text: '05', font: { family: 'Inter', size: 300, weight: 700, lineHeight: 1 }, align: 'right', fill: { kind: 'solid', color: P.parseColor('#F2EFE3', 7) } }] }];
+  const { bytes } = R.buildPro(faint, { title: 'x' });
+  const cue = fields(all(fields(bytes), 13)[0].v);
+  const el = fields(all(sub(sub(sub(sub(cue, 10), 23), 2), 1), 1)[0].v);
+  const g = sub(el, 1);
+  assert.equal(one(g, 5).v, 1, 'the element itself is full strength, so it is not faded twice');
+  assert.match(str(sub(g, 13), 5), /\\red242\\green239\\blue227;/);
+  const c = sub(sub(sub(g, 13), 3), 3);
+  assert.ok(Math.abs(one(c, 4).v - 0.07) < 1e-6, 'the text colour is 7% strong');
 });

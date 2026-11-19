@@ -919,11 +919,7 @@
                 <div class="toggle-group ob-seg" id="ex-format" role="group" aria-label="Format">
                     <button type="button" class="toggle-btn active" data-format="pptx">PowerPoint<small>Keynote, Google Slides</small></button>
                     <button type="button" class="toggle-btn" data-format="pro">ProPresenter<small>ProPresenter 7</small></button>
-                </div>
-                <span class="setting-label">Slides</span>
-                <div class="toggle-group ob-seg" id="ex-look" role="group" aria-label="Slides">
-                    <button type="button" class="toggle-btn active" data-look="picture">Picture + text<small>Looks like Kairo, text editable</small></button>
-                    <button type="button" class="toggle-btn" data-look="text">All native<small>Simpler look</small></button>
+                    <button type="button" class="toggle-btn" data-format="kairo">Kairo<small>Opens in Kairo as made</small></button>
                 </div>
                 <label for="ex-name" class="setting-label">Name</label>
                 <div class="ex-name-row">
@@ -1030,6 +1026,11 @@
                     <button type="button" class="imp-dest-btn" data-dest="library">Song Library</button>
                 </div>
                 <div class="imp-list" id="imp-list">
+                    <button type="button" class="imp-row" data-kind="kairo">
+                        <span class="imp-ico imp-ico-kairo">K</span>
+                        <span class="imp-text"><b>Kairo</b><small>A deck exported from Kairo, exactly as it was made</small></span>
+                        <span class="imp-exts"><i>.kairo</i></span>
+                    </button>
                     <button type="button" class="imp-row" data-kind="propresenter">
                         <span class="imp-ico imp-ico-pp">PP</span>
                         <span class="imp-text"><b>ProPresenter</b><small>Exact design: fonts, sizes, shapes, shadows, backgrounds and media</small></span>
@@ -2619,6 +2620,7 @@
     <script src="sermon_slides.js"></script>
     <script src="export_pptx.js"></script>
     <script src="dom_raster.js"></script>
+    <script src="kairo_deck.js"></script>
     <script src="export_propresenter.js"></script>
     <script src="sermon_slides_ui.js"></script>
     <script src="announcement_pack.js"></script>
@@ -2641,6 +2643,7 @@
     <script src="app_theme_studio.js"></script>
     <script src="output_capture.js"></script>
     <script src="app_outputs.js"></script>
+    <script src="output_routing.js"></script>
     <script src="video_sim.js"></script>
     <script src="video_director_boot.js"></script>
     <script src="app_startup.js"></script>
