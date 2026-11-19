@@ -259,7 +259,7 @@ function animOverride(layer, ov) {
   return { build: has('build') ? ov.build : layer.build, idle: has('idle') ? ov.idle : layer.idle };
 }
 
-// Photoshop's blend modes, grouped and ordered as Photoshop (and Compositor)
+// The usual blend modes, grouped and ordered as design editors
 // list them — darkening, lightening, contrast, comparative, component — named
 // as they and PSD files name them. Only the ones a browser draws (CSS
 // mix-blend-mode); "Linear Dodge (Add)" is CSS's plus-lighter.
@@ -300,7 +300,7 @@ window.applyLayerOrder    = applyLayerOrder;
 window.resolveFlexibleTime = resolveFlexibleTime;
 window.outlineShadows     = outlineShadows;
 
-// ── Gradients — Photoshop's own points, not just two colours ──────────────
+// ── Gradients — several points, not just two colours ──────────────────────
 // layer.gradientStops: [{pos, color}, …], pos 0–100. A layer never taken
 // through the stops editor (every theme before 2026-09-30, or one whose
 // gradient was only ever set via its two plain colour fields) has none —

@@ -3,7 +3,7 @@
 //! `translations/<CODE>.json` in the app data folder, where the translation loader looks first.
 //!
 //! Formats: USFM, USX, OSIS, Zefania XML, and a zip of those. Anything else (a database,
-//! a program, Logos or Accordance files) is refused with a plain reason.
+//! a program, another Bible app's own files) is refused with a plain reason.
 
 use std::collections::HashMap;
 use std::sync::LazyLock;

@@ -1810,7 +1810,7 @@ function deleteLayer(layer) {
 }
 
 // The selected layer's blend mode and opacity, above the layer list — where
-// Photoshop and Compositor keep them: Blend (Photoshop's modes, in its
+// design editors keep them: Blend (the usual modes, in their
 // groups), then Opacity (a draggable name, a slider and the exact %). The
 // canvas has nothing under it to blend with, so it shows Opacity alone.
 // Rebuilt only when the selection changes, so a drag on its own slider or
@@ -2684,7 +2684,7 @@ function renderStage() {
       tsDecorateLayerEl(div, layer, true);
 
       // Double-click to type directly into the shape on the canvas —
-      // matches every other design tool (PowerPoint, Canva, Figma, Keynote)
+      // matches every other design tool
       // instead of forcing a trip to the props panel's separate "Text"
       // field for a one-word edit. A 'custom' binding always qualifies
       // (customText is the one free-typed string a layer has); a 'verse'
@@ -2814,7 +2814,7 @@ function renderStage() {
 // ── Drag-a-box selection ──────────────────────────────────────────────────
 // Dragging across the canvas's own background (not on a layer) draws a
 // selection box; every layer it touches is selected, ready to move, align or
-// delete together — the artboard gesture from Canva/Figma/Keynote. A plain
+// delete together — the usual artboard gesture. A plain
 // click without dragging still selects the background, as before.
 function tsBeginMarquee(e, bgLayer) {
   if (e.button !== 0) return;
@@ -3041,7 +3041,7 @@ function tsBeginDrag(e, layer, mode, dir) {
   // handle while one is being edited must still commit that edit first.
   tsCommitActiveEdit(layer.id);
   // Option/Alt+drag duplicates first, then drags the copy — same gesture
-  // as Canva/Figma/PowerPoint/Keynote. Duplicates the WHOLE current
+  // as in other design tools. Duplicates the WHOLE current
   // selection when dragging a layer that's already part of one, otherwise
   // just this one layer. The clone starts stacked exactly on top of its
   // original (same position/layout-preset either way — deepClone copies
@@ -3164,7 +3164,7 @@ function tsDragMove(e) {
   if (mode === 'group-scale') {
     // A multi-selection's own corner: everything in it scales together from
     // the opposite corner — positions, sizes and type sizes — like dragging
-    // the corner of a group in Canva.
+    // the corner of a group in other design tools.
     const { bounds: b, dir: d, items } = tsDrag;
     const sx = d.includes('e') ? 1 : -1, sy = d.includes('s') ? 1 : -1;
     const diag = Math.hypot(b.w, b.h) || 1;
@@ -3195,7 +3195,7 @@ function tsDragMove(e) {
     const eh = tsEffectiveH(layer, layer.pos);
 
     // Left edge, center, and right edge are all candidate snap points while
-    // moving — whichever is closest to a target wins (Figma-style "smart
+    // moving — whichever is closest to a target wins ("smart
     // guides"), not just the box's center like the old behavior.
     const xBest = tsBestSnap([
       { edge: nx, offset: 0 },
@@ -3235,7 +3235,7 @@ function tsDragMove(e) {
     r = ((((r + 180) % 360) + 360) % 360) - 180;
     layer.rotation = Math.round(r);
   } else {
-    // Resize from whichever handle was grabbed, the way Canva's artboard
+    // Resize from whichever handle was grabbed, the way an artboard
     // does it: the point opposite the handle stays put; a corner scales the
     // layer as a unit — proportions kept, and a text layer's type scales with
     // it (font size, letter spacing) — while a side handle stretches one
@@ -3402,7 +3402,7 @@ function tsDecorateLayerEl(div, layer, draggable) {
     tsCommitActiveEdit(layer.id);
     // Shift/Cmd/Ctrl+click toggles this layer into the multi-selection
     // instead of replacing it — the standard modifier across every design
-    // tool (Figma, PowerPoint, Keynote, Canva). Never starts a drag by
+    // tool. Never starts a drag by
     // itself; a plain click-and-drag right after is a separate gesture.
     if (e.shiftKey || e.metaKey || e.ctrlKey) {
       e.preventDefault(); e.stopPropagation();
@@ -3440,7 +3440,7 @@ function tsDecorateLayerEl(div, layer, draggable) {
     // Eight-point selection frame: four corners (scale, proportions kept) +
     // four edge midpoints (stretch), each from the opposite anchor — and a
     // rotate handle under the layer, for anything with its own box. Every
-    // corner ALSO rotates, the way Keynote/PowerPoint/Slides do it: land on
+    // corner ALSO rotates, the way slide editors do it: land on
     // its dot and it resizes, land in the ring just outside — a wide one,
     // its hit area reaching well past the dot (.ts-handle-nw::after etc.) —
     // and it rotates instead, cursor already showing which as the pointer
@@ -3702,7 +3702,7 @@ function beginInlineTextEdit(div, layer) {
       layer.customText = div.innerText.replace(/\r?\n/g, ' ').trim();
       up();
       // A text box made and left as it was comes away again; one typed in is
-      // named after its words — both as in Photoshop.
+      // named after its words — both as in image editors.
       if (tsFreshTextId === layer.id) {
         tsFreshTextId = null;
         if (!layer.customText || layer.customText === TS_TEXT_PLACEHOLDER) { deleteLayer(layer); return; }
@@ -4063,8 +4063,8 @@ function numField(label, value, { min = -Infinity, max = Infinity, step = 1, uni
   if (nameEl) scrubbable(nameEl, inp, { min, max, step });
   return wrap;
 }
-// Drag a number's name sideways to change it, as in Photoshop (Compositor's
-// NumericScrub): a whole-number field moves one per pixel, a finer one a step
+// Drag a number's name sideways to change it, as in image editors (the
+// NumericScrub idea): a whole-number field moves one per pixel, a finer one a step
 // per two; Shift is ten times faster, Option ten times finer. Dragged values
 // snap to the field's step and stay in its range; a click that doesn't move
 // still just puts the cursor in the field. The field's own input event does
@@ -4343,7 +4343,7 @@ function makeFontSelect(current, onChange) {
         // is a bug, that's genuinely how the font looks, but a picker that
         // ONLY shows the styled specimen makes such a row impossible to
         // identify. Always keep the plain, always-legible label alongside it
-        // (Google Fonts'/Figma's own font pickers do the same) rather than
+        // (font pickers elsewhere do the same) rather than
         // relying on the specimen alone to say what this row even is.
         const label = document.createElement('span');
         label.className = 'ts-font-picker-row-label';
@@ -4400,7 +4400,7 @@ function tsShapeIconSvg(id, size = 15) {
   const kind = TS_SHAPE_KINDS.find(k => k.id === id) || TS_SHAPE_KINDS[0];
   return `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">${kind.icon}</svg>`;
 }
-// A Photoshop-style shape flyout: the current shape's icon, opening a row of
+// A shape flyout: the current shape's icon, opening a row of
 // every shape's icon to pick from — instead of a plain dropdown of names.
 // Used both by the Shape tool (what the next one is drawn as) and by a
 // selected shape's own Shape section (what it becomes).
@@ -5235,7 +5235,7 @@ function renderInertTextStyle(panel) {
 // background layer can be filled with one, by path, so the pictures ship with
 // the app, stay out of the saved themes, and one picture serves any number
 // of themes and slides.
-// ── Gradient points, after Photoshop's own gradient editor ────────────────
+// ── Gradient points, as in image editors' gradient tools ──────────────────
 // A bar with the live gradient across it and a marker for every stop along
 // its bottom edge: click the bar to add one where you clicked, drag a
 // marker to move it, click one to edit its exact colour and position, and
@@ -5270,7 +5270,7 @@ function gradientEditorRows(layer, onChange) {
   bar.className = 'ts-gradient-bar';
   let selected = 0;
 
-  // The bundled gradients (gradients.js), Photoshop's preset swatches: one
+  // The bundled gradients (gradients.js), as preset swatches: one
   // click sets the stops, the angle and any glows, all editable after.
   const sameStops = (a, b) => a.length === b.length && a.every((s, i) => s.pos === b[i].pos && s.color === b[i].color);
   const presets = document.createElement('div');
@@ -6903,7 +6903,7 @@ function renderItemSlidesList() {
 
     // A scene slide's "player" setting — how long the live countdown shows
     // it before advancing to the next one — lives right on its own row,
-    // the same place PowerPoint keeps a slide's advance timing next to the
+    // the same place slide editors keep a slide's advance timing next to the
     // slide itself rather than in a separate list somewhere else. Timer-
     // specific: a 'slides' item's own scene slides (a ProPresenter import
     // preserved as-authored, see slidesFor's 'slides' case) have no
@@ -7393,11 +7393,11 @@ document.addEventListener('keydown', (e) => {
   if (key === 'a') { e.preventDefault(); selectAllLayers(); }
   else if (key === 'c') { if (multiSelectedLayerIds.size || activeLayer) { e.preventDefault(); copyLayers(); } }
   else if (key === 'v') { if (layerClipboard.length) { e.preventDefault(); pasteLayers(); } }
-  // Cmd/Ctrl+D (Figma, Keynote) or Cmd/Ctrl+J (Photoshop) — duplicate.
+  // Cmd/Ctrl+D or Cmd/Ctrl+J — duplicate.
   else if (key === 'd' || key === 'j') { if (multiSelectedLayerIds.size || activeLayer) { e.preventDefault(); duplicateLayers(); } }
 });
-// A copy of the selection right above it, selected — Photoshop's Layer via
-// Copy. The clipboard is left as it was.
+// A copy of the selection right above it, selected — a layer via
+// copy. The clipboard is left as it was.
 function duplicateLayers() {
   const src = (multiSelectedLayerIds.size
     ? activeLook.layers.filter(l => multiSelectedLayerIds.has(l.id))
@@ -7414,7 +7414,7 @@ function duplicateLayers() {
   up(); renderProps(); renderThemeCanvasSizeSelect();
 }
 
-// ⇧⌘L / Shift+Ctrl+L locks or unlocks the selection (Figma's shortcut); in item mode too.
+// ⇧⌘L / Shift+Ctrl+L locks or unlocks the selection; in item mode too.
 document.addEventListener('keydown', (e) => {
   if (!(e.metaKey || e.ctrlKey) || !e.shiftKey || e.key.toLowerCase() !== 'l') return;
   if (looksModal?.classList.contains('hidden') || !activeLook) return;
@@ -7427,7 +7427,7 @@ document.addEventListener('keydown', (e) => {
 });
 
 // Delete/Backspace for the selected layer(s) — same gesture as removing a
-// file in Finder or a shape in Figma. Not folded into the Cmd/Ctrl block
+// file in Finder or a shape in a design tool. Not folded into the Cmd/Ctrl block
 // above since this needs no modifier key, and (unlike select-all/copy/paste)
 // works in item mode too — deleteLayer already only allows that for a
 // slide's own custom layers, never a theme layer, so no separate item-mode
@@ -7451,7 +7451,7 @@ document.addEventListener('keydown', (e) => {
 
 // Arrow keys nudge the current selection (single or multi — tsSelectedLayers)
 // by 1 design px, Shift+Arrow by 10 — the same increments (and the same
-// gesture) as PowerPoint/Keynote/Figma/Canva, for the exact positioning a
+// gesture) as other design tools, for the exact positioning a
 // drag alone can't reliably do. Works in item mode too, same as Delete —
 // nudging is just a position edit, no different from typing into X/Y.
 document.addEventListener('keydown', (e) => {
@@ -7473,9 +7473,10 @@ document.addEventListener('keydown', (e) => {
   up();
 });
 
-// ── Tools, after Compositor ───────────────────────────────────────────────
-// The editor works the way Photoshop and Compositor (github.com/robbietilton/
-// Compositor, MIT) do, so a designer's hands already know it: a tool is
+// ── Tools ─────────────────────────────────────────────────────────────────
+// The editor works the way other design editors do, and Compositor (MIT,
+// github.com/robbietilton/Compositor) in particular, so a designer's hands
+// already know it: a tool is
 // picked by its key or from the float centred over the top of the canvas
 // (.ts-tool-float in index.html). Each key's behaviour is on its button's
 // own title (hover for the detail); the panel on the right holds what it
@@ -7532,7 +7533,7 @@ document.querySelectorAll('.ts-tool-btn').forEach(b => b.addEventListener('click
 }
 
 // Choosing the Shape tool opens every shape it draws, by icon and name, the
-// way Photoshop's tool flyout lists its shape tools — not left behind a
+// way a tool flyout lists its shape tools — not left behind a
 // sliver of a caret on the button's corner (2026-09-30: "when a shape tool is
 // selected, it should bring out all the options so the user can select the
 // one they want, not just a small secondary button"). Picking one closes it,
@@ -7655,7 +7656,7 @@ document.querySelector('.ts-preview-wrap')?.addEventListener('mousedown', (e) =>
   const hitLayer = hit && activeLook.layers.find(l => l.id === hit.dataset.layerId);
   if (tsActiveEdit) {
     // Placing the caret in the text being typed; anywhere else, the click
-    // finishes the typing (as in Photoshop) — the next one draws.
+    // finishes the typing (as in image editors) — the next one draws.
     if (hitLayer && tsActiveEdit.layerId === hitLayer.id) return;
     if (!(tsTool === 'type' && hitLayer?.type === 'text')) {
       e.preventDefault(); e.stopPropagation();
@@ -7706,7 +7707,7 @@ document.querySelector('.ts-preview-wrap')?.addEventListener('mousedown', (e) =>
   document.addEventListener('keydown', onKey, true);
 }, true);
 
-// The tools' keys, and Photoshop's own for layers and the view: V / T / U pick a tool
+// The tools' keys, and the usual ones for layers and the view: V / T / U pick a tool
 // (Shift-U the next shape); 1–9 set the layer's opacity to 10–90% and 0 to
 // 100% (two quick digits for an exact value); Shift + and Shift − step
 // through the blend modes; ⌘] and ⌘[ move a layer up or down the stack (⌘J,
@@ -7719,7 +7720,7 @@ document.addEventListener('keydown', (e) => {
   if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return;
   const mod = e.metaKey || e.ctrlKey;
   const key = e.key.toLowerCase();
-  // ⌘R (Photoshop) or Shift-R (Figma): the rulers. ⌘;: the guides.
+  // ⌘R or Shift-R: the rulers. ⌘;: the guides.
   if ((mod && key === 'r' && !e.shiftKey && !e.altKey) || (!mod && !e.altKey && e.shiftKey && key === 'r')) { e.preventDefault(); setShowRulers(!tsShowRulers); return; }
   if (mod && e.key === ';') { e.preventDefault(); setShowGuides(!tsShowGuides); return; }
   if (!mod && !e.altKey) {
@@ -7768,7 +7769,7 @@ document.addEventListener('keydown', (e) => {
   }
 });
 
-// ── Rulers and guides, after Compositor ──────────────────────────────────
+// ── Rulers and guides ─────────────────────────────────────────────────────
 // Rulers along the top and left of the canvas area, in the design pixels X,
 // Y, W and H are in, 0 at the canvas's corner: numbered ticks about 70
 // points apart on a 1–2–5 scale, a tenth between, and a mark where the
@@ -7777,7 +7778,7 @@ document.addEventListener('keydown', (e) => {
 // saved with it (in a playlist item's editor, only for as long as it's
 // open), and layers snap to them. ⌘R shows or hides the rulers, ⌘; the
 // guides.
-const TS_RULER = 18;       // px, as Compositor's
+const TS_RULER = 18;       // px
 const TS_GUIDE_HIT = 4;    // px either side of a guide that picks it up
 let tsShowRulers = true, tsShowGuides = true;
 try {
@@ -8129,8 +8130,8 @@ initVerticalSplitter({
 // fields on already-saved themes rather than migrating every stored look
 // just to strip them.
 
-// Text and shapes are drawn with the Type and Shape tools (see "Tools, after
-// Compositor"): addTextBox / addShape.
+// Text and shapes are drawn with the Type and Shape tools (see "Tools"):
+// addTextBox / addShape.
 
 // ── Image layers ──────────────────────────────────────────────────────────
 // Images are stored inline as data URLs so a theme stays a single portable

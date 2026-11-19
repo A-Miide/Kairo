@@ -1,7 +1,6 @@
 //! Native Spout sender for KAIRO (Windows only) — the Windows equivalent of
 //! `syphon.rs`'s macOS sender: same-machine, zero-setup video sharing so any
-//! compatible app (OBS's Spout plugin, vMix, Resolume, TouchDesigner, etc.)
-//! can pick the source up directly — no capture bridge, no hidden window.
+//! compatible app can pick the source up directly — no capture bridge, no hidden window.
 //!
 //! Mirrors `syphon.rs`'s design (a single Mutex-guarded handle, the same
 //! tiny-skia + cosmic-text render pipeline) but the transport itself is far

@@ -9,8 +9,8 @@
 // Effects PowerPoint can't draw (blend modes such as the grain's Overlay, frosting behind glass, soft
 // glows in a gradient) are left out or approximated, and reported in `notes` so the person is told.
 //
-// A .pptx is a zip of XML parts. The zip here stores its files uncompressed: PowerPoint, Keynote and
-// Google Slides all read that, and it needs no compressor.
+// A .pptx is a zip of XML parts. The zip here stores its files uncompressed: slide apps all read
+// that, and it needs no compressor.
 (function (root) {
   'use strict';
 
@@ -223,7 +223,7 @@
       }
       return null;
     })();
-    // Faint words are mixed into a flat colour against the slide's base colour, because Keynote and Google Slides ignore a text
+    // Faint words are mixed into a flat colour against the slide's base colour, because some slide apps ignore a text
     // colour's alpha. ProPresenter fades the element itself, so it keeps the real colour (opts.keepTextAlpha): mixed in advance,
     // a 7% numeral came out as one dark flat colour that didn't match the gradient under it (owner, 18 Nov 2026).
     const mix = (c, under) => {

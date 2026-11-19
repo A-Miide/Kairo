@@ -917,7 +917,7 @@
             <div class="modal-body ex-body">
                 <span class="setting-label">Format</span>
                 <div class="toggle-group ob-seg" id="ex-format" role="group" aria-label="Format">
-                    <button type="button" class="toggle-btn active" data-format="pptx">PowerPoint<small>Keynote, Google Slides</small></button>
+                    <button type="button" class="toggle-btn active" data-format="pptx">PowerPoint<small>Opens in most slide apps</small></button>
                     <button type="button" class="toggle-btn" data-format="pro">ProPresenter<small>ProPresenter 7</small></button>
                     <button type="button" class="toggle-btn" data-format="kairo">Kairo<small>Opens in Kairo as made</small></button>
                 </div>
@@ -1125,7 +1125,7 @@
                         <span class="ts-layers-hint">Drag to reorder</span>
                     </div>
                     <!-- The selected layer's blend mode and opacity, above the
-                         list — where Photoshop and Compositor keep them. -->
+                         list — where design editors keep them. -->
                     <div class="ts-layer-appearance hidden" id="ts-layer-appearance"></div>
                     <div class="ts-layers-list" id="ts-layers-list"></div>
                   </div>
@@ -1139,7 +1139,7 @@
                         <div class="ts-preview-stage" id="looks-preview-stage">
                             <!-- layers rendered here by JS -->
                         </div>
-                        <!-- Guides and rulers (after Compositor): drag out of a ruler
+                        <!-- Guides and rulers: drag out of a ruler
                              to lay a guide; ⌘R shows or hides the rulers, ⌘; the
                              guides. Painted by tsPaintRulers in app_theme_studio.js. -->
                         <div class="ts-guides" id="ts-guides" aria-hidden="true"></div>
@@ -1151,8 +1151,8 @@
                             <div class="ts-ruler-mark ts-ruler-mark-y" aria-hidden="true"></div>
                         </div>
                         <!-- The tools — Move, Type, Shape, Image (V/T/U/I) — float
-                             centred over the top of the canvas, after Figma and
-                             Compositor. data-tool-name is the quick label
+                             centred over the top of the canvas, as in design
+                             editors. data-tool-name is the quick label
                              ts-tool-tooltip shows on hover (app_theme_studio.js) —
                              a name every time, instantly, not just whichever
                              tools happen to keep their pointer still long enough
@@ -1697,7 +1697,7 @@
                                     <li><strong>Paste from clipboard</strong> — pasted lyrics/text, split into slides automatically.</li>
                                 </ul>
                                 <p><strong>ProPresenter files are handled specially.</strong> Kairo auto-detects them and preserves the file's own design exactly as authored — fonts, colors, positions, images, layer structure — instead of reformatting it into a Kairo theme. The Add dialog shows a notice confirming this rather than asking you to pick a theme, since none is needed. A playlist file with several presentations imports all of them at once, each keeping its own original layout.</p>
-                                <p><strong>Exporting.</strong> Right-click a deck or song in the playlist (or open <strong>Actions</strong> in Quick edit) and choose <strong>Export…</strong>. Pick <strong>PowerPoint</strong> (opens in PowerPoint, Keynote and Google Slides) or <strong>ProPresenter</strong>, change the name if you like, and choose the folder: exports go to <strong>Documents &rarr; Kairo Exports</strong> unless you pick another, and Kairo remembers your choice. Words stay real text and shapes stay shapes, so you can still edit them. Install the slides' fonts on the computer that opens the file.</p>
+                                <p><strong>Exporting.</strong> Right-click a deck or song in the playlist (or open <strong>Actions</strong> in Quick edit) and choose <strong>Export…</strong>. Pick <strong>PowerPoint</strong> (opens in most slide apps) or <strong>ProPresenter</strong>, change the name if you like, and choose the folder: exports go to <strong>Documents &rarr; Kairo Exports</strong> unless you pick another, and Kairo remembers your choice. Words stay real text and shapes stay shapes, so you can still edit them. Install the slides' fonts on the computer that opens the file.</p>
                                 <p><strong>For ProPresenter.</strong> A deck with pictures is saved as a <code>.probundle</code> (the presentation with its pictures inside), otherwise as a <code>.pro</code>. Import it in ProPresenter (File &rarr; Import &rarr; File).</p>
                                 <p>A plain text/Word import instead asks how to split it into slides (by paragraph, or a fixed number of lines each) and which theme to render it with, since there's no original design to preserve.</p>
                                 <p><strong>Sermon slides.</strong> A Word file always offers <strong>Make sermon slides</strong>, and so does pasted text that reads like a sermon. Kairo reads numbered or lettered points (<code>1.</code> <code>1)</code> <code>I.</code> <code>A.</code> <code>Point 1:</code>), bullets and dashes, with the scriptures after a dash, in brackets or on the line below. A document with headings and no points becomes one point per heading, and a plain document becomes one slide per paragraph. The import window says how it was read; check the result in the slide editor, where <strong>In the deck</strong> lists every line (tick one to add it) and <strong>This slide</strong> can treat a line as a Point, Section or Introduction. Before making the deck, choose its <strong>Style</strong> and, beside it, its four <strong>Colours</strong> (background, second tone, text, accent: click one to open the colour picker, where you can also type its hex code).</p>
@@ -1731,7 +1731,7 @@
                                 <ul>
                                     <li><strong>External Display</strong> — a real window sent to a projector/screen/monitor. Enable at least one; it's what most services actually need. If it doesn't come back after restarting the app, reselect it here — this should happen automatically on launch, but a manual reselect always forces it.</li>
                                     <li><strong>NDI</strong> — broadcasts over the network to any NDI-aware app (OBS, vMix, etc.), on any platform. Requires the free <strong>NDI Tools</strong> runtime installed on this machine first (ndi.video/tools) — Kairo doesn't bundle it. If the toggle won't turn on, the output's status line will say why (usually "NDI runtime not found").</li>
-                                    <li><strong>Syphon (macOS) / Spout (Windows)</strong> — same idea as NDI but same-machine only, and bundled with Kairo (nothing extra to install). Any Syphon- or Spout-aware app on the same computer (OBS, Resolume, etc.) can pick it up directly. The Add Output menu only offers the one that matches the computer Kairo is running on.</li>
+                                    <li><strong>Syphon (macOS) / Spout (Windows)</strong> — same idea as NDI but same-machine only, and bundled with Kairo (nothing extra to install). Any Syphon- or Spout-aware app on the same computer can pick it up directly. The Add Output menu only offers the one that matches the computer Kairo is running on.</li>
                                     <li><strong>OBS</strong> — a lightweight built-in text push into a single OBS Text Source, for a quick lower-third without adding an NDI/Syphon source in OBS. For full parity (images, video, timer, not just verse text), add an NDI or Syphon source inside OBS pointed at Kairo instead — that's the recommended setup.</li>
                                 </ul>
                                 <p>The <strong>Monitor</strong> (right side, under Clear Bible) shows exactly what each output is showing right now. Pick <strong>Main</strong> or any output that's on from its list, or use the grid button to see them all side by side — click a tile to watch just that one. The arrow button opens the monitor in its own window, about the size of Settings: resize or move it as you like; it stays above Kairo while you keep working.</p>

@@ -5631,7 +5631,7 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
 }
 .ts-danger-btn:hover { background: #c9181f !important; }
 
-/* ── Tools (after Compositor/Figma) ──
+/* ── Tools ──
    Move, Type, Shape and Image sit in one segmented group floating centred
    over the TOP of the canvas (.ts-tool-float) — Image isn't a drag-on-canvas
    tool like the other three, grouped here anyway since it's picked the same
@@ -5698,8 +5698,8 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
    the tool icon for contrast"; the brand colour, not the warning red,
    2026-10-12). */
 .ts-tool-btn.active { background: var(--brand); border-color: transparent; color: #fff; }
-/* The tools float centred over the TOP of the canvas (after Figma and
-   Compositor) instead of sitting in the bar under it — taken out of
+/* The tools float centred over the TOP of the canvas (as in design
+   editors) instead of sitting in the bar under it — taken out of
    .ts-preview-wrap's flex flow (position:absolute) so it never competes
    with the stage for the centring that flex does there; without this the
    stage shrank to share space with it instead of staying centred on its
@@ -5730,7 +5730,7 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
 .ts-draw-band.is-diamond { clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%); background: rgba(255, 255, 255, 0.3); border: 0; }
 
 /* Choosing the Shape tool opens every shape it draws, under it — icon and
-   name a row, the way Photoshop's tool flyout lists its shape tools
+   name a row, the way a tool flyout lists its shape tools
    (tsShapeFlyout). The one picked carries the tool's accent. */
 .ts-shape-flyout {
   position: fixed;
@@ -5806,10 +5806,10 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
 .ts-shape-picker-tile:hover { background: var(--bg-hover); color: var(--text); }
 .ts-shape-picker-tile.active { background: var(--selected-dim); border-color: var(--selected-border); color: var(--selected-text); }
 
-/* ── Rulers and guides (after Compositor) ──
+/* ── Rulers and guides ──
    18px rulers along the top and left of the canvas area, in the canvas's
    own design pixels; the canvas centres in the room inside them. Guides are
-   Photoshop's cyan, across the whole area, under the rulers. */
+   cyan, across the whole area, under the rulers. */
 .ts-preview-wrap { position: relative; }
 .ts-preview-wrap.ts-has-rulers { padding: 58px 40px 40px 58px; }
 .ts-rulers { position: absolute; inset: 0; z-index: 30; pointer-events: none; }
@@ -6107,8 +6107,8 @@ body.ts-dragging-guide-h, body.ts-dragging-guide-h * { cursor: row-resize !impor
   transition: all var(--trans);
 }
 /* A scene slide's own "player" duration + delete — sits right under its
-   thumbnail (renderItemSlidesList, app.js), the same place PowerPoint
-   keeps a slide's advance timing next to the slide itself. */
+   thumbnail (renderItemSlidesList, app.js), the same place slide editors
+   keep a slide's advance timing next to the slide itself. */
 .ts-item-slide-duration {
   display: flex;
   align-items: center;
@@ -6342,7 +6342,7 @@ body.ts-dragging-guide-h, body.ts-dragging-guide-h * { cursor: row-resize !impor
    9px. A dark neutral border reads clearly against the white fill regardless
    of theme, and matches every other selection indicator now being neutral
    rather than accent-colored. */
-/* Canva-style frame: round corner handles (scale, proportions kept) and pill
+/* Frame style: round corner handles (scale, proportions kept) and pill
    side handles (stretch one way), white with a dark rim so they read on any
    slide, and a rotate handle hanging under the layer. Each handle carries a
    bigger invisible hit area than it draws. */
@@ -6736,7 +6736,7 @@ body.ts-dragging-guide-h, body.ts-dragging-guide-h * { cursor: row-resize !impor
 }
 .ts-field-row > .ts-row-icon { grid-column: -2 / -1; }
 .ts-field {
-  /* A quiet filled box, as in Figma or Photoshop: no border until the
+  /* A quiet filled box, as in design editors: no border until the
      pointer is over it (or it has focus), so a panel of fields reads as
      values rather than a grid of boxes. */
   display: flex;
@@ -7746,7 +7746,7 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .ts-motion-tile-label strong { font-size: 12.5px; font-weight: 700; }
 .ts-motion-tile-label span { font-size: 11.5px; color: var(--text-2); line-height: 1.35; }
 
-/* Gradient points, after Photoshop's own editor (gradientEditorRows) — the
+/* Gradient points, as in image editors (gradientEditorRows) — the
    live gradient across a bar, a diamond marker per stop along its bottom
    edge, drag to move, click to select, click empty bar to add. */
 .ts-gradient-bar {
@@ -7779,7 +7779,7 @@ body.ts-scrubbing, body.ts-scrubbing * { cursor: ew-resize !important; user-sele
 .ts-gradient-stop.active { border-color: var(--red); box-shadow: 0 0 0 1px var(--red), 0 1px 4px rgba(0,0,0,0.5); z-index: 3; }
 
 /* The bundled gradients (gradients.js) as preset swatches above the bar —
-   Photoshop's gradient presets. The one the fill matches is outlined. */
+   the usual gradient presets. The one the fill matches is outlined. */
 .ts-gradient-presets {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(26px, 1fr));
