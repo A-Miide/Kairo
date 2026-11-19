@@ -83,6 +83,11 @@ const READING_MODE_HITS: u32 = 3;
 /// Reading mode ends after this long with no passage read word for word.
 const READING_MODE_LAPSE_MS: u64 = 90_000;
 
+/// A phrase of the speech found in this few verses or fewer, one of them in the passage being read, is the passage
+/// going on: a text match in another book for the same words is only offered (Psalm 79:11 for Ephesians 1:19, offline
+/// and live, 13-19 Nov 2026).
+const PASSAGE_ANCHOR_MAX_DF: u8 = 6;
+
 /// A stream hit, as ranked and remembered.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct StreamHit {
@@ -464,11 +469,13 @@ impl Engine {
         // Live, 13 Nov 2026: Ephesians 1:18 was up; "according to the greatness of his power which he
         // wrought" matched Psalm 79:11 (7 words, a phrase only it has) and Ephesians 1:19 at once. The
         // Psalm was decided first, replaced the passage on screen, and so cost 1:19 its place. When the
-        // same words also found a verse further on in the chapter on screen, the passage wins.
+        // same words also found a verse further on in the chapter on screen, the passage wins. The verse
+        // on screen itself counts too: with 1:19 already up (the range moved on at "…the greatness of his
+        // power"), the same words matched Psalm 79:11 again and it replaced 1:19 (last test, 19 Nov 2026).
         self.paths.passage_competes = self.passage_on_screen(now).filter(|&(book, chapter, verse)| {
             ranked.iter().any(|h| {
                 let r = self.r(h.verse);
-                r.book == book && r.chapter == chapter && r.verse > verse && (h.confirmed || (h.df == 1 && h.idf >= STREAM_IDF_FULL_CONFIDENCE))
+                r.book == book && r.chapter == chapter && r.verse >= verse && (h.confirmed || h.df <= PASSAGE_ANCHOR_MAX_DF)
             })
         }).map(|(book, chapter, _)| (book, chapter));
 
