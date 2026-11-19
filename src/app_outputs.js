@@ -2589,7 +2589,7 @@ function clearLayoutFromDisplay(o, mode) {
 function renderOutputControlMatrix() {
   const host = document.getElementById('output-control-matrix');
   if (!host) return;
-  const outputs = allConfiguredOutputs().filter(o => o.type !== 'obs');
+  const outputs = ocOrderOutputs(allConfiguredOutputs().filter(o => o.type !== 'obs'));
   host.innerHTML = '';
   if (!outputs.length) { host.innerHTML = '<p class="setting-hint">No outputs yet.</p>'; return; }
   const map = outputLayerMap();
