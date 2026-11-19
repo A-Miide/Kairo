@@ -45,7 +45,7 @@ pub struct Active {
 const HOLD_WINDOW: usize = 12;
 
 fn is_verse_word(w: &str) -> bool {
-    matches!(w, "verse" | "verses" | "vers")
+    matches!(w, "verse" | "verses" | "vers" | "ver")
 }
 
 fn get<'a>(w: &[&'a str], i: usize) -> &'a str {
@@ -298,6 +298,21 @@ impl Parser<'_> {
         }
 
         let mut v = num(w, idx, None);
+        // "Matthew eleven second twenty eight": the ordinal is a stray word (heard for "verse"), not the first digit
+        // of a verse. Read together they make 228, which the chapter hasn't got, so the verse is the number after it
+        // (preacher at 8:37 on 18 Nov 2026: Matthew 11:28 never reached the screen).
+        if let Some(x) = v {
+            let first = get(w, idx);
+            let stray_ordinal = ORDINALS.get(first).is_some_and(|&n| n <= 9);
+            if stray_ordinal && x.consumed >= 2 && self.shape.verses(book, chapter).is_some_and(|n| n32(x.value) > n) {
+                if let Some(y) = num(w, idx + 1, None) {
+                    if y.value > 0 && self.shape.verses(book, chapter).is_some_and(|n| n32(y.value) <= n) {
+                        idx += 1;
+                        v = Some(y);
+                    }
+                }
+            }
+        }
         // "John three one six": two spoken digits after the chapter are a two-digit verse (16) when the
         // chapter has it. Consecutive digits stay the next verse said straight after ("one two" is
         // verses 1 and 2), see the loop below.
