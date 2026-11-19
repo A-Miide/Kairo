@@ -3752,7 +3752,7 @@
   // ── Export: each slide as export items ───────────────────────────────────────────────────────────────────────
   // Each slide as the app draws it (its look, its own changes, its words) in layers, then export_pptx.js
   // makes real PowerPoint shapes of them: editable text, shapes and pictures.
-  function slideForExport(item, s, i) {
+  function slideForExport(item, s, i, opts) {
     const R = window.KairoPptx;
     if (s.image) {
       return { items: [
@@ -3769,36 +3769,10 @@
         ...layers.filter(l => l.type !== 'background')];
     }
     const content = { verseText: s.text, referenceText: s.reference || '', translatedText: getTranslatedText(item, s, () => {}) };
-    return R.itemsFromLayers(layers, style, content, {});
-  }
-  // A picture's bytes for the file: a JPEG as it is; anything else (PNG, WebP, an SVG such as the vignette)
-  // drawn on a canvas and kept as a PNG, no larger than 2560 px (1280 for an SVG).
-  async function pictureForExport(src) {
-    const res = await fetch(typeof authedMediaUrl === 'function' ? authedMediaUrl(src) : src);
-    if (!res.ok) throw new Error('missing');
-    const blob = await res.blob();
-    if ((blob.type || '').toLowerCase() === 'image/jpeg') {
-      const bmp = await createImageBitmap(blob);
-      const out = { bytes: new Uint8Array(await blob.arrayBuffer()), ext: 'jpeg', w: bmp.width, h: bmp.height };
-      bmp.close?.();
-      return out;
-    }
-    const url = URL.createObjectURL(blob);
-    try {
-      const img = await new Promise((ok, bad) => { const el = new Image(); el.onload = () => ok(el); el.onerror = bad; el.src = url; });
-      let w = img.naturalWidth || DESIGN_W, h = img.naturalHeight || DESIGN_H;
-      // A drawn picture (SVG) is smooth at any size, so it goes in smaller than a photo does.
-      const k = Math.min(1, (/svg/i.test(blob.type || '') ? 1280 : 2560) / Math.max(w, h));
-      w = Math.round(w * k); h = Math.round(h * k);
-      const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      const png = await new Promise(ok => canvas.toBlob(ok, 'image/png'));
-      return { bytes: new Uint8Array(await png.arrayBuffer()), ext: 'png', w, h };
-    } finally { URL.revokeObjectURL(url); }
+    return R.itemsFromLayers(layers, style, content, opts || {});
   }
   // One slide as a picture: painted off screen at 1920 × 1080 exactly as the thumbnail and the output paint it.
-  async function slidePictureForExport(item, s, i, { withoutText = false } = {}) {
+  async function slidePictureForExport(item, s, i, { withoutIds = null } = {}) {
     const R = window.KairoDomRaster;
     if (!R) throw new Error('Pictures are not available in this build.');
     const host = document.createElement('div');
@@ -3813,64 +3787,64 @@
       } else {
         let look = s.isScene ? { layers: s.layers || [], ...(s.canvasSize ? { canvasSize: s.canvasSize } : {}) } : withOwnCanvas(slideThemeLook(s, item) || themeForItem(item), item, i);
         let style = s.isScene ? {} : (item.slideStyles?.[i] || {});
-        // The words stay real text in the file (editable there), so the picture is everything but them.
-        if (withoutText) {
-          const isWords = (l) => l.type === 'text' || (l.type === 'pp' && !!window.KairoPptx.ppText(l));
-          look = { ...look, layers: (look.layers || []).filter(l => !isWords(l)) };
-          style = { ...style, __customLayers: (style.__customLayers || []).filter(l => !isWords(l)) };
+        // The main words stay real text in the file (editable there), so the picture is everything but them: the
+        // background, the shapes, and the small decorative text (a faint numeral, the footer, the label), drawn
+        // exactly as Kairo draws it, in its own fonts.
+        if (withoutIds && withoutIds.size) {
+          const isMain = (l) => withoutIds.has(l.id);
+          look = { ...look, layers: (look.layers || []).filter(l => !isMain(l)) };
+          style = { ...style, __customLayers: (style.__customLayers || []).filter(l => !isMain(l)) };
         }
         const content = { verseText: s.text, referenceText: s.reference || '', translatedText: getTranslatedText(item, s, () => {}) };
         paintLookLayers(host, look, style, content, { builds: false });
       }
       if (document.fonts && document.fonts.ready) await document.fonts.ready;
       await new Promise(ok => setTimeout(ok, 30));   // not requestAnimationFrame: it never fires while the window is hidden
-      const png = await R.elementToPng(host, DESIGN_W, DESIGN_H, 1);
-      return { bytes: png.bytes, ext: png.ext, w: png.w, h: png.h };
+      const pic = await R.elementToPicture(host, DESIGN_W, DESIGN_H, 1);
+      return { bytes: pic.bytes, ext: pic.ext, w: pic.w, h: pic.h };
     } finally { host.remove(); }
   }
-  // Every slide's export items, and the fonts, notes and pictures they use.
-  function exportSlides(item) {
+  // A Kairo deck (.kairo): the item exactly as Kairo keeps it, with the pictures it uses from this computer packed in.
+  async function kairoDeckFile(item) {
+    const files = {};
+    await Promise.all(window.KairoDeck.mediaAddresses(item).map(async (address) => {
+      try {
+        const res = await fetch(typeof authedMediaUrl === 'function' ? authedMediaUrl(address) : address);
+        if (!res.ok) return;
+        const blob = await res.blob();
+        files[address] = { type: blob.type, dataBase64: await fileToBase64(blob) };
+      } catch { /* left out: the slide keeps the address, and the picture won't show on another computer */ }
+    }));
+    return { bytes: new TextEncoder().encode(window.KairoDeck.pack(item, files)), ext: 'kairo' };
+  }
+  // The file for `format`: { bytes, ext }. PowerPoint and ProPresenter get each slide as one picture of
+  // what Kairo shows, with the slide's own words on top as real, editable text: rebuilding every effect
+  // from the other program's shapes never looked the same there (owner, 18 Nov 2026). A ProPresenter
+  // export is a .probundle, the presentation with its pictures packed beside it, as ProPresenter packs one.
+  // A text that stays real text in an export: big and not faint. A numeral at 7%, a footer, a label or a scripture
+  // pill's words are decoration and are drawn into the picture instead, so they look as they do in Kairo.
+  const MAIN_WORDS_MIN_PX = 60;
+  function isMainWords(it) {
+    if (it.kind !== 'text' || it.layerId == null) return false;
+    const c = it.fill && it.fill.kind === 'solid' && it.fill.color;
+    return Number((it.font && it.font.size) || 0) >= MAIN_WORDS_MIN_PX && (c ? c.a : 1) >= 0.6;
+  }
+  async function buildExportFile(item, format, base, places, onProgress) {
+    if (format === 'kairo') return kairoDeckFile(item);
     const all = slidesFor(item);
-    const slides = [], notes = new Set(), fonts = new Set(), srcs = new Set();
-    all.forEach((s, i) => {
-      const r = slideForExport(item, s, i);
-      slides.push({ items: r.items });
-      r.notes.forEach(n => notes.add(n));
-      r.fonts.forEach(f => fonts.add(f));
-      r.items.forEach(it => { if (it.kind === 'image' && it.src && it.src.indexOf('glow:') !== 0) srcs.add(it.src); });
-    });
-    return { slides, notes, fonts, srcs };
-  }
-  async function picturesForExport(srcs) {
-    const images = {};
-    await Promise.all([...srcs].map(async (src) => { try { images[src] = await pictureForExport(src); } catch { /* left out */ } }));
-    return images;
-  }
-  // The file for `format`: { bytes, ext }. A ProPresenter export with pictures is a .probundle, the
-  // presentation with its pictures packed beside it, as ProPresenter itself exports one.
-  async function buildExportFile(item, format, base, places, look, onProgress) {
-    let { slides, srcs } = exportSlides(item);
-    if (!slides.length) throw new Error('There are no slides to export.');
-    let images;
-    if (look === 'picture') {
-      // Each slide drawn as the app draws it, and put in the file as one full picture.
-      images = {};
-      const native = slides;
-      slides = [];
-      const all = slidesFor(item);
-      for (let i = 0; i < all.length; i++) {
-        const key = `slide:${i}`;
-        if (onProgress) onProgress(i + 1, all.length);
-        try { images[key] = await slidePictureForExport(item, all[i], i, { withoutText: !all[i].image }); }
-        catch (err) { throw new Error(`Slide ${i + 1} could not be drawn as a picture here. Choose “All native” instead. (${err && err.message ? err.message : err})`); }
-        // The picture, then the slide's own words on top as real text with their colours, fonts and places.
-        const words = all[i].image ? [] : native[i].items.filter(it => it.kind === 'text');
-        slides.push({ items: [{ kind: 'image', x: 0, y: 0, w: DESIGN_W, h: DESIGN_H, src: key, fit: 'fill' }, ...words] });
-      }
-    } else images = await picturesForExport(srcs);
+    if (!all.length) throw new Error('There are no slides to export.');
+    const images = {}, slides = [];
+    for (let i = 0; i < all.length; i++) {
+      const key = `slide:${i}`;
+      if (onProgress) onProgress(i + 1, all.length);
+      // Real, editable text for the main words only (large and strong); the rest is part of the picture.
+      const words = all[i].image ? [] : slideForExport(item, all[i], i, { keepTextAlpha: true }).items.filter(isMainWords);
+      try { images[key] = await slidePictureForExport(item, all[i], i, { withoutIds: new Set(words.map(w => w.layerId)) }); }
+      catch (err) { throw new Error(`Slide ${i + 1} couldn’t be drawn as a picture (${err && err.message ? err.message : err}).`); }
+      slides.push({ items: [{ kind: 'image', x: 0, y: 0, w: DESIGN_W, h: DESIGN_H, src: key, fit: 'fill' }, ...words] });
+    }
     if (format === 'pptx') return { bytes: window.KairoPptx.buildPptx(slides, images, { title: item.title }), ext: 'pptx' };
     const out = window.KairoProPresenter.buildPro(slides, { title: item.title, images, mediaDir: places && places.proMedia });
-    if (!out.media.length) return { bytes: out.bytes, ext: 'pro' };
     const files = [{ name: `${base}.pro`, data: out.bytes }, ...out.media.map(m => ({ name: m.rel, data: m.data }))];
     return { bytes: window.KairoPptx.zip(files), ext: 'probundle' };
   }
@@ -3890,15 +3864,12 @@
     const nameIn = $('ex-name'), dirEl = $('ex-dir'), extEl = $('ex-ext'), errEl = $('ex-error'), go = $('ex-go'), change = $('ex-change');
     const places = await fetchWithTimeout(`${SERVER}/api/export/places`).then(r => r.json()).catch(() => ({}));
     const prefs = exportPrefs();
-    let format = prefs.format === 'pro' ? 'pro' : 'pptx';
-    let look = prefs.look === 'text' ? 'text' : 'picture';
+    let format = ['pro', 'kairo'].includes(prefs.format) ? prefs.format : 'pptx';
     let dir = prefs.dir || places.exports || '';
-    const pictures = exportSlides(item).srcs.size > 0;
     nameIn.value = exportBaseName(item.title) || 'Kairo slides';
     const draw = () => {
       $('ex-format').querySelectorAll('.toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.format === format));
-      $('ex-look').querySelectorAll('.toggle-btn').forEach(b => b.classList.toggle('active', b.dataset.look === look));
-      extEl.textContent = format === 'pptx' ? '.pptx' : (pictures || look === 'picture' ? '.probundle' : '.pro');
+      extEl.textContent = { pptx: '.pptx', pro: '.probundle', kairo: '.kairo' }[format];
       dirEl.textContent = dir || 'No folder chosen';
       dirEl.title = dir;
       errEl.hidden = true;
@@ -3906,7 +3877,6 @@
     const dlg = window.__TAURI__?.dialog;
     change.hidden = !dlg?.open;
     const onFormat = (e) => { const b = e.target.closest('.toggle-btn'); if (b) { format = b.dataset.format; draw(); } };
-    const onLook = (e) => { const b = e.target.closest('.toggle-btn'); if (b) { look = b.dataset.look; draw(); } };
     const onChange = async () => {
       let picked;
       try { picked = await dlg.open({ directory: true, multiple: false, title: 'Choose where exports go', defaultPath: dir || undefined, canCreateDirectories: true }); } catch { return; }
@@ -3921,7 +3891,7 @@
       if (!dir) { fail('Choose a folder for the file.'); return; }
       go.disabled = true; go.textContent = 'Exporting…'; errEl.hidden = true;
       try {
-        const file = await buildExportFile(item, format, base, places, look, (n, of) => { go.textContent = `Exporting ${n} of ${of}…`; });
+        const file = await buildExportFile(item, format, base, places, (n, of) => { go.textContent = `Exporting ${n} of ${of}…`; });
         const name = `${base}.${file.ext}`;
         let r = await save(name, file.bytes, false);
         if (r.status === 409) {
@@ -3932,7 +3902,7 @@
         }
         const d = await r.json().catch(() => ({}));
         if (!r.ok || d.error) throw new Error(d.error || 'The file couldn’t be saved.');
-        saveExportPrefs({ format, dir, look });
+        saveExportPrefs({ format, dir });
         close();
       } catch (err) {
         console.warn('[Export] failed:', err);
@@ -3944,7 +3914,6 @@
     function close() {
       modal.classList.add('hidden');
       $('ex-format').removeEventListener('click', onFormat);
-      $('ex-look').removeEventListener('click', onLook);
       change.removeEventListener('click', onChange);
       go.removeEventListener('click', onGo);
       $('ex-cancel').removeEventListener('click', close);
@@ -3952,7 +3921,6 @@
       modal.removeEventListener('keydown', onKey);
     }
     $('ex-format').addEventListener('click', onFormat);
-    $('ex-look').addEventListener('click', onLook);
     change.addEventListener('click', onChange);
     go.addEventListener('click', onGo);
     $('ex-cancel').addEventListener('click', close);
@@ -7725,6 +7693,36 @@
   // step, since a folder should be quick to fill. `destination` ('playlist'
   // or 'library') is the one thing that varies between the Slides add-menu
   // and the Songs tab's own "+ Import Song" — see openSongImportPopover.
+  // A Kairo deck (.kairo, kairoDeckFile): its pictures go into the Media Bin, and the item lands in the
+  // playlist exactly as it was made, with no re-flowing of its slides.
+  async function importKairoDeck(file) {
+    try {
+      const { item, media } = window.KairoDeck.unpack(await file.text());
+      const addresses = [];
+      for (const m of media) {
+        try {
+          const r = await fetchWithTimeout(`${SERVER}/api/media/bin/upload`, {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ filename: m.name, dataBase64: m.dataBase64 }),
+          }, MEDIA_UPLOAD_TIMEOUT_MS);
+          const d = await r.json().catch(() => ({}));
+          addresses.push(r.ok && d.name ? `/api/media/bin/file/${encodeURIComponent(d.name)}` : null);
+        } catch { addresses.push(null); }
+      }
+      const opened = window.KairoDeck.relink(item, addresses);
+      opened.id = uid(opened.type);
+      if (opened.themeId && typeof looks !== 'undefined' && Array.isArray(looks) && !looks.some(l => l.id === opened.themeId)) delete opened.themeId;
+      service.items.push(opened);
+      saveService(); renderSidebar(); renderStack();
+      if (addresses.some(a => a === null)) window.kairoProblem?.(`“${opened.title || file.name}” opened, but some of its pictures couldn’t be added to the Media Bin.`);
+      refreshMediaBinIfVisible();
+    } catch (err) {
+      openImport({ destination: 'playlist' });
+      const st = document.getElementById('import-status');
+      if (st) st.textContent = err.message;
+    }
+  }
+
   async function quickImportFile(file, destination = 'playlist', companions = []) {
     try {
       const d = await importArrayBufferAsFile(file, companions);
@@ -8688,6 +8686,7 @@
     advanceLiveSlide,
     paintSlideThumb, markClipped, slideCard, buildMediaBinCard, loadMediaBinItems: fetchAllMediaItemsForBin,
     quickImportFile,
+    importKairoDeck,
     // The global search overlay (global_search.js).
     prefetchForSearch, searchContent, openFound,
   };

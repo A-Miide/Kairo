@@ -94,8 +94,12 @@
     const [r, g, b] = rgb255(color);
     const sizeHalf = Math.round(num(it.font.size, 48) * 2);
     const align = { left: '\\ql', center: '\\qc', right: '\\qr', justify: '\\qj' }[it.align] || '\\ql';
-    // Exact line height: font size × the layer's line-height, in twips (1/20 pt), negative = exact.
-    const sl = -Math.round(num(it.font.size, 48) * num(it.font.lineHeight, 1.15) * 20);
+    // Line height as ProPresenter writes it, a multiple of single spacing (\sl240\slmult1 = 1×). An exact height
+    // (negative \sl) drew the lines in the editor but only the first on ProPresenter's output (owner, 18 Nov 2026).
+    // The multiple is of the font's own line height, which runs about 1.2 times its size; Kairo's line height is a multiple of
+    // the size. Written as it was, the lines came out about 15% taller than Kairo's and a five-line headline grew up into the
+    // label above it (owner, 18 Nov 2026).
+    const sl = Math.round(clamp(num(it.font.lineHeight, 1.15) / 1.2, 0.5, 2) * 240);
     let colors = `\\red${r}\\green${g}\\blue${b};`;
     let expanded = `\\cssrgb\\c${Math.round(r / 255 * 100000)}\\c${Math.round(g / 255 * 100000)}\\c${Math.round(b / 255 * 100000)};`;
     const runs = runsOf(it.text, accentColor);
@@ -110,12 +114,16 @@
     runs.forEach((run) => { body += `${run.accent ? '\\cf2 ' : '\\cf1 '}${rtfEsc(run.t)}`; });
     return '{\\rtf1\\ansi\\ansicpg1252\\cocoartf2908\n\\cocoatextscaling0\\cocoaplatform0{\\fonttbl\\f0\\fswiss\\fcharset0 ' + rtfEsc(fontName) + ';}\n' +
       '{\\colortbl;' + colors + '}\n{\\*\\expandedcolortbl;' + expanded + '}\n\\deftab1680\n' +
-      `\\pard\\pardeftab1680\\sl${sl}\\slmult0\\pardirnatural${align}\\partightenfactor0\n\n${style}${kern}${kern ? ' ' : ''}${body}}`;
+      `\\pard\\pardeftab1680\\sl${sl}\\slmult1\\pardirnatural${align}\\partightenfactor0\n\n${style}${kern}${kern ? ' ' : ''}${body}}`;
   }
 
   // ── elements ────────────────────────────────────────────────────────────────────────────────────
   // The 4 corner points of an unrotated rectangle, in the unit square; ProPresenter keeps them on every shape.
-  const pointMsg = (x, y) => fMsg(2, [fMsg(1, [x ? fDbl(1, x) : null, y ? fDbl(2, y) : null]), fMsg(2, []), fMsg(3, [])]);
+  // Each corner has two curve handles, and ProPresenter puts both on the corner itself, which keeps the edges straight.
+  // Left at the top-left corner (an empty handle), every edge bent into a swoosh in ProPresenter's thumbnails, though
+  // its output, which ignores the outline, was fine (owner, 18 Nov 2026; compared with a file ProPresenter wrote).
+  const xy = (n, x, y) => fMsg(n, [x ? fDbl(1, x) : null, y ? fDbl(2, y) : null]);
+  const pointMsg = (x, y) => fMsg(2, [xy(1, x, y), xy(2, x, y), xy(3, x, y)]);
   function pathMsg(typeNum, roundness) {
     const t = [fVar(1, typeNum)];
     if (typeNum === 11) t.push(fMsg(2, [fDbl(1, roundness)]));
@@ -132,7 +140,9 @@
     const angle = (((-Math.atan2(y, x) * 180 / Math.PI) % 360) + 360) % 360;
     return fMsg(n, [fDbl(2, angle), fDbl(3, Math.hypot(x, y)), fDbl(4, num(sh.blur)), mColor(5, { hex: (c && c.hex) || '000000', a: 1 }), fDbl(6, c ? c.a : 0.45), fBool(7, true)]);
   }
-  function elementBase(name, it, fillMsg, strokeMsg, shadow, pathM, textM) {
+  // `isText`: ProPresenter marks each element of a slide as a shape (1) or a text box (3). Marked as text, a shape shows
+  // ProPresenter's "Text" placeholder in its editor (every pill and backdrop did; owner, 18 Nov 2026).
+  function elementBase(name, it, fillMsg, strokeMsg, shadow, pathM, textM, isText) {
     // Bounds are the unrotated box; rotation is degrees, counter-clockwise.
     const rot = ((-num(it.rotation) % 360) + 360) % 360;
     return fMsg(1, [fMsg(1, [
@@ -148,7 +158,7 @@
       fMsg(12, [fDbl(2, 0.05)]),
       textM,
       fMsg(14, []),
-    ]), fVar(4, 3)]);
+    ]), fVar(4, isText ? 3 : 1)]);
   }
   const fullBox = (it) => ({ x: it.x, y: it.y, w: Math.max(1, it.w), h: Math.max(1, it.h), rotation: it.rotation, opacity: it.opacity });
 
@@ -235,7 +245,12 @@
     const family = it.font.family || 'Arial';
     const bold = num(it.font.weight, 400) >= 600;
     const fontName = family.replace(/\s+/g, '') + (bold ? '-Bold' : '');
-    const color = (it.fill && it.fill.kind === 'solid' && it.fill.color) || (it.fill && it.fill.stops && root.KairoPptx.parseColor(it.fill.stops[0].color)) || { hex: 'FFFFFF', a: 1 };
+    const picked = (it.fill && it.fill.kind === 'solid' && it.fill.color) || (it.fill && it.fill.stops && root.KairoPptx.parseColor(it.fill.stops[0].color)) || { hex: 'FFFFFF', a: 1 };
+    // How faint the words are (the point numeral is 7%, the footer 55%) is kept by ProPresenter on the element: the
+    // colour in the RTF has no alpha, so left in the colour those words were drawn at full strength (owner, 18 Nov 2026).
+    const color = { hex: picked.hex, a: 1 };
+    const faint = clamp(num(picked.a, 1), 0, 1);
+    const fadeColor = { hex: picked.hex, a: faint };
     if (it.fill && it.fill.kind === 'gradient') notes.add('Gradient text (shown in its first colour)');
     const accent = it.accent ? root.KairoPptx.parseColor(it.accent) : null;
     const fontMsg = fMsg(1, [fStr(1, fontName), fDbl(2, num(it.font.size, 48)), bold ? fBool(8, true) : null, it.font.italic ? fBool(4, true) : null, fStr(9, family)]);
@@ -243,7 +258,7 @@
     const attrs = fMsg(3, [
       fontMsg,
       it.font.caps ? fVar(2, 1) : null,
-      mColor(3, color),
+      mColor(3, fadeColor),
       fMsg(6, [fVar(1, alignNum), fDbl(5, 1), fDbl(7, 1)]),
       num(it.font.letterSpacing) ? fDbl(7, num(it.font.letterSpacing)) : null,
     ]);
@@ -261,7 +276,7 @@
     const own = it.h > 0 ? it.h : Math.round(num(it.font.size, 48) * num(it.font.lineHeight, 1.15) * (String(it.text).split('\n').length + 1));
     const grown = Math.round(own * 1.3);
     const box = fullBox({ ...it, y: it.y - (grown - own) / 2, h: grown });
-    return elementBase('Text', box, noFill, noStroke, null, pathMsg(1, 0), textM);
+    return elementBase('Text', box, noFill, noStroke, null, pathMsg(1, 0), textM, true);
   }
 
   // ── presentation ────────────────────────────────────────────────────────────────────────────────

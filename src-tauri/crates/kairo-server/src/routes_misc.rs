@@ -327,7 +327,7 @@ async fn export_places() -> axum::response::Response {
 }
 
 /// Kinds of file the export writes; nothing else is written here.
-const EXPORT_KINDS: [&str; 3] = ["pptx", "pro", "probundle"];
+const EXPORT_KINDS: [&str; 4] = ["pptx", "pro", "probundle", "kairo"];
 
 /// The file in `dir` named `name`, if both are acceptable: an existing folder given as a full path, and a
 /// plain file name (no folders in it) of a kind the export writes.
@@ -424,6 +424,7 @@ mod export_tests {
         let d = dir.to_str().unwrap();
         assert!(export_target(d, "Sunday deck.pptx").is_ok());
         assert!(export_target(d, "Sunday deck.probundle").is_ok());
+        assert!(export_target(d, "Sunday deck.kairo").is_ok());
         assert!(export_target(d, "../escape.pptx").is_err(), "no folders in the name");
         assert!(export_target(d, "notes.txt").is_err(), "only slide files");
         assert!(export_target(d, ".pptx").is_err());
