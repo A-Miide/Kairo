@@ -250,12 +250,6 @@ const RECIPES = [
     glow(b, { x: 0.5, y: 1.1, r: 0.4, sx: 2, color: '#364fc7', amount: 0.14 });
     vignette(b, 0.35);
   } },
-  { id: 'golden-bokeh', name: 'Golden Bokeh', tone: 'dark', tags: ['warm', 'bokeh'], paint(b) {
-    gradient(b, '#0b0806', '#171009', 175);
-    glow(b, { x: 0.5, y: 0.6, r: 0.4, sx: 1.6, color: '#7a4a12', amount: 0.14 });
-    bokeh(b, { count: 34, colors: ['#ffd8a8', '#ffc078', '#fff3bf'], rMin: 0.015, rMax: 0.06, amount: 0.08, seed: 11, band: [0.1, 0.95] });
-    vignette(b, 0.4);
-  } },
   { id: 'starfield', name: 'Starfield', tone: 'dark', tags: ['night', 'stars'], paint(b) {
     gradient(b, '#02030a', '#070b1d', 180);
     glow(b, { x: 0.65, y: 0.35, r: 0.3, sx: 2, sy: 0.6, color: '#4c3d9b', amount: 0.12 });

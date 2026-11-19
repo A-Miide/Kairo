@@ -983,7 +983,6 @@ DEFAULT_LOOKS.push(
   { id: 'warm-lyrics', name: 'Warm — Lyrics', layout: 'fullscreen', animation: 'fade', ...WARM_GROUP,
     layers: [
       warmCanvas([WARM.night, WARM.brown, WARM.orange], 160),
-      warmPhoto('photo', 'Photo', 'golden-bokeh', { x: 0, y: 0, w: 1920, h: 1080 }),
       { ...warmShape('tint', 'Warm tint', { x: 0, y: 0, w: 1920, h: 1080 }, WARM.rust, WARM.amber, 160, 100), blendMode: 'Multiply' },
       warmShape('shade', 'Text shade', { x: 0, y: 0, w: 1920, h: 1080 }, WARM.night, WARM.night, 0, 20),
       warmText('verse', 'Lyrics', 'verse', { x: 160, y: 260, w: 1600, h: 560 }, 'Montserrat', 76, 700, WARM.cream, { align: 'center', lineHeight: 1.25, shadow: true }),
@@ -1056,6 +1055,8 @@ let looks = (function loadLooks() {
     // missing at that point and the back-fill appends a second, fresh copy
     // alongside this renamed one instead of this being an in-place rename.
     stored.forEach(l => {
+      // The Golden Bokeh picture was removed from Kairo (owner, 19 Nov 2026): a layer still pointing at it would show nothing.
+      if (Array.isArray(l.layers)) l.layers = l.layers.filter(ly => !String((ly && ly.src) || '').includes('backgrounds/golden-bokeh'));
       if (l.id === 'lyrics-collage') { l.id = 'lyrics-bold-caption'; l.name = 'Lyrics — Bold Caption'; }
       // The keying splits say what they are for (2026-10-18); a name the user changed stays.
       if (l.id === 'split-left' && l.name === 'Split — Left') l.name = 'Split — Left, for keying';

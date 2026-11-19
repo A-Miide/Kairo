@@ -230,6 +230,8 @@ pub(crate) struct BareCitation {
     /// A quote named its book already: the verse that quote first matched (its look-alike at
     /// other numbers) is still held off while the numbers are fresh.
     resolved: Option<VerseId>,
+    /// Sentences of later speech already tried for the quote the numbers are followed by.
+    fit_tries: u8,
 }
 
 const BARE_CITATION_MS: u64 = 30_000;
@@ -237,9 +239,26 @@ const BARE_CITATION_MS: u64 = 30_000;
 /// and twice any other book's verse at those numbers.
 const BARE_FIT_MIN_IDF: f32 = 8.0;
 const BARE_RANGE_MAX: i64 = 6;
+/// With no quote match to back it, the words after the numbers must weigh more, though the margin may be smaller:
+/// "who is in you is greater than the devils in the world" fits 1 John 4:4 at 15, 2 Corinthians 4:4 at 10.
+const BARE_FIT_ALONE_MIN_IDF: f32 = 12.0;
+const BARE_FIT_ALONE_MARGIN: f32 = 1.5;
+/// …and at least this many different words of the verse.
+const BARE_FIT_ALONE_MIN_WORDS: usize = 3;
+/// How much of the speech after the numbers is read to pick the book: a few seconds of quote, not half a minute
+/// of preaching (some verse 1:13 somewhere fits that).
+const BARE_FIT_WORDS: usize = 20;
+/// …and only a sentence or two of it, and not a few words.
+const BARE_FIT_TRIES: u8 = 2;
+const BARE_FIT_MIN_WORDS: usize = 6;
 
 /// The chapter and verses of "<n> verse <n> [to|through|and <n>]".
 fn bare_citation(text: &str) -> Option<(u16, u16, u16)> {
+    bare_citation_at(text).map(|(found, _)| found)
+}
+
+/// …and the words said right after the numbers (at most `BARE_FIT_WORDS`), the quote the verse is picked from.
+fn bare_citation_at(text: &str) -> Option<((u16, u16, u16), String)> {
     let words = tokens(text);
     let w: Vec<&str> = words.iter().map(String::as_str).collect();
     for i in 1..w.len() {
@@ -266,7 +285,9 @@ fn bare_citation(text: &str) -> Option<(u16, u16, u16)> {
             }
         }
         if chapter.value >= 1 && from.value >= 1 {
-            return Some((n16(chapter.value), n16(from.value), n16(to)));
+            let end = if to > from.value { k + 1 + consume_number(&w, k + 1, Some(176)).map_or(0, |n| n.consumed) } else { k };
+            let after = w.iter().skip(end).take(BARE_FIT_WORDS).copied().collect::<Vec<_>>().join(" ");
+            return Some(((n16(chapter.value), n16(from.value), n16(to)), after));
         }
     }
     None
@@ -770,22 +791,60 @@ impl Engine {
                 self.r(best.0)
             }
         };
-        let verses: Vec<VerseId> = (b.from..=b.to).filter_map(|n| self.k.id(VerseRef::new(r.book, b.chapter, n))).collect();
+        self.bare_put_up(b, r.book, c.verses.first().copied(), c.method.wire(), now)
+    }
+
+    /// The numbers of a bare citation fit one book's verse by the words said right after them (the preacher's
+    /// own wording, too loose for a quote match: "four verse four, who is in you is greater than the devils in the
+    /// world" is 1 John 4:4, 19 Nov 2026): the same weight and margin as for a quote.
+    pub(crate) fn bare_fit(&mut self, spoken: &str, now: u64) -> Option<Candidate> {
+        let b = self.cites.bare.filter(|b| now.saturating_sub(b.at) < BARE_CITATION_MS && b.resolved.is_none())?;
+        let said: HashSet<String> = super::evidence::evidence_words(spoken);
+        // Each distinct word of a verse counts once: "world" and "God" twice over made James 4:4 fit a sentence about
+        // the church and the world.
+        let mut rows: Vec<(VerseId, f32, usize)> = Book::all()
+            .filter_map(|book| self.k.id(VerseRef::new(book, b.chapter, b.from)))
+            .map(|id| {
+                let mut seen = HashSet::new();
+                let (mut w, mut n) = (0.0_f32, 0);
+                for word in super::evidence::meaningful_words(self.verse_text(id)) {
+                    let stem = super::evidence::stem_lite(&word);
+                    if said.contains(&stem) && seen.insert(stem) {
+                        w += self.k.lexicon.idf_of(&word);
+                        n += 1;
+                    }
+                }
+                (id, w, n)
+            })
+            .collect();
+        rows.sort_by(|x, y| y.1.total_cmp(&x.1));
+        let (best, second) = (rows.first()?, rows.get(1).map_or(0.0, |r| r.1));
+        if best.2 < BARE_FIT_ALONE_MIN_WORDS || best.1 < BARE_FIT_ALONE_MIN_IDF || best.1 < second * BARE_FIT_ALONE_MARGIN {
+            self.note(|e| format!("{}:{} without a book: the words after it fit {} at {:.1}, the next at {:.1}: not enough to name the book", b.chapter, b.from, e.label(best.0), best.1, second));
+            return None;
+        }
+        let book = self.r(best.0).book;
+        self.bare_put_up(b, book, Some(best.0), "the words after the numbers", now)
+    }
+
+    /// Puts up the verses at a bare citation's numbers in `book`.
+    fn bare_put_up(&mut self, b: BareCitation, book: Book, matched: Option<VerseId>, how: &str, now: u64) -> Option<Candidate> {
+        let verses: Vec<VerseId> = (b.from..=b.to).filter_map(|n| self.k.id(VerseRef::new(book, b.chapter, n))).collect();
         if verses.is_empty() {
             return None;
         }
         // Kept while fresh: Exodus 23:29 came straight back over Deuteronomy 7:22 once it was gone.
         if let Some(b) = self.cites.bare.as_mut() {
-            b.resolved = c.verses.first().copied();
+            b.resolved = matched;
         }
-        self.note(|_| format!("{} quotes {} {}:{}–{}, cited without its book", c.method.wire(), r.book.name(), b.chapter, b.from, b.to));
+        self.note(|_| format!("{how} quotes {} {}:{}–{}, cited without its book", book.name(), b.chapter, b.from, b.to));
         if verses.len() > 1 {
             self.set_range(verses.clone(), now);
         } else {
             self.set_soft_range(verses[0], now);   // the next verses held in case they're read on
         }
-        self.note_cited(r.book, Some(b.chapter), Some(b.from), true, now);
-        self.reading.update(r.book, Some(b.chapter as u32), now);
+        self.note_cited(book, Some(b.chapter), Some(b.from), true, now);
+        self.reading.update(book, Some(b.chapter as u32), now);
         Some(Candidate::new(verses, Method::Direct, 1.0, Target::Screen))
     }
 
@@ -793,10 +852,24 @@ impl Engine {
         if is_final {
             // Split over two finals: "chapter seven verse" | "twenty two is" (Oyedepo, dev build).
             let prev = self.t.finals.len().checked_sub(2).and_then(|i| self.t.finals.get(i)).filter(|f| now.saturating_sub(f.at) < PREV_FINAL_JOIN_WINDOW_MS && bare_citation(&f.text).is_none());
-            let found = bare_citation(text).or_else(|| prev.and_then(|p| bare_citation(&format!("{} {text}", p.text))));
-            if let Some((chapter, from, to)) = found {
-                self.cites.bare = Some(BareCitation { chapter, from, to, at: now, resolved: None });
+            let found = bare_citation_at(text).or_else(|| prev.and_then(|p| bare_citation_at(&format!("{} {text}", p.text))));
+            if let Some(((chapter, from, to), after)) = found {
+                self.cites.bare = Some(BareCitation { chapter, from, to, at: now, resolved: None, fit_tries: 0 });
                 self.note(|_| format!("chapter {chapter} verses {from}–{to} cited without a book"));
+                // The quote is the rest of the sentence the numbers are in.
+                let quote = text.split(['.', '?', '!']).find_map(|sentence| bare_citation_at(sentence).map(|(_, a)| a)).unwrap_or(after);
+                if let Some(cited) = self.bare_fit(&quote, now) {
+                    self.decide(cited, now);
+                }
+            } else if let Some(b) = self.cites.bare.filter(|b| b.resolved.is_none() && b.fit_tries < BARE_FIT_TRIES && now.saturating_sub(b.at) < BARE_CITATION_MS) {
+                // The numbers came at the end of a sentence and the quote follows in the next: its first sentence.
+                let quote = tokens(text.split(['.', '?', '!']).next().unwrap_or("")).into_iter().take(BARE_FIT_WORDS).collect::<Vec<_>>().join(" ");
+                if quote.split_whitespace().count() >= BARE_FIT_MIN_WORDS {
+                    if let Some(b) = self.cites.bare.as_mut() { b.fit_tries += 1; }
+                    if let Some(cited) = self.bare_fit(&quote, now) {
+                        self.decide(cited, now);
+                    }
+                }
             }
         }
         let books = book_mentions(text, self.k.books, self.cfg.lang);
