@@ -1,0 +1,28 @@
+{
+ "videoId": "scn-chapter-number-next",
+ "title": "Scenario: chapter-number-next",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "Elijah prayed, the sky became black, he said get on your way before the rain stops you"
+  },
+  {
+   "startMs": 7700,
+   "text": "you are getting speed tonight, first Kings eighteen and"
+  },
+  {
+   "startMs": 12200,
+   "text": "forty six, and the hand of the Lord was on Elijah, and he ran before Ahab"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "1 Kings",
+   "chapter": 18,
+   "kind": "citation",
+   "startMs": 12200,
+   "verse": 46
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

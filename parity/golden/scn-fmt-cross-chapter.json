@@ -1,0 +1,31 @@
+{
+ "source": "scn-fmt-cross-chapter",
+ "kind": "scenario",
+ "lang": "en",
+ "cues": [
+  {
+   "text": "John three thirty six to chapter four verse two",
+   "audioMs": 0
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "John three thirty six",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "John three thirty six to chapter four verse",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "John three thirty six to chapter four verse two",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

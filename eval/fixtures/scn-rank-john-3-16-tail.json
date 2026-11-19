@@ -1,0 +1,24 @@
+{
+ "videoId": "scn-rank-john-3-16-tail",
+ "title": "Scenario: rank-john-3-16-tail",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "let us read John chapter three verse sixteen"
+  },
+  {
+   "startMs": 4100,
+   "text": "that whosoever believeth in him should not perish, but have everlasting life"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "John",
+   "chapter": 3,
+   "kind": "citation",
+   "startMs": 0,
+   "verse": 16
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

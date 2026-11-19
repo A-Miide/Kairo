@@ -1,0 +1,24 @@
+{
+ "videoId": "scn-cross-hebrews13-cited",
+ "title": "Scenario: cross-hebrews13-cited",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "Hebrews thirteen verse five"
+  },
+  {
+   "startMs": 2500,
+   "text": "let your conversation be without covetousness; and be content with such things as ye have: for he hath said, I will never leave thee, nor forsake thee"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Hebrews",
+   "chapter": 13,
+   "kind": "citation",
+   "startMs": 0,
+   "verse": 5
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

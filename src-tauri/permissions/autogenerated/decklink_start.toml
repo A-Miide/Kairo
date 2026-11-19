@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-decklink-start"
+description = "Enables the decklink_start command without any pre-configured scope."
+commands.allow = ["decklink_start"]
+
+[[permission]]
+identifier = "deny-decklink-start"
+description = "Denies the decklink_start command without any pre-configured scope."
+commands.deny = ["decklink_start"]

@@ -1,0 +1,70 @@
+{
+ "source": "scn-niv-romans828-cited",
+ "kind": "scenario",
+ "lang": "en",
+ "cues": [
+  {
+   "text": "Romans eight twenty eight in the New International Version",
+   "audioMs": 0
+  },
+  {
+   "text": "and we know that in all things God works for the good of those who love him, who have been called according to his purpose",
+   "audioMs": 4500
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "Romans eight twenty eight",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "Romans eight twenty eight in the New International",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "Romans eight twenty eight in the New International Version",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "and we know that",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and we know that in all things God",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and we know that in all things God works for the good",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and we know that in all things God works for the good of those who love",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and we know that in all things God works for the good of those who love him, who have been",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and we know that in all things God works for the good of those who love him, who have been called according to his",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "and we know that in all things God works for the good of those who love him, who have been called according to his purpose",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

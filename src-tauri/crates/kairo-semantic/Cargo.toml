@@ -1,0 +1,23 @@
+[package]
+name = "kairo-semantic"
+description = "Meaning-based verse search: ONNX embedder, quantized verse index, reranker"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+kairo-bible = { path = "../kairo-bible" }
+ort = "=2.0.0-rc.13"
+tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
+ndarray = "0.17"
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+# Where ort doesn't use its own prebuilt ONNX Runtime (Windows: it's built for
+# the DLL C runtime, the speech engine for the static one; Intel Macs: there
+# is none; Apple Silicon Macs: two copies in one program pack weights
+# differently, see /.cargo/config.toml), ort links nothing (see /.cargo/config.toml) and uses the copy of
+# ONNX Runtime 1.28.2 inside sherpa-onnx — linked here so every program
+# that uses ort has it, not only the app.
+[target.'cfg(any(all(windows, target_env = "msvc"), target_os = "macos"))'.dependencies]
+sherpa-onnx-sys = "1.13.8"

@@ -1,0 +1,20 @@
+{
+ "videoId": "scn-fmt-second-kings",
+ "title": "Scenario: fmt-second-kings",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "second Kings chapter two verse nine"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "2 Kings",
+   "chapter": 2,
+   "kind": "citation",
+   "startMs": 0,
+   "verse": 9
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

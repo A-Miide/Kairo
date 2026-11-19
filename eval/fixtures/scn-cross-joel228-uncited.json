@@ -1,0 +1,20 @@
+{
+ "videoId": "scn-cross-joel228-uncited",
+ "title": "Scenario: cross-joel228-uncited",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "and it shall come to pass afterward, that I will pour out my spirit upon all flesh; and your sons and your daughters shall prophesy, your old men shall dream dreams, your young men shall see visions"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Joel",
+   "chapter": 2,
+   "kind": "quote",
+   "startMs": 0,
+   "verse": 28
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

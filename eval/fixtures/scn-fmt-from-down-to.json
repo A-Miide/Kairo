@@ -1,0 +1,21 @@
+{
+ "videoId": "scn-fmt-from-down-to",
+ "title": "Scenario: fmt-from-down-to",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "Romans eight from twenty eight down to thirty one"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Romans",
+   "chapter": 8,
+   "kind": "citation",
+   "startMs": 0,
+   "verseStart": 28,
+   "verseEnd": 31
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

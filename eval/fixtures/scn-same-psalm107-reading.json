@@ -1,0 +1,46 @@
+{
+ "videoId": "scn-same-psalm107-reading",
+ "title": "Scenario: same-psalm107-reading",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "Psalm one hundred and seven verse thirteen"
+  },
+  {
+   "startMs": 3700,
+   "text": "then they cried unto the Lord in their trouble, and he saved them out of their distresses"
+  },
+  {
+   "startMs": 11400,
+   "text": "he brought them out of darkness and the shadow of death, and brake their bands in sunder"
+  },
+  {
+   "startMs": 19100,
+   "text": "oh that men would praise the Lord for his goodness, and for his wonderful works to the children of men"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Psalm",
+   "chapter": 107,
+   "kind": "citation",
+   "startMs": 0,
+   "verse": 13
+  },
+  {
+   "book": "Psalm",
+   "chapter": 107,
+   "kind": "quote",
+   "startMs": 11400,
+   "verse": 14
+  },
+  {
+   "book": "Psalm",
+   "chapter": 107,
+   "kind": "quote",
+   "startMs": 19100,
+   "verse": 15
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

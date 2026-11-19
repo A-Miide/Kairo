@@ -1,0 +1,66 @@
+name: Speech speed (Windows)
+
+# How fast the offline speech engine (ONNX, as on Windows, Linux and Intel Macs) keeps up on a real
+# Windows computer: GitHub's runner stands in for a church PC no one here has (owner, 2026-10-30).
+# Run by hand (Actions → Speech speed → Run workflow); never part of a release.
+#
+# No sermon audio goes in the repository: Windows' own voice reads a few minutes of the KJV, and
+# offline-transcribe reports how many times faster than real time it was transcribed, at 1, 2 and
+# 4 threads (KAIRO_ASR_THREADS). Below 1× the engine falls behind live speech and drops audio.
+on:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: The computer
+        shell: pwsh
+        run: |
+          Get-CimInstance Win32_Processor | Select-Object Name, NumberOfCores, NumberOfLogicalProcessors | Format-List
+          "{0:N1} GB memory" -f ((Get-CimInstance Win32_ComputerSystem).TotalPhysicalMemory / 1GB)
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-directories: src-tauri/target/sherpa-onnx-prebuilt
+          key: speech-speed
+
+      - name: FFmpeg (offline-transcribe decodes the audio with it)
+        run: choco install ffmpeg -y --no-progress
+
+      - name: The offline model (as the app downloads it)
+        shell: bash
+        run: |
+          curl -sSfL -o model.tar.bz2 https://github.com/A-Miide/Kairo/releases/download/offline-model-v1/sherpa-onnx-nemotron-speech-streaming-en-0.6b-560ms-int8-2026-04-25.tar.bz2
+          mkdir model
+          tar -xjf model.tar.bz2 -C model --strip-components=1
+          ls -la model
+
+      - name: A few minutes of scripture, read by Windows
+        shell: pwsh
+        run: |
+          python -c "import json; b=json.load(open('databases/bibles/kjv.json', encoding='utf-8-sig')); ps=b[18]['chapters']; jn=b[42]['chapters']; open('clip.txt','w',encoding='utf-8').write(' '.join(ps[90] + jn[2]))"
+          Add-Type -AssemblyName System.Speech
+          $voice = New-Object System.Speech.Synthesis.SpeechSynthesizer
+          $voice.SetOutputToWaveFile("$PWD\clip.wav")
+          $voice.Speak((Get-Content -Raw clip.txt))
+          $voice.Dispose()
+          ffprobe -v error -show_entries format=duration -of default=nk=1:nw=1 clip.wav
+
+      - name: Build offline-transcribe
+        working-directory: src-tauri
+        run: cargo build --release -p kairo-eval --bin offline-transcribe
+
+      - name: Measure
+        shell: bash
+        env:
+          KAIRO_OFFLINE_MODEL: ${{ github.workspace }}/model
+        run: |
+          for threads in 1 2 4; do
+            echo "== $threads thread(s)"
+            KAIRO_ASR_THREADS=$threads src-tauri/target/release/offline-transcribe.exe clip.wav speed-$threads 2>&1 | grep -E '^\[offline\]'
+          done

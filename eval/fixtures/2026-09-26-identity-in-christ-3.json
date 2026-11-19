@@ -1,0 +1,239 @@
+{
+ "videoId": "2026-09-26-identity-in-christ-3",
+ "title": "Identity in Christ (live clip)",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "When you understand who you are and Christ, the devils and their agent become afraid of you."
+  },
+  {
+   "startMs": 6800,
+   "text": "It's because you have never like organized whom God created."
+  },
+  {
+   "startMs": 10800,
+   "text": "Yeah."
+  },
+  {
+   "startMs": 11200,
+   "text": "In Psalm 82 verse six, heaven say you are a God."
+  },
+  {
+   "startMs": 15600,
+   "text": "In the book of Acts of Apostle one verse eight, he say, when the spirit of Christ enters in you, what you shall receive is what?"
+  },
+  {
+   "startMs": 26000,
+   "text": "Power."
+  },
+  {
+   "startMs": 26400,
+   "text": "Genesis one from verse 26 to 28 let us make man in our own word, image."
+  },
+  {
+   "startMs": 32800,
+   "text": "Anytime you understand who you are on earth, devil will start to fear you."
+  },
+  {
+   "startMs": 38400,
+   "text": "You are indefatigable."
+  },
+  {
+   "startMs": 39600,
+   "text": "Second Timothy one verse seven say, that the spirit of Jesus Christ can never give you a spirit of fear, that the boldness and what?"
+  },
+  {
+   "startMs": 49600,
+   "text": "Sandman."
+  },
+  {
+   "startMs": 50000,
+   "text": "First John four verse four say, who is in you is greater the devils in the world."
+  },
+  {
+   "startMs": 56800,
+   "text": "But hear this, Say John five verse 19 have said, the world where you are is under power, control by the evil one."
+  },
+  {
+   "startMs": 66000,
+   "text": "But John three verse 31 say, he that is above is above what?"
+  },
+  {
+   "startMs": 71200,
+   "text": "When you lost the ability to understand the God you are serving, the God that tell you with him all things are possible."
+  },
+  {
+   "startMs": 80400,
+   "text": "In Matthew 11, say, come to me."
+  },
+  {
+   "startMs": 83200,
+   "text": "28, all you that are in pain, I will solve the problem."
+  },
+  {
+   "startMs": 88000,
+   "text": "In no man's whosoever call upon the name of Jesus shall be saved."
+  },
+  {
+   "startMs": 93200,
+   "text": "Proverbate him."
+  },
+  {
+   "startMs": 94000,
+   "text": "He said, a believer Elisha, run to me and they are safe and protected."
+  },
+  {
+   "startMs": 99600,
+   "text": "Deuteronomy 31 verses."
+  },
+  {
+   "startMs": 100800,
+   "text": "It says fear not."
+  },
+  {
+   "startMs": 102400,
+   "text": "Be strong."
+  },
+  {
+   "startMs": 103200,
+   "text": "Be of courage."
+  },
+  {
+   "startMs": 104400,
+   "text": "For I, the lord of heavens, will never fail you or neither disappointed you."
+  },
+  {
+   "startMs": 110000,
+   "text": "He said Ephesians two verse 10, in my name Jesus, every knee shall do what?"
+  },
+  {
+   "startMs": 116000,
+   "text": "Every knee shall do what?"
+  },
+  {
+   "startMs": 118000,
+   "text": "Jeremiah 17 verse seven to eight."
+  },
+  {
+   "startMs": 120400,
+   "text": "He said blessed are those who trusted in the Lord Jesus."
+  },
+  {
+   "startMs": 124800,
+   "text": "For you shall be like a tree, planted by the side of the liver bank."
+  },
+  {
+   "startMs": 130800,
+   "text": "You will never dry."
+  },
+  {
+   "startMs": 132400,
+   "text": "Someone 25, verse one and two, he say, your shall be like a mountain Zion."
+  },
+  {
+   "startMs": 138400,
+   "text": "And nobody can take you away from your positions."
+  },
+  {
+   "startMs": 142000,
+   "text": "From today, brethren, prepare the barrier of your enemies."
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Psalms",
+   "chapter": 82,
+   "kind": "citation",
+   "startMs": 11200,
+   "verse": 6
+  },
+  {
+   "book": "Acts",
+   "chapter": 1,
+   "kind": "citation",
+   "startMs": 15600,
+   "verse": 8
+  },
+  {
+   "book": "Genesis",
+   "chapter": 1,
+   "kind": "citation",
+   "startMs": 26400,
+   "verseStart": 26,
+   "verseEnd": 28
+  },
+  {
+   "book": "2 Timothy",
+   "chapter": 1,
+   "kind": "citation",
+   "startMs": 39600,
+   "verse": 7
+  },
+  {
+   "book": "1 John",
+   "chapter": 4,
+   "kind": "citation",
+   "startMs": 50000,
+   "verse": 4
+  },
+  {
+   "book": "1 John",
+   "chapter": 5,
+   "kind": "citation",
+   "startMs": 56800,
+   "verse": 19
+  },
+  {
+   "book": "John",
+   "chapter": 3,
+   "kind": "citation",
+   "startMs": 66000,
+   "verse": 31
+  },
+  {
+   "book": "Matthew",
+   "chapter": 11,
+   "kind": "citation",
+   "startMs": 80400,
+   "verse": 28
+  },
+  {
+   "book": "Romans",
+   "chapter": 10,
+   "kind": "citation",
+   "startMs": 88000,
+   "verse": 13
+  },
+  {
+   "book": "Deuteronomy",
+   "chapter": 31,
+   "kind": "citation",
+   "startMs": 99600,
+   "verse": 6
+  },
+  {
+   "book": "Philippians",
+   "chapter": 2,
+   "kind": "citation",
+   "startMs": 110000,
+   "verse": 10
+  },
+  {
+   "book": "Jeremiah",
+   "chapter": 17,
+   "kind": "citation",
+   "startMs": 118000,
+   "verseStart": 7,
+   "verseEnd": 8
+  },
+  {
+   "book": "Psalms",
+   "chapter": 125,
+   "kind": "citation",
+   "startMs": 132400,
+   "verseStart": 1,
+   "verseEnd": 2
+  }
+ ],
+ "note": "Written by hand from the preaching: John four/five are 1 John by the words read; 'Ephesians 2:10' is quoted as Philippians 2:10."
+}

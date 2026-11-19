@@ -1,0 +1,79 @@
+{
+ "source": "scn-sung-isaiah40",
+ "kind": "scenario",
+ "lang": "en",
+ "cues": [
+  {
+   "text": "they that wait upon the Lord shall renew their strength",
+   "audioMs": 0
+  },
+  {
+   "text": "they shall mount up with wings as eagles, they shall run and not be weary",
+   "audioMs": 4900
+  },
+  {
+   "text": "they shall walk and not faint, teach me Lord, teach me Lord to wait",
+   "audioMs": 11800
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "they that wait upon",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "they that wait upon the Lord shall renew",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "they that wait upon the Lord shall renew their strength",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "they shall mount up",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "they shall mount up with wings as eagles,",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "they shall mount up with wings as eagles, they shall run and",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "they shall mount up with wings as eagles, they shall run and not be weary",
+   "isFinal": true
+  },
+  {
+   "cue": 2,
+   "text": "they shall walk and",
+   "isFinal": false
+  },
+  {
+   "cue": 2,
+   "text": "they shall walk and not faint, teach me",
+   "isFinal": false
+  },
+  {
+   "cue": 2,
+   "text": "they shall walk and not faint, teach me Lord, teach me Lord",
+   "isFinal": false
+  },
+  {
+   "cue": 2,
+   "text": "they shall walk and not faint, teach me Lord, teach me Lord to wait",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

@@ -1,0 +1,55 @@
+{
+ "source": "scn-niv-john316-uncited",
+ "kind": "scenario",
+ "lang": "en",
+ "cues": [
+  {
+   "text": "for God so loved the world that he gave his one and only Son",
+   "audioMs": 0
+  },
+  {
+   "text": "that whoever believes in him shall not perish but have eternal life",
+   "audioMs": 6500
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "for God so loved",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "for God so loved the world that he",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "for God so loved the world that he gave his one and",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "for God so loved the world that he gave his one and only Son",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "that whoever believes in",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "that whoever believes in him shall not perish",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "that whoever believes in him shall not perish but have eternal life",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

@@ -1,0 +1,20 @@
+{
+ "videoId": "scn-num-german",
+ "title": "Scenario: num-german",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "Römer acht Vers achtundzwanzig"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Romans",
+   "chapter": 8,
+   "kind": "citation",
+   "startMs": 0,
+   "verse": 28
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

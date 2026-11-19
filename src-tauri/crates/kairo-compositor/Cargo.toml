@@ -1,0 +1,10 @@
+[package]
+name = "kairo-compositor"
+description = "Kairo's GPU compositor: video, cameras and the page composited on the GPU (docs/DIRECTOR_COMPOSITOR.md)"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+wgpu = { version = "30", default-features = false, features = ["metal", "dx12", "vulkan", "wgsl", "std"] }
+pollster = "0.4"
+bytemuck = { version = "1", features = ["derive"] }

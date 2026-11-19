@@ -1,0 +1,31 @@
+{
+ "videoId": "scn-niv-philippians4-uncited",
+ "title": "Scenario: niv-philippians4-uncited",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "do not be anxious about anything, but in every situation, by prayer and petition, with thanksgiving, present your requests to God"
+  },
+  {
+   "startMs": 9300,
+   "text": "and the peace of God, which transcends all understanding, will guard your hearts and your minds in Christ Jesus"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Philippians",
+   "chapter": 4,
+   "kind": "quote",
+   "startMs": 0,
+   "verse": 6
+  },
+  {
+   "book": "Philippians",
+   "chapter": 4,
+   "kind": "quote",
+   "startMs": 9300,
+   "verse": 7
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

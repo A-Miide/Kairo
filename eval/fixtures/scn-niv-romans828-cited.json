@@ -1,0 +1,24 @@
+{
+ "videoId": "scn-niv-romans828-cited",
+ "title": "Scenario: niv-romans828-cited",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "Romans eight twenty eight in the New International Version"
+  },
+  {
+   "startMs": 4500,
+   "text": "and we know that in all things God works for the good of those who love him, who have been called according to his purpose"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Romans",
+   "chapter": 8,
+   "kind": "citation",
+   "startMs": 0,
+   "verse": 28
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

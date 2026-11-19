@@ -1,0 +1,1380 @@
+{
+ "note": "Hard paraphrase set (2026-10-16): how preachers really put verses — loose wording, allusions and fragments, West African preaching style — and decoys that sound like scripture but are no verse (declarations, sayings, church notices). Every ref checked against the KJV text. 'narrative' lines retell a Bible story: suggesting the passage is fine, putting it on screen is not; not scored by semantic_bench.",
+ "positives": [
+  {
+   "said": "God takes care of me like a shepherd, I won't lack anything",
+   "refs": [
+    "Psalm 23:1"
+   ]
+  },
+  {
+   "said": "he makes me lie down in green pastures, he leads me by the still waters",
+   "refs": [
+    "Psalm 23:2"
+   ]
+  },
+  {
+   "said": "even when I walk through the darkest valley I'm not afraid, because you're with me",
+   "refs": [
+    "Psalm 23:4"
+   ]
+  },
+  {
+   "said": "you set a table for me right in front of my enemies",
+   "refs": [
+    "Psalm 23:5"
+   ]
+  },
+  {
+   "said": "goodness and mercy will chase me down all the days of my life",
+   "refs": [
+    "Psalm 23:6"
+   ]
+  },
+  {
+   "said": "the people who wait on the Lord will get new strength, they'll fly like eagles",
+   "refs": [
+    "Isaiah 40:31"
+   ]
+  },
+  {
+   "said": "don't be afraid because I'm with you, don't be dismayed, I am your God and I will hold you up",
+   "refs": [
+    "Isaiah 41:10"
+   ]
+  },
+  {
+   "said": "no weapon that anybody forms against you will work",
+   "refs": [
+    "Isaiah 54:17"
+   ]
+  },
+  {
+   "said": "when you pass through the waters I'll be with you, the rivers won't drown you, the fire won't burn you",
+   "refs": [
+    "Isaiah 43:2"
+   ]
+  },
+  {
+   "said": "forget the former things, I'm doing a new thing, can't you see it springing up",
+   "refs": [
+    "Isaiah 43:18",
+    "Isaiah 43:19"
+   ]
+  },
+  {
+   "said": "he was wounded for what we did wrong, and by his stripes we are healed",
+   "refs": [
+    "Isaiah 53:5"
+   ]
+  },
+  {
+   "said": "my thoughts are not like your thoughts and my ways are higher than your ways",
+   "refs": [
+    "Isaiah 55:8",
+    "Isaiah 55:9"
+   ]
+  },
+  {
+   "said": "my word will not come back to me empty, it will do what I sent it to do",
+   "refs": [
+    "Isaiah 55:11"
+   ]
+  },
+  {
+   "said": "arise and shine, your light has come and the glory of the Lord is rising on you",
+   "refs": [
+    "Isaiah 60:1"
+   ]
+  },
+  {
+   "said": "I know the plans I have for you, plans to prosper you and not to harm you, to give you a future and a hope",
+   "refs": [
+    "Jeremiah 29:11"
+   ]
+  },
+  {
+   "said": "call to me and I will answer you and show you great and hidden things you don't know",
+   "refs": [
+    "Jeremiah 33:3"
+   ]
+  },
+  {
+   "said": "before I formed you in your mother's womb I knew you",
+   "refs": [
+    "Jeremiah 1:5"
+   ]
+  },
+  {
+   "said": "is there anything too hard for the Lord",
+   "refs": [
+    "Genesis 18:14",
+    "Jeremiah 32:27"
+   ]
+  },
+  {
+   "said": "his mercies are new every single morning, great is his faithfulness",
+   "refs": [
+    "Lamentations 3:22",
+    "Lamentations 3:23"
+   ]
+  },
+  {
+   "said": "not by might, not by power, but by my spirit says the Lord",
+   "refs": [
+    "Zechariah 4:6"
+   ]
+  },
+  {
+   "said": "bring all the tithes into the storehouse and see if I won't open the windows of heaven",
+   "refs": [
+    "Malachi 3:10"
+   ]
+  },
+  {
+   "said": "I will restore to you the years that the locust has eaten",
+   "refs": [
+    "Joel 2:25"
+   ]
+  },
+  {
+   "said": "I will pour out my spirit on all flesh, your sons and daughters will prophesy",
+   "refs": [
+    "Joel 2:28"
+   ]
+  },
+  {
+   "said": "the earth will be filled with the knowledge of the glory of the Lord like the waters cover the sea",
+   "refs": [
+    "Habakkuk 2:14"
+   ]
+  },
+  {
+   "said": "write the vision down and make it plain so whoever reads it can run",
+   "refs": [
+    "Habakkuk 2:2"
+   ]
+  },
+  {
+   "said": "though the vision tarries, wait for it, it will surely come",
+   "refs": [
+    "Habakkuk 2:3"
+   ]
+  },
+  {
+   "said": "the Lord your God in your midst is mighty, he rejoices over you with singing",
+   "refs": [
+    "Zephaniah 3:17"
+   ]
+  },
+  {
+   "said": "my people perish because they lack knowledge",
+   "refs": [
+    "Hosea 4:6"
+   ]
+  },
+  {
+   "said": "what does God require of you, to do justly, love mercy and walk humbly with your God",
+   "refs": [
+    "Micah 6:8"
+   ]
+  },
+  {
+   "said": "trust the Lord with all your heart and don't lean on your own understanding",
+   "refs": [
+    "Proverbs 3:5"
+   ]
+  },
+  {
+   "said": "in all your ways acknowledge him and he will make your paths straight",
+   "refs": [
+    "Proverbs 3:6"
+   ]
+  },
+  {
+   "said": "guard your heart more than anything because everything you do flows from it",
+   "refs": [
+    "Proverbs 4:23"
+   ]
+  },
+  {
+   "said": "the name of the Lord is a strong tower, the righteous run into it and are safe",
+   "refs": [
+    "Proverbs 18:10"
+   ]
+  },
+  {
+   "said": "death and life are in the power of the tongue",
+   "refs": [
+    "Proverbs 18:21"
+   ]
+  },
+  {
+   "said": "train up a child in the way he should go and when he is old he won't depart from it",
+   "refs": [
+    "Proverbs 22:6"
+   ]
+  },
+  {
+   "said": "as a man thinks in his heart, so is he",
+   "refs": [
+    "Proverbs 23:7"
+   ]
+  },
+  {
+   "said": "iron sharpens iron, so one person sharpens another",
+   "refs": [
+    "Proverbs 27:17"
+   ]
+  },
+  {
+   "said": "where there is no vision the people perish",
+   "refs": [
+    "Proverbs 29:18"
+   ]
+  },
+  {
+   "said": "the fear of the Lord is the beginning of wisdom",
+   "refs": [
+    "Proverbs 9:10",
+    "Psalm 111:10"
+   ]
+  },
+  {
+   "said": "a soft answer turns away anger but harsh words stir it up",
+   "refs": [
+    "Proverbs 15:1"
+   ]
+  },
+  {
+   "said": "pride comes before a fall",
+   "refs": [
+    "Proverbs 16:18"
+   ]
+  },
+  {
+   "said": "the path of the just is like the morning light that shines brighter and brighter",
+   "refs": [
+    "Proverbs 4:18"
+   ]
+  },
+  {
+   "said": "the blessing of the Lord makes rich and he adds no sorrow with it",
+   "refs": [
+    "Proverbs 10:22"
+   ]
+  },
+  {
+   "said": "there is a time for everything, a time to be born and a time to die",
+   "refs": [
+    "Ecclesiastes 3:1",
+    "Ecclesiastes 3:2"
+   ]
+  },
+  {
+   "said": "he has made everything beautiful in its time",
+   "refs": [
+    "Ecclesiastes 3:11"
+   ]
+  },
+  {
+   "said": "two are better than one, because if one falls the other lifts him up",
+   "refs": [
+    "Ecclesiastes 4:9",
+    "Ecclesiastes 4:10"
+   ]
+  },
+  {
+   "said": "a cord of three strands is not quickly broken",
+   "refs": [
+    "Ecclesiastes 4:12"
+   ]
+  },
+  {
+   "said": "God is our refuge and strength, a very present help in trouble",
+   "refs": [
+    "Psalm 46:1"
+   ]
+  },
+  {
+   "said": "be still and know that I am God",
+   "refs": [
+    "Psalm 46:10"
+   ]
+  },
+  {
+   "said": "the one who dwells in the secret place of the Most High will abide under the shadow of the Almighty",
+   "refs": [
+    "Psalm 91:1"
+   ]
+  },
+  {
+   "said": "a thousand will fall at your side and ten thousand at your right hand but it won't come near you",
+   "refs": [
+    "Psalm 91:7"
+   ]
+  },
+  {
+   "said": "he will give his angels charge over you to keep you in all your ways",
+   "refs": [
+    "Psalm 91:11"
+   ]
+  },
+  {
+   "said": "with long life I will satisfy him and show him my salvation",
+   "refs": [
+    "Psalm 91:16"
+   ]
+  },
+  {
+   "said": "I lift up my eyes to the hills, where does my help come from, my help comes from the Lord",
+   "refs": [
+    "Psalm 121:1",
+    "Psalm 121:2"
+   ]
+  },
+  {
+   "said": "he who keeps you will not slumber nor sleep",
+   "refs": [
+    "Psalm 121:3",
+    "Psalm 121:4"
+   ]
+  },
+  {
+   "said": "unless the Lord builds the house, the builders labour in vain",
+   "refs": [
+    "Psalm 127:1"
+   ]
+  },
+  {
+   "said": "this is the day the Lord has made, let us rejoice and be glad in it",
+   "refs": [
+    "Psalm 118:24"
+   ]
+  },
+  {
+   "said": "your word is a lamp to my feet and a light to my path",
+   "refs": [
+    "Psalm 119:105"
+   ]
+  },
+  {
+   "said": "I have hidden your word in my heart so I won't sin against you",
+   "refs": [
+    "Psalm 119:11"
+   ]
+  },
+  {
+   "said": "taste and see that the Lord is good",
+   "refs": [
+    "Psalm 34:8"
+   ]
+  },
+  {
+   "said": "the young lions lack and suffer hunger but those who seek the Lord won't lack any good thing",
+   "refs": [
+    "Psalm 34:10"
+   ]
+  },
+  {
+   "said": "many are the afflictions of the righteous but the Lord delivers him out of them all",
+   "refs": [
+    "Psalm 34:19"
+   ]
+  },
+  {
+   "said": "delight yourself in the Lord and he will give you the desires of your heart",
+   "refs": [
+    "Psalm 37:4"
+   ]
+  },
+  {
+   "said": "I have been young and now I'm old, yet I've never seen the righteous forsaken or his children begging bread",
+   "refs": [
+    "Psalm 37:25"
+   ]
+  },
+  {
+   "said": "weeping may last for a night but joy comes in the morning",
+   "refs": [
+    "Psalm 30:5"
+   ]
+  },
+  {
+   "said": "the Lord is my light and my salvation, whom shall I fear",
+   "refs": [
+    "Psalm 27:1"
+   ]
+  },
+  {
+   "said": "create in me a clean heart O God and renew a right spirit in me",
+   "refs": [
+    "Psalm 51:10"
+   ]
+  },
+  {
+   "said": "as the deer pants for streams of water, so my soul longs for you God",
+   "refs": [
+    "Psalm 42:1"
+   ]
+  },
+  {
+   "said": "enter his gates with thanksgiving and his courts with praise",
+   "refs": [
+    "Psalm 100:4"
+   ]
+  },
+  {
+   "said": "bless the Lord O my soul and forget not all his benefits",
+   "refs": [
+    "Psalm 103:2"
+   ]
+  },
+  {
+   "said": "as far as the east is from the west, that's how far he has removed our sins from us",
+   "refs": [
+    "Psalm 103:12"
+   ]
+  },
+  {
+   "said": "let everything that has breath praise the Lord",
+   "refs": [
+    "Psalm 150:6"
+   ]
+  },
+  {
+   "said": "I will bless the Lord at all times, his praise will continually be in my mouth",
+   "refs": [
+    "Psalm 34:1"
+   ]
+  },
+  {
+   "said": "the heavens declare the glory of God and the skies show his handiwork",
+   "refs": [
+    "Psalm 19:1"
+   ]
+  },
+  {
+   "said": "in the beginning God created the heavens and the earth",
+   "refs": [
+    "Genesis 1:1"
+   ]
+  },
+  {
+   "said": "God made man in his own image, male and female he created them",
+   "refs": [
+    "Genesis 1:27"
+   ]
+  },
+  {
+   "said": "what you meant for evil against me, God meant it for good",
+   "refs": [
+    "Genesis 50:20"
+   ]
+  },
+  {
+   "said": "I will bless you and make your name great and you will be a blessing",
+   "refs": [
+    "Genesis 12:2"
+   ]
+  },
+  {
+   "said": "Abraham believed God and it was counted to him as righteousness",
+   "refs": [
+    "Genesis 15:6",
+    "Romans 4:3"
+   ]
+  },
+  {
+   "said": "Isaac sowed in that land and reaped a hundredfold in the same year because the Lord blessed him",
+   "refs": [
+    "Genesis 26:12"
+   ]
+  },
+  {
+   "said": "the Lord will fight for you, you only need to be still",
+   "refs": [
+    "Exodus 14:14"
+   ]
+  },
+  {
+   "said": "the Lord bless you and keep you and make his face shine on you",
+   "refs": [
+    "Numbers 6:24",
+    "Numbers 6:25"
+   ]
+  },
+  {
+   "said": "God is not a man that he should lie",
+   "refs": [
+    "Numbers 23:19"
+   ]
+  },
+  {
+   "said": "be strong and courageous, don't be afraid, for the Lord your God goes with you wherever you go",
+   "refs": [
+    "Joshua 1:9"
+   ]
+  },
+  {
+   "said": "this book of the law shall not depart from your mouth, meditate on it day and night",
+   "refs": [
+    "Joshua 1:8"
+   ]
+  },
+  {
+   "said": "as for me and my house, we will serve the Lord",
+   "refs": [
+    "Joshua 24:15"
+   ]
+  },
+  {
+   "said": "he gives you the power to get wealth so that he may establish his covenant",
+   "refs": [
+    "Deuteronomy 8:18"
+   ]
+  },
+  {
+   "said": "you will be the head and not the tail, above only and not beneath",
+   "refs": [
+    "Deuteronomy 28:13"
+   ]
+  },
+  {
+   "said": "all these blessings will come on you and overtake you if you obey",
+   "refs": [
+    "Deuteronomy 28:2"
+   ]
+  },
+  {
+   "said": "I have set before you life and death, choose life",
+   "refs": [
+    "Deuteronomy 30:19"
+   ]
+  },
+  {
+   "said": "he will never leave you nor forsake you",
+   "refs": [
+    "Deuteronomy 31:6",
+    "Hebrews 13:5"
+   ]
+  },
+  {
+   "said": "your people will be my people and your God my God",
+   "refs": [
+    "Ruth 1:16"
+   ]
+  },
+  {
+   "said": "to obey is better than sacrifice",
+   "refs": [
+    "1 Samuel 15:22"
+   ]
+  },
+  {
+   "said": "man looks at the outward appearance but the Lord looks at the heart",
+   "refs": [
+    "1 Samuel 16:7"
+   ]
+  },
+  {
+   "said": "if my people who are called by my name will humble themselves and pray and seek my face, I will heal their land",
+   "refs": [
+    "2 Chronicles 7:14"
+   ]
+  },
+  {
+   "said": "the joy of the Lord is your strength",
+   "refs": [
+    "Nehemiah 8:10"
+   ]
+  },
+  {
+   "said": "who knows whether you have come to the kingdom for such a time as this",
+   "refs": [
+    "Esther 4:14"
+   ]
+  },
+  {
+   "said": "the Lord gave and the Lord has taken away, blessed be the name of the Lord",
+   "refs": [
+    "Job 1:21"
+   ]
+  },
+  {
+   "said": "I know that my redeemer lives",
+   "refs": [
+    "Job 19:25"
+   ]
+  },
+  {
+   "said": "the Lord restored Job's fortunes when he prayed for his friends and gave him twice as much",
+   "refs": [
+    "Job 42:10"
+   ]
+  },
+  {
+   "said": "Daniel purposed in his heart that he would not defile himself with the king's food",
+   "refs": [
+    "Daniel 1:8"
+   ]
+  },
+  {
+   "said": "our God is able to deliver us from the burning fiery furnace, but even if he doesn't",
+   "refs": [
+    "Daniel 3:17",
+    "Daniel 3:18"
+   ]
+  },
+  {
+   "said": "the people who know their God will be strong and do exploits",
+   "refs": [
+    "Daniel 11:32"
+   ]
+  },
+  {
+   "said": "seek first the kingdom of God and his righteousness and all these things will be added to you",
+   "refs": [
+    "Matthew 6:33"
+   ]
+  },
+  {
+   "said": "don't worry about tomorrow, tomorrow will worry about itself",
+   "refs": [
+    "Matthew 6:34"
+   ]
+  },
+  {
+   "said": "ask and it shall be given, seek and you'll find, knock and the door will be opened",
+   "refs": [
+    "Matthew 7:7"
+   ]
+  },
+  {
+   "said": "come to me all you who are tired and carrying heavy loads and I'll give you rest",
+   "refs": [
+    "Matthew 11:28"
+   ]
+  },
+  {
+   "said": "my yoke is easy and my burden is light",
+   "refs": [
+    "Matthew 11:30"
+   ]
+  },
+  {
+   "said": "you are the salt of the earth",
+   "refs": [
+    "Matthew 5:13"
+   ]
+  },
+  {
+   "said": "you are the light of the world, a city on a hill can't be hidden",
+   "refs": [
+    "Matthew 5:14"
+   ]
+  },
+  {
+   "said": "let your light so shine before men that they see your good works and glorify your Father",
+   "refs": [
+    "Matthew 5:16"
+   ]
+  },
+  {
+   "said": "blessed are the pure in heart for they shall see God",
+   "refs": [
+    "Matthew 5:8"
+   ]
+  },
+  {
+   "said": "love your enemies and pray for those who persecute you",
+   "refs": [
+    "Matthew 5:44"
+   ]
+  },
+  {
+   "said": "where two or three are gathered in my name, I'm right there with them",
+   "refs": [
+    "Matthew 18:20"
+   ]
+  },
+  {
+   "said": "with men it's impossible but with God all things are possible",
+   "refs": [
+    "Matthew 19:26"
+   ]
+  },
+  {
+   "said": "go into all the world and make disciples of all nations, baptizing them",
+   "refs": [
+    "Matthew 28:19"
+   ]
+  },
+  {
+   "said": "I am with you always, even to the end of the age",
+   "refs": [
+    "Matthew 28:20"
+   ]
+  },
+  {
+   "said": "if you have faith like a mustard seed you can tell this mountain to move",
+   "refs": [
+    "Matthew 17:20"
+   ]
+  },
+  {
+   "said": "on this rock I will build my church and the gates of hell will not prevail against it",
+   "refs": [
+    "Matthew 16:18"
+   ]
+  },
+  {
+   "said": "what will it profit a man if he gains the whole world and loses his soul",
+   "refs": [
+    "Mark 8:36",
+    "Matthew 16:26"
+   ]
+  },
+  {
+   "said": "whatever you ask for in prayer, believe that you have received it and it will be yours",
+   "refs": [
+    "Mark 11:24"
+   ]
+  },
+  {
+   "said": "these signs will follow those who believe, they will lay hands on the sick and they will recover",
+   "refs": [
+    "Mark 16:17",
+    "Mark 16:18"
+   ]
+  },
+  {
+   "said": "give and it will be given back to you, pressed down, shaken together and running over",
+   "refs": [
+    "Luke 6:38"
+   ]
+  },
+  {
+   "said": "nothing will be impossible with God",
+   "refs": [
+    "Luke 1:37"
+   ]
+  },
+  {
+   "said": "the Spirit of the Lord is on me because he anointed me to preach good news to the poor",
+   "refs": [
+    "Luke 4:18"
+   ]
+  },
+  {
+   "said": "the son of man came to seek and to save the lost",
+   "refs": [
+    "Luke 19:10"
+   ]
+  },
+  {
+   "said": "in the beginning was the Word and the Word was with God and the Word was God",
+   "refs": [
+    "John 1:1"
+   ]
+  },
+  {
+   "said": "the thief comes only to steal and kill and destroy, but I came so they may have life to the full",
+   "refs": [
+    "John 10:10"
+   ]
+  },
+  {
+   "said": "I am the way, the truth and the life, no one comes to the Father except through me",
+   "refs": [
+    "John 14:6"
+   ]
+  },
+  {
+   "said": "let not your heart be troubled, in my Father's house are many rooms",
+   "refs": [
+    "John 14:1",
+    "John 14:2"
+   ]
+  },
+  {
+   "said": "peace I leave with you, my peace I give you, not as the world gives",
+   "refs": [
+    "John 14:27"
+   ]
+  },
+  {
+   "said": "I am the vine and you are the branches, without me you can do nothing",
+   "refs": [
+    "John 15:5"
+   ]
+  },
+  {
+   "said": "in this world you will have trouble but take heart, I have overcome the world",
+   "refs": [
+    "John 16:33"
+   ]
+  },
+  {
+   "said": "you will know the truth and the truth will set you free",
+   "refs": [
+    "John 8:32"
+   ]
+  },
+  {
+   "said": "whom the son sets free is free indeed",
+   "refs": [
+    "John 8:36"
+   ]
+  },
+  {
+   "said": "you will receive power when the Holy Ghost comes upon you and you'll be my witnesses",
+   "refs": [
+    "Acts 1:8"
+   ]
+  },
+  {
+   "said": "silver and gold I don't have, but what I have I give you, in the name of Jesus rise up and walk",
+   "refs": [
+    "Acts 3:6"
+   ]
+  },
+  {
+   "said": "all things work together for good for those who love God",
+   "refs": [
+    "Romans 8:28"
+   ]
+  },
+  {
+   "said": "if God is for us, who can be against us",
+   "refs": [
+    "Romans 8:31"
+   ]
+  },
+  {
+   "said": "in all these things we are more than conquerors through him who loved us",
+   "refs": [
+    "Romans 8:37"
+   ]
+  },
+  {
+   "said": "nothing can separate us from the love of God that is in Christ Jesus",
+   "refs": [
+    "Romans 8:38",
+    "Romans 8:39"
+   ]
+  },
+  {
+   "said": "don't be conformed to this world but be transformed by the renewing of your mind",
+   "refs": [
+    "Romans 12:2"
+   ]
+  },
+  {
+   "said": "all have sinned and come short of the glory of God",
+   "refs": [
+    "Romans 3:23"
+   ]
+  },
+  {
+   "said": "the wages of sin is death but the gift of God is eternal life",
+   "refs": [
+    "Romans 6:23"
+   ]
+  },
+  {
+   "said": "there is now no condemnation for those who are in Christ Jesus",
+   "refs": [
+    "Romans 8:1"
+   ]
+  },
+  {
+   "said": "faith comes by hearing and hearing by the word of God",
+   "refs": [
+    "Romans 10:17"
+   ]
+  },
+  {
+   "said": "if you confess with your mouth that Jesus is Lord and believe in your heart that God raised him, you'll be saved",
+   "refs": [
+    "Romans 10:9"
+   ]
+  },
+  {
+   "said": "eye has not seen nor ear heard what God has prepared for those who love him",
+   "refs": [
+    "1 Corinthians 2:9"
+   ]
+  },
+  {
+   "said": "love is patient, love is kind, it does not envy and it does not boast",
+   "refs": [
+    "1 Corinthians 13:4"
+   ]
+  },
+  {
+   "said": "thanks be to God who gives us the victory through our Lord Jesus Christ",
+   "refs": [
+    "1 Corinthians 15:57"
+   ]
+  },
+  {
+   "said": "if anyone is in Christ he is a new creation, the old has gone and the new has come",
+   "refs": [
+    "2 Corinthians 5:17"
+   ]
+  },
+  {
+   "said": "my grace is enough for you, my strength is made perfect in weakness",
+   "refs": [
+    "2 Corinthians 12:9"
+   ]
+  },
+  {
+   "said": "he became poor so that through his poverty you might become rich",
+   "refs": [
+    "2 Corinthians 8:9"
+   ]
+  },
+  {
+   "said": "whatever a man sows that he will also reap",
+   "refs": [
+    "Galatians 6:7"
+   ]
+  },
+  {
+   "said": "the fruit of the Spirit is love, joy, peace, patience, kindness, goodness, faithfulness",
+   "refs": [
+    "Galatians 5:22"
+   ]
+  },
+  {
+   "said": "be angry but don't sin, don't let the sun go down on your anger",
+   "refs": [
+    "Ephesians 4:26"
+   ]
+  },
+  {
+   "said": "I can do all things through Christ who strengthens me",
+   "refs": [
+    "Philippians 4:13"
+   ]
+  },
+  {
+   "said": "my God will supply all your needs according to his riches in glory",
+   "refs": [
+    "Philippians 4:19"
+   ]
+  },
+  {
+   "said": "he who began a good work in you will carry it on to completion",
+   "refs": [
+    "Philippians 1:6"
+   ]
+  },
+  {
+   "said": "forgetting what is behind and pressing toward the mark for the prize",
+   "refs": [
+    "Philippians 3:13",
+    "Philippians 3:14"
+   ]
+  },
+  {
+   "said": "rejoice in the Lord always, again I say rejoice",
+   "refs": [
+    "Philippians 4:4"
+   ]
+  },
+  {
+   "said": "whatever things are true, noble, right, pure and lovely, think on these things",
+   "refs": [
+    "Philippians 4:8"
+   ]
+  },
+  {
+   "said": "pray without ceasing and in everything give thanks",
+   "refs": [
+    "1 Thessalonians 5:17",
+    "1 Thessalonians 5:18"
+   ]
+  },
+  {
+   "said": "God has not given us a spirit of fear but of power, love and a sound mind",
+   "refs": [
+    "2 Timothy 1:7"
+   ]
+  },
+  {
+   "said": "all scripture is breathed out by God and is useful for teaching and correcting",
+   "refs": [
+    "2 Timothy 3:16"
+   ]
+  },
+  {
+   "said": "faith is the substance of things hoped for, the evidence of things not seen",
+   "refs": [
+    "Hebrews 11:1"
+   ]
+  },
+  {
+   "said": "without faith it's impossible to please God",
+   "refs": [
+    "Hebrews 11:6"
+   ]
+  },
+  {
+   "said": "Jesus Christ is the same yesterday, today and forever",
+   "refs": [
+    "Hebrews 13:8"
+   ]
+  },
+  {
+   "said": "the word of God is living and active, sharper than any two-edged sword",
+   "refs": [
+    "Hebrews 4:12"
+   ]
+  },
+  {
+   "said": "let us come boldly to the throne of grace to find mercy in time of need",
+   "refs": [
+    "Hebrews 4:16"
+   ]
+  },
+  {
+   "said": "count it all joy when you fall into various trials",
+   "refs": [
+    "James 1:2"
+   ]
+  },
+  {
+   "said": "if any of you lacks wisdom let him ask God who gives generously",
+   "refs": [
+    "James 1:5"
+   ]
+  },
+  {
+   "said": "faith without works is dead",
+   "refs": [
+    "James 2:26",
+    "James 2:17"
+   ]
+  },
+  {
+   "said": "draw near to God and he will draw near to you",
+   "refs": [
+    "James 4:8"
+   ]
+  },
+  {
+   "said": "resist the devil and he will flee from you",
+   "refs": [
+    "James 4:7"
+   ]
+  },
+  {
+   "said": "the effective fervent prayer of a righteous man avails much",
+   "refs": [
+    "James 5:16"
+   ]
+  },
+  {
+   "said": "cast all your worries on him because he cares for you",
+   "refs": [
+    "1 Peter 5:7"
+   ]
+  },
+  {
+   "said": "your adversary the devil walks around like a roaring lion looking for someone to devour",
+   "refs": [
+    "1 Peter 5:8"
+   ]
+  },
+  {
+   "said": "by his stripes you were healed",
+   "refs": [
+    "1 Peter 2:24",
+    "Isaiah 53:5"
+   ]
+  },
+  {
+   "said": "you are a chosen generation, a royal priesthood, a holy nation",
+   "refs": [
+    "1 Peter 2:9"
+   ]
+  },
+  {
+   "said": "if we confess our sins he is faithful and just to forgive us",
+   "refs": [
+    "1 John 1:9"
+   ]
+  },
+  {
+   "said": "greater is he that is in you than he that is in the world",
+   "refs": [
+    "1 John 4:4"
+   ]
+  },
+  {
+   "said": "there is no fear in love, perfect love casts out fear",
+   "refs": [
+    "1 John 4:18"
+   ]
+  },
+  {
+   "said": "above all things I wish that you may prosper and be in health even as your soul prospers",
+   "refs": [
+    "3 John 1:2"
+   ]
+  },
+  {
+   "said": "behold I stand at the door and knock, if anyone hears my voice and opens the door I will come in",
+   "refs": [
+    "Revelation 3:20"
+   ]
+  },
+  {
+   "said": "they overcame him by the blood of the Lamb and by the word of their testimony",
+   "refs": [
+    "Revelation 12:11"
+   ]
+  },
+  {
+   "said": "he will wipe away every tear from their eyes, there will be no more death or sorrow",
+   "refs": [
+    "Revelation 21:4"
+   ]
+  },
+  {
+   "said": "Elijah was a man just like us",
+   "refs": [
+    "James 5:17"
+   ]
+  }
+ ],
+ "gapped_note": "Verses broken up as preachers break them: repetition, restarts, crowd work in the middle.",
+ "gapped": [
+  {
+   "said": "the Lord, listen to me church, the Lord is my shepherd, I shall not, I shall not want",
+   "refs": [
+    "Psalm 23:1"
+   ]
+  },
+  {
+   "said": "trust in the Lord, I said trust him, with all of your heart, and don't you lean, don't lean on your own understanding",
+   "refs": [
+    "Proverbs 3:5"
+   ]
+  },
+  {
+   "said": "somebody shout, I can do, I can do all things, through Christ, who gives me strength",
+   "refs": [
+    "Philippians 4:13"
+   ]
+  },
+  {
+   "said": "they that wait, are you waiting on God this morning, they that wait upon the Lord shall renew their strength",
+   "refs": [
+    "Isaiah 40:31"
+   ]
+  },
+  {
+   "said": "no weapon, I said no weapon, formed against you, formed against you shall prosper, say amen",
+   "refs": [
+    "Isaiah 54:17"
+   ]
+  },
+  {
+   "said": "God has not given us, turn to your neighbour, a spirit of fear, but of power and of love",
+   "refs": [
+    "2 Timothy 1:7"
+   ]
+  },
+  {
+   "said": "my God shall supply, not some, all, all your need, according to his riches in glory",
+   "refs": [
+    "Philippians 4:19"
+   ]
+  },
+  {
+   "said": "for I know, the Bible says I know, the thoughts that I think toward you, thoughts of peace and not of evil",
+   "refs": [
+    "Jeremiah 29:11"
+   ]
+  },
+  {
+   "said": "seek ye first, first church, the kingdom of God and his righteousness, and every other thing will be added",
+   "refs": [
+    "Matthew 6:33"
+   ]
+  },
+  {
+   "said": "weeping may endure, it may endure for a night, but hallelujah, joy cometh in the morning",
+   "refs": [
+    "Psalm 30:5"
+   ]
+  },
+  {
+   "said": "greater, I said greater is he, that is in you, than he that is in the world",
+   "refs": [
+    "1 John 4:4"
+   ]
+  },
+  {
+   "said": "the blessing of the Lord, the blessing, it maketh rich, and he addeth no sorrow, no sorrow with it",
+   "refs": [
+    "Proverbs 10:22"
+   ]
+  },
+  {
+   "said": "be still, just be still my brother, and know that I am God",
+   "refs": [
+    "Psalm 46:10"
+   ]
+  },
+  {
+   "said": "for God so loved, he loved, he loved the world, that he gave his only begotten son",
+   "refs": [
+    "John 3:16"
+   ]
+  },
+  {
+   "said": "all things, not some things, all things work together for good, to them that love God",
+   "refs": [
+    "Romans 8:28"
+   ]
+  },
+  {
+   "said": "if God be for us, if he is for you this morning, who can be against us",
+   "refs": [
+    "Romans 8:31"
+   ]
+  },
+  {
+   "said": "the thief cometh not, but for to steal, to kill, and to destroy, but I am come that they might have life",
+   "refs": [
+    "John 10:10"
+   ]
+  },
+  {
+   "said": "ask, and it shall be given you, seek, and ye shall find, knock, knock on that door, it shall be opened",
+   "refs": [
+    "Matthew 7:7"
+   ]
+  },
+  {
+   "said": "they overcame him, how did they overcome, by the blood of the Lamb, and by the word of their testimony",
+   "refs": [
+    "Revelation 12:11"
+   ]
+  },
+  {
+   "said": "the path of the just, look at me, is as the shining light, that shineth more and more unto the perfect day",
+   "refs": [
+    "Proverbs 4:18"
+   ]
+  },
+  {
+   "said": "arise, I say arise, shine, for thy light is come, and the glory of the Lord is risen upon thee",
+   "refs": [
+    "Isaiah 60:1"
+   ]
+  },
+  {
+   "said": "in all thy ways, every single way, acknowledge him, and he shall direct thy paths",
+   "refs": [
+    "Proverbs 3:6"
+   ]
+  },
+  {
+   "said": "cast, cast it, all your care upon him, for he careth, he careth for you",
+   "refs": [
+    "1 Peter 5:7"
+   ]
+  },
+  {
+   "said": "death and life, both of them, are in the power, in the power of the tongue",
+   "refs": [
+    "Proverbs 18:21"
+   ]
+  },
+  {
+   "said": "be strong, be of good courage, do not be afraid, for the Lord thy God is with thee whithersoever thou goest",
+   "refs": [
+    "Joshua 1:9"
+   ]
+  }
+ ],
+ "negatives": [
+  "thank God victory is here this morning",
+  "God is good all the time, and all the time God is good",
+  "I decree and declare that this is your year of uncommon breakthrough",
+  "you are blessed, highly favoured, and nothing can stop you",
+  "the devil is a liar, your miracle is on the way",
+  "somebody shout hallelujah, it is your season of overflow",
+  "heaven is backing you, the enemy has no power over your destiny",
+  "there is power in the name of Jesus, there is power",
+  "God will make a way where there seems to be no way",
+  "your latter shall be greater, I see you rising, I see you shining",
+  "no more delay, no more stagnation, from today you are moving forward",
+  "the anointing that breaks the yoke is upon this house",
+  "I see somebody's finances being turned around this week",
+  "we are not ordinary people, we are a people of covenant",
+  "the fire of the Holy Ghost is falling in this place right now",
+  "it is well with your soul, it is well with your family",
+  "God never fails, he has never failed me, he will not fail you",
+  "lift your hands and give him praise, he deserves the glory",
+  "your testimony is coming, your expectation shall not be cut off",
+  "what God cannot do does not exist",
+  "this is not the end of your story, God is still writing",
+  "the same God that did it for Abraham will do it for you",
+  "I prophesy over your life, you will not die before your time",
+  "every closed door is opening in Jesus name",
+  "faith is not a feeling, faith is a decision",
+  "prayer is the key and faith unlocks the door",
+  "when praises go up blessings come down",
+  "God's delay is not God's denial",
+  "you cannot out-give God, he always gives back more",
+  "the battle is already won, we fight from victory not for victory",
+  "Jesus is the answer to every question of life",
+  "heaven and earth are waiting on your obedience",
+  "we serve a God of second chances",
+  "if God did it before, he will do it again",
+  "you are too blessed to be stressed",
+  "God is preparing a table of plenty for you",
+  "stop looking at the size of the mountain and look at the size of your God",
+  "your mess will become your message and your test will become your testimony",
+  "the enemy wanted to bury you but he did not know you were a seed",
+  "in this house we walk by revelation, not by sensation",
+  "tell your neighbour, neighbour your best days are ahead of you",
+  "I am who God says I am and I have what God says I have",
+  "I want to thank the choir, that was a beautiful song this morning",
+  "please turn off your phones and let us focus on the word",
+  "let us bow our heads as we pray for the offering",
+  "next Sunday is our thanksgiving service, bring your family",
+  "the ushers will come round with the baskets now",
+  "we have visitors with us today, please stand up so we can welcome you",
+  "Pastor will be ministering at the youth conference this weekend",
+  "the building project needs everybody's support this year",
+  "my wife and I went to Lagos last week for a meeting",
+  "in nineteen ninety two the Lord spoke to me about this ministry",
+  "the economy is hard but God is not affected by recession",
+  "some of you have been praying for a job for two years",
+  "we thank God for traveling mercies for everyone who came",
+  "I was sick in the hospital and God raised me up",
+  "go home and read the book of Ruth this week, all four chapters",
+  "look at verse twelve with me, are you there",
+  "the Hebrew word there means to be completely surrounded",
+  "Bible scholars say this letter was written from a prison"
+ ],
+ "narrative": [
+  "Moses was eighty years old when God called him",
+  "David was just a shepherd boy when Samuel came to anoint him",
+  "Paul and Silas were in prison singing at midnight",
+  "the disciples were afraid in the boat during the storm",
+  "Joseph went from the pit to Potiphar's house to the prison to the palace",
+  "Peter walked on water as long as he kept his eyes on Jesus",
+  "the widow had only a little oil and a little flour",
+  "Gideon was hiding in the winepress when the angel found him",
+  "Hannah kept praying year after year at Shiloh"
+ ]
+}

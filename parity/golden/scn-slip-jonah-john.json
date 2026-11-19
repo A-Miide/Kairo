@@ -1,0 +1,70 @@
+{
+ "source": "scn-slip-jonah-john",
+ "kind": "scenario",
+ "lang": "en",
+ "cues": [
+  {
+   "text": "open your Bible to John chapter one verse seventeen",
+   "audioMs": 0
+  },
+  {
+   "text": "now the Lord had prepared a great fish to swallow up Jonah, and Jonah was in the belly of the fish three days and three nights",
+   "audioMs": 4500
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "open your Bible to",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "open your Bible to John chapter one verse",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "open your Bible to John chapter one verse seventeen",
+   "isFinal": true
+  },
+  {
+   "cue": 1,
+   "text": "now the Lord had",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "now the Lord had prepared a great fish",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "now the Lord had prepared a great fish to swallow up Jonah,",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "now the Lord had prepared a great fish to swallow up Jonah, and Jonah was in",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "now the Lord had prepared a great fish to swallow up Jonah, and Jonah was in the belly of the",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "now the Lord had prepared a great fish to swallow up Jonah, and Jonah was in the belly of the fish three days and",
+   "isFinal": false
+  },
+  {
+   "cue": 1,
+   "text": "now the Lord had prepared a great fish to swallow up Jonah, and Jonah was in the belly of the fish three days and three nights",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

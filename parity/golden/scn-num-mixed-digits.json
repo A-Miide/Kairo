@@ -1,0 +1,21 @@
+{
+ "source": "scn-num-mixed-digits",
+ "kind": "scenario",
+ "lang": "en",
+ "cues": [
+  {
+   "text": "Romans eight verse twenty-8",
+   "audioMs": 0
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "Romans eight verse twenty-8",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

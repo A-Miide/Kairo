@@ -1,0 +1,31 @@
+{
+ "source": "scn-fmt-from-down-to",
+ "kind": "scenario",
+ "lang": "en",
+ "cues": [
+  {
+   "text": "Romans eight from twenty eight down to thirty one",
+   "audioMs": 0
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "Romans eight from twenty",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "Romans eight from twenty eight down to thirty",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "Romans eight from twenty eight down to thirty one",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

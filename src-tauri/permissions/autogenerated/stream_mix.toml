@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-stream-mix"
+description = "Enables the stream_mix command without any pre-configured scope."
+commands.allow = ["stream_mix"]
+
+[[permission]]
+identifier = "deny-stream-mix"
+description = "Denies the stream_mix command without any pre-configured scope."
+commands.deny = ["stream_mix"]

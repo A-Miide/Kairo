@@ -1,0 +1,24 @@
+{
+ "videoId": "scn-slip-jonah-john",
+ "title": "Scenario: slip-jonah-john",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "open your Bible to John chapter one verse seventeen"
+  },
+  {
+   "startMs": 4500,
+   "text": "now the Lord had prepared a great fish to swallow up Jonah, and Jonah was in the belly of the fish three days and three nights"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Jonah",
+   "chapter": 1,
+   "kind": "quote",
+   "startMs": 4500,
+   "verse": 17
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

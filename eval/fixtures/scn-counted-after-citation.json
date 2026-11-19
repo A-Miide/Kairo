@@ -1,0 +1,28 @@
+{
+ "videoId": "scn-counted-after-citation",
+ "title": "Scenario: counted-after-citation",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "Peter asked how often shall I forgive"
+  },
+  {
+   "startMs": 3700,
+   "text": "Matthew eighteen twenty two seventy times seven"
+  },
+  {
+   "startMs": 7400,
+   "text": "that is not a number you keep count of"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Matthew",
+   "chapter": 18,
+   "kind": "citation",
+   "startMs": 3700,
+   "verse": 22
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

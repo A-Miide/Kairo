@@ -1,0 +1,24 @@
+{
+ "videoId": "scn-slip-judges-jude",
+ "title": "Scenario: slip-judges-jude",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "look at Jude chapter six verse twelve"
+  },
+  {
+   "startMs": 3700,
+   "text": "and the angel of the Lord appeared unto him, and said unto him, The Lord is with thee, thou mighty man of valour"
+  }
+ ],
+ "groundTruth": [
+  {
+   "book": "Judges",
+   "chapter": 6,
+   "kind": "quote",
+   "startMs": 3700,
+   "verse": 12
+  }
+ ],
+ "note": "eval/scenarios/make_scenarios.py"
+}

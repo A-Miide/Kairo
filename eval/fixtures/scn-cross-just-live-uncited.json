@@ -1,0 +1,12 @@
+{
+ "videoId": "scn-cross-just-live-uncited",
+ "title": "Scenario: cross-just-live-uncited",
+ "transcript": [
+  {
+   "startMs": 0,
+   "text": "and I want you to know this morning that the just shall live by faith"
+  }
+ ],
+ "groundTruth": [],
+ "note": "eval/scenarios/make_scenarios.py"
+}

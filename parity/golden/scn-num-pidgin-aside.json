@@ -1,0 +1,26 @@
+{
+ "source": "scn-num-pidgin-aside",
+ "kind": "scenario",
+ "lang": "en",
+ "cues": [
+  {
+   "text": "Romans chapter eight, abeg, verse twenty eight",
+   "audioMs": 0
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "Romans chapter eight, abeg,",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "Romans chapter eight, abeg, verse twenty eight",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}

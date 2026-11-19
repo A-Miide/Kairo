@@ -1,0 +1,175 @@
+//! Speak a plain-text transcript into the engine and print every decision —
+//! for checking what a service would have shown from what was said.
+//!
+//! `cargo run --release -p kairo-eval --bin say -- transcript.txt [--meaning gemma-legacy.json] [--explain]`
+//!
+//! Words arrive at speaking pace; an utterance ends at a sentence end (or
+//! after 18 words), the newest words arriving as interim results first.
+
+use std::sync::Arc;
+
+use kairo_bible::VerseId;
+use kairo_detect::engine::{Config, Effect, Engine, Event, Output, Request, Segment};
+use kairo_detect::knowledge::Knowledge;
+use kairo_eval::{answer, knowledge, meaning};
+use kairo_semantic::MeaningService;
+
+const MS_PER_WORD: u64 = 380;
+const INTERIM_EVERY: usize = 3;
+const MAX_UTTERANCE_WORDS: usize = 18;
+
+fn main() {
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let opt = |name: &str| args.iter().position(|a| a == name).and_then(|i| args.get(i + 1)).cloned();
+    let explain = args.iter().any(|a| a == "--explain");
+    let path = args.first().expect("a transcript file");
+    let text = std::fs::read_to_string(path).expect("transcript");
+    let k = Arc::new(knowledge());
+    let m = opt("--meaning").map(|e| meaning(&e, Some("minilm.json"), &["KJV"]));
+    // `--offline`: as the app runs it with the offline speech engine (its interims' last word still growing).
+    // The thresholds the app uses with this embedder (replay.rs): with the defaults, tuned for another
+    // model, a bge-small run offered far fewer paraphrases than the app does.
+    let thresholds = opt("--meaning")
+        .and_then(|e| std::fs::read(kairo_eval::root().join("src-tauri/crates/kairo-semantic/bench").join(e)).ok())
+        .and_then(|b| serde_json::from_slice::<serde_json::Value>(&b).ok())
+        .and_then(|v| v["name"].as_str().map(kairo_detect::engine::MeaningThresholds::for_embedder))
+        .unwrap_or_default();
+    let mut engine = Engine::new(k.clone(), Config { explain, meaning: m.is_some(), meaning_thresholds: thresholds, offline: args.iter().any(|a| a == "--offline"), ..Config::default() });
+
+    // `--segments`: one line per segment as the speech engine sent it; a line starting "~ " is an
+    // interim, any other line a final (reproduces what a live log shows, which re-splitting can't).
+    // "@12.5 " before a line says when it was heard (seconds), else it comes 1.5 s after the last.
+    if args.iter().any(|a| a == "--segments") {
+        let mut t = 0u64;
+        let mut wakes: Vec<(u64, Event)> = Vec::new();
+        // Timers due by `until` fire first, the meaning models answering at once, as in a live session.
+        let fire = |engine: &mut Engine, wakes: &mut Vec<(u64, Event)>, until: u64| {
+            wakes.sort_by_key(|w| w.0);
+            while wakes.first().is_some_and(|w| w.0 <= until) {
+                let (at, ev) = wakes.remove(0);
+                let o = engine.handle(ev, at);
+                let mut pending = Vec::new();
+                report(&k, o, m.is_some(), wakes, &mut pending);
+                drain(engine, &k, m.as_ref(), at, wakes, pending);
+            }
+        };
+        for line in text.lines().map(str::trim).filter(|l| !l.is_empty()) {
+            let (at, line) = match line.strip_prefix('@').and_then(|r| r.split_once(' ')) {
+                Some((secs, rest)) if secs.parse::<f64>().is_ok() => (Some((secs.parse::<f64>().unwrap() * 1000.0) as u64), rest.trim()),
+                _ => (None, line),
+            };
+            t = at.unwrap_or(t + 1500);
+            fire(&mut engine, &mut wakes, t);
+            // "! singing on" / "! singing off": the room's singing check, as the live log records it.
+            let (ev, shown) = if let Some(state) = line.strip_prefix("! singing ") {
+                let on = state.trim() == "on";
+                (Event::Singing(on), format!("(singing {})", if on { "on" } else { "off" }))
+            } else {
+                let (said, fin) = line.strip_prefix("~ ").map_or((line, true), |s| (s, false));
+                (Event::Speech(Segment { text: said.to_string(), is_final: fin, speech_final: fin, continues_live: !fin }), format!("{}{said}", if fin { "" } else { "~ " }))
+            };
+            println!("[{:>5.1}s] {shown}", t as f64 / 1000.0);
+            let o = engine.handle(ev, t);
+            let mut pending = Vec::new();
+            report(&k, o, m.is_some(), &mut wakes, &mut pending);
+            drain(&mut engine, &k, m.as_ref(), t, &mut wakes, pending);
+        }
+        fire(&mut engine, &mut wakes, u64::MAX);
+        return;
+    }
+
+    let words: Vec<&str> = text.split_whitespace().collect();
+    let mut utterances: Vec<Vec<&str>> = vec![Vec::new()];
+    for w in &words {
+        let u = utterances.last_mut().unwrap();
+        u.push(w);
+        if w.ends_with(['.', '?', '!']) || u.len() >= MAX_UTTERANCE_WORDS {
+            utterances.push(Vec::new());
+        }
+    }
+
+    let mut t = 0u64;
+    let mut wakes: Vec<(u64, Event)> = Vec::new();
+    for u in utterances.iter().filter(|u| !u.is_empty()) {
+        for n in 1..=u.len() {
+            t += MS_PER_WORD;
+            wakes.sort_by_key(|w| w.0);
+            while wakes.first().is_some_and(|w| w.0 <= t) {
+                let (at, ev) = wakes.remove(0);
+                let o = engine.handle(ev, at);
+                let mut pending = Vec::new();
+                report(&k, o, m.is_some(), &mut wakes, &mut pending);
+                drain(&mut engine, &k, m.as_ref(), at, &mut wakes, pending);
+            }
+            let fin = n == u.len();
+            if !fin && n % INTERIM_EVERY != 0 {
+                continue;
+            }
+            let said = u[..n].join(" ");
+            if fin {
+                println!("[{:>5.1}s] {said}", t as f64 / 1000.0);
+            }
+            let o = engine.handle(Event::Speech(Segment { text: said, is_final: fin, speech_final: fin, continues_live: false }), t);
+            let mut pending = Vec::new();
+            report(&k, o, m.is_some(), &mut wakes, &mut pending);
+            drain(&mut engine, &k, m.as_ref(), t, &mut wakes, pending);
+        }
+        t += 600;
+    }
+    // The words end: what was waiting on a pause (as `--segments` does) still fires.
+    wakes.sort_by_key(|w| w.0);
+    while !wakes.is_empty() {
+        let (at, ev) = wakes.remove(0);
+        let o = engine.handle(ev, at);
+        let mut pending = Vec::new();
+        report(&k, o, m.is_some(), &mut wakes, &mut pending);
+        drain(&mut engine, &k, m.as_ref(), at, &mut wakes, pending);
+        wakes.sort_by_key(|w| w.0);
+    }
+}
+
+/// The meaning models answer at once.
+fn drain(engine: &mut Engine, k: &Knowledge, m: Option<&MeaningService>, t: u64, wakes: &mut Vec<(u64, Event)>, mut pending: Vec<Request>) {
+    while let (Some(m), Some(r)) = (m, pending.pop()) {
+        let a = answer(m, &r);
+        // `--hits`: what each meaning search found (top three by cross-encoder).
+        if std::env::args().any(|x| x == "--hits") {
+            if let (Request::Paraphrase { windows, .. }, kairo_detect::engine::Answer::Paraphrase { candidates, .. }) = (&r, &a) {
+                let mut c = candidates.clone();
+                c.sort_by(|x, y| y.rerank.unwrap_or(-1.0).total_cmp(&x.rerank.unwrap_or(-1.0)));
+                let top: Vec<String> = c.iter().take(3).map(|h| { let v = k.verse_ref(h.verse); format!("{} {}:{} cos {:.3} rr {:.3} lex {:.1}", v.book.name(), v.chapter, v.verse, h.cos, h.rerank.unwrap_or(-1.0), engine.shared_wording(windows.get(h.window).map_or("", String::as_str), h.verse)) }).collect();
+                println!("          ?? meaning «{}»: {}", windows.first().map_or("", String::as_str), top.join(" | "));
+            }
+        }
+        let o = engine.handle(Event::Answer(a), t);
+        report(k, o, true, wakes, &mut pending);
+    }
+}
+
+fn label(k: &Knowledge, v: VerseId) -> String {
+    let r = k.verse_ref(v);
+    format!("{} {}:{}", r.book.name(), r.chapter, r.verse)
+}
+
+fn report(k: &Knowledge, o: Output, meaning: bool, wakes: &mut Vec<(u64, Event)>, pending: &mut Vec<Request>) {
+    for n in &o.notes {
+        println!("          .. {n}");
+    }
+    for e in o.effects {
+        match e {
+            Effect::Show { verses, method, score, target, corrected_from } => println!(
+                "          -> {target:?} {} {:.2} {}{}",
+                method.wire(),
+                score,
+                verses.iter().map(|v| label(k, *v)).collect::<Vec<_>>().join(", "),
+                corrected_from.map_or(String::new(), |c| format!(" (corrects {})", label(k, c)))
+            ),
+            Effect::WakeAt { id, at_ms } => wakes.push((at_ms, Event::Timer(id))),
+            Effect::ReadIn { verse, translation } => println!("          -> shown in the {translation} ({} read in it)", label(k, verse)),
+            _ => {}
+        }
+    }
+    if meaning {
+        pending.extend(o.requests);
+    }
+}

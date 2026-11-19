@@ -1,0 +1,26 @@
+{
+ "source": "scn-fmt-through",
+ "kind": "scenario",
+ "lang": "en",
+ "cues": [
+  {
+   "text": "first Corinthians thirteen four through seven",
+   "audioMs": 0
+  }
+ ],
+ "inputs": [
+  {
+   "cue": 0,
+   "text": "first Corinthians thirteen four",
+   "isFinal": false
+  },
+  {
+   "cue": 0,
+   "text": "first Corinthians thirteen four through seven",
+   "isFinal": true
+  }
+ ],
+ "stable": [],
+ "unstable": [],
+ "runs": []
+}
