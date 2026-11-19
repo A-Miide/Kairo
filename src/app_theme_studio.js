@@ -843,6 +843,55 @@ DEFAULT_LOOKS.push(
   screenLowerThird(),
 );
 
+// Lyric presets (groupId 'grp-lyrics'): ready-made looks for song lyrics, over a transparent canvas so they key
+// over a camera or motion background. Each is one style of type; the words, size and place can all be changed
+// after picking one, like any theme.
+function lyricCanvas() {
+  return { id: 'bg', type: 'background', name: 'Canvas', visible: true, fill: 'transparent', fillBefore: 'solid', color: '#000000', opacity: 100, color2: '#000000', angle: 0 };
+}
+function lyricText(id, name, o) {
+  return { id, type: 'text', name, visible: true, binding: 'verse', customText: '',
+    pos: o.pos || { x: 140, y: 250, w: 1640, h: 580 },
+    font: { family: o.family, size: o.size, weight: o.weight, italic: !!o.italic, lineHeight: o.lineHeight, letterSpacing: o.spacing || 0, transform: o.transform || 'none' },
+    color: o.color || '#ffffff', opacity: o.opacity == null ? 100 : o.opacity, align: o.align || 'center',
+    shadow: o.shadow || { ...TXT_SHADOW_NONE }, outline: o.outline || { ...NO_OUTLINE } };
+}
+function lyricLook(id, name, layers) {
+  return { id, name, layout: 'fullscreen', animation: 'fade', groupId: 'grp-lyrics', groupName: 'Lyrics',
+    layers: [lyricCanvas(), ...layers,
+      { id: 'ref', type: 'text', name: 'Song Title', visible: false, binding: 'reference', customText: '', pos: { x: 140, y: 900, w: 1640, h: 0 },
+        font: { family: 'Inter', size: 26, weight: 600, italic: false, lineHeight: 1.2, letterSpacing: 6, transform: 'uppercase' },
+        color: '#ffffff', opacity: 55, align: 'center', shadow: { enabled: true, color: '#000000', opacity: 80, blur: 10, x: 0, y: 2 }, outline: { ...NO_OUTLINE } }] };
+}
+const LYRIC_SOFT = (blur, opacity, color) => ({ enabled: true, color: color || '#000000', opacity, blur, x: 0, y: 4 });
+DEFAULT_LOOKS.push(
+  // Big, tight, left-aligned and in sentence case: modern and confident.
+  lyricLook('lyrics-clean-left', 'Lyrics — Clean, left', [
+    lyricText('verse', 'Lyrics', { family: 'Inter', size: 124, weight: 800, lineHeight: 1.02, spacing: -3, align: 'left', pos: { x: 120, y: 250, w: 1500, h: 580 }, shadow: LYRIC_SOFT(26, 55) })]),
+  // Caps with a soft shadow: works over almost anything.
+  lyricLook('lyrics-caps-soft', 'Lyrics — Caps, soft shadow', [
+    lyricText('verse', 'Lyrics', { family: 'Inter', size: 108, weight: 800, lineHeight: 1.1, spacing: -1, transform: 'uppercase', shadow: LYRIC_SOFT(28, 70) })]),
+  // A heavy face with a blurry dark halo, so the words lift off bright, busy video.
+  lyricLook('lyrics-busy-video', 'Lyrics — For busy video', [
+    lyricText('verse', 'Lyrics', { family: 'Inter', size: 112, weight: 900, lineHeight: 1.08, transform: 'uppercase', shadow: LYRIC_SOFT(44, 95), outline: { enabled: true, color: '#000000', width: 3 } })]),
+  // Condensed poster caps, tight and tall, like a lyric video.
+  lyricLook('lyrics-poster', 'Lyrics — Poster', [
+    lyricText('verse', 'Lyrics', { family: 'Anton', size: 170, weight: 400, lineHeight: 0.98, transform: 'uppercase', pos: { x: 200, y: 200, w: 1520, h: 680 }, shadow: LYRIC_SOFT(20, 45) })]),
+  // Huge condensed caps that stay big and wrap onto more lines.
+  lyricLook('lyrics-condensed', 'Lyrics — Huge condensed', [
+    lyricText('verse', 'Lyrics', { family: 'Bebas Neue', size: 250, weight: 400, lineHeight: 0.9, spacing: 2, transform: 'uppercase', pos: { x: 160, y: 140, w: 1600, h: 800 }, shadow: LYRIC_SOFT(18, 35) })]),
+  // Screen-printed: warm ink a little off register behind cream caps.
+  lyricLook('lyrics-printed', 'Lyrics — Screen-printed', [
+    lyricText('ink', 'Ink', { family: 'Archivo Black', size: 112, weight: 400, lineHeight: 1.06, transform: 'uppercase', color: '#E8803C', opacity: 88, pos: { x: 150, y: 256, w: 1640, h: 580 } }),
+    lyricText('verse', 'Lyrics', { family: 'Archivo Black', size: 112, weight: 400, lineHeight: 1.06, transform: 'uppercase', color: '#FBF1E1', opacity: 100 })]),
+  // Soft, glowing caps with a wide track.
+  lyricLook('lyrics-glow', 'Lyrics — Soft glow', [
+    lyricText('verse', 'Lyrics', { family: 'Inter', size: 100, weight: 700, lineHeight: 1.18, spacing: 5, transform: 'uppercase', color: '#FFF1F4', shadow: LYRIC_SOFT(42, 95, '#FF9AB8') })]),
+  // Smaller lines low on the screen, for camera shots and the stream.
+  lyricLook('lyrics-lower-third', 'Lyrics — Lower third', [
+    lyricText('verse', 'Lyrics', { family: 'Inter', size: 58, weight: 700, lineHeight: 1.18, align: 'left', pos: { x: 120, y: 840, w: 1500, h: 150 }, shadow: LYRIC_SOFT(14, 85) })]),
+);
+
 // Monitor layouts (groupId 'grp-monitor'): what a Monitor output shows, for whoever is up
 // front. Text layers can show what is on screen now (the verse binding), its reference, the
 // next slide, the time of day, the countdown and the message from the booth. Picked per
