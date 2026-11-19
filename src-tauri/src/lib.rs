@@ -189,7 +189,7 @@ fn build_app_menu(app: &AppHandle) -> tauri::Result<tauri::menu::Menu<tauri::Wry
     // Window: the app's other windows — the Monitor (every output, live) and
     // where outputs are set up. Close Window is under File, as on every Mac app.
     // Live production: streaming, recording, macros. Each item runs the same action as
-    // Stream Deck and OSC ("menu-run-<action>", see app_startup.js runRemoteAction).
+    // a control surface and OSC ("menu-run-<action>", see app_startup.js runRemoteAction).
     let mut macros_menu = SubmenuBuilder::new(app, "Run Macro");
     for n in 1..=9 {
         macros_menu = macros_menu.text(format!("menu-run-macro-{n}"), format!("Macro {n}"));
@@ -389,7 +389,7 @@ fn generate_auth_token() -> String {
     base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(bytes)
 }
 
-// Output Looks: multiple independent named NDI/Syphon outputs (e.g. "Atem"
+// Output Looks: multiple independent named NDI/Syphon outputs (e.g. "Stage"
 // AND "NDI Output" as separate senders at once) rather than one fixed
 // sender each — one list of every output, like
 // Kairo's own pre-existing extraDisplays() pattern for External Display.
@@ -1033,7 +1033,7 @@ async fn record_start(app: AppHandle, mut pipelines: Vec<stream::PipelineConfig>
         files.push(file.clone());
         p.record_to = Some(file);
         // Streaming this output now: record the stream's own picture (one encode, one set of
-        // cameras), as OBS's "same as stream" does. Not streaming: a full pipeline of its own.
+        // cameras), as a mixer's "same as stream" does. Not streaming: a full pipeline of its own.
         p.tap_from = app.state::<stream::Engines>().stream_tap(&p.output);
     }
     launch(&app, stream::Kind::Record, pipelines).await?;

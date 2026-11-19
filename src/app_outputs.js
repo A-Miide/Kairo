@@ -604,7 +604,7 @@ function autoResumeNativeOutputs() {
         })
         .catch(err => {
           // It stays switched on (it is tried again next launch), but it isn't sending: say so
-          // on the output and in the problem strip, instead of looking on while vMix gets nothing.
+          // on the output and in the problem strip, instead of looking on while the receiving app gets nothing.
           console.warn(`[${kind}] auto-resume failed:`, err);
           const msg = String(err && err.message || err || 'unknown error').replace(/^Error:\s*/, '');
           updateNativeOutput(kind, o.id, { lastError: msg });
@@ -2087,7 +2087,7 @@ async function sendMonitorMessage(text, to) {
 // serves the projector and the stream overlay alike. None shows the theme's
 // background; Transparent makes the window see-through (real alpha); Chroma
 // key shows pure green and Luma key black where the background would be, for
-// OBS or vMix to key out from a plain window capture. NDI and Syphon need
+// a video mixer to key out from a plain window capture. NDI and Syphon need
 // none: they already send the content on real alpha.
 const KEYING_OPTIONS = [
   ['none', "None — the theme's background"],
@@ -2119,7 +2119,7 @@ async function applyOutputKeying() {
 function buildKeyingSelect(outputId) {
   const sel = document.createElement('select');
   sel.className = 'setting-input';
-  sel.title = 'Transparent needs a capture that keeps alpha; Chroma or Luma key works with a plain window capture in OBS or vMix.';
+  sel.title = 'Transparent needs a capture that keeps alpha; Chroma or Luma key works with a plain window capture in a video app.';
   const current = outputKeyingMap()[outputId];
   KEYING_OPTIONS.forEach(([value, label]) => sel.add(new Option(label, value, false, value === current)));
   sel.addEventListener('change', () => {

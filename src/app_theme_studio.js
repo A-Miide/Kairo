@@ -264,7 +264,7 @@ const DEFAULT_LOOKS = [
   {
     // Filled left half, fully transparent right half — the right side keys out
     // so a camera / lyric feed shows through on a chroma or alpha rig. For keying in a
-    // vision mixer (ATEM, vMix) in normal mode; Director mode's own splits are the
+    // vision mixer in normal mode; Director mode's own splits are the
     // "Screen —" themes. The name says so (2026-10-18).
     id: 'split-left', name: 'Split — Left, for keying', layout: 'split-left', animation: 'slide-up',
     groupId: 'grp-bible', groupName: 'Bible',

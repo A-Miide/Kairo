@@ -1,6 +1,6 @@
 # Director mode on the GPU: the native compositor
 
-Owner's brief (2026-10-31): Director mode should get the same wins as OBS. On by default (the
+Owner's brief (2026-10-31): Director mode should get the same wins as a dedicated video mixer. On by default (the
 owner's call: the app is young enough to make the change now), with the CPU path as the fallback
 where there is no usable GPU, and `KAIRO_GPU_COMPOSITOR=0` to turn it off on a machine that has
 trouble. GPU errors are logged, never fatal.
@@ -19,7 +19,7 @@ and imported slide layouts identical everywhere, but WebKit gives no GPU surface
 4. **Director's Output view renders the page a second time** instead of showing the output's
    frame.
 
-OBS's model: every source is a GPU texture, one render thread composites the scene at a fixed
+A mixer's model: every source is a GPU texture, one render thread composites the scene at a fixed
 rate, only visible sources cost anything, video is decoded and encoded by the video engine,
 queues are bounded, buffers are pooled, and drops are counted by cause.
 
@@ -51,7 +51,7 @@ Windows, Vulkan on Linux; no Tauri in it), owns the GPU and one **canvas** per o
   short linger, like `video_hub.js`.
 - **Bounded everything**: each source keeps one latest frame; outputs read back into two
   pooled buffers; nothing grows.
-- **Drops counted by cause** (source late, render late, output late), as OBS's stats do.
+- **Drops counted by cause** (source late, render late, output late), as a mixer's stats do.
 
 ## Phases
 

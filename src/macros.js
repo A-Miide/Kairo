@@ -1,9 +1,9 @@
 // Macros (Settings → Macros): one cue that does several things in order — load a Layout,
 // switch an overlay on, start the music, show a message, wait, Send. Run from the top bar's
-// Macros button, a Stream Deck or OSC (/kairo/macro-1 … macro-9, in the order listed here).
+// Macros button, a control surface or OSC (/kairo/macro-1 … macro-9, in the order listed here).
 //
 // Saved in settings.macros: [{ id, name, steps: [step] }], where a step is one of
-//   { kind: 'action', action: <a remote action id> }      anything Stream Deck/OSC can do
+//   { kind: 'action', action: <a remote action id> }      anything a control surface or OSC can do
 //   { kind: 'message', text, to: 'monitors'|'screens'|'all' }
 //   { kind: 'clear-message' }
 //   { kind: 'overlay', overlay: <overlay id>, on: true|false }
@@ -184,7 +184,7 @@
       body.appendChild(row);
     });
     if (editing && editing.isNew) body.appendChild(editor());
-    body.appendChild(el('p', 'setting-hint mc-foot', 'Stream Deck and OSC run the first nine as /kairo/macro-1 to /kairo/macro-9, in the order shown here.'));
+    body.appendChild(el('p', 'setting-hint mc-foot', 'A control surface or OSC runs the first nine as /kairo/macro-1 to /kairo/macro-9, in the order shown here.'));
     card.appendChild(body);
     h.appendChild(card);
   }

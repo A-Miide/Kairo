@@ -1294,7 +1294,7 @@
     D.ui.dur = dur;
     seg2.append(D.ui.cut, D.ui.fade, dur);
     // No Undo button (owner, 2026-10-18): Cmd/Ctrl+Z still undoes the last send.
-    // Send, with how it goes out always in view beside it (owner, 2026-10-19, as OBS and ATEM do): Cut | Fade and the fade length.
+    // Send, with how it goes out always in view beside it (owner, 2026-10-19, as video mixers do): Cut | Fade and the fade length.
     const left = vEl('div', 'vd-cl-left');
     const right = vEl('div', 'vd-cl-right');
     right.append(seg2);

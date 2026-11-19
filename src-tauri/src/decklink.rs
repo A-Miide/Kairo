@@ -3,7 +3,7 @@
 //! blending old into new for a Fade — the same frames NDI and Syphon send.
 //! With keying on, the card's external keyer puts out fill and key, so a
 //! vision mixer can lay lower thirds over camera; the fill is premultiplied
-//! (an ATEM's default "Pre Multiplied Key").
+//! (a video mixer's default "Pre Multiplied Key").
 //!
 //! The C side is native/decklink.cpp over vendor/decklink; built when the
 //! compiler step succeeded (cfg `kairo_decklink`), otherwise every call

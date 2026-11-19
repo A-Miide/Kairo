@@ -397,7 +397,7 @@
     return finish({ header: header.map(h => ({ text: h.statement, refs: h.refs })), week, items, other }, 'points');
   }
   // ── reading by roles ───────────────────────────────────────────────────────────────────────────
-  // Documents come laid out in many ways (numbered points, bold statements, a ProPresenter slides file
+  // Documents come laid out in many ways (numbered points, bold statements, a slides file exported from a presentation app
   // with each verse typed under its own reference), so the reader doesn't look for a layout. It gives
   // each paragraph a role from what the paragraph is, and its neighbours:
   //   statement   a point or heading: numbered, bold, in capitals, or a Word heading

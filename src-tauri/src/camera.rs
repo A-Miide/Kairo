@@ -1,5 +1,5 @@
 //! One capture per physical camera for the whole app (docs/DIRECTOR_COMPOSITOR.md, phase 2):
-//! every output that shows a camera draws from the same frames, as OBS does, instead of each
+//! every output that shows a camera draws from the same frames, as a video mixer does, instead of each
 //! window opening the device again.
 //!
 //! The bundled ffmpeg opens the device (avfoundation on macOS, dshow on Windows; the names and

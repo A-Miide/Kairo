@@ -1,4 +1,4 @@
-//! OSC remote control: Companion / Stream Deck, lighting desks or another
+//! OSC remote control: control surfaces, lighting desks or another
 //! show controller send `/kairo/<action>` over UDP and Kairo does what the
 //! matching button does (the same actions as the Controls menu and hotkeys).
 //!

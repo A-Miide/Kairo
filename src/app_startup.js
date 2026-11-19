@@ -146,7 +146,7 @@
   const clickDirect = (btnId) => document.getElementById(btnId)?.click();
   window.__TAURI__.event.listen('menu-toggle-listening', () => clickDirect('listen-btn'));
   // Director and Production menus: each item is a remote action ("menu-run-<id>"), the same
-  // thing a Stream Deck button or an OSC message does.
+  // thing a control-surface button or an OSC message does.
   // (After this file has loaded: the action list is declared further down.)
   setTimeout(() => REMOTE_ACTIONS.forEach(a => window.__TAURI__.event.listen(`menu-run-${a.id}`, () => runRemoteAction(a.id))), 0);
   window.__TAURI__.event.listen('menu-range-next',       () => clickDirect('range-next-btn'));
@@ -232,7 +232,7 @@ const REMOTE_ACTIONS = [
 ];
 function directorDo(fn, ...args) {
   const d = window.KairoVideoDirector;
-  // A Director action from a macro, Stream Deck or a menu while Director mode is off does
+  // A Director action from a macro, a control surface or a menu while Director mode is off does
   // nothing: say so, instead of a macro silently skipping its camera cut.
   if (!d || !isDirectorOn()) { window.kairoProblem?.('That needs Director mode, which is off.', 'director-off'); return false; }
   if (typeof d[fn] === 'function') return d[fn](...args);

@@ -1,7 +1,7 @@
 // KAIRO — a painted slide as a picture.
 //
 // The slide painter draws a look (gradients, stripes, grain, glow, text with its shadow) as ordinary page
-// elements. For an export that must look like the thumbnail in another program (ProPresenter, PowerPoint),
+// elements. For an export that must look like the thumbnail in another program (a slide or presentation app),
 // those elements are copied with every style written out, their pictures and fonts folded in as data, laid
 // into an SVG and drawn on a canvas: the picture is what the app shows, whatever the other program can draw.
 'use strict';
