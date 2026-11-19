@@ -102,18 +102,6 @@
       "thumb": "backgrounds/thumbs/charcoal.jpg"
     },
     {
-      "id": "golden-bokeh",
-      "name": "Golden Bokeh",
-      "tone": "dark",
-      "tags": [
-        "warm",
-        "bokeh"
-      ],
-      "color": "#2a1a0a",
-      "src": "backgrounds/golden-bokeh.jpg",
-      "thumb": "backgrounds/thumbs/golden-bokeh.jpg"
-    },
-    {
       "id": "starfield",
       "name": "Starfield",
       "tone": "dark",
