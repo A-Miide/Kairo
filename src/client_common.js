@@ -135,6 +135,12 @@ function escapeHtml(s) {
 }
 
 const SECTION_TYPE_RE = /^(verse|chorus|refrain|solo|pre-?chorus|bridge|tag|intro|outro|ending)/i;
+// A group's shade from its number, as ProPresenter shades Verse 1/2/3 and Chorus 1/2/3: 1, 2 or 3 (a 4th starts over).
+function sectionShade(label) {
+  const n = parseInt((/(\d+)\s*$/.exec(String(label || '').trim()) || [])[1] || '1', 10);
+  return ((Math.max(1, n) - 1) % 3) + 1;
+}
+
 function sectionTypeClass(label) {
   const m = SECTION_TYPE_RE.exec(String(label || '').trim());
   if (!m) return null;

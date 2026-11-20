@@ -2307,22 +2307,40 @@ input.svc-item-title {
    than solid saturated fills, which read as foreign color blocks against
    this UI's dark, desaturated palette. Distinct hue per category, but all
    drawn from the same restrained recipe so they read as one family. */
-.svc-slide-label.sec-labeled {
-  left: 0; right: 0; bottom: 0;
+/* A song section's label, as ProPresenter shows its groups: a bar flush under the picture, the slide's number and,
+   where a group starts, its name. ProPresenter's own group colours (measured from its slide grid, 19 Nov 2026): the
+   group's word picks the colour, its number the shade. Groups ProPresenter's grid didn't show (Pre-Chorus, Solo,
+   Refrain, Intro, Outro) are set beside the nearest ones. */
+.svc-slide > .svc-slide-label.sec-labeled {
+  position: static;
   max-width: none;
-  border-radius: 0 0 var(--radius-sm) var(--radius-sm);
-  text-align: center;
-  border-top: 1px solid rgba(255,255,255,0.12);
+  margin-top: -6px;                 /* flush against the picture: cancels the card's gap */
+  border-radius: 0 0 4px 4px;
+  text-align: left;
+  padding: 1px 6px;
+  font-size: 12px;
+  font-weight: 500;
+  background: var(--sec-color, #020202);
+  color: #fff;
 }
-.svc-slide-label.sec-verse      { background: rgba(77,182,172,0.55);  color: #d3f0ec; border-top-color: rgba(77,182,172,0.5); }
-.svc-slide-label.sec-chorus     { background: rgba(245,48,26,0.45);  color: #ffd9d3; border-top-color: rgba(245,48,26,0.5); }
-.svc-slide-label.sec-refrain    { background: rgba(244,63,94,0.4);    color: #fbd0da; border-top-color: rgba(244,63,94,0.5); }
-.svc-slide-label.sec-solo       { background: rgba(14,165,233,0.4);   color: #cbeafd; border-top-color: rgba(14,165,233,0.5); }
-.svc-slide-label.sec-prechorus  { background: rgba(16,185,129,0.4);   color: #c1f2e0; border-top-color: rgba(16,185,129,0.5); }
-.svc-slide-label.sec-bridge     { background: rgba(139,92,246,0.4);   color: #e2d9fd; border-top-color: rgba(139,92,246,0.5); }
-.svc-slide-label.sec-tag        { background: rgba(99,102,241,0.4);   color: #dadafc; border-top-color: rgba(99,102,241,0.5); }
+.svc-slide > .svc-slide-label.sec-labeled b { font-weight: 700; margin-right: 3px; }
+.svc-slide-label.sec-verse                  { --sec-color: #0d7dbc; }
+.svc-slide-label.sec-verse[data-shade="2"]  { --sec-color: #096396; }
+.svc-slide-label.sec-verse[data-shade="3"]  { --sec-color: #084d71; }
+.svc-slide-label.sec-chorus,
+.svc-slide-label.sec-refrain                { --sec-color: #bf2257; }
+.svc-slide-label.sec-chorus[data-shade="2"],
+.svc-slide-label.sec-refrain[data-shade="2"] { --sec-color: #971a44; }
+.svc-slide-label.sec-chorus[data-shade="3"],
+.svc-slide-label.sec-refrain[data-shade="3"] { --sec-color: #711332; }
+.svc-slide-label.sec-bridge                 { --sec-color: #7e33bd; }
+.svc-slide-label.sec-tag                    { --sec-color: #bd3b30; }
+.svc-slide-label.sec-tag[data-shade="2"],
+.svc-slide-label.sec-tag[data-shade="3"]    { --sec-color: #ba1f52; }
+.svc-slide-label.sec-prechorus              { --sec-color: #d0612a; }
+.svc-slide-label.sec-solo                   { --sec-color: #1c8f86; }
 .svc-slide-label.sec-intro,
-.svc-slide-label.sec-outro      { background: rgba(255,255,255,0.14); color: var(--text-2); border-top-color: rgba(255,255,255,0.2); }
+.svc-slide-label.sec-outro                  { --sec-color: #020202; }
 .svc-slide-preview {
   position: relative;
   aspect-ratio: var(--kairo-output-aspect, 16/9);
