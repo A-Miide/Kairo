@@ -130,6 +130,14 @@ impl Parser<'_> {
             }
             match self.scan_after(&w[..i], &w[i..next], active) {
                 Some(mut c) => {
+                    // A book swapped for one that sounds like it, to have the chapter said ("James six verse one"
+                    // read as Joshua 6:1, "John twenty two" as Job 22): a guess, so the book heard stays open and
+                    // the verse is offered unless the sermon is in that book (detector audit, 19 Nov 2026).
+                    if let Some((heard, _)) = self.books.match_at(&w, i) {
+                        if heard != c.book && c.alternatives.is_empty() && self.books.sound_alikes(heard).contains(&c.book) {
+                            c.alternatives = vec![heard];
+                        }
+                    }
                     // A numbered book named without its number ("Timothy") could be either.
                     if c.alternatives.is_empty() && consumed == 1 {
                         if let Some(variants) = self.books.numbered_variants(w[i]) {
@@ -207,7 +215,11 @@ impl Parser<'_> {
         }
 
         let mut ch = num(w, idx, Some(self.shape.chapters(book)));
-        if ch.is_none() && !chapter_kw {
+        // An aside before "chapter" only after a book's name, not a short form that is an everyday word: "is this
+        // mic on can you hear me at the back | chapter five verse two" went up as Micah 5:2 (detector audit,
+        // 19 Nov 2026).
+        let short_form = consumed == 1 && super::i18n::is_english_abbreviation(w[i]);
+        if ch.is_none() && !chapter_kw && !short_form {
             for k in idx..w.len().min(idx + HOLD_WINDOW) {
                 if w[k] == "chapter" {
                     if let Some(held) = num(w, k + 1, Some(self.shape.chapters(book))) {
@@ -223,6 +235,17 @@ impl Parser<'_> {
             }
         }
         let mut ch = ch?;
+        // "John twenty two verse three": a two-word number said whole before "verse" is the chapter, even one the
+        // book doesn't have; capped at the book's last chapter it was cut to "twenty", and John 20:2 then 20:3 went
+        // up (detector audit, 19 Nov 2026). The rules for a chapter the book lacks decide below.
+        if ch.consumed == 1 {
+            if let Some(full) = num(w, idx, None) {
+                let after = get(w, idx + full.consumed);
+                if full.consumed == 2 && full.value < 100 && full.value > i64::from(self.shape.chapters(book)) && (is_verse_word(after) || after == ":") {
+                    ch = full;
+                }
+            }
+        }
         // "Psalm two three verse one": two spoken digits right before "verse" are a two-digit chapter
         // (23) when the book has that chapter.
         if ch.consumed == 1 {
@@ -292,7 +315,9 @@ impl Parser<'_> {
         let mut verse_kw = is_verse_word(get(w, idx)) || get(w, idx) == ":";
         if verse_kw {
             idx += 1;
-        } else if get(w, idx) == "and" && num(w, idx + 1, None).is_some() && !(active.book == Some(book) && active.chapter.is_some()) {
+        } else if get(w, idx) == "and" && num(w, idx + 1, None).is_some() && !(active.book == Some(book) && active.chapter == Some(chapter)) {
+            // (Only the chapter being read itself makes "N and M" two verses: "John 3, 16" while John 1 is read is
+            // John 3:16, and was only offered; detector audit, 19 Nov 2026.)
             verse_kw = true;
             idx += 1;
         }

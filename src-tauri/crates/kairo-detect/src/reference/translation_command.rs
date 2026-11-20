@@ -105,7 +105,9 @@ static CITED_IN: LazyLock<Regex> = LazyLock::new(|| {
     let mut aliases: Vec<&str> = ALIASES.iter().flat_map(|(_, l)| l.iter().copied()).collect();
     aliases.sort_by_key(|a| std::cmp::Reverse(a.len()));
     let a = aliases.iter().map(|a| a.replace(' ', r"\s+")).collect::<Vec<_>>().join("|");
-    let n = r"(?:\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)";
+    // A verse number, never a year: "In 1604 King James commissioned a new Bible" switched to the KJV (detector
+    // audit, 19 Nov 2026).
+    let n = r"(?:\d{1,3}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred)";
     Regex::new(&format!(r"\b{n}[.,]?\s+(?:in\s+|from\s+)?(?:the\s+)?(?P<list>(?:{a})(?:\s*(?:,|or|and)\s*(?:the\s+)?(?:{a}))*)(?:[^a-z]|$)(?P<rest>.{{0,30}})")).unwrap()
 });
 /// A translation's letters as a word of their own ("niv", "nkjv"; spelled ones are joined by `normalize`).

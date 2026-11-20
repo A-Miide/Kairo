@@ -491,9 +491,42 @@ impl Engine {
         // word or two in them, and those words aren't to be handled (and settled) a second time.
         // A new stretch differs nearly everywhere.
         let locked = self.t.self_locked.len();
+        // Where the locked words end now, found by their last few words: a word merged or split before the cut ("in
+        // to" → "into", "twenty eight" → "28") moves everything after it, and counting by position skipped (or
+        // repeated) the first word after the cut, or took the whole stretch for a new one (detector audit, 19 Nov
+        // 2026). The revised wording of the locked part is kept, so positions line up again.
+        // First by letters, spaces aside ("can not" and "cannot" read the same); else by the last three words.
+        let letters: String = self.t.self_locked.iter().map(|w| plain(w)).collect();
+        let by_letters = (locked > 0)
+            .then(|| {
+                let mut so_far = String::new();
+                for (p, w) in words.iter().enumerate() {
+                    so_far.push_str(&plain(w));
+                    if so_far.len() >= letters.len() {
+                        return (so_far == letters).then_some(p + 1);
+                    }
+                    if !letters.starts_with(&so_far) {
+                        return None;
+                    }
+                }
+                None
+            })
+            .flatten();
+        let k = locked.min(3);
+        let ends_at = by_letters.or_else(|| {
+            (k > 0).then(|| {
+                let tail: Vec<String> = self.t.self_locked[locked - k..].iter().map(|w| plain(w)).collect();
+                (locked.saturating_sub(3).max(k)..=(locked + 3).min(words.len()))
+                    .filter(|&p| words[p - k..p].iter().zip(&tail).all(|(w, t)| plain(w) == *t))
+                    .min_by_key(|p| p.abs_diff(locked))
+            })
+            .flatten()
+        });
         let revised = self.t.self_locked.iter().zip(&words).filter(|(a, b)| plain(a) != plain(b)).count();
         let carries = locked <= words.len() && locked > 0 && revised <= (locked / 10).max(2);
-        if !carries {
+        if let Some(p) = ends_at.filter(|&p| p != locked || !carries) {
+            self.t.self_locked = words[..p].iter().map(|w| w.to_string()).collect();
+        } else if !carries {
             self.t.self_locked.clear();
         }
         let held = self.t.self_locked.len();
