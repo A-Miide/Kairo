@@ -1566,7 +1566,7 @@
     // ever been pushed yet), matching outputLayerMap's own zero-config-safe
     // default — a fresh install/window behaves exactly like before this
     // feature existed.
-    const DEFAULT_LAYERS = { bible: true, slide: true, media: true, timer: true, overlay: true, message: true, video: false };
+    const DEFAULT_LAYERS = { bible: true, slide: true, media: true, timer: true, overlay: true, message: MONITOR, video: false };   // Alerts: Monitors only unless switched on
     let outputLayers = DEFAULT_LAYERS;
     // Which of Bible/Slide the CURRENTLY shown slide-layer content actually
     // is — set by handleMessage whenever it renders through showVerse/
@@ -3004,7 +3004,7 @@
         const el = document.getElementById('message-banner');
         if (!el) return;
         const t = String(lastMessage.text || '').trim();
-        const show = !!t && (lastMessage.to === 'screens' || lastMessage.to === 'all') && outputLayers.message !== false && !MONITOR;
+        const show = !!t && (lastMessage.to === 'screens' || lastMessage.to === 'all') && outputLayers.message === true && !MONITOR;
         if (show) el.textContent = t;
         el.hidden = !show;
     }

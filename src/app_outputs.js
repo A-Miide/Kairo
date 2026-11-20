@@ -41,6 +41,20 @@ function extraDisplays() {
 // but there should be the basic output"). More come from + Add Output; the
 // last one has no Remove, and loadSettings calls this once the saved
 // settings are in, to put one back if none is left.
+// Once: Alerts used to be on for every output by default, and that was saved with each output's switches. Alerts
+// are for the Monitors now (owner, 19 Nov 2026), so the audience screens' Alerts go off; a screen can be switched
+// back on in Output Control.
+function alertsToMonitorsOnly() {
+  if (settings.alertsMonitorsOnly) return;
+  const monitors = new Set(monitorOutputs().map(m => m.id));
+  const src = settings.outputLayers && typeof settings.outputLayers === 'object' ? settings.outputLayers : {};
+  const next = {};
+  for (const [id, entry] of Object.entries(src)) next[id] = monitors.has(id) || !entry || typeof entry !== 'object' ? entry : { ...entry, message: false };
+  settings.outputLayers = next;
+  settings.alertsMonitorsOnly = true;
+  saveSettingsPatch({ outputLayers: next, alertsMonitorsOnly: true });
+}
+
 function seedMonitorOutput() {
   const list = extraDisplays();
   if (list.some(d => d.kind === 'monitor')) return;
@@ -2341,6 +2355,7 @@ function outputSupportsVideo(outputId) {
 function outputLayerMap() {
   const src = settings.outputLayers && typeof settings.outputLayers === 'object' ? settings.outputLayers : {};
   const map = {};
+  const monitors = new Set(monitorOutputs().map(m => m.id));
   for (const key of [...allOutputKeys(), 'ndi', 'syphon']) {
     const entry = src[key] && typeof src[key] === 'object' ? src[key] : {};
     map[key] = {
@@ -2349,7 +2364,8 @@ function outputLayerMap() {
       media: entry.media !== false,
       timer: entry.timer !== false,
       overlay: entry.overlay !== false,
-      message: entry.message !== false,
+      // Alerts are for the Monitors (owner, 19 Nov 2026): an audience screen shows them only when switched on.
+      message: monitors.has(key) ? entry.message !== false : entry.message === true,
       video: entry.video === true,
     };
   }
@@ -2543,6 +2559,7 @@ function ocChipState(row, o, map, textOnly) {
   if (row.key === 'media' && o.monitor) return { on: false, disabled: true, why: 'A Monitor shows words only' };
   if (row.key === 'video' && !isDirectorOn()) return { on: map[o.id]?.video === true, disabled: true, why: DIRECTOR_ONLY_NOTE };
   if (row.key === 'video') return outputSupportsVideo(o.id) ? { on: map[o.id]?.video === true, disabled: false, why: '' } : { on: false, disabled: true, why: VIDEO_NATIVE_NOTE };
+  if (row.key === 'message' && !o.monitor) return { on: map[o.id]?.message === true, disabled: false, why: 'Alerts go to the Monitors; switch on to show them on this screen too' };
   return { on: map[o.id]?.[row.key] !== false, disabled: false, why: '' };
 }
 

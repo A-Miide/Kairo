@@ -3351,6 +3351,7 @@ async function loadSettings() {
   try {
     settings = await fetchServerSettings();
     if (typeof seedMonitorOutput === 'function') seedMonitorOutput();
+    if (typeof alertsToMonitorsOnly === 'function') alertsToMonitorsOnly();
     const aboutEl = document.getElementById('about-version');
     if (aboutEl) aboutEl.textContent = settings.appVersion ? `Version ${settings.appVersion}` : '';
     // Populate UI
