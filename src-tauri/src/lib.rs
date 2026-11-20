@@ -756,6 +756,18 @@ fn note_capture(app: &AppHandle, id: &str, stage: &'static str, r: Result<(), St
     }
 }
 
+/// At most one move-back per capture window every 2 s, so a screen that won't take the window off it can't
+/// set off a loop of moves.
+fn capture_window_may_move(label: &str) -> bool {
+    static LAST: Mutex<Option<std::collections::HashMap<String, std::time::Instant>>> = Mutex::new(None);
+    let Ok(mut g) = LAST.lock() else { return false };
+    let map = g.get_or_insert_with(Default::default);
+    let now = std::time::Instant::now();
+    if map.get(label).is_some_and(|t| now.duration_since(*t) < std::time::Duration::from_secs(2)) { return false; }
+    map.insert(label.to_string(), now);
+    true
+}
+
 #[tauri::command]
 fn output_capture_supported() -> bool {
     capture::supported()
@@ -1260,6 +1272,30 @@ pub fn run() {
         .manage(Arc::new(camera::Hub::default()))
         // An output's capture window closing ends its video background.
         .on_window_event(|window, event| {
+            // A capture window is kept off every screen. When a display is unplugged macOS moves it onto one
+            // that's left (seen 19 Nov 2026: a 960x540 "KAIRO Output Capture" sat on the Mac's own screen), so
+            // it is put back, and it never takes a click meanwhile.
+            if let tauri::WindowEvent::Moved(pos) = event {
+                if window.label().starts_with("kairo-cap-") {
+                    let on_a_screen = window.available_monitors().unwrap_or_default().iter().any(|m| {
+                        let (p, s) = (m.position(), m.size());
+                        pos.x > p.x - 4000 && pos.x < p.x + s.width as i32 && pos.y > p.y - 4000 && pos.y < p.y + s.height as i32
+                    });
+                    if on_a_screen && capture_window_may_move(window.label()) {
+                        let _ = window.set_ignore_cursor_events(true);
+                        let _ = window.set_position(tauri::PhysicalPosition::new(-32000, -32000));
+                    }
+                }
+            }
+            // The main window gone: every output window goes with it. Their × and Esc work through the main
+            // window, so left behind they would be stuck on a screen with no way to close them.
+            if let tauri::WindowEvent::Destroyed = event {
+                if window.label() == "main" {
+                    for (label, w) in window.app_handle().webview_windows() {
+                        if label != "main" { let _ = w.destroy(); }
+                    }
+                }
+            }
             if let tauri::WindowEvent::Destroyed = event {
                 if let Some(id) = window.label().strip_prefix("kairo-cap-") {
                     let app = window.app_handle();

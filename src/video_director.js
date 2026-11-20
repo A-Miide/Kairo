@@ -788,6 +788,8 @@
       setOutputLayerIf(o.id, 'video', look.layers.video, changed);
     }
     recordChanges({ layers: changed });
+    // The outputs whose Scripture this Layout turned off: only those come back on for a verse (showVerseOverLayout).
+    D.layoutBibleOff = new Set(changed.filter(c => c[1] === 'bible' && c[3] === false).map(c => c[0]));
     if (Array.isArray(look.overlays) && window.KairoOverlays && window.KairoOverlays.load) {
       window.KairoOverlays.load().then(items => {
         const prev = {}; items.forEach(it => { prev[it.id] = !!it.live; });
@@ -883,14 +885,20 @@
   // A verse went to the screen (detected, or sent) while the live Layout keeps scripture off ("Video
   // only"): it is an instant hit, not hidden until the next Send (owner, 2026-10-18). The Bible layer
   // comes back on where that Layout turned it off. A Bible layer switched off under Outputs, not by a
-  // Layout, stays off: what goes to a screen is set there.
+  // Layout, stays off: what goes to a screen is set there (it used to come back on for every output: review
+  // of the outputs, 19 Nov 2026).
   function showVerseOverLayout(msg) {
     const v = msg.verses[0];
     if (!v || v.book === 'Service' || !(Number(v.chapter) > 0)) return;   // a playlist slide, not scripture
     const look = D.liveLookId && D.looks ? D.looks.byId(D.liveLookId) : null;
     if (!look || !look.layers || look.layers.bible !== false) return;
     const changed = [];
-    for (const o of layoutTargets()) if (!o.monitor) setOutputLayerIf(o.id, 'bible', true, changed);
+    const offByLayout = D.layoutBibleOff || new Set();
+    for (const o of layoutTargets()) {
+      if (o.monitor || !offByLayout.has(o.id)) continue;   // switched off by hand (or before this Layout): stays off
+      offByLayout.delete(o.id);   // once back on, a later switch-off is the operator's
+      setOutputLayerIf(o.id, 'bible', true, changed);
+    }
     if (!changed.length) return;
     recordChanges({ layers: changed });
     try { window.kairoLog && window.kairoLog('director-verse-over-layout', { layout: look.name, ref: v.reference || null, outputs: changed.map(c => c[0]) }); } catch {}

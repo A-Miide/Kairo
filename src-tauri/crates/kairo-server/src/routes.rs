@@ -631,6 +631,11 @@ pub(crate) async fn send_service_slide(app: &Shared, mut verse: Value, look: Val
         let p = app.presentation.read().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
         verse["translation"] = json!(p.translation.to_uppercase());
     }
+    // The slide follower leaves a playlist Scripture item to Bible detection, now that it goes out as its verse too.
+    if follow && is_bible && verse["method"] == "service" {
+        eprintln!("[Service] Follower skipped a scripture item — Bible detection handles it");
+        return "scripture-slide";
+    }
     if follow && !is_bible {
         if let Some((bible, _)) = app.ready() {
             if is_scripture_slide(bible, &verse) {
@@ -867,37 +872,43 @@ async fn look_apply(State(app): State<Shared>, Json(b): Json<Value>) -> Response
     let layers_out = if layers.is_object() { layers.clone() } else { Value::Null };
     let count = |v: &Value| v.as_object().map_or(0, |o| o.len());
     if modes.is_object() && look.is_null() && themes.is_null() {
+        app.hub.remember_look_part("modes", modes);
         app.hub.broadcast(json!({ "type": "look-update", "modes": modes }));
         return Json(json!({ "ok": true, "outputs": count(modes) })).into_response();
     }
     if themes.is_object() {
         let msg = json!({ "type": "look-update", "themes": themes, "look": look, "layers": layers_out });
-        crate::util::lock(&app.hub.live).looks = msg.clone();
+        app.hub.remember_looks(msg.clone());
         app.hub.broadcast(msg);
         return Json(json!({ "ok": true, "outputs": count(themes) })).into_response();
     }
     if layers.is_object() && look.is_null() {
+        app.hub.remember_look_part("layers", layers);
         app.hub.broadcast(json!({ "type": "look-update", "layers": layers }));
         return Json(json!({ "ok": true, "outputs": count(layers) })).into_response();
     }
     // A Monitor output's layout (a Monitor layout from Theme Studio, or none for the built-in).
     let monitors = &b["monitors"];
     if monitors.is_object() && look.is_null() && themes.is_null() {
+        app.hub.remember_look_part("monitors", monitors);
         app.hub.broadcast(json!({ "type": "look-update", "monitors": monitors }));
         return Json(json!({ "ok": true, "outputs": count(monitors) })).into_response();
     }
     // A layout's frame (Director mode): the screen around the slide or verse, per output.
     if frames.is_object() && look.is_null() && themes.is_null() {
+        app.hub.remember_look_part("frames", frames);
         app.hub.broadcast(json!({ "type": "look-update", "frames": frames }));
         return Json(json!({ "ok": true, "outputs": count(frames) })).into_response();
     }
     // How a design of another shape meets each output: contain or cover (display.html canvasRect).
     let fit = &b["fit"];
     if fit.is_object() && look.is_null() && themes.is_null() {
+        app.hub.remember_look_part("fit", fit);
         app.hub.broadcast(json!({ "type": "look-update", "fit": fit }));
         return Json(json!({ "ok": true, "outputs": count(fit) })).into_response();
     }
     if keying.is_object() && look.is_null() {
+        app.hub.remember_look_part("keying", keying);
         app.hub.broadcast(json!({ "type": "look-update", "keying": keying }));
         return Json(json!({ "ok": true, "outputs": count(keying) })).into_response();
     }

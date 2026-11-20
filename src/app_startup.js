@@ -437,9 +437,12 @@ registerActionHandler('clock-message', (msg) => window.KairoService?.onClockActi
   // pushToOne catch a freshly-started output up immediately, and lets
   // pushMedia/pushTimer skip a disabled instance without losing track of
   // what to send once it's re-enabled.
-  window.KairoNativeOutputs = { pushMedia() {}, pushTimer() {}, pushToOne() {} };
+  window.KairoNativeOutputs = { pushMedia() {}, pushTimer() {}, pushToOne() {}, refresh() {} };
   if (!tauriInvoke) return;
-  let lastVerse = '', lastRef = '', lastMediaDataUri = null, lastTimerText = '';
+  let lastVerse = '', lastRef = '', lastIsBible = false, lastMediaDataUri = null, lastTimerText = '';
+  // The words an output shows: nothing when its switch for that kind (Scripture, or Slides and songs) is off, so
+  // switching one off clears it instead of leaving the last words up.
+  const wordsFor = (want) => (want?.[lastIsBible ? 'bible' : 'slide'] === false ? { verse: '', reference: '' } : { verse: lastVerse, reference: lastRef });
   function enabledNativeOutputs(kind) {
     return (kind === 'ndi' ? ndiOutputs() : syphonOutputs()).filter(o => o.enabled);
   }
@@ -471,13 +474,15 @@ registerActionHandler('clock-message', (msg) => window.KairoService?.onClockActi
   };
   window.KairoNativeOutputs.pushToOne = function pushToOne(kind, id) {
     if (kind === 'decklink') return; // DeckLink only ever plays captured frames
-    const want = outputLayerMap()[id] || { slide: true, media: true, timer: true };
-    if (want.slide !== false) tauriInvoke(`${kind}_update`, { id, verse: lastVerse, reference: lastRef }).catch(() => {});
-    if (want.media !== false) {
-      const m = typeof lastMediaDataUri === 'string' && /^data:image\/\w+;base64,(.*)$/.exec(lastMediaDataUri);
-      tauriInvoke(`${kind}_update_media`, { id, imageBase64: m ? m[1] : null }).catch(() => {});
-    }
-    if (want.timer !== false) tauriInvoke(`${kind}_update_timer`, { id, text: lastTimerText }).catch(() => {});
+    const want = outputLayerMap()[id] || {};
+    tauriInvoke(`${kind}_update`, { id, ...wordsFor(want) }).catch(() => {});
+    const m = want.media !== false && typeof lastMediaDataUri === 'string' && /^data:image\/\w+;base64,(.*)$/.exec(lastMediaDataUri);
+    tauriInvoke(`${kind}_update_media`, { id, imageBase64: m ? m[1] : null }).catch(() => {});
+    tauriInvoke(`${kind}_update_timer`, { id, text: want.timer !== false ? lastTimerText : '' }).catch(() => {});
+  };
+  // A switch changed in Output Control: every running NDI/Syphon output catches up (app_outputs.js applyOutputLayers).
+  window.KairoNativeOutputs.refresh = function refresh() {
+    for (const kind of ['ndi', 'syphon']) for (const o of enabledNativeOutputs(kind)) window.KairoNativeOutputs.pushToOne(kind, o.id);
   };
   if (!previewVerseText) return;
   let scheduled = false;
@@ -487,19 +492,19 @@ registerActionHandler('clock-message', (msg) => window.KairoService?.onClockActi
     const verse = (previewVerseText.textContent || '').trim();
     const ref   = (previewVerseRef?.textContent || '').trim();
     const blank = !verse || verse === PREVIEW_EMPTY;
-    const sig   = blank ? '' : (ref + '' + verse);
+    const isBible = !blank && previewVerseText.dataset.bible === '1';
+    const sig   = blank ? '' : (ref + '' + verse + (isBible ? 'b' : ''));
     if (sig === lastSent) return;
     lastSent = sig;
     lastVerse = blank ? '' : verse;
     lastRef   = blank ? '' : ref;
+    lastIsBible = isBible;
     const layers = outputLayerMap();
     // Each output's _update is a no-op if that specific instance isn't
-    // running, so we only need to skip ones Output Looks has disabled
-    // Slide for — not check "is it actually broadcasting" here too.
+    // running; one whose switch for these words is off is sent nothing.
     for (const kind of ['ndi', 'syphon']) {
       for (const o of enabledNativeOutputs(kind)) {
-        if (layers[o.id]?.slide === false) continue;
-        tauriInvoke(`${kind}_update`, { id: o.id, verse: lastVerse, reference: lastRef }).catch(() => {});
+        tauriInvoke(`${kind}_update`, { id: o.id, ...wordsFor(layers[o.id]) }).catch(() => {});
       }
     }
   }

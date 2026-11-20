@@ -770,6 +770,7 @@ function handleDetection(msg) {
   // without counting a new send.
   if (msg.retranslated) {
     const v = verses[0];
+    previewIsBible = isBibleVerse(v);
     renderPreviewScreen(cleanVerseText(v.text), v.reference, look, v.translatedText || '', v.image || null, v.fit || 'contain', v.slideStyle || {}, v.timerText || '', v.label || '');
     refreshVerseCardText(verses);
     return;
@@ -779,6 +780,7 @@ function handleDetection(msg) {
   // move its card back to the top, without counting it as a new send.
   if (msg.restoredByBack) {
     const v = verses[0];
+    previewIsBible = isBibleVerse(v);
     renderPreviewScreen(cleanVerseText(v.text), v.reference, look, v.translatedText || '', v.image || null, v.fit || 'contain', v.slideStyle || {}, v.timerText || '', v.label || '');
     const card = currentDisplayCard?.querySelector(`[data-ref="${CSS.escape(v.reference || '')}"]`);
     if (card && card !== currentDisplayCard.firstChild) currentDisplayCard.insertBefore(card, currentDisplayCard.firstChild);
@@ -1169,6 +1171,10 @@ function markLiveInQueue(reference) {
 
 // The Bible version of the verse in the preview (display.html currentVersion), set as it's shown.
 let previewVersion = '';
+// Whether the preview shows Scripture (not a slide or song): NDI/Syphon's text fallback follows each output's
+// Scripture switch by it (app_startup.js wireNdiBridge).
+let previewIsBible = false;
+const isBibleVerse = (v) => !!(v && v.book && v.chapter && v.verse);
 
 function renderPreviewScreen(text, reference, look, translatedText = '', image = null, fit = 'contain', styleByLayerId = {}, timerText = '', sectionLabel = '') {
   queueMicrotask(() => markLiveInQueue(reference));   // after showInViewer has placed the card
@@ -1207,7 +1213,7 @@ function renderPreviewScreen(text, reference, look, translatedText = '', image =
   // MutationObserver to know what to render on those outputs, which have no
   // concept of theme layers of their own. An image slide has no text to
   // bind (mirrors display.html's renderImageStage), so blank it here too.
-  if (previewVerseText) previewVerseText.textContent = image ? '' : text;
+  if (previewVerseText) { previewVerseText.dataset.bible = previewIsBible ? '1' : ''; previewVerseText.textContent = image ? '' : text; }
   if (previewVerseRef)  previewVerseRef.textContent  = reference || '';
   if (previewSectionBadge) {
     const cls = sectionTypeClass(sectionLabel);
@@ -1413,6 +1419,7 @@ function clearMediaPreview() {
 // Update only the viewer display (preview panel) without touching queue order.
 // Use this for dblclick on already-queued cards so they don't reorder.
 function updateViewerDisplay(v) {
+  previewIsBible = isBibleVerse(v);
   renderPreviewScreen(cleanVerseText(v.text), v.reference, null, v.translatedText || '', null, 'contain', {}, '', v.label || '');
 }
 
@@ -1426,7 +1433,8 @@ function showInViewer(verses, method, topScore, correctedFrom = null, look = nul
 function showInViewerNow(verses, method, topScore, correctedFrom = null, look = null) {
   const v = verses[0];
   // Scripture's version after its reference, as on the output ("Ezekiel 12:21 (NLT)").
-  previewVersion = (v && v.book && v.chapter && v.verse) ? String(v.translation || '') : '';
+  previewIsBible = isBibleVerse(v);
+  previewVersion = previewIsBible ? String(v.translation || '') : '';
 
   // Update live preview screen — v.timerText is set for a timer-segment send
   // (service.js sendTimerSegmentToSlideLayer); the per-second countdown then
@@ -1675,11 +1683,18 @@ window.KairoSlideOffer = function (o) {
 // already have their own single-click handlers.
 // single: in Director mode a single click puts the verse on Preview (owner, 2026-10-19: a single click sends to
 // Preview everywhere, a double-click to Preview and the Output). The normal screen keeps double-click only.
-function wireDoubleClickSend(el, handler, single) {
+// singleSends (Live Queue cards): outside Director mode one click sends (owner, 19 Nov 2026: "single click here
+// should send to screen"); the second click of a double-click sends nothing more.
+function wireDoubleClickSend(el, handler, single, { singleSends = false } = {}) {
   let lastClickAt = 0;
   el.addEventListener('click', (e) => {
     if (e.target.closest('button')) return;
     const now = Date.now();
+    if (singleSends && !window.KairoVideoDirector?.isShown?.()) {
+      if (now - lastClickAt >= 500) handler(e);
+      lastClickAt = now;
+      return;
+    }
     if (now - lastClickAt < 500) {
       lastClickAt = 0;
       handler(e);
@@ -1984,7 +1999,7 @@ function buildQueueRow(v, method, correctedFrom = null) {
     sendVerseToServer(cur);
     syncRangeJumpIfNeeded(cur);
   });
-  // Double-click anywhere on card → send to screen (no reorder)
+  // A click anywhere on the card (a double-click in Director mode) → send to screen (no reorder)
   wireDoubleClickSend(card, () => {
     const cur = card._verse;
     updateViewerDisplay(cur);   // update preview only — card stays in place
@@ -1993,7 +2008,7 @@ function buildQueueRow(v, method, correctedFrom = null) {
     // Flash feedback
     card.classList.add('sent-pulse');
     setTimeout(() => card.classList.remove('sent-pulse'), 600);
-  }, () => { showInViewer([card._verse], method || 'direct', 1.0); sendVerseToServer(card._verse); });
+  }, () => { showInViewer([card._verse], method || 'direct', 1.0); sendVerseToServer(card._verse); }, { singleSends: true });
   return card;
 }
 
@@ -2193,6 +2208,7 @@ async function handleRangeVerses({ verses, activeRef }) {
 
   // Update live preview to the active verse.
   const active = verses.find(v => v.reference === activeRef) || verses[0];
+  if (active) previewIsBible = true;
   if (active) renderPreviewScreen(cleanVerseText(active.text), active.reference, null, active.translatedText || '');
   // Waiting on the chapter's length, the verse may already be up: its card is LIVE now.
   if (screenVerseRef) markLiveInQueue(screenVerseRef);
@@ -2208,6 +2224,7 @@ function handleRangeActive(activeRef) {
     const verse = chapterCard._rangeVerses.find(x => x.reference === activeRef);
     if (!verse) return;
     showVerseOnCard(chapterCard, verse);
+    previewIsBible = true;
     renderPreviewScreen(cleanVerseText(verse.text), verse.reference, null, verse.translatedText || '');
     return;
   }
@@ -2221,6 +2238,7 @@ function handleRangeActive(activeRef) {
   if (activeCard) {
     const refEl  = activeCard.querySelector('.lvc-ref');
     const textEl = activeCard.querySelector('.lvc-text');
+    previewIsBible = true;
     if (textEl) renderPreviewScreen(textEl.textContent, refEl?.textContent || '', null, activeCard.dataset.translatedText || '');
   }
 }
@@ -2264,7 +2282,7 @@ function buildRangeCard(v, isActive) {
     syncRangeJumpIfNeeded(cur);
     card.classList.add('sent-pulse');
     setTimeout(() => card.classList.remove('sent-pulse'), 600);
-  }, () => sendVerseToServer(card._verse));
+  }, () => sendVerseToServer(card._verse), { singleSends: true });
 
   return card;
 }
@@ -3333,6 +3351,7 @@ async function loadSettings() {
   try {
     settings = await fetchServerSettings();
     if (typeof seedMonitorOutput === 'function') seedMonitorOutput();
+    if (typeof alertsToMonitorsOnly === 'function') alertsToMonitorsOnly();
     const aboutEl = document.getElementById('about-version');
     if (aboutEl) aboutEl.textContent = settings.appVersion ? `Version ${settings.appVersion}` : '';
     // Populate UI
