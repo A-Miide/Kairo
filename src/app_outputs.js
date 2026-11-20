@@ -1962,8 +1962,25 @@ async function reconcileDisplayWindows() {
     } else if (hit && !win && displaysWaiting.has(d.id)) {
       displaysWaiting.delete(d.id);
       openDisplayOutput(d);
+    } else if (hit && win && !(await windowIsOn(win, hit)) && Date.now() - (displayMovedBack[d.id] || 0) > 20000) {
+      // Not on its screen (a screen unplugged and back between two checks, and macOS moved the window onto
+      // another, maybe the operator's own): opened again where it belongs. At most every 20 s.
+      displayMovedBack[d.id] = Date.now();
+      kairoLog('display-window-misplaced', { outputId: d.id });
+      openDisplayOutput(d);
     }
   }
+}
+
+// Whether an output window is on the screen it was given (null when that can't be told: then it is left alone).
+const displayMovedBack = {};
+async function windowIsOn(win, screen) {
+  try {
+    const m = await win.currentMonitor();
+    if (!m) return false;   // on no screen at all
+    const x = Math.round(m.position.x / m.scaleFactor), y = Math.round(m.position.y / m.scaleFactor);
+    return Math.abs(x - screen.left) <= 2 && Math.abs(y - screen.top) <= 2;
+  } catch { return true; }
 }
 
 // A targeted assertion on exactly the operation that broke 5 times this
