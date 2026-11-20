@@ -436,6 +436,11 @@ static ENGLISH_ABBREVIATIONS: LazyLock<std::collections::HashSet<String>> = Lazy
     super::books::Books::get().single_words().filter(|w| !full.contains(*w)).map(String::from).collect()
 });
 
+/// `w` is a short form of a book's name ("mic", "dan", "phil"), not the name itself.
+pub(crate) fn is_english_abbreviation(w: &str) -> bool {
+    ENGLISH_ABBREVIATIONS.contains(w)
+}
+
 fn is_word_char(c: char) -> bool {
     c.is_ascii_lowercase() || c.is_ascii_digit()
 }

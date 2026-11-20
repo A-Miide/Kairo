@@ -111,7 +111,7 @@
     const kind = el('select', 'setting-input mc-kind');
     [['action', 'Do'], ['message', 'Show a message'], ['clear-message', 'Take the message down'], ['overlay', 'Overlay'], ['wait', 'Wait']]
       .forEach(([v, l]) => kind.appendChild(Object.assign(document.createElement('option'), { value: v, textContent: l, selected: s.kind === v })));
-    kind.addEventListener('change', () => { steps[i] = { kind: kind.value }; if (kind.value === 'action') steps[i].action = actions()[0]?.id; if (kind.value === 'wait') steps[i].seconds = 2; if (kind.value === 'message') steps[i].to = 'screens'; if (kind.value === 'overlay') { steps[i].overlay = overlays[0]?.id || ''; steps[i].on = true; } rerender(); });
+    kind.addEventListener('change', () => { steps[i] = { kind: kind.value }; if (kind.value === 'action') steps[i].action = actions()[0]?.id; if (kind.value === 'wait') steps[i].seconds = 2; if (kind.value === 'message') steps[i].to = 'monitors'; if (kind.value === 'overlay') { steps[i].overlay = overlays[0]?.id || ''; steps[i].on = true; } rerender(); });
     row.appendChild(kind);
     const fields = el('div', 'mc-fields');
     if (s.kind === 'action') {

@@ -1418,7 +1418,11 @@
         image: slide.image || null,
         fit: item.type === 'image' ? (item.fit || 'contain') : undefined,
         slideStyle: item.slideStyles?.[index] || null,
-        book: 'Service', chapter: 0, verse: index + 1,
+        // A Scripture item goes out as the verse it is, so each output's Scripture switch applies to it (sent as book
+        // "Service" it went out as a slide: only "Slides and songs" hid it; review of the outputs, 19 Nov 2026).
+        ...(item.type === 'scripture' && slide.book && Number(slide.chapter) > 0
+          ? { book: slide.book, chapter: Number(slide.chapter), verse: Number(slide.verse) || 1 }
+          : { book: 'Service', chapter: 0, verse: index + 1 }),
         songSlide: item.type === 'song' ? true : undefined,   // lyrics can quote scripture: the detector holds back for them alone
         similarity: 1, method: 'service',
       },
@@ -2686,7 +2690,7 @@
       } else {
         const grid = document.createElement('div');
         grid.className = slideView() === 'text' ? 'svc-slides-text' : 'svc-slides-grid';
-        slides.forEach((s, i) => grid.appendChild(slideCard(item, s, i)));
+        slides.forEach((s, i) => grid.appendChild(slideCard(item, s, i, slides[i - 1])));
         if (item.type === 'slides') wireMediaBinDropTarget(grid, item);
         body.appendChild(grid);
       }
@@ -2782,7 +2786,7 @@
     });
   }
 
-  function slideCard(item, s, i) {
+  function slideCard(item, s, i, prev) {
     const card = document.createElement('button');
     const isLive = liveSlideKey === `${item.id}:${i}`;
     const isMatch = !!slideSearchQuery && (s.text || '').toLowerCase().includes(slideSearchQuery);
@@ -2852,7 +2856,8 @@
     // labelled with the deck's own title, not a real song section, so it
     // shouldn't get the colored section highlight below (same distinction
     // typeLabel() above already draws for the sidebar's type text).
-    const realLabel = item.type === 'song' && item.songBank && s.label && !/^slide\s+\d+$/i.test(s.label) ? s.label : null;
+    const isSection = (sl) => item.type === 'song' && item.songBank && sl?.label && !/^slide\s+\d+$/i.test(sl.label);
+    const realLabel = isSection(s) ? s.label : null;
     // The slide's place in the deck is written "#2", never "2.": a slide's own words often carry a number
     // that looks just like it (a verse number "48.", a list's "2."), and the two must not read alike.
     label.textContent = realLabel || `#${i + 1}`;
@@ -2863,11 +2868,27 @@
     // badge, so Verse/Chorus/Bridge/etc read as a real category, not just
     // more dim text.
     const secCls = realLabel ? sectionTypeClass(realLabel) : null;
-    if (secCls) label.classList.add('sec-labeled', secCls);
-    preview.appendChild(label);
-    if (preview.__pendingPaint) preview.__pendingPaint.label = label;
+    if (secCls) {
+      // As ProPresenter labels its groups: the slide's number, and the group's name only where the group starts
+      // ("7 Chorus 1", then "8", "9"); the group's word picks the colour and its number the shade (Verse 2 darker
+      // than Verse 1).
+      const group = realLabel.split(' · ')[0].trim();
+      const prevGroup = isSection(prev) ? prev.label.split(' · ')[0].trim() : null;
+      label.textContent = '';
+      label.append(Object.assign(document.createElement('b'), { textContent: String(i + 1) }));
+      if (group !== prevGroup) label.append(' ' + group);
+      label.dataset.shade = String(sectionShade(group));
+      label.classList.add('sec-labeled', secCls);
+    }
+    // A song section's label is a coloured bar under the picture, as ProPresenter shows it (over the picture it hid
+    // the last lines of the lyric); a bare slide number stays a small tag on the picture.
+    if (!secCls) {
+      preview.appendChild(label);
+      if (preview.__pendingPaint) preview.__pendingPaint.label = label;
+    }
 
     card.appendChild(preview);
+    if (secCls) card.appendChild(label);
     if (isLive) {
       const tag = document.createElement('span');
       tag.className = 'svc-live-tag';
@@ -3796,7 +3817,7 @@
           style = { ...style, __customLayers: (style.__customLayers || []).filter(l => !isMain(l)) };
         }
         const content = { verseText: s.text, referenceText: s.reference || '', translatedText: getTranslatedText(item, s, () => {}) };
-        paintLookLayers(host, look, style, content, { builds: false });
+        paintLookLayers(host, look, style, content, { builds: false, still: true });
       }
       if (document.fonts && document.fonts.ready) await document.fonts.ready;
       await new Promise(ok => setTimeout(ok, 30));   // not requestAnimationFrame: it never fires while the window is hidden
@@ -4321,7 +4342,7 @@
       // caret/selection behavior, so that case stays plain text regardless
       // of animation.
       const editable = isVerse && !!opts.onCommit;
-      if (isVerse && !editable && window.KairoWordSplit?.applyMotionText(d, look?.textAnimation, content.verseText, look?.textAnimationSpeed || 1, { color: look?.textHighlightColor, intensity: look?.textAnimationIntensity })) {
+      if (isVerse && !editable && window.KairoWordSplit?.applyMotionText(d, look?.textAnimation, content.verseText, look?.textAnimationSpeed || 1, { color: layer.secondColor || look?.textHighlightColor, intensity: look?.textAnimationIntensity, still: !!opts.still, accentColor: layer.accentColor })) {
         // handled
       } else {
         const hasTimerTemplate = layer.binding === 'custom' && typeof layer.customText === 'string' && layer.customText.includes('{timer}');
@@ -4407,7 +4428,7 @@
     const scale = THUMB_W / DESIGN_W;
     inner.style.cssText = `position:absolute;top:0;left:0;width:${DESIGN_W}px;height:${DESIGN_H}px;transform:scale(${scale});transform-origin:top left;`;
     container.appendChild(inner);
-    paintLookLayers(inner, look, {}, { verseText: 'Sample text', referenceText: 'Reference', translatedText: '' });
+    paintLookLayers(inner, look, {}, { verseText: 'Sample text', referenceText: 'Reference', translatedText: '' }, { still: true });
     container.classList.toggle('is-transparent-thumb', inner.classList.contains('is-alpha'));
   }
 
@@ -7860,8 +7881,33 @@
   function slideView() {
     return localStorage.getItem('kairo-svc-view') === 'text' ? 'text' : 'grid';
   }
+  // Until the size slider is moved, slides sit three to a row whatever the panel's width (owner, 19 Nov 2026): the
+  // card width that fits three, kept up to date as the panel resizes.
+  function threeAcross() {
+    const g = document.querySelector('#svc-stack-list .svc-slides-grid');
+    if (!g || !g.clientWidth) return 190;
+    const cs = getComputedStyle(g);
+    const inner = g.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
+    const gap = parseFloat(cs.columnGap) || 12;
+    return Math.max(90, Math.floor((inner - 2 * gap) / 3) - 1);
+  }
+  let threeAcrossWatch = null;
+  function watchThreeAcross() {
+    if (threeAcrossWatch || typeof ResizeObserver === 'undefined') return;
+    const list = document.getElementById('svc-stack-list');
+    if (!list) return;
+    let last = 0, queued = false;
+    threeAcrossWatch = new ResizeObserver(() => {
+      if (localStorage.getItem('kairo-svc-scale') || queued) return;
+      queued = true;
+      requestAnimationFrame(() => { queued = false; const now = threeAcross(); if (now !== last) { last = now; applyView(); } });
+    });
+    threeAcrossWatch.observe(list);
+  }
   function applyView() {
-    const size = parseInt(localStorage.getItem('kairo-svc-scale') || '190', 10);
+    const saved = localStorage.getItem('kairo-svc-scale');
+    const size = saved ? parseInt(saved, 10) : threeAcross();
+    if (!saved) watchThreeAcross();
     const view = slideView();
     document.getElementById('svc-stack-view')?.setAttribute('data-view', view);
     document.querySelectorAll('#svc-stack-list .svc-slides-grid').forEach(g => {
@@ -7927,7 +7973,7 @@
       paintLookLayers(preview, look, style, {
         verseText: s.text, referenceText: s.reference || '',
         translatedText: getTranslatedText(item, s, () => repaintSlidePreviews()),
-      }, { hideReference: true });
+      }, { hideReference: true, still: true }); // a slide card shows the slide as it settles, not its reveal
       if (label) preview.appendChild(label);
       markClipped(preview);
     });
@@ -7983,7 +8029,7 @@
     paintLookLayers(host, look, style, {
       verseText: s.text, referenceText: s.reference || '',
       translatedText: getTranslatedText(item, s, () => { if (host.isConnected) paintSlideThumb(host, item, s, i); }),
-    }, { hideReference: true });
+    }, { hideReference: true, still: true }); // a slide card shows the slide as it settles, not its reveal
   }
 
   // ── Wiring ──────────────────────────────────────────────────────────────

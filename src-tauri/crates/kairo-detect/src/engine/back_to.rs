@@ -14,10 +14,12 @@ use super::core::{Candidate, Engine};
 use super::types::{Method, Target};
 use crate::re::{re, re_kept};
 
-/// What comes just before the book when the preacher returns to it: "go back to", "back in",
-/// "let's return to the book of", "come back again to First".
+/// What comes just before the book when the preacher returns to it: "go back to", "let's go back in",
+/// "let's return to the book of", "come back again to First". "Back in" alone is a pointer to the past,
+/// not a return ("as Paul said back in Romans ten, faith cometh by hearing" put 10:10 back up; detector
+/// audit, 19 Nov 2026), so it counts only after a verb of going there.
 static RETURN_CUE: LazyLock<regex::Regex> = LazyLock::new(|| {
-    re(r"(?i)\b(back|return|returning)\s+(again\s+)?(to|into|in|unto)?\s*(the\s+book\s+of\s+)?((first|second|third|1st|2nd|3rd|[123]|one|two|three|i{1,3})\s+)?$")
+    re(r"(?i)(\b(back|return|returning)\s+(again\s+)?(to|into|unto)?|\b(go|going|goes|turn|turning|come|coming|head|flip|get)\s+back\s+(again\s+)?in)\s*(the\s+book\s+of\s+)?((first|second|third|1st|2nd|3rd|[123]|one|two|three|i{1,3})\s+)?$")
 });
 
 #[derive(Default)]

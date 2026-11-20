@@ -304,13 +304,25 @@ function allHymns() {
   return [...HYMNS, ...withImported, ...withLibrary];
 }
 
+// The bank's lyrics carry marks from the hymnals they came from, shown on screen as they were ("Mar* y", "Ho* liness"):
+// a "*" splitting a word into its sung syllables, an unreadable character where an apostrophe was ("bless\uFFFDd"),
+// and two lines run together with no space ("disdainethMy soul"). Read clean.
+function cleanBankLine(line) {
+  return String(line || '')
+    .replace(/\*\s*/g, '')
+    .replace(/\uFFFD/g, '\u2019')
+    .replace(/([a-z]{3})([A-Z][a-z])/g, '$1 $2')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 // Called by the app at boot. Missing file is the normal case, not an error.
 async function loadHymnBank(url = 'hymn-bank.json') {
   try {
     const r = await fetch(url, { cache: 'no-cache' });
     if (!r.ok) return 0;
     const data = await r.json();
-    if (Array.isArray(data)) IMPORTED = data;
+    if (Array.isArray(data)) IMPORTED = data.map(h => ({ ...h, blocks: (h.blocks || []).map(b => ({ ...b, lines: (b.lines || []).map(cleanBankLine) })) }));
     return IMPORTED.length;
   } catch { return 0; }
 }
@@ -331,7 +343,7 @@ function searchHymns(query) {
 }
 
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { HYMNS, searchHymns, allHymns, setLibrarySongs };
+  module.exports = { HYMNS, searchHymns, allHymns, setLibrarySongs, cleanBankLine };
 } else {
   window.searchHymns    = searchHymns;
   window.loadHymnBank   = loadHymnBank;

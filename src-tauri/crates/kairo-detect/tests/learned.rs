@@ -45,12 +45,13 @@ fn verse(book: &str, c: u16, v: u16) -> kairo_bible::VerseId {
 fn the_preachers_word_for_a_book_is_read_as_the_book() {
     // A mishearing nothing built in knows ("San" for Psalm is, normalize.rs): a preacher whose
     // "Psalm" the recogniser writes "Zom".
-    let said = ["Zom one ten verse one to three"];
+    // (Chapter 23, which many books have: "one ten" alone now names Psalms, the only book with a chapter 110.)
+    let said = ["Zom twenty three verse one to three"];
     let before = outcome(Learned::default(), &said);
-    assert!(!before.0.iter().any(|v| v.starts_with("Psalms 110")), "unlearned, it isn't Psalm 110: {before:?}");
+    assert!(!before.0.iter().any(|v| v.starts_with("Psalms 23")), "unlearned, it isn't Psalm 23: {before:?}");
     let learned = Learned::new(HashMap::from([("zom".into(), Book::from_name("Psalms").unwrap())]), HashSet::new(), HashSet::new());
     let after = outcome(learned, &said);
-    assert!(after.0.iter().any(|v| v.starts_with("Psalms 110:1")), "learned, Psalm 110 goes up: {after:?}");
+    assert!(after.0.iter().any(|v| v.starts_with("Psalms 23:1")), "learned, Psalm 23 goes up: {after:?}");
 }
 
 #[test]

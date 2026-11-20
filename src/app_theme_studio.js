@@ -731,27 +731,6 @@ const DEFAULT_LOOKS = [
     ],
   },
   {
-    // Warm out-of-focus lights rising behind the lyrics.
-    id: 'lyrics-bokeh', name: 'Lyrics — Bokeh', layout: 'fullscreen', animation: 'fade',
-    groupId: 'grp-lyrics', groupName: 'Lyrics',
-    layers: [
-      { id: 'bg', type: 'background', name: 'Canvas', visible: true,
-        fill: 'gradient', color: '#120c06', opacity: 100, color2: '#060506', angle: 170 },
-      { id: 'bokeh', type: 'motion', name: 'Bokeh', visible: true, opacity: 100, pos: { x: 0, y: 0, w: 1920, h: 1080 },
-        graphic: { kind: 'bokeh', colors: ['#ffd89b', '#ffb35c', '#ffffff'], count: 28, size: 12, softness: 60, intensity: 42, direction: 'up', speed: 0.55, seed: 21 } },
-      { id: 'verse', type: 'text', name: 'Lyrics', visible: true, binding: 'verse', customText: '',
-        pos: { x: 140, y: 250, w: 1640, h: 600 },
-        font: { family: 'Montserrat', size: 88, weight: 800, italic: false, lineHeight: 1.2, letterSpacing: 0, transform: 'uppercase' },
-        color: '#ffffff', opacity: 100, align: 'center',
-        shadow: { enabled: true, color: '#000000', opacity: 70, blur: 22, x: 0, y: 4 }, outline: { ...NO_OUTLINE } },
-      { id: 'ref', type: 'text', name: 'Song Title', visible: false, binding: 'reference', customText: '',
-        pos: { x: 140, y: 880, w: 1640, h: 0 },
-        font: { family: 'Montserrat', size: 26, weight: 600, italic: false, lineHeight: 1.2, letterSpacing: 6, transform: 'uppercase' },
-        color: '#ffffff', opacity: 55, align: 'center',
-        shadow: { ...TXT_SHADOW_NONE }, outline: { ...NO_OUTLINE } },
-    ],
-  },
-  {
     // A night sky of twinkling stars behind the lyrics.
     id: 'lyrics-starlight', name: 'Lyrics — Starlight', layout: 'fullscreen', animation: 'fade',
     groupId: 'grp-lyrics', groupName: 'Lyrics',
@@ -841,6 +820,67 @@ DEFAULT_LOOKS.push(
   screenTheme('screen-split-right', 'Screen — Video right', false, 640),
   screenTheme('screen-split-half', 'Screen — Half and half', true, 900),
   screenLowerThird(),
+);
+
+// Lyric presets (groupId 'grp-lyrics'): ready-made looks for song lyrics, over a transparent canvas so they key
+// over a camera or motion background. Each is one style of type; the words, size and place can all be changed
+// after picking one, like any theme.
+function lyricCanvas() {
+  return { id: 'bg', type: 'background', name: 'Canvas', visible: true, fill: 'transparent', fillBefore: 'solid', color: '#000000', opacity: 100, color2: '#000000', angle: 0 };
+}
+function lyricText(id, name, o) {
+  return { id, type: 'text', name, visible: true, binding: 'verse', customText: '',
+    pos: o.pos || { x: 140, y: 250, w: 1640, h: 580 },
+    font: { family: o.family, size: o.size, weight: o.weight, italic: !!o.italic, lineHeight: o.lineHeight, letterSpacing: o.spacing || 0, transform: o.transform || 'none' },
+    color: o.color || '#ffffff', opacity: o.opacity == null ? 100 : o.opacity, align: o.align || 'center',
+    shadow: o.shadow || { ...TXT_SHADOW_NONE }, outline: o.outline || { ...NO_OUTLINE } };
+}
+function lyricLook(id, name, layers, extra = {}) {
+  return { id, name, layout: 'fullscreen', animation: 'fade', groupId: 'grp-lyrics', groupName: 'Lyrics', ...extra,
+    layers: [lyricCanvas(), ...layers,
+      { id: 'ref', type: 'text', name: 'Song Title', visible: false, binding: 'reference', customText: '', pos: { x: 140, y: 900, w: 1640, h: 0 },
+        font: { family: 'Inter', size: 26, weight: 600, italic: false, lineHeight: 1.2, letterSpacing: 6, transform: 'uppercase' },
+        color: '#ffffff', opacity: 55, align: 'center', shadow: { enabled: true, color: '#000000', opacity: 80, blur: 10, x: 0, y: 2 }, outline: { ...NO_OUTLINE } }] };
+}
+const LYRIC_SOFT = (blur, opacity, color) => ({ enabled: true, color: color || '#000000', opacity, blur, x: 0, y: 4 });
+DEFAULT_LOOKS.push(
+  // Big, tight, left-aligned and in sentence case: modern and confident.
+  lyricLook('lyrics-clean-left', 'Lyrics — Clean, left', [
+    lyricText('verse', 'Lyrics', { family: 'Inter', size: 124, weight: 800, lineHeight: 1.02, spacing: -3, align: 'left', pos: { x: 120, y: 250, w: 1500, h: 580 }, shadow: LYRIC_SOFT(26, 55) })]),
+  // Caps with a soft shadow: works over almost anything.
+  lyricLook('lyrics-caps-soft', 'Lyrics — Caps, soft shadow', [
+    lyricText('verse', 'Lyrics', { family: 'Inter', size: 108, weight: 800, lineHeight: 1.1, spacing: -1, transform: 'uppercase', shadow: LYRIC_SOFT(28, 70) })]),
+  // A heavy face with a blurry dark halo, so the words lift off bright, busy video.
+  lyricLook('lyrics-busy-video', 'Lyrics — For busy video', [
+    lyricText('verse', 'Lyrics', { family: 'Inter', size: 112, weight: 900, lineHeight: 1.08, transform: 'uppercase', shadow: LYRIC_SOFT(44, 95), outline: { enabled: true, color: '#000000', width: 3 } })]),
+  // Condensed poster caps, tight and tall, like a lyric video.
+  lyricLook('lyrics-poster', 'Lyrics — Poster', [
+    lyricText('verse', 'Lyrics', { family: 'Anton', size: 170, weight: 400, lineHeight: 0.98, transform: 'uppercase', pos: { x: 200, y: 200, w: 1520, h: 680 }, shadow: LYRIC_SOFT(20, 45) })]),
+  // Huge condensed caps that stay big and wrap onto more lines.
+  lyricLook('lyrics-condensed', 'Lyrics — Huge condensed', [
+    lyricText('verse', 'Lyrics', { family: 'Bebas Neue', size: 250, weight: 400, lineHeight: 0.9, spacing: 2, transform: 'uppercase', pos: { x: 160, y: 140, w: 1600, h: 800 }, shadow: LYRIC_SOFT(18, 35) })]),
+  // Screen-printed: warm ink a little off register behind cream caps.
+  lyricLook('lyrics-printed', 'Lyrics — Screen-printed', [
+    lyricText('ink', 'Ink', { family: 'Archivo Black', size: 112, weight: 400, lineHeight: 1.06, transform: 'uppercase', color: '#E8803C', opacity: 88, pos: { x: 150, y: 256, w: 1640, h: 580 } }),
+    lyricText('verse', 'Lyrics', { family: 'Archivo Black', size: 112, weight: 400, lineHeight: 1.06, transform: 'uppercase', color: '#FBF1E1', opacity: 100 })]),
+  // Soft, glowing caps with a wide track.
+  lyricLook('lyrics-glow', 'Lyrics — Soft glow', [
+    lyricText('verse', 'Lyrics', { family: 'Inter', size: 100, weight: 700, lineHeight: 1.18, spacing: 5, transform: 'uppercase', color: '#FFF1F4', shadow: LYRIC_SOFT(42, 95, '#FF9AB8') })]),
+  // One block of heavy capitals: every line sized to the same width, so short lines run big, one even gap apart
+  // (lyric_layout.js). Two-tone puts the last part in the highlight colour.
+  lyricLook('lyrics-stacked', 'Lyrics — Stacked', [
+    lyricText('verse', 'Lyrics', { family: 'Inter', size: 100, weight: 900, lineHeight: 1, transform: 'uppercase', pos: { x: 140, y: 110, w: 1640, h: 860 }, shadow: LYRIC_SOFT(30, 75) })],
+    { textAnimation: 'stacked' }),
+  lyricLook('lyrics-stacked-two-tone', 'Lyrics — Stacked, two-tone', [
+    lyricText('verse', 'Lyrics', { family: 'Inter', size: 100, weight: 900, lineHeight: 1, transform: 'uppercase', pos: { x: 140, y: 110, w: 1640, h: 860 }, shadow: LYRIC_SOFT(30, 75) })],
+    { textAnimation: 'stacked-two-tone', textHighlightColor: '#FFE11A' }),
+  // The slide's lines come in from alternate sides and stop to be read; at the next slide they carry on out.
+  lyricLook('lyrics-slide-in', 'Lyrics — Slide in', [
+    lyricText('verse', 'Lyrics', { family: 'Inter', size: 100, weight: 900, lineHeight: 1, transform: 'uppercase', pos: { x: 140, y: 110, w: 1640, h: 860 }, shadow: LYRIC_SOFT(30, 75) })],
+    { textAnimation: 'slide-in', textHighlightColor: '#FFE11A' }),
+  // Smaller lines low on the screen, for camera shots and the stream.
+  lyricLook('lyrics-lower-third', 'Lyrics — Lower third', [
+    lyricText('verse', 'Lyrics', { family: 'Inter', size: 58, weight: 700, lineHeight: 1.18, align: 'left', pos: { x: 120, y: 840, w: 1500, h: 150 }, shadow: LYRIC_SOFT(14, 85) })]),
 );
 
 // Monitor layouts (groupId 'grp-monitor'): what a Monitor output shows, for whoever is up
@@ -1050,6 +1090,9 @@ let looks = (function loadLooks() {
     setTimeout(() => window.kairoProblem?.('Your themes couldn’t be read, so a copy was kept and the built-in themes are in use.'), 0);
   }
   if (Array.isArray(stored) && stored.length) {
+    // The Bokeh lyrics theme was removed from Kairo (owner, 19 Nov 2026), and the Scroll look a test build had became
+    // Slide in: a saved copy of either goes too.
+    stored = stored.filter(l => l && l.id !== 'lyrics-bokeh' && l.id !== 'lyrics-scroll');
     // Renamed BEFORE knownIds/missing below are computed from stored's ids —
     // otherwise the new id ('lyrics-bold-caption') still reads as entirely
     // missing at that point and the back-fill appends a second, fresh copy
@@ -1363,6 +1406,18 @@ let collapsedThemeGroups = new Set();
 // click always narrows back down to just that one.
 let multiSelectedLayerIds = new Set();
 let layerClipboard = [];
+// How the lyrics move (Stacked, Slide in…), how fast, and the second colour belong to the theme, not to a layer: a
+// lyrics layer copied to another theme took its font and place but not its motion. They travel with it now.
+let layerClipboardReveal = null;
+// One layer's look (Copy style / Paste style, ⌥⌘C / ⌥⌘V): put on another layer, which keeps its own words and place.
+let styleClipboard = null;
+const REVEAL_KEYS = ['textAnimation', 'textAnimationSpeed', 'textHighlightColor', 'textAnimationIntensity'];
+const STYLE_SKIP = new Set(['id', 'name', 'type', 'binding', 'customText', 'pos', 'visible', 'locked', 'rotation']);
+function revealOf(look) {
+  if (!look?.textAnimation) return null;
+  return Object.fromEntries(REVEAL_KEYS.filter(k => look[k] != null).map(k => [k, look[k]]));
+}
+const revealName = (r) => (typeof TEXT_REVEALS !== 'undefined' && TEXT_REVEALS.find(x => x.value === r?.textAnimation)?.label) || r?.textAnimation;
 
 // "Full Edit" — a second use of this same canvas engine, pointed at a
 // specific playlist item's specific slide instead of a real theme, so an
@@ -2046,6 +2101,10 @@ function renderLayersList() {
         { label: 'Copy', onClick: () => { activeLayer = layer; copyLayers(); } },
       ]];
       if (layerClipboard.length) sections[1].push({ label: 'Paste', onClick: pasteLayers });
+      if (!isBg) {
+        sections.push([{ label: 'Copy style', onClick: () => copyStyle(layer) }]);
+        if (styleClipboard && styleClipboard.type === layer.type) sections[sections.length - 1].push({ label: 'Paste style', onClick: () => { activeLayer = layer; pasteStyle(layer); } });
+      }
       window.KairoService.openContextMenu(e.clientX, e.clientY, sections.filter(s => s.length));
     });
 
@@ -2616,7 +2675,7 @@ function renderStage() {
         span.textContent = layerTextContent(layer);
         div.textContent = '';
         div.appendChild(span);
-      } else if (layer.binding === 'verse' && window.KairoWordSplit?.applyMotionText(div, activeLook.textAnimation, layerTextContent(layer), activeLook.textAnimationSpeed || 1, { color: activeLook.textHighlightColor, intensity: activeLook.textAnimationIntensity })) {
+      } else if (layer.binding === 'verse' && window.KairoWordSplit?.applyMotionText(div, activeLook.textAnimation, layerTextContent(layer), activeLook.textAnimationSpeed || 1, { color: layer.secondColor || activeLook.textHighlightColor, intensity: activeLook.textAnimationIntensity, accentColor: layer.accentColor, quiet: canvasRevealShown(activeLook) })) {
         // Theme Studio's own canvas — same per-element motion rendering as
         // the Live Preview panel/real output (see renderPreviewScreen/
         // buildLayerDOM), so a Motion theme actually shows the effect while
@@ -6080,6 +6139,16 @@ function blankSceneOn(bg) {
   return { id: 'scene-' + Date.now(), name: bg.name, durationSec: 60, layers };
 }
 
+// The canvas plays a look's reveal once, when the look (or its reveal) is picked; editing it afterwards (a colour, a
+// size) redraws it in place, so a change is seen as it is made instead of hidden behind the entrance again.
+let canvasReveal = '';
+function canvasRevealShown(look) {
+  const key = `${look?.id}|${look?.textAnimation}`;
+  const shown = canvasReveal === key;
+  canvasReveal = key;
+  return shown;
+}
+
 // How the verse text reveals as it goes up (KairoWordSplit), separate from the
 // transition between slides — the theme's setting, shown with the type of the
 // layer it moves (one showing the verse or lyrics). Its speed, and the colour
@@ -6095,6 +6164,9 @@ const TEXT_REVEALS = [
   { label: 'Bounce', value: 'bounce', title: 'Springy pop-on, higher-energy than Word' },
   { label: 'Highlight Box', value: 'highlight-box', title: 'A highlight-coloured box slides under each word in turn' },
   { label: 'Shimmer', value: 'shimmer', title: 'A soft sheen sweeps across the line once' },
+  { label: 'Stacked', value: 'stacked', title: 'Lyrics as one block: every line sized to the same width, short lines big, even gaps' },
+  { label: 'Stacked, two-tone', value: 'stacked-two-tone', title: 'The stacked look with its last part in the highlight colour' },
+  { label: 'Slide in', value: 'slide-in', title: 'Lines come in from alternate sides and stop; at the next slide they carry on out as the new ones come in' },
 ];
 function revealRows() {
   const anim = activeLook.textAnimation || 'none';
@@ -6272,6 +6344,17 @@ function renderTextProps(panel, layer) {
     colorKids.push(...gradientEditorRows(layer, () => up()));
   } else {
     colorKids.push(fieldRow([colorField(layer.color, v => { layer.color = v; up(); })], { cols: 2 }));
+  }
+  // The two-colour lyric looks: one text frame, two colours. The second (the last lyric line) sits right here beside the
+  // first, not with the reveal settings, so selecting the yellow line shows where its colour is set.
+  const lookAnim = (tsMode === 'item' ? tsItemCtx?.baseLook : activeLook)?.textAnimation;
+  if (layer.binding === 'verse' && ['stacked-two-tone', 'slide-in'].includes(lookAnim)) {
+    const base = (tsMode === 'item' ? tsItemCtx?.baseLook : activeLook)?.textHighlightColor || '#FFE11A';
+    colorKids.push(fieldRow([colorField(layer.secondColor || base, v => { layer.secondColor = v; up(); }, 'The second colour: the last lyric line')], { cols: 2 }));
+    const hint = document.createElement('div');
+    hint.className = 'ts-motion-blurb';
+    hint.textContent = 'Second colour: the last line of each slide.';
+    colorKids.push(hint);
   }
   if (layer.binding === 'custom' && (layer.colorFill || 'solid') === 'solid') {
     colorKids.push(fieldRow([
@@ -7368,7 +7451,8 @@ function copyLayers() {
     : (activeLayer ? [activeLayer] : [])).filter(l => l !== baseBgLayer());
   if (!toCopy.length) return;
   layerClipboard = deepClone(toCopy);
-  toast(`Copied ${toCopy.length} layer${toCopy.length === 1 ? '' : 's'}`, 'success');
+  layerClipboardReveal = toCopy.some(l => l.binding === 'verse') ? revealOf(activeLook) : null;
+  toast(`Copied ${toCopy.length} layer${toCopy.length === 1 ? '' : 's'}${layerClipboardReveal ? `, with the ${revealName(layerClipboardReveal)} reveal` : ''}`, 'success');
 }
 function pasteLayers() {
   if (!layerClipboard.length) return;
@@ -7377,11 +7461,31 @@ function pasteLayers() {
     return l;
   });
   activeLook.layers.push(...pasted);
+  const reveal = layerClipboardReveal && pasted.some(l => l.binding === 'verse') ? layerClipboardReveal : null;
+  if (reveal) Object.assign(activeLook, deepClone(reveal));
   multiSelectedLayerIds = new Set(pasted.map(l => l.id));
   activeLayer = pasted[pasted.length - 1];
   saveLooks();
   renderLayersList(); renderPreview(); renderProps(); renderThemeCanvasSizeSelect();
-  toast(`Pasted ${pasted.length} layer${pasted.length === 1 ? '' : 's'}`, 'success');
+  toast(`Pasted ${pasted.length} layer${pasted.length === 1 ? '' : 's'}${reveal ? `, with the ${revealName(reveal)} reveal` : ''}`, 'success');
+}
+function copyStyle(layer) {
+  if (!layer || layer === baseBgLayer()) return;
+  styleClipboard = {
+    type: layer.type,
+    style: deepClone(Object.fromEntries(Object.entries(layer).filter(([k]) => !STYLE_SKIP.has(k)))),
+    reveal: layer.binding === 'verse' ? revealOf(activeLook) : null,
+  };
+  toast(`Copied the style of ${layer.name || 'the layer'}${styleClipboard.reveal ? `, with the ${revealName(styleClipboard.reveal)} reveal` : ''}`, 'success');
+}
+function pasteStyle(layer) {
+  if (!styleClipboard || !layer || layer.type !== styleClipboard.type) { toast('Copy the style of a layer of the same kind first.', 'error'); return; }
+  Object.assign(layer, deepClone(styleClipboard.style));
+  const reveal = styleClipboard.reveal && layer.binding === 'verse' ? styleClipboard.reveal : null;
+  if (reveal) Object.assign(activeLook, deepClone(reveal));
+  saveLooks();
+  renderLayersList(); renderPreview(); renderProps();
+  toast(`Pasted style${reveal ? `, with the ${revealName(reveal)} reveal` : ''}`, 'success');
 }
 document.addEventListener('keydown', (e) => {
   if (looksModal?.classList.contains('hidden') || !activeLook || tsMode === 'item') return;
@@ -7390,6 +7494,8 @@ document.addEventListener('keydown', (e) => {
   if (!(e.metaKey || e.ctrlKey)) return;
   const key = e.key.toLowerCase();
 
+  if (e.altKey && key === 'c' && activeLayer) { e.preventDefault(); copyStyle(activeLayer); return; }
+  if (e.altKey && key === 'v' && activeLayer && styleClipboard) { e.preventDefault(); pasteStyle(activeLayer); return; }
   if (key === 'a') { e.preventDefault(); selectAllLayers(); }
   else if (key === 'c') { if (multiSelectedLayerIds.size || activeLayer) { e.preventDefault(); copyLayers(); } }
   else if (key === 'v') { if (layerClipboard.length) { e.preventDefault(); pasteLayers(); } }

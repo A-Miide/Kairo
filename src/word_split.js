@@ -25,7 +25,7 @@
 // choreography should still run alongside it — Cut always skips it
 // regardless (nothing to fade), and 'none' just means plain text with
 // whatever Transition the theme picked.
-const TEXT_ANIMATIONS = ['word-in', 'activate', 'karaoke', 'typewriter', 'impact', 'bold-caption', 'bounce', 'highlight-box', 'shimmer'];
+const TEXT_ANIMATIONS = ['word-in', 'activate', 'karaoke', 'typewriter', 'impact', 'bold-caption', 'bounce', 'highlight-box', 'shimmer', 'stacked', 'stacked-two-tone', 'slide-in'];
 function isPerElementMotion(animation) {
   return TEXT_ANIMATIONS.includes(animation);
 }
@@ -254,6 +254,40 @@ function splitBoldCapLines(text) {
   return lines.length ? lines : [allWords];
 }
 
+// The same small gap of empty space between every two lines, measured on the letters themselves. Each line's box is
+// as tall as its biggest word, room above and below included, so a line holding one 2.4× word opened a hole above it
+// while lines of normal words sat tight (owner, 19 Nov 2026: the reference stacks every line a sliver apart). Ink is
+// measured per word (descenders too: "only begotten"), and each line's margins cancel its box's empty space, in em of
+// the line, so the fit-to-box scaling after it keeps the gaps.
+const BOLDCAP_GAP_EM = 0.1;
+let boldCapCanvas = null;
+function evenBoldCapGaps(wrap) {
+  const lines = [...wrap.children];
+  boldCapCanvas = boldCapCanvas || document.createElement('canvas');
+  const ctx = boldCapCanvas.getContext('2d');
+  if (!lines.length || !ctx) return;
+  let prevBelow = 0; // em: the previous line's box below its lowest ink
+  for (const [i, lineEl] of lines.entries()) {
+    const words = [...lineEl.children].map(span => {
+      const cs = getComputedStyle(span);
+      ctx.font = `${cs.fontStyle} ${cs.fontWeight} 100px ${cs.fontFamily}`;
+      const t = ctx.measureText(span.textContent);
+      const s = parseFloat(span.style.fontSize) || 1;
+      const fA = t.fontBoundingBoxAscent / 100, fD = t.fontBoundingBoxDescent / 100;
+      // With line-height 1 the font's ascent+descent sits centred in a box `s` tall; the baseline is below its top by:
+      return { s, base: s * (1 - fA - fD) / 2 + fA * s, ink: { up: (t.actualBoundingBoxAscent / 100) * s, down: (t.actualBoundingBoxDescent / 100) * s } };
+    });
+    if (!words.length || words.some(w => !Number.isFinite(w.base) || !Number.isFinite(w.ink.up))) return; // can't measure here
+    const baseline = Math.max(...words.map(w => w.base)); // the words share a baseline (align-items: baseline)
+    const height = Math.max(...words.map(w => baseline - w.base + w.s));
+    const above = baseline - Math.max(...words.map(w => w.ink.up));
+    const below = height - baseline - Math.max(...words.map(w => w.ink.down));
+    lineEl.style.marginTop = (i === 0 ? -above : BOLDCAP_GAP_EM - prevBelow - above).toFixed(3) + 'em';
+    prevBelow = below;
+  }
+  lines[lines.length - 1].style.marginBottom = (-prevBelow).toFixed(3) + 'em';
+}
+
 function buildBoldCapSpans(container, text, speedMultiplier = 1, opts = {}) {
   container.innerHTML = '';
   const wrap = document.createElement('div');
@@ -276,8 +310,7 @@ function buildBoldCapSpans(container, text, speedMultiplier = 1, opts = {}) {
     // each short line looking like its own isolated caption instead of one
     // cascading headline.
     lineEl.style.cssText = 'display:flex;flex-wrap:wrap;align-items:baseline;column-gap:0.3em;line-height:0.9;'
-      + `margin-left:${BOLDCAP_INDENTS[lineIndex % BOLDCAP_INDENTS.length]}em;`
-      + (lineIndex > 0 ? 'margin-top:-0.05em;' : '');
+      + `margin-left:${BOLDCAP_INDENTS[lineIndex % BOLDCAP_INDENTS.length]}em;`;
     words.forEach(word => {
       const h = hashWord(word);
       const span = document.createElement('span');
@@ -314,6 +347,7 @@ function buildBoldCapSpans(container, text, speedMultiplier = 1, opts = {}) {
   requestAnimationFrame(() => {
     const cw = container.clientWidth, ch = container.clientHeight;
     if (cw < 10 || ch < 10) return; // not laid out yet
+    evenBoldCapGaps(wrap);
     const nw = wrap.scrollWidth, nh = wrap.scrollHeight;
     if (nw < 1 || nh < 1) return;
     const targetW = cw * 0.96, targetH = ch * 0.94;
@@ -398,6 +432,15 @@ function buildShimmerSpans(container, text, speedMultiplier = 1) {
 // `opts` — { color, intensity } — only Impact/Bold Caption/Karaoke/Highlight Box
 // read them; every other animation ignores extra opts harmlessly.
 function applyMotionText(container, animation, text, speedMultiplier = 1, opts = {}) {
+  // `still`: a thumbnail (a slide card in a playlist) shows the slide as it settles, never the reveal. The lyric
+  // layouts still lay the words out; every other reveal is plain text there.
+  if (opts.still) {
+    const S = window.KairoLyricLayout;
+    if (S && animation === 'stacked')          { S.renderBlock(container, text, speedMultiplier, { still: true, wordColor: opts.accentColor }); return true; }
+    if (S && animation === 'stacked-two-tone') { S.renderBlock(container, text, speedMultiplier, { still: true, wordColor: opts.accentColor, accent: opts.color || '#FFE11A' }); return true; }
+    if (S && animation === 'slide-in')         { S.renderSlideIn(container, text, speedMultiplier, { still: true, wordColor: opts.accentColor, accent: opts.color }); return true; }
+    return false;
+  }
   if (animation === 'word-in')       { buildWordSpans(container, text, speedMultiplier); return true; }
   if (animation === 'activate')      { buildActivateSpans(container, text, speedMultiplier); return true; }
   if (animation === 'karaoke')       { buildKaraokeSpans(container, text, speedMultiplier, opts); return true; }
@@ -407,6 +450,13 @@ function applyMotionText(container, animation, text, speedMultiplier = 1, opts =
   if (animation === 'bounce')        { buildBounceSpans(container, text, speedMultiplier); return true; }
   if (animation === 'highlight-box') { buildHighlightBoxSpans(container, text, speedMultiplier, opts); return true; }
   if (animation === 'shimmer')       { buildShimmerSpans(container, text, speedMultiplier); return true; }
+  // Lyric layouts that set the whole slide as one piece of type (lyric_layout.js).
+  const L = window.KairoLyricLayout;
+  // `accentColor`: the layer's colour for words coloured in the slide editor (written *like this*).
+  // `quiet`: redrawn while being edited: no entrance played again.
+  if (L && animation === 'stacked')          { L.renderBlock(container, text, speedMultiplier, { wordColor: opts.accentColor, quiet: opts.quiet }); return true; }
+  if (L && animation === 'stacked-two-tone') { L.renderBlock(container, text, speedMultiplier, { wordColor: opts.accentColor, accent: opts.color || '#FFE11A', quiet: opts.quiet }); return true; }
+  if (L && animation === 'slide-in')         { L.renderSlideIn(container, text, speedMultiplier, { wordColor: opts.accentColor, accent: opts.color, quiet: opts.quiet }); return true; }
   return false;
 }
 
