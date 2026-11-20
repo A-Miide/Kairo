@@ -383,6 +383,7 @@
     </script>
     <script src="overlay_layer.js"></script>
     <script src="design_space.js"></script>
+    <script src="lyric_layout.js"></script>
     <script src="word_split.js"></script>
     <script src="color_utils.js"></script>
     <script src="layer_geometry.js"></script>
@@ -1366,7 +1367,7 @@
                     span.style.animation = `kairo-marquee ${Math.max(1, layer.scroll.speed || 15)}s linear infinite`;
                     span.textContent = content;
                     div.appendChild(span);
-                } else if (layer.binding === 'verse' && window.KairoWordSplit?.applyMotionText(div, look?.textAnimation, content, look?.textAnimationSpeed || 1, { color: look?.textHighlightColor, intensity: look?.textAnimationIntensity })) {
+                } else if (layer.binding === 'verse' && window.KairoWordSplit?.applyMotionText(div, look?.textAnimation, content, look?.textAnimationSpeed || 1, { color: layer.secondColor || look?.textHighlightColor, intensity: look?.textAnimationIntensity, accentColor: layer.accentColor })) {
                     // handled
                 } else if (hasAccentMarkup(content, layer.accentColor)) {
                     // "*word*" in the accent colour — a two-tone headline in one layer.
