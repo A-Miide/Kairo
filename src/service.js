@@ -1418,7 +1418,11 @@
         image: slide.image || null,
         fit: item.type === 'image' ? (item.fit || 'contain') : undefined,
         slideStyle: item.slideStyles?.[index] || null,
-        book: 'Service', chapter: 0, verse: index + 1,
+        // A Scripture item goes out as the verse it is, so each output's Scripture switch applies to it (sent as book
+        // "Service" it went out as a slide: only "Slides and songs" hid it; review of the outputs, 19 Nov 2026).
+        ...(item.type === 'scripture' && slide.book && Number(slide.chapter) > 0
+          ? { book: slide.book, chapter: Number(slide.chapter), verse: Number(slide.verse) || 1 }
+          : { book: 'Service', chapter: 0, verse: index + 1 }),
         songSlide: item.type === 'song' ? true : undefined,   // lyrics can quote scripture: the detector holds back for them alone
         similarity: 1, method: 'service',
       },

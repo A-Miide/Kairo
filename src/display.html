@@ -1747,14 +1747,22 @@
         // off Slide shouldn't blank a Bible verse that's on screen, and
         // turning off Bible shouldn't blank an announcement slide.
         if ((currentSlideIsBible ? (prev.bible && !next.bible) : (prev.slide && !next.slide))) { clearDisplay(); noteConfidenceSlide(null); }
-        if (prev.media && !next.media) renderMediaStage(null);
+        if (prev.media && !next.media) { mediaGen++; renderMediaStage(null); }   // a pending media fade must not paint it back
         // Switched back on: what was live there comes back.
         if (lastLiveSlide && ((!prev.slide && next.slide && !lastLiveSlide.isBible) || (!prev.bible && next.bible && lastLiveSlide.isBible))) {
             try { handleMessage(lastLiveSlide.msg); } catch {}
         }
         if (lastLiveMedia && !prev.media && next.media) { try { handleMessage(lastLiveMedia); } catch {} }
         if (prev.overlay !== next.overlay) drawOverlays();
-        if (prev.message !== next.message) drawMessageBanner();
+        if (prev.message !== next.message) {
+            drawMessageBanner();
+            // A Monitor's Alerts switch hides (and brings back) the message on it too.
+            if (MONITOR) {
+                const to = lastMessage.to;
+                const mine = to === 'monitors' || to === 'all' || to === `monitor:${OUTPUT_KEY}`;
+                setMonitorMessage(mine && next.message !== false ? lastMessage.text : '');
+            }
+        }
         if (prev.timer && !next.timer) {
             updateConfidenceTimer({ cleared: true });
             timerBadgeEl?.classList.add('hidden');
@@ -2089,6 +2097,8 @@
     // independent media layer; see renderMediaStage for that.
     function renderImageStage(src, animate = true, fit = 'contain') {
         currentImageSlide = { src, fit };
+        // A newer slide or a Clear in the next 0.3 s wins: the picture's fade no longer paints over it.
+        const myGen = ++renderGen;
         if (outputMode === 'text') { slideLayer.innerHTML = ''; return; }   // a picture has no words
         const look = activeLook || FALLBACK_LOOK;
         const bg = (look.layers || []).find(l => l.type === 'background' && !l.pos);
@@ -2106,10 +2116,11 @@
             slideLayer.appendChild(img);
         };
 
-        if (animate) {
+        if (animate && outputAnimation !== 'cut') {
             slideLayer.style.transition = 'opacity 300ms ease';
             slideLayer.style.opacity    = '0';
             setTimeout(() => {
+                if (myGen !== renderGen) return;
                 doRender();
                 slideLayer.style.opacity = '1';
             }, 320);
@@ -2622,8 +2633,9 @@
         if (msg.type === 'range-active') {
             // A range is always a formally-cited scripture passage — always
             // the Bible layer, never Slide.
-            if (!outputLayers.bible) return;
             const verse = msg.verses && msg.verses[0];
+            if (verse) lastLiveSlide = { msg, isBible: true };
+            if (!outputLayers.bible) return;
             if (verse) {
                 if (verse.translation) currentVersion = String(verse.translation);
                 noteConfidenceSlide(verse, true, null);
@@ -2657,7 +2669,7 @@
             const to = msg.to || 'monitors';
             lastMessage = { text: msg.text || '', to };
             const forThisMonitor = to === 'monitors' || to === 'all' || to === `monitor:${OUTPUT_KEY}`;
-            setMonitorMessage(forThisMonitor ? msg.text : '');
+            setMonitorMessage(forThisMonitor && outputLayers.message !== false ? msg.text : '');
             drawMessageBanner();
             return;
         }
@@ -2668,7 +2680,7 @@
         if (msg.type === 'clear') {
             lastLiveSlide = null; lastLiveMedia = null;
             clearDisplay();
-            renderMediaStage(null);
+            mediaGen++; renderMediaStage(null);
             noteConfidenceSlide(null);
             return;
         }

@@ -112,6 +112,32 @@ impl Hub {
         let _ = self.tx.send(data.to_string());
     }
 
+    /// Keeps one part of the per-output settings (layers, keying, fit, frames, monitors, modes) in the look-update a
+    /// window gets when it connects. Only the full theme push used to be kept, so a switch changed afterwards (Scripture
+    /// off for an output) was sent to the open windows and then forgotten: a window that reopened or reconnected was
+    /// handed the startup switches, and the verse came back (owner, 19 Nov 2026).
+    pub fn remember_look_part(&self, part: &str, value: &Value) {
+        let mut l = crate::util::lock(&self.live);
+        if !l.looks.is_object() {
+            l.looks = json!({ "type": "look-update" });
+        }
+        l.looks[part] = value.clone();
+    }
+
+    /// A full theme push replaces what is kept, but not the parts it leaves out (a theme push without layers kept no
+    /// layers, so the switches fell back to their defaults for a window that connected afterwards).
+    pub fn remember_looks(&self, mut msg: Value) {
+        let mut l = crate::util::lock(&self.live);
+        if let Some(old) = l.looks.as_object() {
+            for (k, v) in old {
+                if k != "type" && msg.get(k).is_none_or(|m| m.is_null()) {
+                    msg[k.as_str()] = v.clone();
+                }
+            }
+        }
+        l.looks = msg;
+    }
+
     /// What a window that just connected needs to catch up.
     pub fn catch_up(&self, worker_ready: bool, animation: Value, speed: Value) -> Vec<String> {
         let l = crate::util::lock(&self.live);
@@ -177,5 +203,36 @@ fn note_screen_change(l: &mut Live, next: Option<&Value>, restored: bool) {
         if let (Some(book), Some(chapter)) = (v["book"].as_str(), v["chapter"].as_u64()) {
             let _ = crate::spoken::on_send(book, chapter);
         }
+    }
+}
+
+#[cfg(test)]
+mod look_cache_tests {
+    use super::*;
+
+    fn kept(hub: &Hub) -> Value {
+        let msgs = hub.catch_up(true, Value::Null, Value::Null);
+        msgs.iter().map(|m| serde_json::from_str::<Value>(m).unwrap()).find(|m| m["type"] == "look-update").unwrap_or(Value::Null)
+    }
+
+    #[test]
+    fn a_window_that_connects_gets_the_switches_changed_after_the_theme_push() {
+        let hub = Hub::new();
+        hub.remember_looks(json!({ "type": "look-update", "themes": { "display-1": {} }, "look": null, "layers": { "display-1": { "bible": true } } }));
+        // Scripture switched off for the External Display afterwards (a layers-only push).
+        hub.remember_look_part("layers", &json!({ "display-1": { "bible": false } }));
+        assert_eq!(kept(&hub)["layers"]["display-1"]["bible"], false, "a reopened window must not get Scripture back");
+        assert!(kept(&hub)["themes"].is_object(), "the themes are kept too");
+    }
+
+    #[test]
+    fn a_theme_push_without_switches_keeps_the_switches() {
+        let hub = Hub::new();
+        hub.remember_look_part("layers", &json!({ "monitor-1": { "bible": false } }));
+        hub.remember_look_part("keying", &json!({ "ndi-1": "alpha" }));
+        hub.remember_looks(json!({ "type": "look-update", "themes": { "monitor-1": {} }, "look": null, "layers": null }));
+        let k = kept(&hub);
+        assert_eq!(k["layers"]["monitor-1"]["bible"], false);
+        assert_eq!(k["keying"]["ndi-1"], "alpha");
     }
 }

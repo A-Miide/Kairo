@@ -254,6 +254,18 @@ function buildScreenSelect(outputId) {
     // than trusting Number() to produce NaN for invalid input the way it
     // does for every OTHER non-numeric string.
     const s = sel.value === '' ? null : cachedScreens[Number(sel.value)];
+    // One output per screen: another output already there comes off it, or both windows stack on one screen
+    // and only the top one shows (live app, 19 Nov 2026: the Monitor covered the External Display).
+    if (s) {
+      for (const d of displayOutputs()) {
+        const on = outputScreenMap()[d.id];
+        if (d.id === outputId || !on || on.left !== s.left || on.top !== s.top) continue;
+        setOutputScreen(d.id, null);
+        if (typeof closeDisplayWindow === 'function') closeDisplayWindow(`kairo-${d.id}`);
+        kairoLog('display-screen-taken', { outputId: d.id, by: outputId });
+        window.kairoProblem?.(`${d.name || 'Another output'} was on that screen, so it is now off. Pick a screen for it under Outputs.`, `screen-taken-${d.id}`);
+      }
+    }
     setOutputScreen(outputId, s ? { width: s.width, height: s.height, left: s.left, top: s.top } : null);
     const label = `kairo-${outputId}`;
     if (s) {
@@ -1277,6 +1289,9 @@ function renderDisplayDetail(host, o) {
     del.className = 'modal-btn secondary display-output-del';
     del.textContent = o.monitor ? 'Remove this monitor' : 'Remove this display';
     del.addEventListener('click', () => {
+      // Its window goes too: nothing else would close it once the output is gone.
+      if (typeof closeDisplayWindow === 'function') closeDisplayWindow(`kairo-${o.id}`);
+      displaysWaiting.delete(o.id);
       settings.extraDisplays = extraDisplays().filter(x => x.id !== o.id);
       const screens = { ...outputScreenMap() }; delete screens[o.id];
       settings.outputScreens = screens;
@@ -1519,7 +1534,8 @@ function renderNativeOutputDetail(host, o) {
       } catch (err) {
         // The restart after a rename or size change failed: it is off now, not "on".
         const msg = String(err && err.message || err || 'unknown error').replace(/^Error:\s*/, '');
-        updateNativeOutput(kind, o.id, { lastError: msg });
+        updateNativeOutput(kind, o.id, { enabled: false, lastError: msg });
+        renderOutputsList(); renderOutputsDetail();
         window.kairoProblem?.(`${srcInput.value.trim() || kind.toUpperCase()} stopped sending after the change: ${msg}`, `native-${o.id}`);
       }
     }, 600);
@@ -1872,6 +1888,8 @@ async function openDisplayOutput(d) {
   let scr = assigned || d.screen || {};
   if (assigned) {
     await refreshDisplayStatus();
+    // Switched off (or moved) while the screens were being checked: that newer choice stands.
+    if (outputScreenMap()[d.id] !== assigned) return;
     const hit = liveScreenFor(assigned, d.id);
     if (!hit) {
       displaysWaiting.add(d.id);
@@ -1894,7 +1912,8 @@ async function openDisplayOutput(d) {
   const here = cx >= x && cx < x + w && cy >= y && cy < y + h;
   if (typeof openDisplayWindow === 'function') {
     const label = `kairo-${d.id}`;
-    openDisplayWindow(label, here ? `${url}&here=1` : url, { width: w, height: h, x, y, fullscreen: true });
+    const wanted = () => !assigned || !!outputScreenMap()[d.id];
+    openDisplayWindow(label, here ? `${url}&here=1` : url, { width: w, height: h, x, y, fullscreen: true, stillWanted: wanted });
     verifyDisplayWindowOpened(label);
   } else {
     // This exact fallback — silently opening the system browser instead
@@ -1942,6 +1961,7 @@ async function verifyDisplayWindowOpened(label) {
   const getWin = window.__TAURI__?.webviewWindow?.WebviewWindow;
   if (!getWin) return; // not running inside Tauri (plain dev preview) — nothing to verify
   await new Promise(r => setTimeout(r, 1000));
+  if (!outputScreenMap()[label.replace(/^kairo-/, '')]) return;   // switched off meanwhile: not meant to be open
   try {
     const win = await getWin.getByLabel(label);
     const visible = win ? await win.isVisible().catch(() => null) : null;
@@ -2398,6 +2418,7 @@ async function applyOutputLayers() {
   const map = outputLayerMap();
   storeLocal('kairo-output-layers', JSON.stringify(map));
   storeLocal('kairo-active-look-ts', Date.now().toString());
+  window.KairoNativeOutputs?.refresh?.();
   await pushLook({ layers: map }, 'per-output layer broadcast');
 }
 
@@ -2652,7 +2673,6 @@ function renderOutputControlMatrix() {
     });
     card.appendChild(grid);
 
-    if (o.monitor) shown.push('Alerts');
     const words = ocChipState(rows.find(r => r.key === 'textOnly'), o, map, textOnly).on;
     const line = shown.length
       ? `${words ? 'Words only: ' : 'Shows '}${shown.join(', ')}${hidden.length ? `. Hidden: ${hidden.join(', ')}` : ''}.`
