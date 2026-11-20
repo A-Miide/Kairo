@@ -144,7 +144,8 @@ pub(crate) struct PathState {
 pub(crate) struct ReadingMode {
     active: bool,
     chapter: Option<(Book, u16)>,
-    hits: u32,
+    /// When each recent near-complete quote was heard (only the last half minute's count).
+    hits: Vec<u64>,
     last_reset: u64,
     /// The last near-complete quote.
     last_hit: u64,
@@ -774,19 +775,22 @@ impl Engine {
             return;
         }
         let m = &mut self.reading_mode;
-        m.hits += 1;
+        // Only quotes inside the window count: three spread over twenty minutes once switched reading mode on
+        // (detector audit, 19 Nov 2026).
+        m.hits.retain(|&at| now.saturating_sub(at) < READING_MODE_WINDOW_MS);
+        m.hits.push(now);
         m.last_hit = now;
         if now.saturating_sub(m.last_reset) < READING_MODE_WINDOW_MS {
             return;
         }
         m.last_reset = now;
         let was = m.active;
-        m.active = m.hits >= READING_MODE_HITS;
+        m.active = m.hits.len() as u32 >= READING_MODE_HITS;
         let r = self.k.verse_ref(v);
         if m.active {
             m.chapter = Some((r.book, r.chapter));
         }
-        m.hits = 0;
+        m.hits.clear();
         if was != m.active {
             let (active, chapter) = (m.active, m.active.then_some(v));
             self.effect(Effect::ReadingMode { active, chapter });
@@ -799,7 +803,7 @@ impl Engine {
         let m = &mut self.reading_mode;
         if m.active && now.saturating_sub(m.last_hit) > READING_MODE_LAPSE_MS {
             m.active = false;
-            m.hits = 0;
+            m.hits.clear();
             self.effect(Effect::ReadingMode { active: false, chapter: None });
         }
     }

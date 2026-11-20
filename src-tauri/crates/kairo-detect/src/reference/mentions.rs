@@ -76,7 +76,9 @@ pub fn book_mentions(text: &str, books: &Books, lang: Lang) -> Vec<Book> {
                 continue;
             }
         }
-        if books.is_single_word(w[i]) && !books.is_ambiguous(w[i]) && books.numbered_variants(w[i]).is_none() {
+        // A short form named alone ("mic", "dan", "phil") is an everyday word, not a book (detector audit, 19 Nov
+        // 2026: "is this mic on?"). With numbers ("Phil four thirteen") the parser still takes it.
+        if books.is_single_word(w[i]) && !books.is_ambiguous(w[i]) && !super::i18n::is_english_abbreviation(w[i]) && books.numbered_variants(w[i]).is_none() {
             if let Some(b) = books.alias(w[i]) {
                 add(b);
             }

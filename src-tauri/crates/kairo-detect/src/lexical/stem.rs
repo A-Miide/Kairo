@@ -6,8 +6,9 @@
 //! 1. Spellings that sound the same, which speech-to-text writes the modern
 //!    American way ("honour" → "honor", "shew" → "show"), homophones a speech
 //!    engine can only guess between ("profit"/"prophet"), the articles
-//!    (preachers and engines swap "a"/"the" freely), and the KJV's pronouns
-//!    and helper verbs as said today (thee/thou/ye → you, thy → your, shalt → shall).
+//!    (preachers and engines swap "a"/"the" freely), and a few KJV helper verbs
+//!    (wast → was, mayest → may). The KJV's pronouns (thee/thou/ye, thy) stay apart
+//!    from "you"/"your": see SPELLING.
 //! 2. Irregular forms no suffix rule reaches (hath, saith, begat, brethren).
 //! 3. Suffixes: -ies/-ied, -eth/-est, -ing, -ed, -es, -s.
 //! 4. A final -e and a doubled final consonant drop.
@@ -32,12 +33,11 @@ static SPELLING: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|
         ("fulness", "fullness"),
         ("a", "the"), ("an", "the"),
         ("profit", "prophet"), ("profits", "prophets"), ("wholly", "holy"), ("prey", "pray"), ("sole", "soul"), ("soles", "souls"),
-        // The KJV's pronouns and helper verbs as preachers say them today ("lest thou shouldest say" is
-        // said "lest you should say"; owner review 2026-11-05).
-        //PRONOUNS
-        //VERBS1
+        // The KJV's pronouns as said today (thee/thou/ye → you, thy → your, shalt → shall; owner review 2026-11-05)
+        // were left as empty placeholders on 6 Nov. Filled in (detector audit, 19 Nov 2026) they found 2 more verses
+        // in the replays but sent 4 wrong ones (1 Peter 5:10, Luke 1:75, Deuteronomy 31:8, Matthew 11:29), so they
+        // stay out until matching can use them without losing precision.
         ("wast", "was"), ("wert", "was"), ("mayest", "may"), ("mightest", "might"),
-        //SOEVER
     ]
     .into_iter()
     .collect()
@@ -49,7 +49,11 @@ static IRREGULAR: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(
         ("hath", "hav"), ("has", "hav"), ("have", "hav"), ("had", "hav"), ("having", "hav"), ("hast", "hav"),
         ("saith", "sai"), ("said", "sai"), ("says", "sai"), ("saying", "sai"), ("say", "sai"),
         ("doth", "do"), ("doeth", "do"), ("does", "do"), ("did", "do"), ("done", "do"), ("doing", "do"),
-        ("went", "go"), ("gone", "go"), ("shown", "show"), ("came", "com"), ("saw", "se"), ("seen", "se"),
+        ("go", "go"), ("goes", "go"), ("goeth", "go"), ("goest", "go"), ("going", "go"), ("went", "go"), ("gone", "go"),
+        // Every form of see and of die to one stem: the suffix rules alone split them ("sees" → "see", "seeth" →
+        // "se"; "died" stayed "died", "dieth" → "di"), so "whosoever sees" never met the KJV's "seeth".
+        ("see", "se"), ("sees", "se"), ("seeth", "se"), ("seest", "se"), ("seeing", "se"),
+        ("die", "di"), ("dies", "di"), ("died", "di"), ("dieth", "di"), ("diest", "di"), ("dying", "di"), ("shown", "show"), ("came", "com"), ("saw", "se"), ("seen", "se"),
         ("knew", "kno"), ("known", "kno"), ("took", "tak"), ("taken", "tak"), ("gave", "giv"), ("given", "giv"), ("heard", "hear"),
         ("brought", "bring"), ("bought", "buy"), ("taught", "teach"), ("sought", "seek"), ("thought", "think"), ("fought", "fight"),
         ("caught", "catch"), ("wrought", "work"),
@@ -156,5 +160,8 @@ mod tests {
         assert_eq!(heal("a"), heal("the"));
         assert_eq!(heal("jesus"), "jesus");
         assert_eq!(heal("babies"), "baby");
+        for (kjv, said) in [("seeth", "sees"), ("seen", "seeing"), ("dieth", "died"), ("dying", "dies"), ("goeth", "goes")] {
+            assert_eq!(heal(kjv), heal(said), "{kjv} / {said}");
+        }
     }
 }

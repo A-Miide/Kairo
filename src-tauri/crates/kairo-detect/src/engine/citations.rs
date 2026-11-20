@@ -274,6 +274,12 @@ fn bare_citation_at(text: &str) -> Option<((u16, u16, u16), String)> {
         if matches!(j.checked_sub(1).map(|p| w[p]), Some("verse" | "verses")) {
             continue;
         }
+        // "I'll read four verses, fifteen through eighteen": a count of verses, not chapter 4. Taken as a citation
+        // with no book, it held every quote at other numbers for half a minute (detector audit, 19 Nov 2026).
+        const COUNTING: [&str; 12] = ["read", "next", "first", "last", "these", "those", "the", "few", "all", "just", "only", "about"];
+        if w[i] == "verses" && j.checked_sub(1).is_some_and(|p| COUNTING.contains(&w[p])) {
+            continue;
+        }
         let Some(from) = consume_number(&w, i + 1, Some(176)) else { continue };
         let mut to = from.value;
         let k = i + 1 + from.consumed;
@@ -441,6 +447,14 @@ impl Engine {
         let mut refs = self.resolve_ambiguous(parsed, now);
         self.prefer_cited_sibling(&mut refs, now);
         let tail = last_raw_word(text).trim_end_matches(['.', ',', '!', '?']).to_lowercase();
+        // Psalm 119 is the one chapter with verses past 100: a "verse one" said last may still grow ("Psalm one
+        // nineteen verse one" | "oh five" flashed 119:1 before 119:105; detector audit, 19 Nov 2026).
+        let may_grow = tail == "one" && refs.iter().any(|r| r.c.book.name() == "Psalms" && r.c.chapter == 119 && matches!(r.c.verses, Verses::One(1)));
+        if !refs.is_empty() && may_grow {
+            // Waits: the next segment's join finishes it. Handled meanwhile, so neither its numbers alone (a chapter
+            // only Psalms has) nor "verse one" in the chapter being read send 119:1.
+            return true;
+        }
         if !refs.is_empty() && is_final && DANGLING.contains(&tail.as_str()) {
             refs.clear(); // the next segment's join finishes it
         }
@@ -586,6 +600,7 @@ impl Engine {
                 if ends_on_growable_number(text, self.cfg.lang) {
                     continue;
                 }
+
                 // "chapter six nineteen to…": the same verse twice isn't settled while a range is
                 // being said; the next word says where it ends (live, 2026-10-29: 6:19 went up
                 // alone, and "to twenty" never made it a range).
@@ -799,6 +814,16 @@ impl Engine {
     /// world" is 1 John 4:4, 19 Nov 2026): the same weight and margin as for a quote.
     pub(crate) fn bare_fit(&mut self, spoken: &str, now: u64) -> Option<Candidate> {
         let b = self.cites.bare.filter(|b| now.saturating_sub(b.at) < BARE_CITATION_MS && b.resolved.is_none())?;
+        // Numbers only one book has name it: "eighty two verse six" is Psalm 82:6 (19 Nov 2026, the Core ML engine
+        // never heard "Psalm", and "heaven say you are a God" shares too few words with "Ye are gods" to fit).
+        let mut books = Book::all().filter(|&book| (b.from..=b.to).all(|n| self.k.id(VerseRef::new(book, b.chapter, n)).is_some()));
+        if let (Some(book), None) = (books.next(), books.next()) {
+            let shown = self.bare_put_up(b, book, None, "the only book with those numbers", now);
+            // Fully named: nothing waits on these numbers (they went up again with the next citation, and held
+            // every other quote for half a minute).
+            self.cites.bare = None;
+            return shown;
+        }
         let said: HashSet<String> = super::evidence::evidence_words(spoken);
         // Each distinct word of a verse counts once: "world" and "God" twice over made James 4:4 fit a sentence about
         // the church and the world.

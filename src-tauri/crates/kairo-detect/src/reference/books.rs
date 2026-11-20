@@ -235,7 +235,9 @@ impl Books {
                 }
             }
             if let Some((_, books)) = best {
-                return Some((books.get(n as usize - 1).copied().unwrap_or(books[0]), 2));
+                // A number the book doesn't have ("third Timothy") names none of them: the plain stem is read
+                // after it and every numbered book stays open (1 Timothy went up; detector audit, 19 Nov 2026).
+                return books.get(n as usize - 1).map(|&b| (b, 2));
             }
         }
         if self.single_set.contains(w) {
