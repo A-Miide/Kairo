@@ -1,0 +1,32 @@
+diff --git a/Sources/FluidAudio/ASR/Parakeet/Streaming/Nemotron/StreamingNemotronAsrManager+Pipeline.swift b/Sources/FluidAudio/ASR/Parakeet/Streaming/Nemotron/StreamingNemotronAsrManager+Pipeline.swift
+index 340f00aa..aaf6511a 100644
+--- a/Sources/FluidAudio/ASR/Parakeet/Streaming/Nemotron/StreamingNemotronAsrManager+Pipeline.swift
++++ b/Sources/FluidAudio/ASR/Parakeet/Streaming/Nemotron/StreamingNemotronAsrManager+Pipeline.swift
+@@ -388,6 +388,7 @@ extension StreamingNemotronAsrManager {
+         let count = logits.count
+ 
+         let ptr = logits.dataPointer.bindMemory(to: Float.self, capacity: count)
++        if blankPenalty != 0, config.blankIdx < count { ptr[config.blankIdx] -= blankPenalty }
+ 
+         // Use Accelerate framework for vectorized maximum index search
+         var maxVal: Float = -Float.infinity
+diff --git a/Sources/FluidAudio/ASR/Parakeet/Streaming/Nemotron/StreamingNemotronAsrManager.swift b/Sources/FluidAudio/ASR/Parakeet/Streaming/Nemotron/StreamingNemotronAsrManager.swift
+index a26c6d60..32ae7666 100644
+--- a/Sources/FluidAudio/ASR/Parakeet/Streaming/Nemotron/StreamingNemotronAsrManager.swift
++++ b/Sources/FluidAudio/ASR/Parakeet/Streaming/Nemotron/StreamingNemotronAsrManager.swift
+@@ -62,6 +62,15 @@ public actor StreamingNemotronAsrManager {
+     internal var cState: MLMultiArray?
+     internal var lastToken: Int32
+ 
++    /// Taken off the blank token's score at every decoding step (0: greedy as trained). The
++    /// recogniser otherwise hears a short word after a pause as nothing.
++    internal var blankPenalty: Float = 0
++
++    /// Sets how much the blank token is held back (see `blankPenalty`).
++    public func setBlankPenalty(_ penalty: Float) {
++        blankPenalty = penalty
++    }
++
+     // Callbacks
+     internal var partialCallback: NemotronPartialCallback?
+ 
