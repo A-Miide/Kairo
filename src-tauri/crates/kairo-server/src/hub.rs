@@ -49,7 +49,15 @@ pub struct Live {
 pub struct Hub {
     tx: broadcast::Sender<String>,
     pub live: Mutex<Live>,
+    /// What each window last said it shows (`state-report` over the socket): the main window's
+    /// Live Queue, each output's words, switches and screen. Read by `/api/state-reports`, which
+    /// the release smoke test (scripts/smoke-test.mjs) checks against what it sent.
+    reports: std::sync::Mutex<std::collections::BTreeMap<String, Value>>,
 }
+
+/// At most this many windows' reports, each at most this big: a window can't grow the server.
+const MAX_REPORTS: usize = 64;
+const MAX_REPORT_BYTES: usize = 16 * 1024;
 
 fn screen_key(m: Option<&Value>) -> String {
     m.map(|m| format!("{}|{}", m["verses"][0]["reference"].as_str().unwrap_or(""), m["verses"][0]["text"].as_str().unwrap_or(""))).unwrap_or_default()
@@ -64,7 +72,28 @@ impl Default for Hub {
 impl Hub {
     pub fn new() -> Hub {
         let (tx, _) = broadcast::channel(1024);
-        Hub { tx, live: Mutex::new(Live { connection_state: "disconnected".into(), ..Default::default() }) }
+        Hub { tx, live: Mutex::new(Live { connection_state: "disconnected".into(), ..Default::default() }), reports: Default::default() }
+    }
+
+    /// Keeps a window's `state-report` ({ key, ... }), replacing its last one. False when refused:
+    /// no key, too big, or a new key past MAX_REPORTS.
+    pub fn report_state(&self, report: Value, size: usize) -> bool {
+        let Some(key) = report["key"].as_str().filter(|k| !k.is_empty() && k.len() <= 80).map(str::to_string) else { return false };
+        if size > MAX_REPORT_BYTES {
+            return false;
+        }
+        let mut reports = self.reports.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if !reports.contains_key(&key) && reports.len() >= MAX_REPORTS {
+            return false;
+        }
+        reports.insert(key, report);
+        true
+    }
+
+    /// Every window's last report, by key.
+    pub fn state_reports(&self) -> Value {
+        let reports = self.reports.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        Value::Object(reports.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
     }
 
     pub fn subscribe(&self) -> broadcast::Receiver<String> {
@@ -235,4 +264,18 @@ mod look_cache_tests {
         assert_eq!(k["layers"]["monitor-1"]["bible"], false);
         assert_eq!(k["keying"]["ndi-1"], "alpha");
     }
+
+    #[test]
+    fn state_reports_are_kept_per_window_and_bounded() {
+        let hub = Hub::new();
+        assert!(hub.report_state(json!({ "key": "main", "liveQueue": ["John 3:16"] }), 40));
+        assert!(hub.report_state(json!({ "key": "main", "liveQueue": ["Romans 8:28"] }), 40));
+        assert_eq!(hub.state_reports()["main"]["liveQueue"][0], "Romans 8:28", "the newest report replaces the last");
+        assert!(!hub.report_state(json!({ "liveQueue": [] }), 10), "no key");
+        assert!(!hub.report_state(json!({ "key": "big" }), MAX_REPORT_BYTES + 1), "too big");
+        for i in 0..MAX_REPORTS { hub.report_state(json!({ "key": format!("output:{i}") }), 10); }
+        assert!(!hub.report_state(json!({ "key": "one-too-many" }), 10));
+        assert!(hub.report_state(json!({ "key": "main", "liveQueue": [] }), 10), "a known window can still update");
+    }
 }
+

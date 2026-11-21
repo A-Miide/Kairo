@@ -116,6 +116,9 @@ async fn client(app: Shared, socket: WebSocket) {
                 if let Ok(v) = serde_json::from_str::<Value>(&t) {
                     if v["type"] == "media-status" {
                         app.hub.broadcast(v);
+                    } else if v["type"] == "state-report" {
+                        // What a window shows now, kept for /api/state-reports (not broadcast).
+                        app.hub.report_state(v, t.len());
                     }
                 }
             }

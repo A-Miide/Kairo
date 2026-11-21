@@ -241,6 +241,22 @@ const refreshDevicesBtn   = document.getElementById('refresh-devices-settings');
 // panel (renderObsDetail) — see testObsConnection's own comment for why a
 // fixed obs-status/test-obs-btn id no longer makes sense.
 
+// ── What the main window shows, for the server (hub.rs report_state) ──────
+// The Live Queue's verses (top first) and whether listening is on, sent when the queue changes
+// and every 5 s. The release smoke test (scripts/smoke-test.mjs) reads them back from
+// /api/state-reports to check that each verse it had auto-sent landed in the Live Queue.
+let _mainReportTimer = null;
+function reportMainState() {
+  clearTimeout(_mainReportTimer);
+  _mainReportTimer = setTimeout(() => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) return;
+    const liveQueue = currentDisplayCard ? [...currentDisplayCard.querySelectorAll('[data-ref]')].map(el => el.dataset.ref).filter(Boolean).slice(0, 200) : [];
+    try { ws.send(JSON.stringify({ type: 'state-report', key: 'main', liveQueue: [...new Set(liveQueue)], listening: isListening, at: Date.now() })); } catch {}
+  }, 300);
+}
+if (currentDisplayCard) new MutationObserver(reportMainState).observe(currentDisplayCard, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-ref'] });
+setInterval(reportMainState, 5000);
+
 // ── WebSocket ──────────────────────────────────────────────────────────────
 function connectWS() {
   if (ws && ws.readyState < 2) return;
@@ -253,6 +269,7 @@ function connectWS() {
     flushPendingAudio();   // audio captured while this socket was reconnecting
     loadSettings();
     initCustomSelects();
+    reportMainState();
   };
 
   ws.onmessage = (ev) => {

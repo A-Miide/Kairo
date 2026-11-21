@@ -1,0 +1,9 @@
+{
+  "about": "What scripts/smoke-test.mjs says to the packaged app, and the verse each part must put up. Cited references, so they send on any engine and any Bible.",
+  "switchOff": { "text": "Let us read Philippians chapter four verse thirteen", "expect": "Philippians 4:13" },
+  "transcript": [
+    { "text": "Good morning church. Turn with me to John chapter three verse sixteen", "expect": "John 3:16" },
+    { "text": "And over in Romans chapter eight verse twenty eight", "expect": "Romans 8:28" },
+    { "text": "David wrote it in Psalm twenty three verse one", "expect": "Psalms 23:1" }
+  ]
+}
