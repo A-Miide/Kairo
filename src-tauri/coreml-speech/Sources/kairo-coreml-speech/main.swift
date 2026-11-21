@@ -27,6 +27,13 @@ let sampleRate = 16_000.0
 let resetAfterWords = 300
 /// An utterance ends after this long with no new word (offline.rs UTTERANCE_END_SECS).
 let utteranceEndSecs = 1.2
+/// Taken off the "nothing said" score at every decoding step, as the ONNX engine does (offline.rs
+/// BLANK_PENALTY; FluidAudio patched for it, patches/fluidaudio-blank-penalty.patch). Without it
+/// this recogniser heard a short word after a pause as silence ("in Psalm eighty two verse six"
+/// came out "in eighty two verse six", 19 Nov 2026). Measured on Enough is Enough (2026-11-20,
+/// offline-transcribe --coreml against its transcript): words lost 423 -> 279, gaps of 4+ words
+/// 22 -> 10, the same verses found (25 of 30) and wrong sends (1), suggestions 25 -> 22 an hour.
+let blankPenalty: Float = 1.0
 /// The model decodes in chunks of this many samples (560 ms).
 let chunkSamples = 8_960
 /// Audio waiting longer than this is dropped and recognition starts at the newest, unless this
@@ -368,6 +375,7 @@ func run() async -> Int32 {
     let engine = StreamingNemotronAsrManager(configuration: MLModelConfigurationUtils.defaultConfiguration(computeUnits: units))
     do {
         try await engine.loadModels(from: URL(fileURLWithPath: args[1]))
+        await engine.setBlankPenalty(blankPenalty)
     } catch {
         FileHandle.standardError.write("[Offline] \(error.localizedDescription)\n".data(using: .utf8)!)
         return 2

@@ -160,7 +160,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: src-tauri/bin/kairo-coreml-speech
-          key: coreml-speech-${{ hashFiles('src-tauri/coreml-speech/Package.swift', 'src-tauri/coreml-speech/Package.resolved', 'src-tauri/coreml-speech/Sources/**', 'scripts/build-coreml-speech.sh') }}
+          key: coreml-speech-${{ hashFiles('src-tauri/coreml-speech/Package.swift', 'src-tauri/coreml-speech/Package.resolved', 'src-tauri/coreml-speech/Sources/**', 'src-tauri/coreml-speech/patches/**', 'scripts/build-coreml-speech.sh') }}
 
       - name: Build the engine
         if: steps.cache.outputs.cache-hit != 'true'
