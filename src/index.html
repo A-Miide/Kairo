@@ -232,6 +232,8 @@
                         <span class="ls-bcast-label" id="ls-bcast-label">Idle</span>
                     </div>
                 </div>
+                <!-- While listening: the input has gone silent or is clipping (input_health.js). Opens Audio settings. -->
+                <button type="button" class="ls-input-health" id="ls-input-health" hidden></button>
                 <div class="ls-metrics-bar">
                     <div class="ls-metric">
                         <span class="ls-metric-val" id="verse-count">0</span>
@@ -2641,6 +2643,7 @@
     <script src="service.js"></script>
     <script src="service_strip.js"></script>
     <script src="audio_level.js"></script>
+    <script src="input_health.js"></script>
     <script src="queue_order.js"></script>
     <script src="app.js"></script>
     <script src="app_theme_studio.js"></script>
