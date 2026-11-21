@@ -78,13 +78,13 @@ impl Video {
         let ok = Command::new(ff)
             .args(["-hide_banner", "-nostdin", "-loglevel", "error", "-y", "-ss", "0.5", "-i"]).arg(source)
             .args(["-frames:v", "1", "-an", "-sn", "-vf"]).arg(format!("scale={width}:-2"))
-            .args(["-q:v", "5", "-f", "image2"]).arg(&tmp)
+            .args(["-c:v", "mjpeg", "-q:v", "5", "-f", "image2"]).arg(&tmp)
             .stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success());
         // A clip shorter than the seek has no frame there: the first frame, then.
         let ok = ok && tmp.is_file() || Command::new(ff)
             .args(["-hide_banner", "-nostdin", "-loglevel", "error", "-y", "-i"]).arg(source)
             .args(["-frames:v", "1", "-an", "-sn", "-vf"]).arg(format!("scale={width}:-2"))
-            .args(["-q:v", "5", "-f", "image2"]).arg(&tmp)
+            .args(["-c:v", "mjpeg", "-q:v", "5", "-f", "image2"]).arg(&tmp)
             .stdout(Stdio::null()).stderr(Stdio::null()).status().is_ok_and(|s| s.success());
         if !ok || !tmp.is_file() || std::fs::rename(&tmp, &out).is_err() {
             let _ = std::fs::remove_file(&tmp);

@@ -328,8 +328,10 @@ async fn bin_delete(State(app): State<Shared>, Path(name): Path<String>) -> Json
 async fn bin_file(State(app): State<Shared>, Path(name): Path<String>, req: Request) -> Response {
     match app.media.bin_file(&name) {
         Some(p) => {
-            let p = media_thumb(&app, p, thumb_width(&req)).await;
-            send_file(p, req).await
+            match media_thumb(&app, p, thumb_width(&req)).await {
+                Some(p) => send_file(p, req).await,
+                None => StatusCode::NOT_FOUND.into_response(),
+            }
         }
         None => StatusCode::NOT_FOUND.into_response(),
     }
@@ -350,17 +352,20 @@ fn thumb_width(req: &Request) -> Option<Thumb> {
 /// `?w=640` on a media address: a card in the Media Bin or Media tab shows a small copy of the picture, made
 /// once and kept under the app's data folder, not the original (a 4800×2700 PNG is 52 MB once decoded, for a
 /// card the size of a stamp; church PC, 15 Nov 2026). The output and the sends use the address without `w`.
-async fn media_thumb(app: &Shared, original: std::path::PathBuf, ask: Option<Thumb>) -> std::path::PathBuf {
-    let Some(ask) = ask else { return original };
+/// None: a video's picture was asked for and none could be cut. Never the video itself in its place: an
+/// image tag in WebKit plays a video file, muted and looping, with a decoder for every card (no picture was
+/// ever cut with 4.7.2's ffmpeg, so every Media Bin card played its clip; 21 Nov 2026). The card then shows
+/// a paused video instead (service.js buildMediaThumb).
+async fn media_thumb(app: &Shared, original: std::path::PathBuf, ask: Option<Thumb>) -> Option<std::path::PathBuf> {
+    let Some(ask) = ask else { return Some(original) };
     let dir = app.cfg.app_data_dir.join("media-thumbs");
     let source = original.clone();
     if let Thumb::Poster(width) = ask {
         let video = app.video.clone();
         let is_video = source.file_name().and_then(|n| n.to_str()).and_then(crate::media::kind_for) == Some("video");
-        // Not a video, or no ffmpeg: the file itself, which the card cannot draw as a picture, so it shows the video instead.
-        return if is_video { tokio::task::spawn_blocking(move || video.poster(&dir, &source, width)).await.ok().flatten().unwrap_or(original) } else { original };
+        return if is_video { tokio::task::spawn_blocking(move || video.poster(&dir, &source, width)).await.ok().flatten() } else { Some(original) };
     }
-    let Thumb::Picture(width) = ask else { return original };
+    let Thumb::Picture(width) = ask else { return Some(original) };
     tokio::task::spawn_blocking(move || {
         // Named for the file's place, size and age, so another folder's picture of the same name, or an edited file, gets its own.
         let meta = std::fs::metadata(&source).ok()?;
@@ -373,7 +378,7 @@ async fn media_thumb(app: &Shared, original: std::path::PathBuf, ask: Option<Thu
     .await
     .ok()
     .flatten()
-    .unwrap_or(original)
+    .or(Some(original))
 }
 async fn audio_tracks(State(app): State<Shared>) -> Json<Value> {
     let m = app.media.clone();
@@ -441,8 +446,10 @@ async fn folder_file(State(app): State<Shared>, Path((id, name)): Path<(String, 
     let m = app.media.clone();
     match tokio::task::spawn_blocking(move || m.folder_file(&id, &name)).await.ok().flatten() {
         Some(crate::media::FolderFile::Here(p)) => {
-            let p = media_thumb(&app, p, thumb_width(&req)).await;
-            send_file(p, req).await
+            match media_thumb(&app, p, thumb_width(&req)).await {
+                Some(p) => send_file(p, req).await,
+                None => StatusCode::NOT_FOUND.into_response(),
+            }
         }
         Some(crate::media::FolderFile::Downloading) => (StatusCode::ACCEPTED, Json(json!({ "ok": true, "downloading": true }))).into_response(),
         None => StatusCode::NOT_FOUND.into_response(),
