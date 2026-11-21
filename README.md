@@ -62,8 +62,10 @@ Detection evaluations (sermon replay, scenarios, the meaning benchmark) live in 
    ```
 
    ```bash
-   node scripts/smoke-test.mjs --app "C:\Program Files\Kairo\Kairo.exe"
+   node scripts/smoke-test.mjs --app "%LOCALAPPDATA%\Kairo\Kairo.exe"
    ```
+
+   (That is where the `.exe` installer puts it; the `.msi` installs to `C:\Program Files\Kairo\Kairo.exe`. In PowerShell write `$env:LOCALAPPDATA` instead of `%LOCALAPPDATA%`.)
 
    It launches the app and checks that it starts, that each display output opens on its own screen, that a verse doesn't show where Output Control has Scripture off (and does once it is back on), and that a replayed transcript (`scripts/smoke-test.json`) auto-sends each verse into the Live Queue and onto the screen. Every line says PASS or FAIL; exit code 0 means all passed. Give `display-1` a screen first (or pass `--output <id>`), and leave Auto-send on. It uses the computer's own settings, so the screens show the test verses: not during a service. Output Control is put back afterwards.
 
