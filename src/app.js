@@ -2613,6 +2613,34 @@ async function buildCaptureGraph(deviceId, existingStream = null) {
   return { stream, ctx, proc };
 }
 
+// ── Input health, in Live Status ───────────────────────────────────────────
+// While listening, a line under Live Status says when the input has gone silent or is clipping
+// (input_health.js), and goes when it recovers. Clicking it opens Audio settings and its meter.
+const inputHealth = window.KairoInputHealth ? new window.KairoInputHealth.InputHealth() : null;
+let _inputHealthShown = 'ok';
+let _inputHealthListening = false;
+function showInputHealth(state) {
+  if (state === _inputHealthShown) return;
+  _inputHealthShown = state;
+  const el = document.getElementById('ls-input-health');
+  if (el) {
+    el.hidden = state === 'ok';
+    el.dataset.state = state;
+    el.textContent = state === 'ok' ? '' : window.KairoInputHealth.MESSAGES[state];
+  }
+  kairoLog('input-health', { state, input: captureLabel() });
+}
+setInterval(() => {
+  if (!inputHealth) return;
+  const now = Date.now();
+  if (isListening && !_inputHealthListening) inputHealth.reset(now);   // a new session: nothing known yet
+  _inputHealthListening = isListening;
+  showInputHealth(isListening ? inputHealth.state(now) : 'ok');
+}, 1000);
+document.getElementById('ls-input-health')?.addEventListener('click', () => {
+  settingsModal?.classList.remove('hidden'); showFirstSettingsPane();
+});
+
 // The capture level — the meter, the dead-device checks and a debug-log line
 // every 3 s. From the worklet ten times a second, or per fallback frame. The
 // peak is the raw input (int16 scale, before the level control); gain is what
@@ -2621,6 +2649,7 @@ function noteCaptureLevel(peak, bufferLength, gain = 1, clipped = false) {
   const now = Date.now();
   noteInputLevel(peak / 32768, clipped, gain);
   noteInputSummary(peak / 32768, clipped, gain);
+  if (inputHealth && isListening && _inputHealthListening) showInputHealth(inputHealth.note(peak / 32768, clipped, now));
   if (peak > 0) rememberInputGain(captureLabel(), gain);
   if (peak > 0) {
     lastNonZeroAudioAt = lastHeardSignalAt = now;

@@ -2008,7 +2008,7 @@ input[type="range"]:disabled { opacity: 0.4; cursor: default; }
   padding: 14px 16px;
   background: var(--bg-input);
   border: 1px solid var(--border-md);
-  border-radius: var(--radius-md, 8px);
+  border-radius: var(--radius);
   color: var(--text);
   font-family: var(--font);
   font-size: 15px;
@@ -3748,6 +3748,24 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
 }
 
 .ls-bcast-pill.is-actionable { cursor: pointer; }
+
+/* While listening: the input is silent or clipping (input_health.js, app.js showInputHealth). */
+.ls-input-health {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 7px 10px;
+  border: 1px solid var(--brand);
+  border-radius: var(--radius);
+  background: var(--brand-dim);
+  color: var(--notice);
+  font: 600 12px/1.35 var(--font);
+  text-align: left;
+  cursor: pointer;
+}
+.ls-input-health[hidden] { display: none; }
+.ls-input-health:hover { background: var(--brand); }
+.ls-input-health:focus-visible { outline: 2px solid var(--notice); outline-offset: 2px; }
 .ls-bcast-pill {
   display: flex;
   align-items: center;
