@@ -570,6 +570,7 @@ async function nativeStart(invokeFn, kind, args) {
     if (o.mode == null) throw new Error('Pick a card and a video format first.');
     const size = await invokeFn('decklink_start', { id: o.id, device: o.device | 0, mode: o.mode, keying: !!o.keying, fps: o.fps || 30 });
     window.KairoCapture?.open(o.id, size.width, size.height);
+    window.KairoNativeOutputs?.pushToOne?.('decklink', o.id); // where it draws the words itself
     return;
   }
   await invokeFn(`${kind}_start`, args);

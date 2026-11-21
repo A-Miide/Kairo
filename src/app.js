@@ -968,6 +968,9 @@ function applyLivePreviewAspect() {
 // timer) are what you see — rendered at the output's real resolution and
 // scaled down. Nothing to pick: the pop-out window always shows the grid.
 const MONITOR_MAIN = { id: 'main', type: 'main', name: 'Main' };
+// The page key the Main tile shows: the main screen's own output, so its theme and Output Control
+// switches are what the tile shows ('main' is no output and showed every layer on).
+const monitorPageKey = (o) => (o.type === 'main' ? PRIMARY_DISPLAY : o.id);
 
 function monitorTargets() {
   const outputs = (typeof allConfiguredOutputs === 'function') ? allConfiguredOutputs() : [];
@@ -998,7 +1001,7 @@ function buildMonitorFrame(o) {
   box.className = 'monitor-frame';
   box.dataset.key = `${o.id}|${w}x${h}`;
   const frame = document.createElement('iframe');
-  frame.src = `/display.html?output=${encodeURIComponent(o.type === 'main' ? 'main' : o.id)}&monitor=1`;
+  frame.src = `/display.html?output=${encodeURIComponent(monitorPageKey(o))}&monitor=1`;
   frame.title = `${o.name} — live`;
   frame.setAttribute('tabindex', '-1');
   frame.style.width = `${w}px`;
@@ -1092,7 +1095,7 @@ async function openMonitorWindow() {
   // clicking the app brings the app forward.
   const width = Math.min(880, Math.round(window.screen.availWidth * 0.9));
   const height = Math.max(420, Math.round(window.innerHeight * 0.78));
-  const tiles = monitorTargets().map(t => { const { w, h } = monitorResolution(t); return { id: t.type === 'main' ? 'main' : t.id, name: t.name, w, h }; });
+  const tiles = monitorTargets().map(t => { const { w, h } = monitorResolution(t); return { id: monitorPageKey(t), name: t.name, w, h }; });
   const path = `/monitor.html?tiles=${encodeURIComponent(JSON.stringify(tiles))}`;
   const title = 'KAIRO Monitor';
   const WebviewWindow = window.__TAURI__?.webviewWindow?.WebviewWindow;

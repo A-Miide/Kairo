@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-decklink-layers"
+description = "Enables the decklink_layers command without any pre-configured scope."
+commands.allow = ["decklink_layers"]
+
+[[permission]]
+identifier = "deny-decklink-layers"
+description = "Denies the decklink_layers command without any pre-configured scope."
+commands.deny = ["decklink_layers"]

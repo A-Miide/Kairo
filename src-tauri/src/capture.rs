@@ -28,15 +28,36 @@ impl Frame {
     /// that expect it.
     pub fn unpremultiplied(&self) -> Vec<u8> {
         let mut out = self.bgra.clone();
-        for px in out.chunks_exact_mut(4) {
-            let a = px[3] as u32;
-            if a != 0 && a != 255 {
-                for c in &mut px[..3] {
-                    *c = ((*c as u32 * 255 + a / 2) / a).min(255) as u8;
-                }
+        unpremultiply(&mut out);
+        out
+    }
+}
+
+/// Premultiplied BGRA (or RGBA) to straight alpha, in place: what NDI's BGRA
+/// and Spout receivers expect. Sent premultiplied, every soft edge came out
+/// darker than it should.
+pub fn unpremultiply(px: &mut [u8]) {
+    for p in px.chunks_exact_mut(4) {
+        let a = p[3] as u32;
+        if a != 0 && a != 255 {
+            for c in &mut p[..3] {
+                *c = ((*c as u32 * 255 + a / 2) / a).min(255) as u8;
             }
         }
-        out
+    }
+}
+
+/// Straight alpha back to premultiplied, in place. After `unpremultiply` it
+/// gives the same bytes back, so a picture on air can be converted for
+/// sending and back for blending without drifting.
+pub fn premultiply(px: &mut [u8]) {
+    for p in px.chunks_exact_mut(4) {
+        let a = p[3] as u32;
+        if a != 255 {
+            for c in &mut p[..3] {
+                *c = ((*c as u32 * a + 127) / 255) as u8;
+            }
+        }
     }
 }
 
@@ -174,7 +195,30 @@ unsafe fn to_frame(img: &objc2_app_kit::NSImage, width: u32, height: u32) -> Res
 
 #[cfg(test)]
 mod tests {
-    use super::{with_alpha, Frame};
+    use super::{premultiply, unpremultiply, with_alpha, Frame};
+
+    #[test]
+    fn straight_alpha_round_trips_without_drift() {
+        // every premultiplied value a pixel can hold (colour <= alpha)
+        let mut px = Vec::new();
+        for a in 0..=255u8 {
+            for c in (0..=a).step_by(3) {
+                px.extend_from_slice(&[c, c / 2, a - c, a]);
+            }
+        }
+        let orig = px.clone();
+        unpremultiply(&mut px);
+        premultiply(&mut px);
+        assert_eq!(px, orig);
+    }
+
+    #[test]
+    fn a_half_see_through_edge_is_sent_at_full_colour() {
+        // white at half alpha: premultiplied 128, straight 255
+        let mut px = vec![128, 128, 128, 128, 0, 0, 0, 0, 10, 20, 30, 255];
+        unpremultiply(&mut px);
+        assert_eq!(px, vec![255, 255, 255, 128, 0, 0, 0, 0, 10, 20, 30, 255]);
+    }
 
     #[test]
     fn transparency_comes_from_the_two_backdrops() {

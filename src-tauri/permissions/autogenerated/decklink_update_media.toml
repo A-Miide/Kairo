@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-decklink-update-media"
+description = "Enables the decklink_update_media command without any pre-configured scope."
+commands.allow = ["decklink_update_media"]
+
+[[permission]]
+identifier = "deny-decklink-update-media"
+description = "Denies the decklink_update_media command without any pre-configured scope."
+commands.deny = ["decklink_update_media"]

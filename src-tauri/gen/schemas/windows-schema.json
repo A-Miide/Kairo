@@ -387,6 +387,54 @@
       "description": "Permission identifier",
       "oneOf": [
         {
+          "description": "Enables the check_updates command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-check-updates",
+          "markdownDescription": "Enables the check_updates command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the decklink_layers command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-decklink-layers",
+          "markdownDescription": "Enables the decklink_layers command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the decklink_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-decklink-list",
+          "markdownDescription": "Enables the decklink_list command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the decklink_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-decklink-start",
+          "markdownDescription": "Enables the decklink_start command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the decklink_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-decklink-stop",
+          "markdownDescription": "Enables the decklink_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the decklink_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-decklink-update",
+          "markdownDescription": "Enables the decklink_update command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the decklink_update_media command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-decklink-update-media",
+          "markdownDescription": "Enables the decklink_update_media command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the decklink_update_timer command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-decklink-update-timer",
+          "markdownDescription": "Enables the decklink_update_timer command without any pre-configured scope."
+        },
+        {
           "description": "Enables the get_server_config command without any pre-configured scope.",
           "type": "string",
           "const": "allow-get-server-config",
@@ -429,6 +477,12 @@
           "markdownDescription": "Enables the ndi_available command without any pre-configured scope."
         },
         {
+          "description": "Enables the ndi_layers command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-ndi-layers",
+          "markdownDescription": "Enables the ndi_layers command without any pre-configured scope."
+        },
+        {
           "description": "Enables the ndi_start command without any pre-configured scope.",
           "type": "string",
           "const": "allow-ndi-start",
@@ -447,16 +501,124 @@
           "markdownDescription": "Enables the ndi_update command without any pre-configured scope."
         },
         {
+          "description": "Enables the ndi_update_media command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-ndi-update-media",
+          "markdownDescription": "Enables the ndi_update_media command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the ndi_update_timer command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-ndi-update-timer",
+          "markdownDescription": "Enables the ndi_update_timer command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the output_camera command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-output-camera",
+          "markdownDescription": "Enables the output_camera command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the output_capture command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-output-capture",
+          "markdownDescription": "Enables the output_capture command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the output_capture_supported command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-output-capture-supported",
+          "markdownDescription": "Enables the output_capture_supported command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the output_video command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-output-video",
+          "markdownDescription": "Enables the output_video command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the pin_output_window command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-pin-output-window",
+          "markdownDescription": "Enables the pin_output_window command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the record_reveal command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-record-reveal",
+          "markdownDescription": "Enables the record_reveal command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the record_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-record-start",
+          "markdownDescription": "Enables the record_start command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the record_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-record-status",
+          "markdownDescription": "Enables the record_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the record_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-record-stop",
+          "markdownDescription": "Enables the record_stop command without any pre-configured scope."
+        },
+        {
           "description": "Enables the signal_main_ready command without any pre-configured scope.",
           "type": "string",
           "const": "allow-signal-main-ready",
           "markdownDescription": "Enables the signal_main_ready command without any pre-configured scope."
         },
         {
+          "description": "Enables the stream_cameras command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stream-cameras",
+          "markdownDescription": "Enables the stream_cameras command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stream_mix command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stream-mix",
+          "markdownDescription": "Enables the stream_mix command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stream_program command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stream-program",
+          "markdownDescription": "Enables the stream_program command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stream_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stream-start",
+          "markdownDescription": "Enables the stream_start command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stream_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stream-status",
+          "markdownDescription": "Enables the stream_status command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the stream_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-stream-stop",
+          "markdownDescription": "Enables the stream_stop command without any pre-configured scope."
+        },
+        {
           "description": "Enables the syphon_available command without any pre-configured scope.",
           "type": "string",
           "const": "allow-syphon-available",
           "markdownDescription": "Enables the syphon_available command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the syphon_layers command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-syphon-layers",
+          "markdownDescription": "Enables the syphon_layers command without any pre-configured scope."
         },
         {
           "description": "Enables the syphon_start command without any pre-configured scope.",
@@ -475,6 +637,66 @@
           "type": "string",
           "const": "allow-syphon-update",
           "markdownDescription": "Enables the syphon_update command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the syphon_update_media command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-syphon-update-media",
+          "markdownDescription": "Enables the syphon_update_media command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the syphon_update_timer command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-syphon-update-timer",
+          "markdownDescription": "Enables the syphon_update_timer command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the check_updates command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-check-updates",
+          "markdownDescription": "Denies the check_updates command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the decklink_layers command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-decklink-layers",
+          "markdownDescription": "Denies the decklink_layers command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the decklink_list command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-decklink-list",
+          "markdownDescription": "Denies the decklink_list command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the decklink_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-decklink-start",
+          "markdownDescription": "Denies the decklink_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the decklink_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-decklink-stop",
+          "markdownDescription": "Denies the decklink_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the decklink_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-decklink-update",
+          "markdownDescription": "Denies the decklink_update command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the decklink_update_media command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-decklink-update-media",
+          "markdownDescription": "Denies the decklink_update_media command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the decklink_update_timer command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-decklink-update-timer",
+          "markdownDescription": "Denies the decklink_update_timer command without any pre-configured scope."
         },
         {
           "description": "Denies the get_server_config command without any pre-configured scope.",
@@ -519,6 +741,12 @@
           "markdownDescription": "Denies the ndi_available command without any pre-configured scope."
         },
         {
+          "description": "Denies the ndi_layers command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-ndi-layers",
+          "markdownDescription": "Denies the ndi_layers command without any pre-configured scope."
+        },
+        {
           "description": "Denies the ndi_start command without any pre-configured scope.",
           "type": "string",
           "const": "deny-ndi-start",
@@ -537,16 +765,124 @@
           "markdownDescription": "Denies the ndi_update command without any pre-configured scope."
         },
         {
+          "description": "Denies the ndi_update_media command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-ndi-update-media",
+          "markdownDescription": "Denies the ndi_update_media command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the ndi_update_timer command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-ndi-update-timer",
+          "markdownDescription": "Denies the ndi_update_timer command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the output_camera command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-output-camera",
+          "markdownDescription": "Denies the output_camera command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the output_capture command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-output-capture",
+          "markdownDescription": "Denies the output_capture command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the output_capture_supported command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-output-capture-supported",
+          "markdownDescription": "Denies the output_capture_supported command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the output_video command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-output-video",
+          "markdownDescription": "Denies the output_video command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the pin_output_window command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-pin-output-window",
+          "markdownDescription": "Denies the pin_output_window command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the record_reveal command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-record-reveal",
+          "markdownDescription": "Denies the record_reveal command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the record_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-record-start",
+          "markdownDescription": "Denies the record_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the record_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-record-status",
+          "markdownDescription": "Denies the record_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the record_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-record-stop",
+          "markdownDescription": "Denies the record_stop command without any pre-configured scope."
+        },
+        {
           "description": "Denies the signal_main_ready command without any pre-configured scope.",
           "type": "string",
           "const": "deny-signal-main-ready",
           "markdownDescription": "Denies the signal_main_ready command without any pre-configured scope."
         },
         {
+          "description": "Denies the stream_cameras command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stream-cameras",
+          "markdownDescription": "Denies the stream_cameras command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stream_mix command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stream-mix",
+          "markdownDescription": "Denies the stream_mix command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stream_program command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stream-program",
+          "markdownDescription": "Denies the stream_program command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stream_start command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stream-start",
+          "markdownDescription": "Denies the stream_start command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stream_status command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stream-status",
+          "markdownDescription": "Denies the stream_status command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the stream_stop command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-stream-stop",
+          "markdownDescription": "Denies the stream_stop command without any pre-configured scope."
+        },
+        {
           "description": "Denies the syphon_available command without any pre-configured scope.",
           "type": "string",
           "const": "deny-syphon-available",
           "markdownDescription": "Denies the syphon_available command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the syphon_layers command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-syphon-layers",
+          "markdownDescription": "Denies the syphon_layers command without any pre-configured scope."
         },
         {
           "description": "Denies the syphon_start command without any pre-configured scope.",
@@ -565,6 +901,18 @@
           "type": "string",
           "const": "deny-syphon-update",
           "markdownDescription": "Denies the syphon_update command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the syphon_update_media command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-syphon-update-media",
+          "markdownDescription": "Denies the syphon_update_media command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the syphon_update_timer command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-syphon-update-timer",
+          "markdownDescription": "Denies the syphon_update_timer command without any pre-configured scope."
         },
         {
           "description": "No features are enabled by default, as we believe\nthe clipboard can be inherently dangerous and it is \napplication specific if read and/or write access is needed.\n\nClipboard interaction needs to be explicitly enabled.\n",

@@ -11,6 +11,7 @@ mod video_bg;
 mod camera;
 mod decklink;
 mod ndi;
+mod native_layers;
 #[cfg(target_os = "macos")]
 mod syphon;
 #[cfg(target_os = "windows")]
@@ -647,7 +648,8 @@ fn ndi_available() -> bool {
     ndi::is_libndi_available()
 }
 
-#[tauri::command]
+// Off the UI thread: loading NDI and making the sender can take seconds (start waits up to 5 s).
+#[tauri::command(async)]
 fn ndi_start(app: AppHandle, id: String, source_name: String, width: Option<i32>, height: Option<i32>) -> Result<(), String> {
     let state = app.state::<NdiState>();
     let handle = state.handle_for(&id)?;
@@ -670,7 +672,7 @@ fn ndi_start(app: AppHandle, id: String, source_name: String, width: Option<i32>
     result
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn ndi_stop(app: AppHandle, id: String) -> Result<(), String> {
     let state = app.state::<NdiState>();
     let handle = state.handle_for(&id)?;
@@ -679,12 +681,23 @@ fn ndi_stop(app: AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
+// The updates stay on the UI thread, which keeps them in the order the page sent them: each only
+// queues work for the sender's own thread. `bible`: the words are Scripture (else a slide or song).
 #[tauri::command]
-fn ndi_update(app: AppHandle, id: String, verse: String, reference: String) -> Result<(), String> {
+fn ndi_update(app: AppHandle, id: String, verse: String, reference: String, bible: Option<bool>) -> Result<(), String> {
     let state = app.state::<NdiState>();
     let handle = state.handle_for(&id)?;
     let h = handle.lock().map_err(|e| e.to_string())?;
-    h.update(verse, reference);
+    h.update(verse, reference, bible.unwrap_or(false));
+    Ok(())
+}
+
+/// Output Control's switches for this output, kept and applied by the sender (native_layers.rs).
+#[tauri::command]
+fn ndi_layers(app: AppHandle, id: String, layers: native_layers::Layers) -> Result<(), String> {
+    let handle = app.state::<NdiState>().handle_for(&id)?;
+    let h = handle.lock().map_err(|e| e.to_string())?;
+    h.set_layers(layers);
     Ok(())
 }
 
@@ -1109,6 +1122,40 @@ fn decklink_stop(app: AppHandle, id: String) -> Result<(), String> {
     Ok(())
 }
 
+// Where output windows can't be captured (Windows) the output draws the words itself, from the
+// same calls NDI and Syphon/Spout get (decklink.rs).
+#[tauri::command]
+fn decklink_update(app: AppHandle, id: String, verse: String, reference: String, bible: Option<bool>) -> Result<(), String> {
+    let handle = app.state::<DeckLinkState>().handle_for(&id)?;
+    let h = handle.lock().map_err(|e| e.to_string())?;
+    h.update_text(verse, reference, bible.unwrap_or(false));
+    Ok(())
+}
+
+#[tauri::command]
+fn decklink_update_media(app: AppHandle, id: String, image_base64: Option<String>) -> Result<(), String> {
+    let handle = app.state::<DeckLinkState>().handle_for(&id)?;
+    let h = handle.lock().map_err(|e| e.to_string())?;
+    h.update_media(decode_media(image_base64)?);
+    Ok(())
+}
+
+#[tauri::command]
+fn decklink_update_timer(app: AppHandle, id: String, text: String) -> Result<(), String> {
+    let handle = app.state::<DeckLinkState>().handle_for(&id)?;
+    let h = handle.lock().map_err(|e| e.to_string())?;
+    h.update_timer(text);
+    Ok(())
+}
+
+#[tauri::command]
+fn decklink_layers(app: AppHandle, id: String, layers: native_layers::Layers) -> Result<(), String> {
+    let handle = app.state::<DeckLinkState>().handle_for(&id)?;
+    let h = handle.lock().map_err(|e| e.to_string())?;
+    h.set_layers(layers);
+    Ok(())
+}
+
 // ── Syphon commands (macOS only) ──────────────────────────────────────────
 // Syphon.framework is bundled with the app, so unlike NDI there's no SDK to
 // install. The framework requires a CGL context — the syphon module handles
@@ -1120,14 +1167,14 @@ fn syphon_available() -> bool {
 }
 
 #[cfg(target_os = "macos")]
-#[tauri::command]
+#[tauri::command(async)]
 fn syphon_start(app: AppHandle, id: String, source_name: String, width: Option<u32>, height: Option<u32>) -> Result<(), String> {
     let state = app.state::<SyphonState>();
     syphon::start(&source_name, width.unwrap_or(0), height.unwrap_or(0), state.handle_for(&id)?)
 }
 
 #[cfg(target_os = "macos")]
-#[tauri::command]
+#[tauri::command(async)]
 fn syphon_stop(app: AppHandle, id: String) -> Result<(), String> {
     let state = app.state::<SyphonState>();
     syphon::stop(state.handle_for(&id)?)
@@ -1135,9 +1182,15 @@ fn syphon_stop(app: AppHandle, id: String) -> Result<(), String> {
 
 #[cfg(target_os = "macos")]
 #[tauri::command]
-fn syphon_update(app: AppHandle, id: String, verse: String, reference: String) -> Result<(), String> {
+fn syphon_update(app: AppHandle, id: String, verse: String, reference: String, bible: Option<bool>) -> Result<(), String> {
     let state = app.state::<SyphonState>();
-    syphon::update(&verse, &reference, state.handle_for(&id)?)
+    syphon::update(&verse, &reference, bible.unwrap_or(false), state.handle_for(&id)?)
+}
+
+#[cfg(target_os = "macos")]
+#[tauri::command]
+fn syphon_layers(app: AppHandle, id: String, layers: native_layers::Layers) -> Result<(), String> {
+    syphon::set_layers(layers, app.state::<SyphonState>().handle_for(&id)?)
 }
 
 // Output Looks — Media/Timer layer parity for the native Syphon sender.
@@ -1173,14 +1226,14 @@ fn syphon_available() -> bool {
 }
 
 #[cfg(target_os = "windows")]
-#[tauri::command]
+#[tauri::command(async)]
 fn syphon_start(app: AppHandle, id: String, source_name: String, width: Option<u32>, height: Option<u32>) -> Result<(), String> {
     let state = app.state::<SyphonState>();
     spout::start(&source_name, width.unwrap_or(0), height.unwrap_or(0), state.handle_for(&id)?)
 }
 
 #[cfg(target_os = "windows")]
-#[tauri::command]
+#[tauri::command(async)]
 fn syphon_stop(app: AppHandle, id: String) -> Result<(), String> {
     let state = app.state::<SyphonState>();
     spout::stop(state.handle_for(&id)?)
@@ -1188,9 +1241,15 @@ fn syphon_stop(app: AppHandle, id: String) -> Result<(), String> {
 
 #[cfg(target_os = "windows")]
 #[tauri::command]
-fn syphon_update(app: AppHandle, id: String, verse: String, reference: String) -> Result<(), String> {
+fn syphon_update(app: AppHandle, id: String, verse: String, reference: String, bible: Option<bool>) -> Result<(), String> {
     let state = app.state::<SyphonState>();
-    spout::update(&verse, &reference, state.handle_for(&id)?)
+    spout::update(&verse, &reference, bible.unwrap_or(false), state.handle_for(&id)?)
+}
+
+#[cfg(target_os = "windows")]
+#[tauri::command]
+fn syphon_layers(app: AppHandle, id: String, layers: native_layers::Layers) -> Result<(), String> {
+    spout::set_layers(layers, app.state::<SyphonState>().handle_for(&id)?)
 }
 
 #[cfg(target_os = "windows")]
@@ -1224,7 +1283,10 @@ fn syphon_start(_id: String, _source_name: String, _width: Option<u32>, _height:
 fn syphon_stop(_id: String) -> Result<(), String> { Ok(()) }
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[tauri::command]
-fn syphon_update(_id: String, _verse: String, _reference: String) -> Result<(), String> { Ok(()) }
+fn syphon_update(_id: String, _verse: String, _reference: String, _bible: Option<bool>) -> Result<(), String> { Ok(()) }
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+#[tauri::command]
+fn syphon_layers(_id: String, _layers: native_layers::Layers) -> Result<(), String> { Ok(()) }
 #[cfg(not(any(target_os = "macos", target_os = "windows")))]
 #[tauri::command]
 fn syphon_update_media(_id: String, _image_base64: Option<String>) -> Result<(), String> { Ok(()) }
@@ -1338,6 +1400,7 @@ pub fn run() {
             ndi_update,
             ndi_update_media,
             ndi_update_timer,
+            ndi_layers,
             output_capture,
             stream_start,
             stream_stop,
@@ -1354,6 +1417,10 @@ pub fn run() {
             decklink_list,
             decklink_start,
             decklink_stop,
+            decklink_update,
+            decklink_update_media,
+            decklink_update_timer,
+            decklink_layers,
             output_capture_supported,
             syphon_available,
             syphon_start,
@@ -1361,6 +1428,7 @@ pub fn run() {
             syphon_update,
             syphon_update_media,
             syphon_update_timer,
+            syphon_layers,
         ])
         .menu(build_app_menu)
         .on_menu_event(|app, event| {
@@ -1560,7 +1628,8 @@ pub fn run() {
                 #[cfg(target_os = "windows")]
                 {
                     app.state::<SyphonState>().each(|handle| {
-                        let _ = spout::stop(handle.clone());
+                        handle.lock().unwrap_or_else(|p| p.into_inner())
+                            .stop_and_join(std::time::Duration::from_millis(500));
                     });
                 }
             }
