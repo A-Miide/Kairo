@@ -4165,7 +4165,18 @@
         // showing a permanently frozen frame.
         if (layer.src && isVideoLayerSrc(layer.src)) {
           const v = document.createElement('video');
-          v.autoplay = true; v.loop = true; v.muted = true; v.playsInline = true;
+          // Only a live preview (motion 'live': the main window's preview of the screen, a live timer)
+          // plays it. A thumbnail shows one still frame, as the media bin's do: each playing thumbnail
+          // is a video decoder of its own, and a playlist or Theme Studio full of them pushed the page
+          // past macOS's memory limit, which reloads it (4.7.1 on the owner's Mac, 21 Nov 2026).
+          const plays = opts.motion === 'live';
+          v.muted = true; v.playsInline = true;
+          if (plays) { v.autoplay = true; v.loop = true; } else {
+            v.preload = 'metadata';
+            v.addEventListener('loadedmetadata', () => {
+              try { v.currentTime = Math.min(0.1, (v.duration || 1) / 2); } catch {}
+            }, { once: true });
+          }
           v.style.cssText = 'position:absolute;background:transparent;';
           v.style.objectFit = fit;
           v.style.left = (p.x / DESIGN_W * 100) + '%';
@@ -4176,7 +4187,7 @@
           applyImageLook(v, layer);
           v.src = authedMediaUrl(layer.src);
           host.appendChild(v);
-          v.play().catch(() => {});
+          if (plays) v.play().catch(() => {});
           return;
         }
         const d = document.createElement('div');
