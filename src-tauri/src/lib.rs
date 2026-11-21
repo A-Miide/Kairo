@@ -354,6 +354,13 @@ fn pick_free_port() -> u16 {
     }
     #[cfg(not(debug_assertions))]
     {
+        // The release smoke test (scripts/smoke-test.mjs) names the port it will talk to; the
+        // token it also sets (KAIRO_SERVER_TOKEN) still guards every request.
+        if let Some(p) = std::env::var("KAIRO_SERVER_PORT").ok().and_then(|p| p.parse::<u16>().ok()) {
+            if std::net::TcpListener::bind(("127.0.0.1", p)).is_ok() {
+                return p;
+            }
+        }
         if std::net::TcpListener::bind("127.0.0.1:7777").is_ok() {
             return 7777;
         }

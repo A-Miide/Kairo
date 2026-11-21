@@ -2550,6 +2550,7 @@
             reconnectAttempts = 0;
             setConnStatus('connected', '');
             setTimeout(() => connStatus.classList.remove('visible'), 1500);
+            reportState();
             window.KairoOverlays.load().then(items => { lastOverlays = items; drawOverlays(); });
         };
 
@@ -2585,6 +2586,30 @@
         connStatus.className = `visible ${cls}`;
         connStatus.textContent = text;
     }
+
+    // ── What this window shows, for the server (hub.rs report_state) ───────
+    // The words on screen, this output's switches and where the window sits, sent when the stage
+    // changes (and every 5 s). The release smoke test (scripts/smoke-test.mjs) reads them back from
+    // /api/state-reports. Monitors and previews don't report (sendToServer skips them).
+    let stateReportTimer = null;
+    function reportState() {
+        clearTimeout(stateReportTimer);
+        stateReportTimer = setTimeout(() => {
+            const shown = (binding) => [...stage.querySelectorAll(`[data-binding="${binding}"]`)]
+                .filter(el => el.offsetParent !== null && getComputedStyle(el).visibility !== 'hidden')
+                .map(el => el.textContent.trim()).filter(Boolean).join(' ').slice(0, 400);
+            sendToServer({
+                type: 'state-report',
+                key: `output:${OUTPUT_KEY}${CAPTURE ? ':capture' : ''}`,
+                output: OUTPUT_KEY, capture: CAPTURE, mode: outputMode, layers: outputLayers,
+                verse: shown('verse'), reference: shown('reference'),
+                window: { x: window.screenX, y: window.screenY, w: window.outerWidth, h: window.outerHeight },
+                at: Date.now(),
+            });
+        }, 300);
+    }
+    new MutationObserver(reportState).observe(stage, { childList: true, subtree: true, characterData: true });
+    setInterval(reportState, 5000);
 
     // ── Message handler ────────────────────────────────────────────────────
     function handleMessage(msg) {

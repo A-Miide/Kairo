@@ -55,9 +55,24 @@ Detection evaluations (sermon replay, scenarios, the meaning benchmark) live in 
 
 ## Releasing
 
-1. Bump the version in `package.json`, `package-lock.json` (2 places), `src-tauri/Cargo.toml` (2 places), `src-tauri/Cargo.lock` (the `kairo*` crates) and `src-tauri/tauri.conf.json`.
-2. Tag from `main` and push the tag (`git tag v4.x.y && git push origin v4.x.y`). The **Build KAIRO** workflow tests, builds every platform and makes a **draft** release with the signed updater packages and `latest.json`.
-3. Check the draft, then publish it **as the latest release** (`gh release edit v4.x.y --draft=false --latest`). The in-app updater and the landing page both read the release GitHub marks *Latest*; if another release (a model or data upload) holds that mark, nobody gets the update.
+1. **Smoke-test the packaged app** on a Mac and on Windows (the church PC runs Windows). Run **Build KAIRO** by hand on `main` (Actions → Build KAIRO → Run workflow), install the app from the run's artifacts, quit any running Kairo, then:
+
+   ```bash
+   node scripts/smoke-test.mjs --app "/Applications/Kairo.app/Contents/MacOS/Kairo"
+   ```
+
+   ```bash
+   node scripts/smoke-test.mjs --app "%LOCALAPPDATA%\Kairo\Kairo.exe"
+   ```
+
+   (That is where the `.exe` installer puts it; the `.msi` installs to `C:\Program Files\Kairo\Kairo.exe`. In PowerShell write `$env:LOCALAPPDATA` instead of `%LOCALAPPDATA%`.)
+
+   It launches the app and checks that it starts, that each display output opens on its own screen, that a verse doesn't show where Output Control has Scripture off (and does once it is back on), and that a replayed transcript (`scripts/smoke-test.json`) auto-sends each verse into the Live Queue and onto the screen. Every line says PASS or FAIL; exit code 0 means all passed. Give `display-1` a screen first (or pass `--output <id>`), and leave Auto-send on. It uses the computer's own settings, so the screens show the test verses: not during a service. Output Control is put back afterwards.
+
+   How it gets in: the app's server still needs its token on every request. The script starts the app with `KAIRO_SERVER_PORT` and `KAIRO_SERVER_TOKEN` (43 random characters it makes for this run, never printed or saved; the app ignores a token under 32 characters) and reads back what the windows report they show (`GET /api/state-reports`, token required). Only something that can already start the app can set them. `--url http://127.0.0.1:<port>` runs the same checks against a dev server.
+2. Bump the version in `package.json`, `package-lock.json` (2 places), `src-tauri/Cargo.toml` (2 places), `src-tauri/Cargo.lock` (the `kairo*` crates) and `src-tauri/tauri.conf.json`.
+3. Tag from `main` and push the tag (`git tag v4.x.y && git push origin v4.x.y`). The **Build KAIRO** workflow tests, builds every platform and makes a **draft** release with the signed updater packages and `latest.json`.
+4. Check the draft, then publish it **as the latest release** (`gh release edit v4.x.y --draft=false --latest`). The in-app updater and the landing page both read the release GitHub marks *Latest*; if another release (a model or data upload) holds that mark, nobody gets the update.
 
 Model and data releases (`offline-model-*`, `bundle-data-*`, `bible-packs`) should be made as pre-releases so they never take the *Latest* mark.
 

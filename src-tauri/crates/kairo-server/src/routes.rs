@@ -19,6 +19,7 @@ pub fn router() -> Router<Shared> {
     Router::new()
         .route("/", get(ws::root))
         .route("/health", get(health))
+        .route("/api/state-reports", get(state_reports))
         .route("/api/settings", get(get_settings).post(post_settings))
         .route("/api/test-transcript", post(test_transcript))
         .route("/api/learned", get(learned).delete(learned_forget))
@@ -109,6 +110,11 @@ fn mime(path: &str) -> &'static str {
 
 async fn health(State(app): State<Shared>) -> Json<Value> {
     Json(json!({ "ok": true, "workerBasicReady": app.ready().is_some() }))
+}
+
+/// What each window last reported it shows (hub.rs `report_state`): for the release smoke test.
+async fn state_reports(State(app): State<Shared>) -> Json<Value> {
+    Json(app.hub.state_reports())
 }
 
 // ── Settings ────────────────────────────────────────────────────────────────
