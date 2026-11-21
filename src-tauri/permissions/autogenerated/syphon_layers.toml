@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-syphon-layers"
+description = "Enables the syphon_layers command without any pre-configured scope."
+commands.allow = ["syphon_layers"]
+
+[[permission]]
+identifier = "deny-syphon-layers"
+description = "Denies the syphon_layers command without any pre-configured scope."
+commands.deny = ["syphon_layers"]

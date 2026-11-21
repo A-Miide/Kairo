@@ -179,7 +179,9 @@ fn candidate_libndi_paths() -> Vec<PathBuf> {
 
 #[derive(Clone, Debug)]
 pub enum NdiCmd {
-    SetText { verse: String, reference: String },
+    /// `bible`: Scripture (else a slide or song), for the Output Control switch it falls under.
+    SetText { verse: String, reference: String, bible: bool },
+    SetLayers(crate::native_layers::Layers),
     // `None` clears the Media layer (matches display.html's renderMediaStage(null)
     // semantics — Output Looks toggling Media off for this output sends this).
     // Raw encoded bytes (png/jpeg), decoded once on the render thread itself
@@ -211,9 +213,14 @@ pub struct NdiHandle {
 }
 
 impl NdiHandle {
-    pub fn update(&self, verse: String, reference: String) {
+    pub fn update(&self, verse: String, reference: String, bible: bool) {
         if let Some(tx) = &self.tx {
-            let _ = tx.send(NdiCmd::SetText { verse, reference });
+            let _ = tx.send(NdiCmd::SetText { verse, reference, bible });
+        }
+    }
+    pub fn set_layers(&self, layers: crate::native_layers::Layers) {
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(NdiCmd::SetLayers(layers));
         }
     }
     /// `bytes: None` clears the Media layer. A no-op (silently dropped, same
@@ -333,6 +340,8 @@ pub fn start(source_name: &str, width: i32, height: i32, shared: Arc<Mutex<NdiHa
             let mut latest_verse = String::new();
             let mut latest_ref   = String::new();
             let mut latest_timer = String::new();
+            let mut latest_bible = false;
+            let mut layers = crate::native_layers::Layers::default();
             // Decoded once when SetMedia arrives (not per frame) — decoding a
             // real 2-15MB photo every 15fps tick would be wasted work for
             // content that only changes when the operator actually changes
@@ -346,13 +355,16 @@ pub fn start(source_name: &str, width: i32, height: i32, shared: Arc<Mutex<NdiHa
             let mut font_system = FontSystem::new();
             let mut swash_cache = SwashCache::new();
             // Render initial empty/idle frame
-            render_frame(&mut buf, frame_w, frame_h, &latest_verse, &latest_ref, latest_media.as_ref(), &latest_timer, &mut font_system, &mut swash_cache);
+            render_frame(&mut buf, frame_w, frame_h, "", "", None, "", &mut font_system, &mut swash_cache);
 
             // Captured frames (the real theme): once any has arrived, the
             // text renderer stands down. A fade blends the frame on air
             // into the new one over `fade.3`.
             let mut captured = false;
             let mut fade: Option<(Vec<u8>, Arc<crate::capture::Frame>, std::time::Instant, Duration)> = None;
+            // `buf` is premultiplied while it is drawn and blended, and turned to straight alpha
+            // (what NDI's BGRA means) when sent; this says which it holds now.
+            let mut straight = false;
 
             let frame_period = Duration::from_millis(1000 / SEND_FPS_N as u64);
             // Whether `buf` changed since it was last sent, and when that was.
@@ -365,10 +377,15 @@ pub fn start(source_name: &str, width: i32, height: i32, shared: Arc<Mutex<NdiHa
                 while let Ok(cmd) = rx.try_recv() {
                     match cmd {
                         NdiCmd::Stop => { should_stop = true; break; }
-                        NdiCmd::SetText { verse, reference } => {
+                        NdiCmd::SetText { verse, reference, bible } => {
                             latest_verse = verse;
                             latest_ref   = reference;
+                            latest_bible = bible;
                             got_update   = true;
+                        }
+                        NdiCmd::SetLayers(l) => {
+                            layers = l;
+                            got_update = true;
                         }
                         NdiCmd::SetMedia { bytes } => {
                             latest_media = bytes.and_then(|b| {
@@ -392,11 +409,14 @@ pub fn start(source_name: &str, width: i32, height: i32, shared: Arc<Mutex<NdiHa
                                 continue;
                             }
                             if captured && fade_ms > 0 {
-                                fade = Some((buf.clone(), frame, std::time::Instant::now(), Duration::from_millis(fade_ms as u64)));
+                                let mut from = buf.clone();
+                                if straight { crate::capture::premultiply(&mut from); }
+                                fade = Some((from, frame, std::time::Instant::now(), Duration::from_millis(fade_ms as u64)));
                             } else {
                                 buf.copy_from_slice(&frame.bgra);
                                 fade = None;
                             }
+                            straight = false;
                             captured = true;
                             changed = true;
                         }
@@ -412,10 +432,17 @@ pub fn start(source_name: &str, width: i32, height: i32, shared: Arc<Mutex<NdiHa
                     } else {
                         crate::capture::blend(&mut buf, from, &to.bgra, t);
                     }
+                    straight = false;
                 }
                 if got_update && !captured {
                     changed = true;
-                    render_frame(&mut buf, frame_w, frame_h, &latest_verse, &latest_ref, latest_media.as_ref(), &latest_timer, &mut font_system, &mut swash_cache);
+                    let (verse, reference) = layers.words(latest_bible, &latest_verse, &latest_ref);
+                    render_frame(&mut buf, frame_w, frame_h, verse, reference, layers.media(latest_media.as_ref()), layers.timer(&latest_timer), &mut font_system, &mut swash_cache);
+                    straight = false;
+                }
+                if !straight {
+                    crate::capture::unpremultiply(&mut buf);
+                    straight = true;
                 }
 
                 // Send the current frame.
@@ -485,7 +512,9 @@ pub fn start(source_name: &str, width: i32, height: i32, shared: Arc<Mutex<NdiHa
 // Pure Rust 2D rendering with tiny-skia + cosmic-text. Black background,
 // red brand accent on the reference, white verse below. Lower-third style.
 
-fn render_frame(
+/// Draws the words, media and timer as a lower third into `buf`: premultiplied BGRA, the same as
+/// a captured frame. DeckLink on Windows draws with it too (decklink.rs).
+pub(crate) fn render_frame(
     buf: &mut [u8],
     frame_w: i32,
     frame_h: i32,

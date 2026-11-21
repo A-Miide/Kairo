@@ -154,6 +154,9 @@ pub struct SyphonHandle {
     latest_reference: String,
     latest_media: Option<image::RgbaImage>,
     latest_timer: String,
+    /// Whether the words are Scripture, and this output's Output Control switches (native_layers.rs).
+    latest_bible: bool,
+    layers: crate::native_layers::Layers,
     // This output's own configured resolution (Output Looks' "add an
     // output" flow asks for it) — set once in start(), read by every
     // render_and_publish() call after. DEFAULT_FRAME_W/H until start() runs.
@@ -181,6 +184,8 @@ impl Default for SyphonHandle {
             latest_reference: String::new(),
             latest_media: None,
             latest_timer: String::new(),
+            latest_bible: false,
+            layers: crate::native_layers::Layers::default(),
             frame_w: DEFAULT_FRAME_W,
             frame_h: DEFAULT_FRAME_H,
             captured: false,
@@ -345,7 +350,7 @@ pub fn start(source_name: &str, width: u32, height: u32, shared: Arc<Mutex<Sypho
 
     // 6. Push an initial blank frame so receivers see something on connect.
     drop(h);
-    update("Nothing on display", "", shared)?;
+    update("", "", false, shared)?;
 
     eprintln!("[Syphon] server '{}' broadcasting {}x{}", source_name, frame_w, frame_h);
     Ok(())
@@ -397,12 +402,22 @@ pub fn stop(shared: Arc<Mutex<SyphonHandle>>) -> Result<(), String> {
     Ok(())
 }
 
-pub fn update(verse: &str, reference: &str, shared: Arc<Mutex<SyphonHandle>>) -> Result<(), String> {
+pub fn update(verse: &str, reference: &str, bible: bool, shared: Arc<Mutex<SyphonHandle>>) -> Result<(), String> {
     let mut h = shared.lock().map_err(|e| e.to_string())?;
     if h.server.is_none() { return Ok(()); } // not running — silent no-op
     if h.captured { return Ok(()); } // the captured theme is on air
     h.latest_verse = verse.to_string();
     h.latest_reference = reference.to_string();
+    h.latest_bible = bible;
+    render_and_publish(&mut h)
+}
+
+/// Output Control's switches for the words, media and timer this sender draws itself.
+pub fn set_layers(layers: crate::native_layers::Layers, shared: Arc<Mutex<SyphonHandle>>) -> Result<(), String> {
+    let mut h = shared.lock().map_err(|e| e.to_string())?;
+    if h.layers == layers { return Ok(()); }
+    h.layers = layers;
+    if h.server.is_none() || h.captured { return Ok(()); }
     render_and_publish(&mut h)
 }
 
@@ -510,7 +525,8 @@ fn render_and_publish(h: &mut SyphonHandle) -> Result<(), String> {
         let pixmap      = h.pixmap.as_mut().ok_or("pixmap missing")?;
         let font_system = h.font_system.as_mut().ok_or("font system missing")?;
         let swash_cache = h.swash_cache.as_mut().ok_or("swash cache missing")?;
-        render_frame(pixmap, frame_w, frame_h, &h.latest_verse, &h.latest_reference, h.latest_media.as_ref(), &h.latest_timer, font_system, swash_cache);
+        let (verse, reference) = h.layers.words(h.latest_bible, &h.latest_verse, &h.latest_reference);
+        render_frame(pixmap, frame_w, frame_h, verse, reference, h.layers.media(h.latest_media.as_ref()), h.layers.timer(&h.latest_timer), font_system, swash_cache);
         pixmap.data().as_ptr()
     };
 
@@ -736,7 +752,7 @@ mod tests {
         let handle = Arc::new(Mutex::new(SyphonHandle::default()));
         start("KairoRegressionTest", 320, 180, handle.clone())
             .expect("syphon::start should succeed without panicking");
-        update("Test verse", "Test 1:1", handle.clone())
+        update("Test verse", "Test 1:1", true, handle.clone())
             .expect("syphon::update should succeed after start");
         stop(handle).expect("syphon::stop should succeed");
     }

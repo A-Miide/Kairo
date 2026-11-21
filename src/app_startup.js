@@ -2,6 +2,19 @@
 // bootstrap. Split out of app.js; MUST load last (it boots the app once every other
 // piece has defined its functions).
 
+// ── Fade to black is for this run only ───────────────────────────────────
+// The Director's Fade to black is kept in localStorage (kairo-ftb) for the output windows, which
+// kept it across a quit: the next launch opened every screen black, with the Director off and
+// nothing on screen saying why. sessionStorage lasts while this window does (a reload keeps it,
+// a new launch doesn't), so the first page of a launch lifts it.
+(function liftFadeToBlackOnLaunch() {
+  try {
+    if (sessionStorage.getItem('kairo-launched')) return;
+    sessionStorage.setItem('kairo-launched', '1');
+    if (localStorage.getItem('kairo-ftb')) localStorage.removeItem('kairo-ftb');
+  } catch {}
+})();
+
 // ── Updates (Tauri only) ──────────────────────────────────────────────────
 // The Rust side emits `update-available` after the background check on startup, or after "Check
 // for updates" (Help menu, Settings → About). An update shows once as a modal over the app; "Later"
@@ -440,49 +453,45 @@ registerActionHandler('clock-message', (msg) => window.KairoService?.onClockActi
   window.KairoNativeOutputs = { pushMedia() {}, pushTimer() {}, pushToOne() {}, refresh() {} };
   if (!tauriInvoke) return;
   let lastVerse = '', lastRef = '', lastIsBible = false, lastMediaDataUri = null, lastTimerText = '';
-  // The words an output shows: nothing when its switch for that kind (Scripture, or Slides and songs) is off, so
-  // switching one off clears it instead of leaving the last words up.
-  const wordsFor = (want) => (want?.[lastIsBible ? 'bible' : 'slide'] === false ? { verse: '', reference: '' } : { verse: lastVerse, reference: lastRef });
+  // The senders that draw the words themselves: NDI and Syphon/Spout, and DeckLink where output
+  // windows can't be captured (Windows), which would otherwise play black (decklink.rs).
+  const kinds = ['ndi', 'syphon'];
+  tauriInvoke('output_capture_supported').then((ok) => { if (!ok) { kinds.push('decklink'); window.KairoNativeOutputs.refresh(); } }).catch(() => {});
   function enabledNativeOutputs(kind) {
-    return (kind === 'ndi' ? ndiOutputs() : syphonOutputs()).filter(o => o.enabled);
+    return nativeOutputsOf(kind).filter(o => o.enabled);
   }
+  const mediaB64 = () => {
+    const m = typeof lastMediaDataUri === 'string' && /^data:image\/\w+;base64,(.*)$/.exec(lastMediaDataUri);
+    return m ? m[1] : null;
+  };
+  // Every sender is sent everything; each keeps its output's Output Control switches
+  // (`<kind>_layers`, native_layers.rs) and leaves out what is switched off when it draws.
   window.KairoNativeOutputs.pushMedia = function pushMedia(dataUri) {
-    // `dataUri`: a `data:image/…;base64,…` string, or falsy to clear.
-    // Anything else (a video src, a plain http(s)/blob URL) is silently
-    // skipped — real video playback for these two senders is Output Looks'
-    // own Phase 2, deliberately not bundled into this change (see the plan).
-    const m = typeof dataUri === 'string' && /^data:image\/\w+;base64,(.*)$/.exec(dataUri);
-    lastMediaDataUri = m ? dataUri : null;
-    const b64 = m ? m[1] : null;
-    const layers = outputLayerMap();
-    for (const kind of ['ndi', 'syphon']) {
-      for (const o of enabledNativeOutputs(kind)) {
-        if (layers[o.id]?.media === false) continue;
-        tauriInvoke(`${kind}_update_media`, { id: o.id, imageBase64: b64 }).catch(() => {});
-      }
+    // `dataUri`: a `data:image/…;base64,…` string, or falsy to clear. Anything
+    // else (a video src, a plain http(s)/blob URL) clears: these senders draw pictures only.
+    lastMediaDataUri = typeof dataUri === 'string' && /^data:image\/\w+;base64,/.test(dataUri) ? dataUri : null;
+    for (const kind of kinds) {
+      for (const o of enabledNativeOutputs(kind)) tauriInvoke(`${kind}_update_media`, { id: o.id, imageBase64: mediaB64() }).catch(() => {});
     }
   };
   window.KairoNativeOutputs.pushTimer = function pushTimer(text) {
     lastTimerText = text || '';
-    const layers = outputLayerMap();
-    for (const kind of ['ndi', 'syphon']) {
-      for (const o of enabledNativeOutputs(kind)) {
-        if (layers[o.id]?.timer === false) continue;
-        tauriInvoke(`${kind}_update_timer`, { id: o.id, text: lastTimerText }).catch(() => {});
-      }
+    for (const kind of kinds) {
+      for (const o of enabledNativeOutputs(kind)) tauriInvoke(`${kind}_update_timer`, { id: o.id, text: lastTimerText }).catch(() => {});
     }
   };
   window.KairoNativeOutputs.pushToOne = function pushToOne(kind, id) {
-    if (kind === 'decklink') return; // DeckLink only ever plays captured frames
+    if (!kinds.includes(kind)) return; // DeckLink plays captured frames where windows can be captured
     const want = outputLayerMap()[id] || {};
-    tauriInvoke(`${kind}_update`, { id, ...wordsFor(want) }).catch(() => {});
-    const m = want.media !== false && typeof lastMediaDataUri === 'string' && /^data:image\/\w+;base64,(.*)$/.exec(lastMediaDataUri);
-    tauriInvoke(`${kind}_update_media`, { id, imageBase64: m ? m[1] : null }).catch(() => {});
-    tauriInvoke(`${kind}_update_timer`, { id, text: want.timer !== false ? lastTimerText : '' }).catch(() => {});
+    const layers = { bible: want.bible !== false, slide: want.slide !== false, media: want.media !== false, timer: want.timer !== false };
+    tauriInvoke(`${kind}_layers`, { id, layers }).catch(() => {});
+    tauriInvoke(`${kind}_update`, { id, verse: lastVerse, reference: lastRef, bible: lastIsBible }).catch(() => {});
+    tauriInvoke(`${kind}_update_media`, { id, imageBase64: mediaB64() }).catch(() => {});
+    tauriInvoke(`${kind}_update_timer`, { id, text: lastTimerText }).catch(() => {});
   };
-  // A switch changed in Output Control: every running NDI/Syphon output catches up (app_outputs.js applyOutputLayers).
+  // A switch changed in Output Control: every running native output catches up (app_outputs.js applyOutputLayers).
   window.KairoNativeOutputs.refresh = function refresh() {
-    for (const kind of ['ndi', 'syphon']) for (const o of enabledNativeOutputs(kind)) window.KairoNativeOutputs.pushToOne(kind, o.id);
+    for (const kind of kinds) for (const o of enabledNativeOutputs(kind)) window.KairoNativeOutputs.pushToOne(kind, o.id);
   };
   if (!previewVerseText) return;
   let scheduled = false;
@@ -499,12 +508,10 @@ registerActionHandler('clock-message', (msg) => window.KairoService?.onClockActi
     lastVerse = blank ? '' : verse;
     lastRef   = blank ? '' : ref;
     lastIsBible = isBible;
-    const layers = outputLayerMap();
-    // Each output's _update is a no-op if that specific instance isn't
-    // running; one whose switch for these words is off is sent nothing.
-    for (const kind of ['ndi', 'syphon']) {
+    // Each output's _update is a no-op if that specific instance isn't running.
+    for (const kind of kinds) {
       for (const o of enabledNativeOutputs(kind)) {
-        tauriInvoke(`${kind}_update`, { id: o.id, ...wordsFor(layers[o.id]) }).catch(() => {});
+        tauriInvoke(`${kind}_update`, { id: o.id, verse: lastVerse, reference: lastRef, bible: lastIsBible }).catch(() => {});
       }
     }
   }

@@ -393,6 +393,12 @@
           "markdownDescription": "Enables the check_updates command without any pre-configured scope."
         },
         {
+          "description": "Enables the decklink_layers command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-decklink-layers",
+          "markdownDescription": "Enables the decklink_layers command without any pre-configured scope."
+        },
+        {
           "description": "Enables the decklink_list command without any pre-configured scope.",
           "type": "string",
           "const": "allow-decklink-list",
@@ -409,6 +415,24 @@
           "type": "string",
           "const": "allow-decklink-stop",
           "markdownDescription": "Enables the decklink_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the decklink_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-decklink-update",
+          "markdownDescription": "Enables the decklink_update command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the decklink_update_media command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-decklink-update-media",
+          "markdownDescription": "Enables the decklink_update_media command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the decklink_update_timer command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-decklink-update-timer",
+          "markdownDescription": "Enables the decklink_update_timer command without any pre-configured scope."
         },
         {
           "description": "Enables the get_server_config command without any pre-configured scope.",
@@ -451,6 +475,12 @@
           "type": "string",
           "const": "allow-ndi-available",
           "markdownDescription": "Enables the ndi_available command without any pre-configured scope."
+        },
+        {
+          "description": "Enables the ndi_layers command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-ndi-layers",
+          "markdownDescription": "Enables the ndi_layers command without any pre-configured scope."
         },
         {
           "description": "Enables the ndi_start command without any pre-configured scope.",
@@ -585,6 +615,12 @@
           "markdownDescription": "Enables the syphon_available command without any pre-configured scope."
         },
         {
+          "description": "Enables the syphon_layers command without any pre-configured scope.",
+          "type": "string",
+          "const": "allow-syphon-layers",
+          "markdownDescription": "Enables the syphon_layers command without any pre-configured scope."
+        },
+        {
           "description": "Enables the syphon_start command without any pre-configured scope.",
           "type": "string",
           "const": "allow-syphon-start",
@@ -621,6 +657,12 @@
           "markdownDescription": "Denies the check_updates command without any pre-configured scope."
         },
         {
+          "description": "Denies the decklink_layers command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-decklink-layers",
+          "markdownDescription": "Denies the decklink_layers command without any pre-configured scope."
+        },
+        {
           "description": "Denies the decklink_list command without any pre-configured scope.",
           "type": "string",
           "const": "deny-decklink-list",
@@ -637,6 +679,24 @@
           "type": "string",
           "const": "deny-decklink-stop",
           "markdownDescription": "Denies the decklink_stop command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the decklink_update command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-decklink-update",
+          "markdownDescription": "Denies the decklink_update command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the decklink_update_media command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-decklink-update-media",
+          "markdownDescription": "Denies the decklink_update_media command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the decklink_update_timer command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-decklink-update-timer",
+          "markdownDescription": "Denies the decklink_update_timer command without any pre-configured scope."
         },
         {
           "description": "Denies the get_server_config command without any pre-configured scope.",
@@ -679,6 +739,12 @@
           "type": "string",
           "const": "deny-ndi-available",
           "markdownDescription": "Denies the ndi_available command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the ndi_layers command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-ndi-layers",
+          "markdownDescription": "Denies the ndi_layers command without any pre-configured scope."
         },
         {
           "description": "Denies the ndi_start command without any pre-configured scope.",
@@ -811,6 +877,12 @@
           "type": "string",
           "const": "deny-syphon-available",
           "markdownDescription": "Denies the syphon_available command without any pre-configured scope."
+        },
+        {
+          "description": "Denies the syphon_layers command without any pre-configured scope.",
+          "type": "string",
+          "const": "deny-syphon-layers",
+          "markdownDescription": "Denies the syphon_layers command without any pre-configured scope."
         },
         {
           "description": "Denies the syphon_start command without any pre-configured scope.",

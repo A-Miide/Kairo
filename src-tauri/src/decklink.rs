@@ -5,6 +5,11 @@
 //! vision mixer can lay lower thirds over camera; the fill is premultiplied
 //! (a video mixer's default "Pre Multiplied Key").
 //!
+//! Where output windows can't be captured (Windows), no frames would ever
+//! arrive and the card played black. There the output draws the words, media
+//! and timer itself with NDI's renderer, under its Output Control switches, as
+//! NDI and Spout do; a captured frame, once one arrives, takes over as on macOS.
+//!
 //! The C side is native/decklink.cpp over vendor/decklink; built when the
 //! compiler step succeeded (cfg `kairo_decklink`), otherwise every call
 //! reports DeckLink as unavailable.
@@ -47,7 +52,50 @@ pub fn list() -> Value {
 
 enum Cmd {
     Frame { frame: Arc<Frame>, fade_ms: u32 },
+    Text { verse: String, reference: String, bible: bool },
+    Media(Option<Vec<u8>>),
+    Timer(String),
+    Layers(crate::native_layers::Layers),
     Stop,
+}
+
+/// What the output draws itself until a captured frame arrives (see the module comment). The
+/// font system is made on first use: an output fed captured frames never pays for it.
+#[derive(Default)]
+#[cfg_attr(not(kairo_decklink), allow(dead_code))]
+struct Drawn {
+    verse: String,
+    reference: String,
+    bible: bool,
+    media: Option<image::RgbaImage>,
+    timer: String,
+    layers: crate::native_layers::Layers,
+    fonts: Option<(cosmic_text::FontSystem, cosmic_text::SwashCache)>,
+}
+
+#[cfg_attr(not(kairo_decklink), allow(dead_code))]
+impl Drawn {
+    /// Takes a command; true when the picture needs drawing again.
+    fn take(&mut self, cmd: Cmd) -> bool {
+        match cmd {
+            Cmd::Text { verse, reference, bible } => (self.verse, self.reference, self.bible) = (verse, reference, bible),
+            Cmd::Timer(text) => self.timer = text,
+            Cmd::Layers(l) => self.layers = l,
+            Cmd::Media(bytes) => {
+                self.media = bytes.and_then(|b| match image::load_from_memory(&b) {
+                    Ok(img) => Some(img.to_rgba8()),
+                    Err(e) => { eprintln!("[DeckLink] Media decode failed: {e}"); None }
+                });
+            }
+            Cmd::Frame { .. } | Cmd::Stop => return false,
+        }
+        true
+    }
+    fn draw(&mut self, buf: &mut [u8], w: i32, h: i32) {
+        let (fs, sc) = self.fonts.get_or_insert_with(|| (cosmic_text::FontSystem::new(), cosmic_text::SwashCache::new()));
+        let (verse, reference) = self.layers.words(self.bible, &self.verse, &self.reference);
+        crate::ndi::render_frame(buf, w, h, verse, reference, self.layers.media(self.media.as_ref()), self.layers.timer(&self.timer), fs, sc);
+    }
 }
 
 #[derive(Default)]
@@ -67,6 +115,26 @@ impl DeckLinkHandle {
     pub fn update_frame(&self, frame: Arc<Frame>, fade_ms: u32) {
         if let Some(tx) = &self.tx {
             let _ = tx.try_send(Cmd::Frame { frame, fade_ms });
+        }
+    }
+
+    /// The words to draw where no captured frames come (see the module comment). Unlike a
+    /// frame, which the next one replaces, a change of words is never dropped.
+    pub fn update_text(&self, verse: String, reference: String, bible: bool) {
+        self.send(Cmd::Text { verse, reference, bible });
+    }
+    pub fn update_media(&self, bytes: Option<Vec<u8>>) {
+        self.send(Cmd::Media(bytes));
+    }
+    pub fn update_timer(&self, text: String) {
+        self.send(Cmd::Timer(text));
+    }
+    pub fn set_layers(&self, layers: crate::native_layers::Layers) {
+        self.send(Cmd::Layers(layers));
+    }
+    fn send(&self, cmd: Cmd) {
+        if let Some(tx) = &self.tx {
+            let _ = tx.send(cmd);
         }
     }
 
@@ -96,7 +164,7 @@ pub fn start(device: i32, mode: u32, keying: bool, fps: f64, shared: Arc<Mutex<D
     }
     #[cfg(kairo_decklink)]
     {
-        let (tx, rx) = bounded::<Cmd>(8);
+        let (tx, rx) = bounded::<Cmd>(32);
         let (ready_tx, ready_rx) = bounded::<Result<(u32, u32), String>>(1);
         let period = Duration::from_secs_f64(1.0 / fps.clamp(1.0, 120.0));
         let t = thread::spawn(move || unsafe {
@@ -112,13 +180,17 @@ pub fn start(device: i32, mode: u32, keying: bool, fps: f64, shared: Arc<Mutex<D
             let _ = ready_tx.send(Ok((w as u32, hgt as u32)));
             let mut buf = vec![0u8; (w * hgt * 4) as usize]; // black, fully keyed out
             let mut fade: Option<(Vec<u8>, Arc<Frame>, Instant, Duration)> = None;
+            let mut drawn = Drawn::default();
+            let mut captured = false;
             let mut next = Instant::now();
             loop {
                 let mut stop = false;
+                let mut redraw = false;
                 while let Ok(cmd) = rx.try_recv() {
                     match cmd {
                         Cmd::Stop => stop = true,
                         Cmd::Frame { frame, fade_ms } => {
+                            captured = true;
                             if frame.width as i32 != w || frame.height as i32 != hgt {
                                 continue;
                             }
@@ -129,10 +201,14 @@ pub fn start(device: i32, mode: u32, keying: bool, fps: f64, shared: Arc<Mutex<D
                                 fade = None;
                             }
                         }
+                        other => redraw |= drawn.take(other),
                     }
                 }
                 if stop {
                     break;
+                }
+                if redraw && !captured {
+                    drawn.draw(&mut buf, w, hgt);
                 }
                 if let Some((from, to, started, dur)) = &fade {
                     let t = started.elapsed().as_secs_f32() / dur.as_secs_f32().max(0.001);
@@ -177,6 +253,25 @@ mod tests {
             assert!(v["devices"].is_array(), "{v}");
         }
         println!("decklink list: {v}");
+    }
+
+    /// Where no captured frames come, the card gets the words, under the output's switches.
+    #[test]
+    fn the_words_are_drawn_under_the_outputs_switches() {
+        use super::{Cmd, Drawn};
+        let (w, h) = (1280, 720); // the renderer's type sizes are fixed: smaller frames crop the verse
+        let lit = |d: &mut Drawn| {
+            let mut buf = vec![0u8; (w * h * 4) as usize];
+            d.draw(&mut buf, w, h);
+            buf.chunks_exact(4).filter(|p| p[0] > 200 && p[1] > 200 && p[2] > 200).count()
+        };
+        let mut d = Drawn::default();
+        let blank = lit(&mut d);
+        assert!(d.take(Cmd::Text { verse: "Jesus wept.".into(), reference: "John 11:35".into(), bible: true }));
+        let words = lit(&mut d);
+        assert!(words > blank, "the verse is drawn ({words} white pixels vs {blank})");
+        d.take(Cmd::Layers(crate::native_layers::Layers { bible: false, ..Default::default() }));
+        assert_eq!(lit(&mut d), blank, "Scripture switched off: no words");
     }
 
     #[test]
