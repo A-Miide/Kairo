@@ -96,6 +96,7 @@ pub(crate) struct StreamHit {
     pub matched: u32,
     pub matched_idf: f32,
     pub via_backward: bool,
+    pub backward_gap: u32,
     pub weighty: u32,
     /// The weightiest aligned word.
     pub peak_idf: f32,
@@ -436,7 +437,7 @@ impl Engine {
         for w in words {
             let tick = self.stream.push(&self.k.lexicon, w, now);
             for a in tick.anchors {
-                let hit = StreamHit { verse: a.verse, confirmed: false, matched: ANCHOR_DEPTH, matched_idf: 0.0, via_backward: false, weighty: 0, peak_idf: 0.0, distinct_peak_idf: 0.0, df: a.df, idf: a.idf, similarity: anchor_similarity(a.df) };
+                let hit = StreamHit { verse: a.verse, confirmed: false, matched: ANCHOR_DEPTH, matched_idf: 0.0, via_backward: false, backward_gap: 0, weighty: 0, peak_idf: 0.0, distinct_peak_idf: 0.0, df: a.df, idf: a.idf, similarity: anchor_similarity(a.df) };
                 match anchors.iter_mut().find(|h| h.verse == a.verse) {
                     Some(h) if a.df < h.df => *h = hit,
                     Some(_) => {}
@@ -445,7 +446,7 @@ impl Engine {
             }
             for c in tick.confirmed {
                 let similarity = (0.90 + (c.matched as f32 - 6.0) * 0.01).min(0.97);
-                let hit = StreamHit { verse: c.verse, confirmed: true, matched: c.matched, matched_idf: c.matched_idf, via_backward: c.via_backward_extension, weighty: c.weighty_words, peak_idf: c.peak_idf, distinct_peak_idf: c.distinct_peak_idf, df: 0, idf: 0.0, similarity };
+                let hit = StreamHit { verse: c.verse, confirmed: true, matched: c.matched, matched_idf: c.matched_idf, via_backward: c.via_backward_extension, backward_gap: c.backward_gap, weighty: c.weighty_words, peak_idf: c.peak_idf, distinct_peak_idf: c.distinct_peak_idf, df: 0, idf: 0.0, similarity };
                 match confirmed.iter_mut().find(|h| h.verse == c.verse) {
                     Some(h) if c.matched > h.matched => *h = hit,
                     Some(_) => {}
@@ -619,7 +620,7 @@ impl Engine {
         // …with two weighty words at least: "in the name of Jesus Christ" is in Acts 2:38 word for
         // word, and in every prayer.
         let whole = lead.weighty >= WHOLE_MIN_WEIGHTY && self.said_whole(lead.verse, now);
-        let thin = intent == Target::Screen && ((!pointed_at && lead.weighty < STREAM_MIN_WEIGHTY_WORDS) || light) && !corroborated && !whole;
+        let thin = intent == Target::Screen && ((!pointed_at && lead.weighty < STREAM_MIN_WEIGHTY_WORDS) || light) && !(corroborated && !self.passage_fits_as_well(lead.verse)) && !whole;
         let mut twin_took = false;
         if thin {
             let outcome = self.resolve_twin(lead.verse, now);
@@ -659,7 +660,11 @@ impl Engine {
         }
         let mut c = candidate(verses, intent);
         c.verbatim_disagreed = disagreed;
-        c.hold = thin.then_some(Hold::ThinStream);
+        // Credit for words before the phrase across several words that aren't the verse's is the
+        // phrase alone: "things we say will begin to come to pass" isn't Luke 21:28 ("when these
+        // things begin to come to pass") without a second opinion (church PC, 22 Nov 2026).
+        let gapped = lead.via_backward && lead.backward_gap > 1 && !corroborated && !pointed_at;
+        c.hold = (thin || gapped).then_some(Hold::ThinStream);
         let sent = self.decide(c, now);
         if sent == Target::Screen && !pointed_at && lead.matched_idf < VERBATIM_CERTAIN_IDF {
             let relatives = self.stream_anchors_near(lead.verse, now);

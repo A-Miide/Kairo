@@ -81,7 +81,15 @@ fn knowledge(from: &str, data: &Path) -> Knowledge {
     let mut parts = from.split(':');
     let lang = Lang::from_code(parts.next().unwrap_or("en"));
     let wordings = match (parts.next(), parts.next()) {
-        (Some("file"), Some(code)) => Wordings { own: Some(corpus.load_flat(code, &data.join("translations").join(format!("{code}.json"))).expect("the church's Bible file")), also: vec![] },
+        // The church's own Bible file. Not beside the log (a log sent from another computer): the KJV and
+        // the BSB, as an English service without one, and the decisions may differ from the live ones.
+        (Some("file"), Some(code)) => match corpus.load_flat(code, &data.join("translations").join(format!("{code}.json"))) {
+            Ok(own) => Wordings { own: Some(own), also: vec![] },
+            Err(_) => {
+                eprintln!("[replay-log] the church's {code} Bible isn't beside the log: replayed with the KJV and BSB");
+                Wordings { own: None, also: vec![kairo_eval::translations().1] }
+            }
+        },
         (Some("pack"), _) => {
             let code = from.get(..2).unwrap_or("en");
             let downloaded = data.join("packs").join(format!("{code}.json"));

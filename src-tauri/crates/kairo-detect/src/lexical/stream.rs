@@ -57,6 +57,9 @@ pub struct Confirmed {
     pub matched_idf: f32,
     /// Would not have confirmed without credit for words before the anchor.
     pub via_backward_extension: bool,
+    /// Words heard inside the backward credit that aren't the verse's ("things we say will begin to
+    /// come to pass" for Luke 21:28's "these things begin to come to pass").
+    pub backward_gap: u32,
     /// Aligned words that weigh something and aren't everyday preaching words.
     pub weighty_words: u32,
     /// The weightiest aligned word.
@@ -83,6 +86,7 @@ struct Candidate {
     matched_idf: f32,
     back_matched: u32,
     back_idf: f32,
+    back_gap: u32,
     seed_idf: f32,
     counted: HashSet<WordId>,
     misses: u32,
@@ -181,6 +185,7 @@ impl StreamMatcher {
                     matched: c.matched,
                     matched_idf: c.matched_idf,
                     via_backward_extension: c.back_matched > 0 && !without_back,
+                    backward_gap: c.back_gap,
                     weighty_words,
                     peak_idf,
                     distinct_peak_idf,
@@ -230,6 +235,7 @@ impl StreamMatcher {
                 matched_idf: total_idf,
                 back_matched: back.matched,
                 back_idf: back.idf,
+                back_gap: back.gap,
                 seed_idf: total_idf,
                 counted,
                 misses: ALIGN_MISS_BUDGET,
@@ -254,8 +260,10 @@ impl StreamMatcher {
         let mut v = pos as isize - 1;
         let mut h = self.history.len() as isize - 1 - ANCHOR_N as isize;
         let mut misses = ALIGN_MISS_BUDGET;
-        let take = |back: &mut Back, w: WordId| {
+        let mut skipped = 0;
+        let take = |back: &mut Back, w: WordId, skipped: u32| {
             if lex.idf(w) >= BACKWARD_WORD_IDF && !back.words.contains(&w) {
+                back.gap = skipped;
                 back.idf += lex.idf(w);
                 back.words.push(w);
                 back.matched += 1;
@@ -264,17 +272,18 @@ impl StreamMatcher {
         while v >= 0 && h >= 0 && back.matched < BACKWARD_MAX_WORDS {
             let heard = self.history[h as usize];
             if Some(stems[v as usize]) == heard {
-                take(&mut back, words[v as usize]);
+                take(&mut back, words[v as usize], skipped);
                 v -= 1;
                 h -= 1;
             } else if misses > 0 && v >= 1 && Some(stems[v as usize - 1]) == heard {
-                take(&mut back, words[v as usize - 1]);
+                take(&mut back, words[v as usize - 1], skipped);
                 v -= 2;
                 h -= 1;
                 misses -= 1;
             } else if misses > 0 {
                 misses -= 1;
                 h -= 1;
+                skipped += 1;
             } else {
                 break;
             }
@@ -286,6 +295,8 @@ impl StreamMatcher {
 #[derive(Default)]
 struct Back {
     matched: u32,
+    /// Words heard between the anchor and the earliest one credited that aren't the verse's.
+    gap: u32,
     idf: f32,
     words: Vec<WordId>,
 }
