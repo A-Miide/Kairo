@@ -2853,6 +2853,8 @@ async function startListeningInner() {
   const serverEngine = (engine === 'offline' || engine === 'browser') ? 'offline' : 'deepgram';
   stopInputPreview();   // the Settings meter's own capture of the same input
   try {
+    // The inputs as they are now: one that dropped may be back under another name and id.
+    await populateAudioDevices();
     const deviceId = audioSourceSettings?.value || '';
     // echoCancellation/noiseSuppression/autoGainControl are voice-call DSP
     // effects tuned for a real mic in a real room. A confirmed incident:
@@ -4291,10 +4293,21 @@ clearTranscriptBtn?.addEventListener('click', () => {
 // picked up ambient room audio instead of the intended source.
 const AUDIO_INPUT_KEY = 'kairo-audio-input-device';
 const AUDIO_INPUT_LABEL_KEY = 'kairo-audio-input-label';
+// An input's name without what Windows and the web view add when a device is found again: "Microphone
+// (2- USB Audio) (0d8c:0014)" is the "Microphone (USB Audio)" that was chosen. Matched by its exact name,
+// a USB adapter that came back renamed was "not connected", and the next Start Listening asked Windows for
+// its old id and failed (church PC, 22 Nov 2026). Same rule as the server's (native_audio.rs base_name).
+function inputBaseName(label) {
+  return String(label || '').trim().replace(/^(Default|Communications) - /, '').toLowerCase()
+    .replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)$/, '').replace(/\(\s*\d+\s*-\s*/g, '(').trim();
+}
 async function populateAudioDevices() {
   if (!audioSourceSettings) return;
   try {
-    await navigator.mediaDevices.getUserMedia({ audio: true });
+    // Asked only so the names show; closed at once — left open, the page held an input for the
+    // whole session beside the server's own capture of it.
+    const probe = await navigator.mediaDevices.getUserMedia({ audio: true });
+    probe.getTracks().forEach(t => t.stop());
     const devices = await navigator.mediaDevices.enumerateDevices();
     const mics    = devices.filter(d => d.kind === 'audioinput');
     const saved   = localStorage.getItem(AUDIO_INPUT_KEY) || '';
@@ -4304,7 +4317,8 @@ async function populateAudioDevices() {
     // than falling back to whichever device happens to be listed first —
     // that is how a service ends up transcribing the room mic.
     const chosen = mics.find(d => d.deviceId === saved)
-      || (savedLabel ? mics.find(d => d.label === savedLabel) : null);
+      || (savedLabel ? mics.find(d => d.label === savedLabel) : null)
+      || (savedLabel ? mics.find(d => inputBaseName(d.label) === inputBaseName(savedLabel)) : null);
     audioSourceSettings.innerHTML = '';
     mics.forEach(d => {
       const o = document.createElement('option');
