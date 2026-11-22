@@ -36,6 +36,7 @@
 //! score and hold.
 
 mod back_to;
+mod called;
 mod check;
 mod citations;
 mod core;

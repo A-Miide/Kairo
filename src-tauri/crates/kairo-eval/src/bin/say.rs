@@ -166,6 +166,7 @@ fn report(k: &Knowledge, o: Output, meaning: bool, wakes: &mut Vec<(u64, Event)>
             ),
             Effect::WakeAt { id, at_ms } => wakes.push((at_ms, Event::Timer(id))),
             Effect::ReadIn { verse, translation } => println!("          -> shown in the {translation} ({} read in it)", label(k, verse)),
+            Effect::Called { verse } => println!("          -> called, waits for its reading: {}", label(k, verse)),
             _ => {}
         }
     }
