@@ -636,6 +636,15 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
             }
             Effect::TopicLibrary { size, words } => hub.broadcast(json!({ "type": "topic-library", "size": size, "words": words })),
             Effect::Settled { text } => hub.broadcast(json!({ "type": "transcript-settled", "text": text })),
+            // Called with the verse up, waiting for its reading: the Live Queue shows it as called.
+            Effect::Called { verse } => {
+                let mut list = vec![bible.verse_json(verse, 1.0, "direct")];
+                bible.apply_translation(&mut list, &p.translation);
+                bible.apply_language(&mut list, &p.language);
+                eprintln!("[Detect] {} → called, waits for its reading", bible.reference(verse));
+                crate::routes::write_debug_global("server:detect", json!({ "verses": [bible.reference(verse)], "target": "called", "method": "direct" }));
+                hub.broadcast(json!({ "type": "called", "verses": list, "timestamp": epoch_ms() }));
+            }
             Effect::WakeAt { .. } | Effect::ReadIn { .. } => {}
         }
     }

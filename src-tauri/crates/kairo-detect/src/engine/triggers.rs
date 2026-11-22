@@ -60,7 +60,7 @@ const ON_SCREEN_CONTEXT_MS: u64 = 600_000;
 static NEXT: LazyLock<regex::Regex> = LazyLock::new(|| re(r"\b(next verse|following verse|verse after (that|this|it))\b"));
 static BACK: LazyLock<regex::Regex> = LazyLock::new(|| re(r"\b(previous verse|verse before|preceding verse)\b"));
 /// A preacher taking back the number just said: "Romans 8:28, sorry, verse 31".
-static CORRECTION_WORD: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?i)\b(sorry|i mean|i meant|rather|correction|pardon me|excuse me|my mistake)\b[\s,.;:!-]*"));
+pub(crate) static CORRECTION_WORD: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?i)\b(sorry|i mean|i meant|rather|correction|pardon me|excuse me|my mistake)\b[\s,.;:!-]*"));
 static VERSE_OR_CHAPTER_NEXT: LazyLock<regex::Regex> = LazyLock::new(|| re(r"(?i)^(verses?|chapter)\b"));
 /// The next step of a reading announced after a citation, in the same breath: "Genesis chapter 21
 /// verse 1 and then we go to verse 6" (owner, 2026-10-31). What follows it is a verse call of its own.

@@ -658,6 +658,11 @@ impl Engine {
                         }
                     }
                 }
+                // Called in the same breath as the verse up: it waits for its reading (called.rs).
+                if verses.len() == 1 && self.called_with_another(verses[0], text, now) {
+                    self.wait_called(verses[0], now);
+                    continue;
+                }
                 let sent = self.decide(Candidate::new(verses.clone(), Method::Direct, 1.0, Target::Screen), now);
                 if sent == Target::Screen && verses.len() == 1 {
                     self.start_citation_check(verses[0], text, true, None, now);
@@ -676,6 +681,10 @@ impl Engine {
                     kr.book == tr.book && kr.chapter != tr.chapter && !cited_now.contains(k)
                 });
                 if rehears {
+                    continue;
+                }
+                if verses.len() == 1 && self.called_with_another(top, text, now) {
+                    self.wait_called(top, now);
                     continue;
                 }
                 self.t.interim_sent.insert(top);
