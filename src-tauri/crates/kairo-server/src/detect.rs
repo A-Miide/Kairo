@@ -636,6 +636,11 @@ fn apply(bible: &Bible, hub: &Hub, range: &mut RangeMirror, out: Output, p: &Pre
             }
             Effect::TopicLibrary { size, words } => hub.broadcast(json!({ "type": "topic-library", "size": size, "words": words })),
             Effect::Settled { text } => hub.broadcast(json!({ "type": "transcript-settled", "text": text })),
+            // The speaker reached another slide of the live deck (engine/deck.rs).
+            Effect::DeckMoved { deck, index } => {
+                crate::routes::write_debug_global("server:slide-follow", json!({ "deck": deck, "index": index }));
+                hub.broadcast(json!({ "type": "slide-follow", "deck": deck, "index": index }));
+            }
             // Called with the verse up, waiting for its reading: the Live Queue shows it as called.
             Effect::Called { verse } => {
                 let mut list = vec![bible.verse_json(verse, 1.0, "direct")];

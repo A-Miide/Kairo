@@ -14,7 +14,7 @@ use crate::lexical::stem::heal;
 use crate::lexical::text::{is_stop_word, norm};
 use crate::reference::book_mentions;
 
-const ADVANCE_COOLDOWN_MS: u64 = 1_200;
+pub(crate) const ADVANCE_COOLDOWN_MS: u64 = 1_200;
 /// A text match earlier in the chapter on screen is promoted only with this share of its words said
 /// in the last stretch of speech (reading on, later in the chapter, keeps the plain rule).
 const BACK_IN_CHAPTER_SHARE: f32 = 0.5;
@@ -22,10 +22,10 @@ const BACK_IN_CHAPTER_SPEECH_MS: u64 = 15_000;
 /// A range not moved for this long has paused; skipping ahead then takes this much identifying
 /// weight in the verse's own (not everyday) words.
 const PAUSED_READING_MS: u64 = 25_000;
-const PAUSED_SKIP_MIN_IDF: f32 = 9.0;
+pub(crate) const PAUSED_SKIP_MIN_IDF: f32 = 9.0;
 /// The next verse's first words are looked for among this many of the newest words (plus their own).
 const OPENING_LOOKBACK: usize = 4;
-const HEARD_MAX_WORDS: usize = 160;
+pub(crate) const HEARD_MAX_WORDS: usize = 160;
 const PREFIX_MIN_IDF: f32 = 3.5;
 /// "…go through chapter four verse five" counts this soon after the citation, for at most this many verses.
 const THROUGH_CHAPTER_MS: u64 = 20_000;
@@ -33,9 +33,9 @@ const THROUGH_CHAPTER_MAX_VERSES: usize = 60;
 /// A range this long is the sermon's passage.
 const ANNOUNCED_MIN_VERSES: usize = 3;
 const ADVANCE_MIN_SCORE: f32 = 0.50;
-const CONTENT_LOOKAHEAD: usize = 3;
+pub(crate) const CONTENT_LOOKAHEAD: usize = 3;
 /// What "just said" means for skipping ahead: at least this many words.
-const CONTENT_MIN_WORDS: usize = 10;
+pub(crate) const CONTENT_MIN_WORDS: usize = 10;
 /// A chapter's verse is chosen from speech only with this much identifying
 /// weight, and this lead over the next best.
 pub const CHAPTER_KEYWORD_MIN_IDF: f32 = 14.0;
@@ -277,55 +277,24 @@ impl Engine {
         // Only once the verse up has been read to its end: a called range's next verse opening "And
         // the LORD" mustn't move it when the verse being read says "and the LORD" mid-way (review).
         let k = if self.range.soft_quoted { 4 } else if ended { 2 } else { 3 };
-        let said_now = plain_tokens(fresh);
-        // Among the newest words: they arrive a chunk at a time ("…court and said", then "said O LORD").
-        let recent = &said_now[said_now.len().saturating_sub(k + OPENING_LOOKBACK)..];
         // In any wording: Ezekiel 12:25 read in the NLT opens "For I am the LORD! If I say it".
-        // Two words once the verse was read to its end, if they aren't both everyday ones ("and the").
-        let opens = self.verse_wordings(next).into_iter().any(|t| {
-            let tokens = plain_tokens(t);
-            // "And said, O LORD": two everyday words open it, so three are needed after all.
-            let k = if k == 2 && tokens.iter().take(2).all(|w| is_stop_word(w)) { 3 } else { k };
-            let start: Vec<String> = tokens.into_iter().take(k).collect();
-            start.len() == k && recent.windows(k).any(|w| w == &start[..])
-        });
+        let opens = opening_said(self.verse_wordings(next), fresh, k);
         if opens && (self.range.soft || ended) {
             self.request_range_advance("the next verse's opening words", now);
-            return;
-        }
-        let opening: Vec<String> = meaningful_words(self.verse_text(next)).into_iter().take(4).collect();
-        if opening.is_empty() {
-            return;
-        }
-        let current_words: HashSet<String> = meaningful_words(self.verse_text(current)).into_iter().collect();
-        let own: Vec<&String> = opening.iter().filter(|w| !current_words.contains(*w)).collect();
-        let identifying: Vec<&String> = own.iter().copied().filter(|w| self.k.lexicon.idf_of(w) >= PREFIX_MIN_IDF).collect();
-        if identifying.is_empty() && own.len() < 2 {
             return;
         }
         let book = self.r(current).book;
         if book_mentions(fresh, self.k.books, self.cfg.lang).iter().any(|b| *b != book) {
             return;
         }
-        // The verse on screen read first: Mark 4:21–34 cited, "…the kind of soil that produces
-        // nothing" (the background, before any reading) moved it to 4:22's "nothing hid" (dev build).
-        let next_words: HashSet<String> = meaningful_words(self.verse_text(next)).into_iter().collect();
-        let current_own: Vec<String> = current_words.iter().filter(|w| !next_words.contains(*w) && self.k.lexicon.idf_of(w) >= PREFIX_MIN_IDF).cloned().collect();
-        if !current_own.is_empty() {
-            let heard: HashSet<String> = meaningful_words(&format!("{} {fresh}", self.range_heard_words().join(" "))).into_iter().collect();
-            if !current_own.iter().any(|w| heard.contains(w)) {
-                return;
-            }
-        }
-        let said: HashSet<String> = meaningful_words(fresh).into_iter().collect();
-        let hit = |list: &[&String]| list.iter().collect::<HashSet<_>>().into_iter().filter(|w| said.contains(**w)).count();
         // Held after a quote, one word of the next verse is chance: Galatians 3:13 quoted in passing,
         // then "blessing" put 3:14 up; Deuteronomy 12:13, then "place", 12:14 (dev sermons). Two.
         // Held verses too: "…God has put in your heart" put 2 Chronicles 26:16 ("his heart was lifted
         // up") up 20 s after 26:15 was read (live recording, 2026-10-28).
         let need = if self.range.soft { 2 } else { 1 };
-        let matched = if identifying.len() >= need { hit(&identifying) >= need } else { hit(&own) >= need + 1 };
-        if matched {
+        let heard = self.range_heard_words().join(" ");
+        let idf = |w: &str| self.k.lexicon.idf_of(w);
+        if own_opening_said(self.verse_text(current), self.verse_text(next), &heard, fresh, need, &idf) {
             self.request_range_advance("the next verse's own words", now);
         }
     }
@@ -402,30 +371,12 @@ impl Engine {
     /// Identifying weight (IDF sum) and count of a verse's words whose stems
     /// were said.
     pub(crate) fn shared_weight(&self, v: VerseId, text: &str) -> (f32, usize) {
-        let said: HashSet<String> = norm(text).split(' ').filter(|w| w.len() >= 3).map(heal).collect();
-        let mut seen: HashSet<String> = HashSet::new();
-        let (mut idf, mut hits) = (0.0, 0);
-        for w in norm(self.verse_text(v)).split(' ') {
-            if w.len() < 3 || !seen.insert(w.to_string()) {
-                continue;
-            }
-            if said.contains(&heal(w)) {
-                hits += 1;
-                idf += self.k.lexicon.idf_of(w);
-            }
-        }
-        (idf, hits)
+        shared_weight_of(self.verse_text(v), text, &|w| self.k.lexicon.idf_of(w))
     }
 
     /// `shared_weight` without the everyday words ("the", "that", "say").
     fn shared_weight_meaningful(&self, v: VerseId, text: &str) -> f32 {
-        let said: HashSet<String> = norm(text).split(' ').filter(|w| w.len() >= 3 && !is_stop_word(w)).map(heal).collect();
-        let mut seen: HashSet<String> = HashSet::new();
-        norm(self.verse_text(v))
-            .split(' ')
-            .filter(|w| w.len() >= 3 && !is_stop_word(w) && seen.insert(w.to_string()) && said.contains(&heal(w)))
-            .map(|w| self.k.lexicon.idf_of(w))
-            .sum()
+        shared_weight_meaningful_of(self.verse_text(v), text, &|w| self.k.lexicon.idf_of(w))
     }
 
     /// The best two verses of a chapter for what was said, by identifying weight.
@@ -547,7 +498,77 @@ impl Engine {
 /// `verse` read through to its end in `heard`: its words followed in order (a few may be skipped or
 /// misheard), at least READ_THROUGH of them, the last or the one before it among them. Everyday words
 /// only count where they're expected next, so "and the" said before the reading can't carry it ahead.
-fn read_to_end(heard: &[String], verse: &[String]) -> bool {
+// ── The rules a reading moves on by, for any passage: a range's verses, or a slide deck's slides
+// (deck.rs). One set, so a deck follows the speaker exactly as a passage does.
+
+/// The next unit's first `k` words, in order, among the newest words said (`fresh`), in any of its
+/// wordings. Two words once the unit up was read to its end, if they aren't both everyday ones.
+pub(crate) fn opening_said<'a>(next_wordings: impl IntoIterator<Item = &'a str>, fresh: &str, k: usize) -> bool {
+    let said_now = plain_tokens(fresh);
+    // Among the newest words: they arrive a chunk at a time ("…court and said", then "said O LORD").
+    let recent = &said_now[said_now.len().saturating_sub(k + OPENING_LOOKBACK)..];
+    next_wordings.into_iter().any(|t| {
+        let tokens = plain_tokens(t);
+        // "And said, O LORD": two everyday words open it, so three are needed after all.
+        let k = if k == 2 && tokens.iter().take(2).all(|w| is_stop_word(w)) { 3 } else { k };
+        let start: Vec<String> = tokens.into_iter().take(k).collect();
+        start.len() == k && recent.windows(k).any(|w| w == &start[..])
+    })
+}
+
+/// The next unit's own opening words (its first four meaningful ones the unit up doesn't have)
+/// heard just now: `need` identifying ones, or one more of its own. Only once the unit up was
+/// read: Mark 4:21–34 cited, "…the kind of soil that produces nothing" (the background, before any
+/// reading) moved it to 4:22's "nothing hid" (dev build).
+pub(crate) fn own_opening_said(current: &str, next: &str, heard: &str, fresh: &str, need: usize, idf: &dyn Fn(&str) -> f32) -> bool {
+    let opening: Vec<String> = meaningful_words(next).into_iter().take(4).collect();
+    if opening.is_empty() {
+        return false;
+    }
+    let current_words: HashSet<String> = meaningful_words(current).into_iter().collect();
+    let own: Vec<&String> = opening.iter().filter(|w| !current_words.contains(*w)).collect();
+    let identifying: Vec<&String> = own.iter().copied().filter(|w| idf(w) >= PREFIX_MIN_IDF).collect();
+    if identifying.is_empty() && own.len() < 2 {
+        return false;
+    }
+    let next_words: HashSet<String> = meaningful_words(next).into_iter().collect();
+    let current_own: Vec<String> = current_words.iter().filter(|w| !next_words.contains(*w) && idf(w) >= PREFIX_MIN_IDF).cloned().collect();
+    if !current_own.is_empty() {
+        let heard: HashSet<String> = meaningful_words(&format!("{heard} {fresh}")).into_iter().collect();
+        if !current_own.iter().any(|w| heard.contains(w)) {
+            return false;
+        }
+    }
+    let said: HashSet<String> = meaningful_words(fresh).into_iter().collect();
+    let hit = |list: &[&String]| list.iter().collect::<HashSet<_>>().into_iter().filter(|w| said.contains(**w)).count();
+    if identifying.len() >= need { hit(&identifying) >= need } else { hit(&own) >= need + 1 }
+}
+
+/// Identifying weight (IDF sum) and count of a unit's words whose stems were said.
+pub(crate) fn shared_weight_of(unit: &str, text: &str, idf: &dyn Fn(&str) -> f32) -> (f32, usize) {
+    let said: HashSet<String> = norm(text).split(' ').filter(|w| w.len() >= 3).map(heal).collect();
+    let mut seen: HashSet<String> = HashSet::new();
+    let (mut weight, mut hits) = (0.0, 0);
+    for w in norm(unit).split(' ') {
+        if w.len() < 3 || !seen.insert(w.to_string()) {
+            continue;
+        }
+        if said.contains(&heal(w)) {
+            hits += 1;
+            weight += idf(w);
+        }
+    }
+    (weight, hits)
+}
+
+/// `shared_weight_of` without the everyday words ("the", "that", "say").
+pub(crate) fn shared_weight_meaningful_of(unit: &str, text: &str, idf: &dyn Fn(&str) -> f32) -> f32 {
+    let said: HashSet<String> = norm(text).split(' ').filter(|w| w.len() >= 3 && !is_stop_word(w)).map(heal).collect();
+    let mut seen: HashSet<String> = HashSet::new();
+    norm(unit).split(' ').filter(|w| w.len() >= 3 && !is_stop_word(w) && seen.insert(w.to_string()) && said.contains(&heal(w))).map(idf).sum()
+}
+
+pub(crate) fn read_to_end(heard: &[String], verse: &[String]) -> bool {
     if verse.is_empty() {
         return false;
     }
@@ -597,14 +618,14 @@ pub(super) fn read_run(said: &[String], verse: &[String]) -> (usize, usize) {
 }
 
 /// A paused reading resumes on a run of this many of the verse's words, this many not everyday ones.
-const RESUME_RUN_WORDS: usize = 5;
-const RESUME_RUN_OWN: usize = 2;
+pub(crate) const RESUME_RUN_WORDS: usize = 5;
+pub(crate) const RESUME_RUN_OWN: usize = 2;
 const RUN_GAP: usize = 2;
 
 /// read_to_end: verse words that may be skipped between two heard ones, and the share that must be heard.
 const READ_SKIP: usize = 3;
 /// A verse this short is read by the time it's up.
-const SHORT_VERSE_WORDS: usize = 4;
+pub(crate) const SHORT_VERSE_WORDS: usize = 4;
 const READ_THROUGH: f32 = 0.6;
 
 #[cfg(test)]
