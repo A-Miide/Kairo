@@ -15,6 +15,8 @@ use crate::lexical::text::{is_stop_word, norm};
 use crate::reference::book_mentions;
 
 const ADVANCE_COOLDOWN_MS: u64 = 1_200;
+/// A passage's move this recent may have come early: its verse before can still take it back.
+const EARLY_MOVE_MS: u64 = 8_000;
 /// A text match earlier in the chapter on screen is promoted only with this share of its words said
 /// in the last stretch of speech (reading on, later in the chapter, keeps the plain rule).
 const BACK_IN_CHAPTER_SHARE: f32 = 0.5;
@@ -385,6 +387,12 @@ impl Engine {
         // Joel 2:11 read on (a word misheard). Mid-reading, a few words still carry it ("that what God
         // has promised, he was also able to perform" is three of Romans 4:21's own words).
         let said = plain_tokens(&text);
+        // Verses only held after one cited (a soft range) take their own telling words, as a paused
+        // reading does: Matthew 8:26 cited, then talk of Peter sinking ("why are you fearful… he
+        // started to sink") put 8:28 up on everyday words (church PC, 22 Nov 2026).
+        if self.range.soft && self.shared_weight_meaningful(best, &text) < PAUSED_SKIP_MIN_IDF {
+            return;
+        }
         let read = !paused || self.verse_wordings(best).into_iter().any(|t| {
             let (run, own) = read_run(&said, &plain_tokens(t));
             run >= RESUME_RUN_WORDS && own >= RESUME_RUN_OWN
@@ -508,6 +516,14 @@ impl Engine {
         true
     }
 
+    /// A verse outside the cited passage being read, whose words a verse of the passage fits as well.
+    /// Another method finding the same words again there isn't a second opinion: Psalm 150:3 ("the
+    /// sound of the trumpet") went up over Psalm 47:5 on a weak quote of the same words (church PC,
+    /// 22 Nov 2026).
+    pub(crate) fn passage_fits_as_well(&self, v: VerseId) -> bool {
+        self.range.current.is_some() && !self.range.all.contains(&v) && !self.speech_favours_over_range(v)
+    }
+
     /// Does what was just said hold more of the candidate's words than of any one range verse?
     pub(crate) fn speech_favours_over_range(&self, v: VerseId) -> bool {
         if self.range.all.is_empty() {
@@ -534,6 +550,18 @@ impl Engine {
         let current: HashSet<String> = meaningful_words(self.verse_text(self.range.current.unwrap())).into_iter().collect();
         let own: HashSet<&String> = words.iter().filter(|w| !ending.contains(w) && !current.contains(*w)).collect();
         !meaningful_words(&self.range_heard_words().join(" ")).iter().any(|w| own.contains(w))
+    }
+
+    /// A verse of the cited passage being read that the reading has already passed. Not the verse just
+    /// before the one up when it went up a moment ago: that move may have come early, and the words
+    /// still being read put it right (Deuteronomy 28:3 up while 28:2 was read, then 28:2 again,
+    /// church PC 22 Nov; Romans 8:7 before 8:6, 15 Nov).
+    pub(crate) fn behind_in_passage(&self, v: VerseId, now: u64) -> bool {
+        let (Some(cur), false) = (self.range.current, self.range.soft) else { return false };
+        let at = |x: VerseId| self.range.all.iter().position(|y| *y == x);
+        let (Some(i), Some(c)) = (at(v), at(cur)) else { return false };
+        let just_moved = now.saturating_sub(self.range.moved_at) < EARLY_MOVE_MS;
+        i < c && !(i + 1 == c && just_moved)
     }
 
     /// The words just spoken: the latest final (a sentence's worth) and the open interim.

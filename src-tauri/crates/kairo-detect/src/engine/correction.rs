@@ -91,11 +91,15 @@ impl Engine {
         if ends_naming_a_book(source, self.k.books, self.cfg.lang) || ends_naming_a_book(&newest, self.k.books, self.cfg.lang) {
             return false;
         }
+        // The cited verse number in the chapter beside the one named is the chapter misspoken or misheard,
+        // and the citation still tells it from its twins elsewhere: "Isaiah fifty two verse one", then
+        // 53:1 read ("who hath believed our report", quoted in John 12:38; church PC, 22 Nov 2026).
+        let next_door = t.book == c.book && t.verse == c.verse && t.chapter.abs_diff(c.chapter) == 1;
         let strong = top.similarity >= CORRECTION_MIN_SIMILARITY || top.matched_idf.is_some_and(|m| m >= CORRECTION_MIN_IDF);
-        if !strong {
+        if !strong && !next_door {
             return false;
         }
-        if let Some(top_idf) = top.matched_idf {
+        if let Some(top_idf) = top.matched_idf.filter(|_| !next_door) {
             if alternates.iter().any(|a| self.r(a.verse).book != t.book && a.matched_idf.is_some_and(|m| m >= top_idf * COMPARABLE_ALTERNATE)) {
                 return false;
             }
@@ -135,7 +139,13 @@ impl Engine {
         // offered in Possible Matches, and the citation stays up.
         let mut c = Candidate::new(vec![top.verse], top.method, top.similarity, Target::Screen);
         c.evidence.matched_idf = top.matched_idf;
+        c.evidence.similarity = Some(top.similarity);
+        // A running-words match only carries its weight once confirmed: without saying so it scored
+        // nothing here and the correction was dropped unseen.
+        c.evidence.confirmed = top.method == Method::Stream && top.matched_idf.is_some();
         c.corrected_from = Some(cited);
+        // The book and verse named pick it over its twins elsewhere.
+        c.twin_resolved = next_door;
         c.source = Some(source.to_string());
         if self.decide(c, now) != Target::Screen {
             return true;

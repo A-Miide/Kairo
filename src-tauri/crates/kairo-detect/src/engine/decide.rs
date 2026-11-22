@@ -106,6 +106,15 @@ impl Engine {
             RangeAdvance::No => {}
         }
 
+        // 1b. A cited passage being read doesn't go back on shared wording: a verse the reading has
+        // passed is called back by its number (that's a citation, not a text match). Deuteronomy
+        // 28:1–6 cited and read, then 28:13 ("…if that thou hearken unto the commandments of the LORD
+        // thy God"): a fingerprint put 28:2 ("hearken unto the voice of the LORD thy God") back up,
+        // its rare word "hearken" taken for 28:2 said again (church PC, 22 Nov 2026).
+        if c.method.is_text_match() && c.hold.is_none() && self.behind_in_passage(top, now) {
+            c.hold = Some(Hold::QuoteBehindReading);
+        }
+
         // 2. A verse continuing the chapter on screen is promoted.
         let continuity = !c.verbatim_disagreed && c.hold.is_none() && self.continues_chapter(&c, now);
         if continuity {
@@ -158,7 +167,7 @@ impl Engine {
 
         // 4. A match held for want of a second method (running words, or a quote of the verse's own
         // words): another method has now landed it on the verse's words or its reference.
-        if second_opinion && self.awaiting.get(&top).is_some_and(|h| scoring::vouches(c.method, h.candidate.method)) {
+        if second_opinion && !self.passage_fits_as_well(top) && self.awaiting.get(&top).is_some_and(|h| scoring::vouches(c.method, h.candidate.method)) {
             if let Some(held) = self.awaiting.remove(&top) {
                 if now.saturating_sub(held.at) < LATE_CORROBORATION_WINDOW_MS {
                     self.redo.push(held.candidate);
