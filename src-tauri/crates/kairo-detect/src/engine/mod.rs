@@ -10,7 +10,8 @@
 //!     ├─ meaning.rs    a verse in the preacher's own words (meaning model)
 //!     ├─ named.rs      "the prodigal son", "the Lord's Prayer"
 //!     ├─ check.rs, correction.rs   a citation the words that follow contradict
-//!     └─ ranges.rs     a cited range reading on to its next verse
+//!     ├─ ranges.rs     a cited range reading on to its next verse
+//!     └─ deck.rs       a live slide deck moving on, by the same rules as a range
 //!     │
 //!     │  each builds a Candidate: verses, method, score, evidence, and — when the path
 //!     │  judged its own evidence too thin to send alone — a named Hold (types.rs)
@@ -41,6 +42,7 @@ mod check;
 mod citations;
 mod core;
 mod correction;
+mod deck;
 mod decide;
 mod detour;
 pub mod event;

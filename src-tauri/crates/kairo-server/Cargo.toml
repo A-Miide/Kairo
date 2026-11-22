@@ -41,6 +41,8 @@ libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.60", features = ["Win32_System_Threading"] }
+# The sound input opened raw, without Windows' own processing (wasapi_raw.rs). The version cpal uses.
+windows = { version = "0.54", features = ["Win32_Media_Audio", "Win32_Foundation", "Win32_Devices_Properties", "Win32_Media_KernelStreaming", "Win32_System_Com", "Win32_System_Com_StructuredStorage", "Win32_System_Variant", "Win32_Media_Multimedia", "Win32_UI_Shell_PropertiesSystem"] }
 
 [dev-dependencies]
 serde_urlencoded = "0.7"

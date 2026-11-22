@@ -37,6 +37,12 @@ pub enum Event {
     RangeNext,
     RangeJump(VerseId),
     RangeClear,
+    /// A slide deck went live, on this slide: the engine follows the speaker through it (deck.rs).
+    DeckSet { deck: String, slides: Vec<String>, current: usize },
+    /// The operator put this slide of the deck up.
+    DeckAt(usize),
+    /// The deck is no longer live.
+    DeckClear,
     /// A timer the engine asked for has fired.
     Timer(TimerId),
     /// A model request has been answered.
@@ -84,6 +90,8 @@ pub enum Effect {
     /// A verse called together with the one up ("Jonah 2:8, and also 2 Corinthians 2:14"), waiting for
     /// its reading (called.rs): shown as called, not sent.
     Called { verse: VerseId },
+    /// The speaker reached this slide of the live deck (deck.rs).
+    DeckMoved { deck: String, index: usize },
     /// The opening of a long stretch still being said, settled for detection (core.rs on_speech):
     /// the transcript shows it locked too, not waiting for the speech engine's pause.
     Settled { text: String },
