@@ -193,6 +193,10 @@
     this.onAdvance = opts.onAdvance || function () {};
     this.onPosition = opts.onPosition || function () {};
     this.enabled = true;
+    // The detection engine moves the deck on the words heard (kairo-detect engine/deck.rs, by the
+    // rules a Bible passage is read on): this one then keeps only numbered points and the deck's
+    // scripture (owner, 22 Nov 2026: one engine, not a second one).
+    this.wordsByEngine = !!opts.wordsByEngine;
     this._final = [];        // keys from finished utterances (rolling)
     this._interim = [];      // the utterance still being heard
     this._consumed = 0;      // stream position up to which words already moved the deck
@@ -336,7 +340,7 @@
     } else {
       this._interim = keys;
     }
-    this._decide(now);
+    if (!this.wordsByEngine) this._decide(now);
     if (now - this._lastEmitAt >= 200) { this._lastEmitAt = now; this.onPosition(this.snapshot()); }
   };
 

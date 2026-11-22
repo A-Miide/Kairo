@@ -423,6 +423,10 @@ function handleServerMessage(msg) {
       handleRangeVerses(msg);
       break;
 
+    case 'slide-follow':
+      window.KairoService?.onEngineSlideFollow?.(msg);
+      break;
+
     case 'range-active':
       handleRangeActive(msg.activeRef);
       // The reading moved on inside a range: the open chapter marks the verse it reached.

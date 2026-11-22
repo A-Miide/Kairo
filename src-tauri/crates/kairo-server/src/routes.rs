@@ -38,6 +38,9 @@ pub fn router() -> Router<Shared> {
         .route("/api/verse/step", post(verse_step))
         .route("/api/range/clear", post(range_clear))
         .route("/api/range/jump-to", post(range_jump))
+        .route("/api/follow/deck", post(deck_set))
+        .route("/api/follow/deck/at", post(deck_at))
+        .route("/api/follow/deck/clear", post(deck_clear))
         .route("/api/service/send", post(service_send))
         .route("/api/service/send-media", post(send_media))
         .route("/api/service/send-timer", post(send_timer))
@@ -572,6 +575,35 @@ async fn verse_step(State(app): State<Shared>, Json(body): Json<Value>) -> Json<
     }
     d.send(Event::OperatorCited(vec![v]));
     Json(json!({ "ok": true, "verse": bible.reference(v) }))
+}
+
+// ── A live slide deck, followed by the engine's reading rules (kairo-detect engine/deck.rs) ─────
+
+/// The live deck: `{ deck, slides: [words of each slide], index }`. The engine answers with
+/// `{ type: "slide-follow", deck, index }` when the speaker reaches another slide.
+async fn deck_set(State(app): State<Shared>, Json(b): Json<Value>) -> Json<Value> {
+    let Some((_, d)) = app.ready() else { return Json(json!({ "ok": false })) };
+    let deck = b["deck"].as_str().unwrap_or("").chars().take(120).collect::<String>();
+    // A deck as the page has it; a long one is cut, not refused (each slide's words, at most 4000 characters).
+    let slides: Vec<String> = b["slides"].as_array().into_iter().flatten().take(2000).map(|t| t.as_str().unwrap_or("").chars().take(4000).collect()).collect();
+    let current = b["index"].as_u64().unwrap_or(0) as usize;
+    d.send(Event::DeckSet { deck, slides, current });
+    Json(json!({ "ok": true }))
+}
+
+/// The operator put this slide up: the deck follows on from there.
+async fn deck_at(State(app): State<Shared>, Json(b): Json<Value>) -> Json<Value> {
+    if let (Some((_, d)), Some(i)) = (app.ready(), b["index"].as_u64()) {
+        d.send(Event::DeckAt(i as usize));
+    }
+    Json(json!({ "ok": true }))
+}
+
+async fn deck_clear(State(app): State<Shared>) -> Json<Value> {
+    if let Some((_, d)) = app.ready() {
+        d.send(Event::DeckClear);
+    }
+    Json(json!({ "ok": true }))
 }
 
 async fn range_clear(State(app): State<Shared>) -> Json<Value> {

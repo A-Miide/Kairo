@@ -1056,10 +1056,13 @@
       const f = new SF.SlideFollower({ slides: texts }, {
         onAdvance: (e) => onSlideFollowAdvance(item, e),
         onPosition: (s) => renderFollowHud(s),
+        wordsByEngine: true,
       });
       follower = f;
       followItemId = item.id;
       if (fromIndex != null) follower.resync(fromIndex);
+      // The detection engine follows the deck through the speech, as it follows a Bible passage.
+      engineDeck('', { deck: item.id, slides: texts, index: fromIndex ?? 0 });
       debugLog('slide-follow-start', { itemId: item.id, slides: texts.length, fromIndex: fromIndex == null ? null : fromIndex });
       slideScriptureRefs(texts).then((refs) => { if (follower === f && refs) f.setRefs(refs); });
     } else {
@@ -1067,7 +1070,24 @@
     }
     renderFollowHud(follower.snapshot());
   }
+  // The deck the detection engine follows (server: /api/follow/deck, kairo-detect engine/deck.rs).
+  function engineDeck(path, body) {
+    fetchWithTimeout(`${SERVER}/api/follow/deck${path}`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}),
+    }).catch((err) => debugLog('slide-follow-engine-failed', { path, error: err.message }));
+  }
+  let engineMoving = false;   // the engine's own move must not be sent back to it
+  // The speaker reached another slide of the live deck (the engine's `slide-follow`).
+  function onEngineSlideFollow(msg) {
+    if (!msg || !autoFollow || !follower || !follower.slides || followItemId !== msg.deck || !autoDeployMasterOn()) return;
+    const item = allItems().find(i => i.id === msg.deck);
+    if (!item || !follower.slides[msg.index]) return;
+    follower.resync(msg.index);
+    engineMoving = true;
+    try { onSlideFollowAdvance(item, { toIndex: msg.index, confidence: 1, by: 'words', heard: null }); } finally { engineMoving = false; }
+  }
   function stopFollower() {
+    if (follower && follower.slides) engineDeck('/clear');
     if (follower) debugLog('slide-follow-stop', { itemId: followItemId });
     follower = null; followItemId = null; renderFollowHud(null);
   }
@@ -1536,6 +1556,8 @@
     } else if (sermonFollowEligible(item)) {
       if (autoFollow && (!follower || followItemId !== item.id)) startFollower(item, index);
       else if (follower && followItemId === item.id && !followerAdvancing) follower.resync(index);
+      // Any other way this slide went up (a click, a numbered point, its scripture): the engine follows on from it.
+      if (follower && followItemId === item.id && !engineMoving) engineDeck('/at', { index });
     } else if (follower) {
       stopFollower(); // this item has nothing for either follower to track
     }
@@ -8827,7 +8849,7 @@
     hasLiveTimer: () => segmentList.some(x => x.status === 'live'),
     startTimer: async (seg) => { const r = await startSegmentNow(seg); if (!r.ok) flashCardError(seg, r.error || 'Could not start'); return r.ok; },
     showTimerLibrary, refreshTimerView, onTimerAction, onClockAction, getTimerItem, updateSegmentParams, saveTimerScenes, saveScenePace,
-    onTranscript, setAutoFollow, get autoFollow() { return autoFollow; },
+    onTranscript, onEngineSlideFollow, setAutoFollow, get autoFollow() { return autoFollow; },
     planStart, planNext, planExtend, loadSegments, getSegments: () => segmentList, refreshTimerGrid: () => { try { renderTimerGrid(); } catch {} },
     noteBibleVerse, onLayerState,
     themeLookFor, keepThemeVersion, themeUsage, updateToCurrentTheme,

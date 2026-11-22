@@ -81,7 +81,26 @@ function* deliveries(segs) {
   }
 }
 
+// --mode engine: the detection engine follows the deck (kairo-detect engine/deck.rs), through
+// src-tauri/target/release/deck-replay (cargo build --release -p kairo-eval --bin deck-replay).
+// Words only: a verse put up doesn't move it here.
+function runEngine(deck, segs) {
+  const os = require('os');
+  const { execFileSync } = require('child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kairo-deck-'));
+  const slidesFile = path.join(dir, 'slides.json'), speechFile = path.join(dir, 'speech.json');
+  fs.writeFileSync(slidesFile, JSON.stringify(deck.slides.map((s) => s.text)));
+  const speech = [...deliveries(segs)];
+  fs.writeFileSync(speechFile, JSON.stringify(speech));
+  const bin = path.join(ROOT, 'src-tauri/target/release/deck-replay');
+  const out = execFileSync(bin, [slidesFile, speechFile], { maxBuffer: 64 << 20 }).toString();
+  fs.rmSync(dir, { recursive: true, force: true });
+  const advances = JSON.parse(out).map((a) => ({ to: a.to, at: a.at, by: 'words', heard: `${(a.why || '').replace(/^deck moves to slide \d+: /, '')} | ${a.heard || ''}` }));
+  return { advances, end: speech.length ? speech[speech.length - 1].now : 0 };
+}
+
 function run(deck, segs, mode, refs, sends) {
+  if (mode === 'engine') return runEngine(deck, segs);
   const slides = deck.slides;
   const advances = [];
   let follower;
@@ -125,7 +144,7 @@ function score(deck, result) {
     const adv = result.advances.find((a) => a.to === d.i && a.at >= d.at - EARLY_GRACE_MS && a.at < nextAt);
     const kk = kind[isScripture(deck.slides[d.i].text) ? 'scripture' : 'statement'];
     kk[1]++;
-    if (adv) { caught++; kk[0]++; lat.push(adv.at - d.at); rows.push({ slide: d.i, at: d.at, got: adv.at }); }
+    if (adv) { caught++; kk[0]++; lat.push(adv.at - d.at); rows.push({ slide: d.i, at: d.at, got: adv.at, heard: adv.heard }); }
     else { missed++; rows.push({ slide: d.i, at: d.at, got: null }); }
   }
   for (const a of result.advances) {
@@ -174,7 +193,7 @@ for (const name of names) {
     t.caught += s.caught; t.missed += s.missed; t.early += s.early; t.total += s.total; t.right += s.rightShare; t.n++;
     console.log(`${name}${deck.heldOut ? ' (held out)' : ''} [${mode}]  caught ${s.caught}/${s.total} (statements ${s.kind.statement[0]}/${s.kind.statement[1]}, scripture ${s.kind.scripture[0]}/${s.kind.scripture[1]})  early ${s.early}  median latency ${s.medianLatency == null ? '—' : (s.medianLatency / 1000).toFixed(1) + 's'}  right slide ${(s.rightShare * 100).toFixed(0)}% of the time`);
     if (VERBOSE) {
-      for (const row of s.rows) console.log(`    ${fmt(row.at)}  #${row.slide} ${row.got == null ? 'MISSED' : '+' + ((row.got - row.at) / 1000).toFixed(1) + 's'}  ${deck.slides[row.slide].text.slice(0, 60)}`);
+      for (const row of s.rows) console.log(`    ${fmt(row.at)}  #${row.slide} ${row.got == null ? 'MISSED' : '+' + ((row.got - row.at) / 1000).toFixed(1) + 's'}  ${deck.slides[row.slide].text.slice(0, 60)}${row.heard ? `  ← ${String(row.heard).slice(0, 110)}` : ''}`);
       for (const a of r.advances.filter((x) => x.early)) console.log(`    EARLY ${fmt(a.at)} → #${a.to} ${deck.slides[a.to].text.slice(0, 50)}  ← heard "${a.heard.slice(-70)}"`);
     }
   }

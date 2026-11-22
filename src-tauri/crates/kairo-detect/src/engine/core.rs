@@ -148,6 +148,8 @@ pub struct Engine {
     pub(crate) t: Transcript,
     pub(crate) screen: Screen,
     pub(crate) range: Range,
+    /// The live slide deck, followed as a range is (deck.rs).
+    pub(crate) deck: super::deck::Deck,
     pub(crate) ledger: Ledger,
     pub(crate) reading: ReadingContext,
     pub(crate) sermon: Vec<Cited>,
@@ -210,6 +212,7 @@ impl Engine {
             t: Transcript::default(),
             screen: Screen::default(),
             range: Range::default(),
+            deck: super::deck::Deck::default(),
             ledger: Ledger::default(),
             reading: ReadingContext::new(),
             sermon: Vec::new(),
@@ -268,6 +271,9 @@ impl Engine {
                 self.jump_range_to(v, now);
             }
             Event::RangeClear => self.clear_range(now),
+            Event::DeckSet { deck, slides, current } => self.set_deck(deck, slides, current, now),
+            Event::DeckAt(i) => self.deck_at(i, now),
+            Event::DeckClear => self.clear_deck(),
             Event::Reset => self.reset(),
             Event::UtteranceEnd => {
                 if let Some(chunk) = self.t.sentence.flush() {
@@ -587,6 +593,8 @@ impl Engine {
             let fresh = self.note_range_speech(&text, false, false);
             self.advance_range_on_last_words(now);
             self.advance_range_on_next_opening(&fresh, now);
+            let deck_fresh = self.note_deck_speech(&text, false, false);
+            self.follow_deck(&deck_fresh, now);
             let refs = self.process_references(&text, false, now);
             let found = (refs && !self.chapter_named_now(now)) || self.pending_chapter_numbers(now) || refs;
             self.check_citation_siblings(&text, false, false, now);
@@ -639,6 +647,8 @@ impl Engine {
         self.advance_range_on_last_words(now);
         self.advance_range_on_next_opening(&fresh, now);
         self.advance_range_by_content(now);
+        let deck_fresh = self.note_deck_speech(&text, true, seg.continues_live);
+        self.follow_deck(&deck_fresh, now);
         self.note_read_in(now);
 
         let prev_before = self.prev_words();
@@ -765,7 +775,12 @@ impl Engine {
     /// The one way a verse leaves the engine, for the screen or Possible Matches (the server then
     /// routes a screen verse by Auto-send and Director mode).
     pub(crate) fn show(&mut self, verses: Vec<VerseId>, method: Method, score: f32, target: Target, corrected_from: Option<VerseId>) {
+        let first = verses.first().copied();
         self.effect(Effect::Show { verses, method, score, target, corrected_from });
+        // A live slide deck moves to the slide carrying it (deck.rs).
+        if let (Target::Screen, Some(v)) = (target, first) {
+            self.deck_on_verse(v);
+        }
     }
 
     /// A cited range's next verse going up (decide's step 0, for `Candidate::reading_on`).
