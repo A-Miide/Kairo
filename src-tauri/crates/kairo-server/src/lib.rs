@@ -41,6 +41,8 @@ pub mod proc;
 mod onnx_weights;
 mod mt;
 mod native_audio;
+#[cfg(windows)]
+mod wasapi_raw;
 mod obs;
 mod pdf;
 pub mod easyworship;

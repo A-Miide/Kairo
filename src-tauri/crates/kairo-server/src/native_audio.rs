@@ -64,16 +64,29 @@ fn is_digital(name: &str) -> bool {
     ["blackhole", "loopback", "soundflower", "vb-cable", "cable output", "voicemeeter", "virtual", "monitor of"].iter().any(|k| n.contains(k))
 }
 
-/// The input to open: the one named (as the page showed it), else the system's default.
+/// An input's name without what Windows adds when it finds a device again: "Microphone (2- USB
+/// Audio)" is the "Microphone (USB Audio)" that dropped. Looked for by its old name, a USB adapter
+/// that came back renamed was never found again, and every restart asked for the old one (church
+/// PC, 22 Nov 2026: "total loss of audio input… took multiple restarts").
+pub fn base_name(name: &str) -> String {
+    static RENUMBERED: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"\(\s*\d+\s*-\s*").expect("pattern"));
+    let n = name.trim().trim_start_matches("Default - ").trim_start_matches("Communications - ").to_lowercase();
+    // The page's names carry a USB id the system's don't: "Microphone (USB Audio) (0d8c:0014)".
+    static USB_ID: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| regex::Regex::new(r"\s*\([0-9a-f]{4}:[0-9a-f]{4}\)$").expect("pattern"));
+    RENUMBERED.replace_all(&USB_ID.replace(&n, ""), "(").trim().to_string()
+}
+
+/// The input to open: the one named (as the page showed it, or as it was before Windows renamed
+/// it), else the system's default.
 fn pick(host: &cpal::Host, want: &str) -> Option<cpal::Device> {
-    let want = want.trim().trim_start_matches("Default - ").to_lowercase();
+    let want = base_name(want);
     if !want.is_empty() {
         if let Ok(devs) = host.input_devices() {
             let devs: Vec<cpal::Device> = devs.collect();
-            if let Some(d) = devs.iter().find(|d| d.name().is_ok_and(|n| n.to_lowercase() == want)) {
+            if let Some(d) = devs.iter().find(|d| d.name().is_ok_and(|n| base_name(&n) == want)) {
                 return Some(d.clone());
             }
-            if let Some(d) = devs.iter().find(|d| d.name().is_ok_and(|n| { let n = n.to_lowercase(); n.contains(&want) || want.contains(&n) })) {
+            if let Some(d) = devs.iter().find(|d| d.name().is_ok_and(|n| { let n = base_name(&n); n.contains(&want) || want.contains(&n) })) {
                 return Some(d.clone());
             }
         }
@@ -125,7 +138,7 @@ pub fn start(app: Shared, want: &str, feed: bool) -> Result<Capture, String> {
                     return;
                 }
             };
-            let name = opened.name.clone();
+            let mut name = opened.name.clone();
             crate::routes::write_debug_global("server:native-capture-opened", json!({ "device": name, "rate": opened.rate, "channels": opened.channels, "format": opened.format }));
             let _ = ready_tx.send(Ok(name.clone()));
 
@@ -164,6 +177,11 @@ pub fn start(app: Shared, want: &str, feed: bool) -> Result<Capture, String> {
                     }
                     match open(&host, &name) {
                         Ok(o) => {
+                            // It may have come back under a new name ("2- USB Audio"): the meters and log use it.
+                            if o.name != name {
+                                crate::routes::write_debug_global("server:native-capture-renamed", json!({ "from": name, "to": o.name }));
+                                name = o.name.clone();
+                            }
                             lowpass = Biquad::lowpass(o.rate as f32, 7000.0);
                             resample = Resampler::new(o.rate, RATE);
                             let (rate, channels, format) = (o.rate, o.channels, o.format.clone());
@@ -179,7 +197,8 @@ pub fn start(app: Shared, want: &str, feed: bool) -> Result<Capture, String> {
                             failed_tries += 1;
                             // The first few failures and then now and again, so a long outage isn't a long log.
                             if failed_tries <= 3 || failed_tries % 15 == 0 {
-                                crate::routes::write_debug_global("server:native-capture-retry", json!({ "device": name, "tries": failed_tries, "error": e }));
+                                // What the system has now, so the log shows a device that came back renamed.
+                                crate::routes::write_debug_global("server:native-capture-retry", json!({ "device": name, "tries": failed_tries, "error": e, "inputs": inputs() }));
                             }
                             if !told {
                                 told = true;
@@ -242,10 +261,47 @@ struct Opened {
     failed: Arc<AtomicBool>,
     /// What the system said when the stream failed.
     why: Arc<Mutex<String>>,
-    _stream: cpal::Stream,
+    _stream: Keep,
+}
+
+/// What keeps an input capturing while it's open.
+enum Keep {
+    Cpal(#[allow(dead_code)] cpal::Stream),
+    #[cfg(windows)]
+    Raw(#[allow(dead_code)] crate::wasapi_raw::RawCapture),
 }
 
 fn open(host: &cpal::Host, want: &str) -> Result<Opened, String> {
+    // On Windows, raw first: none of Windows' processing (Voice Clarity, Voice Focus, enhancements)
+    // between the device and Kairo (wasapi_raw.rs). Where that can't open the input, cpal does, as before.
+    #[cfg(windows)]
+    {
+        match open_raw(want) {
+            Ok(o) => return Ok(o),
+            Err(e) => crate::routes::write_debug_global("server:native-capture-raw-failed", json!({ "device": want, "error": e })),
+        }
+    }
+    open_cpal(host, want)
+}
+
+#[cfg(windows)]
+fn open_raw(want: &str) -> Result<Opened, String> {
+    let base = base_name(want);
+    // The same choice as pick(): the named input (as it was before Windows renamed it), else the default.
+    let matches = move |n: &str| {
+        let n = base_name(n);
+        n == base || n.contains(&base) || base.contains(&n)
+    };
+    let (tx, rx) = mpsc::channel::<Vec<f32>>();
+    let failed = Arc::new(AtomicBool::new(false));
+    let why = Arc::new(Mutex::new(String::new()));
+    let o = crate::wasapi_raw::open(matches, want.trim().is_empty(), tx, failed.clone(), why.clone())?;
+    // "F32 raw": Windows' processing is off; "F32 processed": the device refused that.
+    let format = format!("F32 {}", if o.raw { "raw" } else { "processed" });
+    Ok(Opened { name: o.name, rate: o.rate, channels: o.channels, format, rx, failed, why, _stream: Keep::Raw(o.capture) })
+}
+
+fn open_cpal(host: &cpal::Host, want: &str) -> Result<Opened, String> {
     let Some(dev) = pick(host, want) else { return Err(format!("no input named {want}")) };
     let name = dev.name().unwrap_or_else(|_| "Input".into());
     let cfg = dev.default_input_config().map_err(|e| format!("{name}: {e}"))?;
@@ -274,10 +330,10 @@ fn open(host: &cpal::Host, want: &str) -> Result<Opened, String> {
     }
     .map_err(|e| format!("{name}: {e}"))?;
     stream.play().map_err(|e| format!("{name}: {e}"))?;
-    Ok(Opened { name, rate, channels, format, rx, failed, why, _stream: stream })
+    Ok(Opened { name, rate, channels, format, rx, failed, why, _stream: Keep::Cpal(stream) })
 }
 
-fn mono<T: Copy>(data: &[T], channels: usize, f: impl Fn(T) -> f32) -> Vec<f32> {
+pub(crate) fn mono<T: Copy>(data: &[T], channels: usize, f: impl Fn(T) -> f32) -> Vec<f32> {
     if channels <= 1 {
         return data.iter().map(|&s| f(s)).collect();
     }
@@ -429,6 +485,15 @@ impl LevelControl {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_input_windows_renamed_is_the_same_input() {
+        assert_eq!(base_name("Microphone (2- USB Audio)"), base_name("Microphone (USB Audio)"));
+        assert_eq!(base_name("Default - Microphone (USB Audio)"), "microphone (usb audio)");
+        assert_eq!(base_name("Microphone (2- USB Audio) (0d8c:0014)"), "microphone (usb audio)");
+        assert_eq!(base_name("Line In (12- Behringer UMC202HD)"), "line in (behringer umc202hd)");
+        assert_ne!(base_name("Microphone (USB Audio)"), base_name("Microphone (Realtek Audio)"));
+    }
 
     #[test]
     fn a_dropped_input_is_tried_again_at_once_then_less_often() {
