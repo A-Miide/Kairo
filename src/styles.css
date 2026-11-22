@@ -219,7 +219,13 @@ html, body {
    (owner, 2026-10-19: "the UI breaks when we shrink it"). Only the app's own page; the output pages are other files. */
 html.kairo-app, html.kairo-app body { min-width: 1180px; min-height: 700px; }
 /* Scrollbars only while the window is smaller than that: above it the page fits and clips as before. */
-@media (max-width: 1179px), (max-height: 699px) { html.kairo-app { overflow: auto; } }
+@media (max-width: 1179px), (max-height: 699px) {
+  html.kairo-app { overflow: auto; }
+  /* The top bar stays in view while the page scrolls (owner, 22 Nov 2026: "top bar should always be visible"):
+     the page scrolls on html, so body must not be a scroll box of its own for the bar to stick. */
+  html.kairo-app body { overflow: visible; }
+  html.kairo-app .top-bar { position: sticky; top: 0; }
+}
 
 /* The rest of the app disables selection above, so the only place text ever
    gets selected is inputs/contentEditable (rename fields, Flow's slide text,
@@ -3684,8 +3690,12 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
 /* ══════════════════════════════════════
    HIDDEN / COMPAT
 ══════════════════════════════════════ */
+/* Fixed, not absolute: an absolute one sat just below the window and gave the page 36 px to scroll, and
+   focusing one (the microphone picker, a checkbox) scrolled it, hiding the top bar (22 Nov 2026). */
 .hidden-el {
-  position: absolute;
+  position: fixed;
+  top: 0;
+  left: 0;
   opacity: 0;
   pointer-events: none;
   width: 0;

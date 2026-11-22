@@ -257,6 +257,24 @@ function reportMainState() {
 if (currentDisplayCard) new MutationObserver(reportMainState).observe(currentDisplayCard, { childList: true, subtree: true, attributes: true, attributeFilter: ['data-ref'] });
 setInterval(reportMainState, 5000);
 
+// ── The top bar never scrolls away ─────────────────────────────────────────
+// At its normal size the page fits the window and never scrolls; a scroll of it can only come from the
+// browser bringing something into view (a focus, scrollIntoView), which in both WebKit (Mac) and WebView2
+// (Windows) moves the page even with overflow hidden and folds the top bar away (22 Nov 2026). Put back at
+// once. Below the minimum size the page scrolls on purpose and the bar sticks (styles.css).
+(function keepTopBarInView() {
+  const small = window.matchMedia('(max-width: 1179px), (max-height: 699px)');
+  const reset = () => {
+    if (small.matches) return;
+    const se = document.scrollingElement || document.documentElement;
+    if (se.scrollTop || se.scrollLeft) { se.scrollTop = 0; se.scrollLeft = 0; }
+    if (document.body.scrollTop || document.body.scrollLeft) { document.body.scrollTop = 0; document.body.scrollLeft = 0; }
+  };
+  window.addEventListener('scroll', reset, { passive: true });
+  document.body?.addEventListener('scroll', reset, { passive: true });
+  small.addEventListener?.('change', reset);
+})();
+
 // ── WebSocket ──────────────────────────────────────────────────────────────
 function connectWS() {
   if (ws && ws.readyState < 2) return;
@@ -2634,8 +2652,8 @@ async function buildCaptureGraph(deviceId, existingStream = null) {
 }
 
 // ── Input health, in Live Status ───────────────────────────────────────────
-// While listening, a line under Live Status says when the input has gone silent or is clipping
-// (input_health.js), and goes when it recovers. Clicking it opens Audio settings and its meter.
+// While listening, a line under Live Status says when the input is clipping (input_health.js), and goes
+// when it recovers; silence is the "No audio!" pill's. Clicking it opens Audio settings and its meter.
 const inputHealth = window.KairoInputHealth ? new window.KairoInputHealth.InputHealth() : null;
 let _inputHealthShown = 'ok';
 let _inputHealthListening = false;
@@ -2653,7 +2671,7 @@ function showInputHealth(state) {
 setInterval(() => {
   if (!inputHealth) return;
   const now = Date.now();
-  if (isListening && !_inputHealthListening) inputHealth.reset(now);   // a new session: nothing known yet
+  if (isListening && !_inputHealthListening) inputHealth.reset();   // a new session: nothing known yet
   _inputHealthListening = isListening;
   showInputHealth(isListening ? inputHealth.state(now) : 'ok');
 }, 1000);
