@@ -909,15 +909,32 @@ fn presentation(buf: &[u8], archive: &pp::Archive<'_>, assets: &pp::Assets, warn
 
 static PRO: LazyLock<Regex> = LazyLock::new(|| re(r"(?i)\.pro6?$"));
 
-fn from_pro_bundle(buf: &[u8], assets: &pp::Assets, warnings: &mut Vec<String>) -> Result<Vec<Value>, ImportError> {
+/// A bundle's presentations: one is a deck (`Ok(Err(blocks))`); several are a playlist's items, each
+/// named for its file (`Ok(Ok(items))`). Several used to be cut to the first one.
+fn from_pro_bundle(buf: &[u8], assets: &pp::Assets, warnings: &mut Vec<String>) -> Result<Result<Vec<Value>, Vec<Value>>, ImportError> {
     let files = unzip(buf, |_| true)?;
     let mut pres: Vec<&(String, Vec<u8>)> = files.iter().filter(|f| PRO.is_match(&f.0)).collect();
     if pres.is_empty() {
         return Err(err("no presentation found in this ProPresenter bundle"));
     }
-    pres.sort_by_key(|f| f.0.len());
+    pres.sort_by(|a, b| a.0.len().cmp(&b.0.len()).then_with(|| a.0.cmp(&b.0)));
     let archive = pp::Archive::new(&files);
-    presentation(&pres[0].1, &archive, assets, warnings)
+    if pres.len() == 1 {
+        return presentation(&pres[0].1, &archive, assets, warnings).map(Err);
+    }
+    let mut items = Vec::new();
+    for (path, pro) in pres {
+        let file = path.rsplit('/').next().unwrap_or(path);
+        let name = file.rsplit_once('.').map_or(file, |(stem, _)| stem).to_string();
+        match presentation(pro, &archive, assets, warnings) {
+            Ok(blocks) if !blocks.is_empty() => items.push(json!({ "name": name, "blocks": blocks })),
+            _ => warnings.push(format!("\"{name}\" has no slides Kairo could read.")),
+        }
+    }
+    if items.is_empty() {
+        return Err(err("could not read any presentations from this bundle"));
+    }
+    Ok(Ok(items))
 }
 
 fn file_ref_rel_path(buf: &[u8]) -> Option<String> {
@@ -1058,10 +1075,10 @@ pub fn import_slides(filename: &str, buf: &[u8], assets: &pp::Assets) -> Result<
             let b = presentation(buf, &pp::Archive::empty(), assets, &mut warnings)?;
             Ok(Imported::Blocks { format: if looks_like_pro6_xml(buf) { "pro6" } else { "pro7" }, blocks: b, note: None, warnings })
         }
-        "probundle" => {
-            let b = from_pro_bundle(buf, assets, &mut warnings)?;
-            Ok(Imported::Blocks { format: "probundle", blocks: b, note: None, warnings })
-        }
+        "probundle" => match from_pro_bundle(buf, assets, &mut warnings)? {
+            Ok(items) => Ok(Imported::Items { format: "probundle", items, warnings }),
+            Err(b) => Ok(Imported::Blocks { format: "probundle", blocks: b, note: None, warnings }),
+        },
         "proplaylist" => {
             let items = from_pro_playlist(buf, assets, &mut warnings)?;
             Ok(Imported::Items { format: "proplaylist", items, warnings })

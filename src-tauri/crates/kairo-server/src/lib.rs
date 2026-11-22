@@ -61,6 +61,7 @@ mod video;
 mod ndi_runtime;
 mod osc;
 mod overlays;
+mod playlists;
 mod stream_check;
 mod vocabulary;
 mod ws;
@@ -294,7 +295,7 @@ pub async fn serve(cfg: Config) -> anyhow::Result<()> {
         load_meaning(&starting, meaning_multi::serves(&spoken) && meaning_multi::present(&meaning_multi::dir(&starting)));
     });
 
-    let router = routes::router().merge(routes_library::router()).merge(overlays::router()).merge(routes_misc::router())
+    let router = routes::router().merge(routes_library::router()).merge(overlays::router()).merge(routes_misc::router()).merge(playlists::router())
         .layer(middleware::from_fn_with_state(app.clone(), auth))
         // A request that panics answers 500 instead of dropping the
         // connection; shared state stays usable (locks recover from a
