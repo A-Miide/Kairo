@@ -261,10 +261,47 @@ struct Opened {
     failed: Arc<AtomicBool>,
     /// What the system said when the stream failed.
     why: Arc<Mutex<String>>,
-    _stream: cpal::Stream,
+    _stream: Keep,
+}
+
+/// What keeps an input capturing while it's open.
+enum Keep {
+    Cpal(#[allow(dead_code)] cpal::Stream),
+    #[cfg(windows)]
+    Raw(#[allow(dead_code)] crate::wasapi_raw::RawCapture),
 }
 
 fn open(host: &cpal::Host, want: &str) -> Result<Opened, String> {
+    // On Windows, raw first: none of Windows' processing (Voice Clarity, Voice Focus, enhancements)
+    // between the device and Kairo (wasapi_raw.rs). Where that can't open the input, cpal does, as before.
+    #[cfg(windows)]
+    {
+        match open_raw(want) {
+            Ok(o) => return Ok(o),
+            Err(e) => crate::routes::write_debug_global("server:native-capture-raw-failed", json!({ "device": want, "error": e })),
+        }
+    }
+    open_cpal(host, want)
+}
+
+#[cfg(windows)]
+fn open_raw(want: &str) -> Result<Opened, String> {
+    let base = base_name(want);
+    // The same choice as pick(): the named input (as it was before Windows renamed it), else the default.
+    let matches = move |n: &str| {
+        let n = base_name(n);
+        n == base || n.contains(&base) || base.contains(&n)
+    };
+    let (tx, rx) = mpsc::channel::<Vec<f32>>();
+    let failed = Arc::new(AtomicBool::new(false));
+    let why = Arc::new(Mutex::new(String::new()));
+    let o = crate::wasapi_raw::open(matches, want.trim().is_empty(), tx, failed.clone(), why.clone())?;
+    // "F32 raw": Windows' processing is off; "F32 processed": the device refused that.
+    let format = format!("F32 {}", if o.raw { "raw" } else { "processed" });
+    Ok(Opened { name: o.name, rate: o.rate, channels: o.channels, format, rx, failed, why, _stream: Keep::Raw(o.capture) })
+}
+
+fn open_cpal(host: &cpal::Host, want: &str) -> Result<Opened, String> {
     let Some(dev) = pick(host, want) else { return Err(format!("no input named {want}")) };
     let name = dev.name().unwrap_or_else(|_| "Input".into());
     let cfg = dev.default_input_config().map_err(|e| format!("{name}: {e}"))?;
@@ -293,10 +330,10 @@ fn open(host: &cpal::Host, want: &str) -> Result<Opened, String> {
     }
     .map_err(|e| format!("{name}: {e}"))?;
     stream.play().map_err(|e| format!("{name}: {e}"))?;
-    Ok(Opened { name, rate, channels, format, rx, failed, why, _stream: stream })
+    Ok(Opened { name, rate, channels, format, rx, failed, why, _stream: Keep::Cpal(stream) })
 }
 
-fn mono<T: Copy>(data: &[T], channels: usize, f: impl Fn(T) -> f32) -> Vec<f32> {
+pub(crate) fn mono<T: Copy>(data: &[T], channels: usize, f: impl Fn(T) -> f32) -> Vec<f32> {
     if channels <= 1 {
         return data.iter().map(|&s| f(s)).collect();
     }
