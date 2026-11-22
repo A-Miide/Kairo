@@ -3,6 +3,7 @@
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 
 :root {
+  color-scheme: dark;   /* Windows draws scrollbars and dropdown lists dark to match */
   --bg:         #161618;
   --bg-panel:   #161618;
   --bg-card:    #161618;
@@ -2900,8 +2901,14 @@ select.setting-input {
   cursor: pointer;
 }
 
-select.setting-input option {
+/* Every dropdown's list, not only Settings': Windows draws a <select>'s list itself, light, so the
+   app's white text sat on light grey there (translation picker, church PC, 22 Nov 2026). */
+select option, select optgroup {
   background: var(--bg-input);
+  color: var(--text);
+}
+select option:checked {
+  background: #3a1a17;   /* the brand's tint, solid: a see-through one shows Windows' light list through it */
   color: var(--text);
 }
 

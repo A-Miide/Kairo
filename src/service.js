@@ -301,6 +301,7 @@
       }
       if (raw && Array.isArray(raw.playlists)) {
         playlists = raw.playlists;
+        playlistsSavedAt = raw.savedAt || 0;
         if (playlists.length) {
           activePlaylistId = raw.activePlaylistId && playlists.some(p => p.id === raw.activePlaylistId)
             ? raw.activePlaylistId : playlists[0].id;
@@ -339,16 +340,106 @@
     saveAll();
   }
 
+  // ── Saving: a file on disk, a copy in the page's storage when it fits ──────
+  // The page's storage is capped at a few megabytes; a 151-slide ProPresenter deck with its
+  // pictures filled it and every change after that was lost on restart (church PC, 22 Nov 2026).
+  // The playlists now go to the server's playlists.json (playlists.rs), each picture once: a
+  // background on every slide is one entry in `media`, referred to as MEDIA_REF + its index.
+  const MEDIA_REF = '\u0000kairo-media:';
+  let playlistsSavedAt = 0;
+  // Nothing is written to disk until the disk copy has been read (syncPlaylistsFromDisk): an empty
+  // first start must never replace the playlists saved there.
+  let diskReady = false, diskPending = false;
+  function packPlaylists() {
+    const media = [], seen = new Map();
+    const json = JSON.stringify({ v: 2, savedAt: playlistsSavedAt, activePlaylistId, playlists }, (k, v) => {
+      if (typeof v !== 'string' || v.length < 2048 || !v.startsWith('data:')) return v;
+      let i = seen.get(v);
+      if (i === undefined) { i = media.length; media.push(v); seen.set(v, i); }
+      return MEDIA_REF + i;
+    });
+    // `media` is filled while the rest is written, so it goes in last.
+    return json.slice(0, -1) + ',"media":' + JSON.stringify(media) + '}';
+  }
+  function unpackPlaylists(text) {
+    const raw = JSON.parse(text);
+    const media = Array.isArray(raw.media) ? raw.media : [];
+    if (!media.length) return raw;
+    const expand = (v) => {
+      if (typeof v === 'string') return v.startsWith(MEDIA_REF) ? (media[+v.slice(MEDIA_REF.length)] ?? '') : v;
+      if (Array.isArray(v)) { for (let i = 0; i < v.length; i++) v[i] = expand(v[i]); return v; }
+      if (v && typeof v === 'object') { for (const k of Object.keys(v)) v[k] = expand(v[k]); return v; }
+      return v;
+    };
+    return expand(raw);
+  }
+
+  let diskSaveTimer = null, diskSaving = false, diskSaveAgain = false;
+  function saveToDisk() {
+    clearTimeout(diskSaveTimer);
+    diskSaveTimer = setTimeout(async () => {
+      if (diskSaving) { diskSaveAgain = true; return; }
+      diskSaving = true;
+      try {
+        const res = await fetchWithTimeout(`${SERVER}/api/playlists`, {
+          method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: packPlaylists(),
+        }, 60000);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        window.kairoProblemCleared?.('playlists-save');
+      } catch (err) {
+        // The disk is the copy that always holds: if it can't be written, the operator must know.
+        debugLog('playlists-save-failed', { error: String(err && err.message || err) });
+        window.kairoProblem?.('Playlist changes couldn’t be saved to this computer. Check its free disk space.', 'playlists-save');
+      } finally {
+        diskSaving = false;
+        if (diskSaveAgain) { diskSaveAgain = false; saveToDisk(); }
+      }
+    }, 400);
+  }
+
   function saveAll() {
+    if (diskReady) playlistsSavedAt = Date.now();
     try {
-      localStorage.setItem(PLAYLISTS_KEY, JSON.stringify({ playlists, activePlaylistId }));
-      window.kairoProblemCleared?.('playlists-save');
-    } catch (err) {
-      // Usually the storage is full (decks with many pictures): every change from here would
-      // be lost on restart without a word.
-      debugLog('playlists-save-failed', { error: String(err && err.message || err) });
-      window.kairoProblem?.('Playlist changes aren’t being saved: this computer’s storage for Kairo is full. Remove picture-heavy decks you no longer need.', 'playlists-save');
+      localStorage.setItem(PLAYLISTS_KEY, JSON.stringify({ playlists, activePlaylistId, savedAt: playlistsSavedAt }));
+    } catch {
+      // Too big for the page's storage (picture-heavy decks): the disk copy holds them. An old
+      // copy left here would be loaded first on the next start, so it goes.
+      try { localStorage.removeItem(PLAYLISTS_KEY); } catch {}
     }
+    if (diskReady) saveToDisk(); else diskPending = true;
+  }
+
+  // On start: the disk copy wins when it is newer than the page's (or the page has none),
+  // and a first start with this version puts the page's playlists on disk.
+  async function syncPlaylistsFromDisk(attempt = 0) {
+    let text;
+    try {
+      const res = await fetchWithTimeout(`${SERVER}/api/playlists`, {}, 30000);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      text = await res.text();
+    } catch {
+      // The server not up yet: try again (changes meanwhile stay in the page and go to disk after).
+      if (attempt < 20) setTimeout(() => syncPlaylistsFromDisk(attempt + 1), 3000);
+      return;
+    }
+    let disk = null;
+    try { disk = unpackPlaylists(text); } catch {}
+    diskReady = true;
+    const usable = disk && !disk.none && Array.isArray(disk.playlists);
+    if (!usable || ((disk.savedAt || 0) <= playlistsSavedAt && playlists.length)) {
+      // The page's copy is the newest (or the disk has none yet): it goes to disk.
+      if (diskPending || !usable) { diskPending = false; playlistsSavedAt = Date.now(); saveToDisk(); }
+      return;
+    }
+    diskPending = false;
+    playlists = disk.playlists;
+    playlistsSavedAt = disk.savedAt || 0;
+    activePlaylistId = disk.activePlaylistId && playlists.some(p => p.id === disk.activePlaylistId)
+      ? disk.activePlaylistId : (playlists[0]?.id || null);
+    service = playlists.find(p => p.id === activePlaylistId) || null;
+    ensureDefaultPlaylist();
+    markLookupCandidatesDirty();
+    renderSidebar(); renderStack();
   }
   // Alias — the bulk of this file predates multi-playlist support and just
   // wants "persist whatever changed", which is always the whole set now.
@@ -5193,6 +5284,15 @@
   // than adding a brand-new image item.
   let replaceImageTarget = null;   // { item, blockIndex: number|null } | null
 
+  const NEW_PLAYLIST = '__new-playlist__';
+  let acNewPlaylistName = '';
+  // The playlist the add dialog chose: a new one (made now) or an existing one.
+  function chosenPlaylist() {
+    const v = document.getElementById('ac-playlist')?.value;
+    if (v === NEW_PLAYLIST && acNewPlaylistName) return createPlaylist(acNewPlaylistName);
+    return playlists.find(p => p.id === v) || service;
+  }
+
   function openAddConfirm(item, opts = {}) {
     const destination = opts.destination || 'playlist';
     acDraft = {
@@ -5268,10 +5368,18 @@
       const playlistSel = document.getElementById('ac-playlist');
       if (playlistSel) {
         playlistSel.innerHTML = '';
+        // A ProPresenter file holding several presentations is a playlist of its own (owner,
+        // 22 Nov 2026): offered first and chosen, named after the file.
+        acNewPlaylistName = opts.newPlaylistName || '';
+        if (acNewPlaylistName) {
+          const o = document.createElement('option');
+          o.value = NEW_PLAYLIST; o.textContent = `New playlist: ${acNewPlaylistName}`; o.selected = true;
+          playlistSel.appendChild(o);
+        }
         playlists.forEach(p => {
           const o = document.createElement('option');
           o.value = p.id; o.textContent = p.name;
-          if (p.id === activePlaylistId) o.selected = true;
+          if (p.id === activePlaylistId && !acNewPlaylistName) o.selected = true;
           playlistSel.appendChild(o);
         });
       }
@@ -5512,8 +5620,7 @@
       return;
     }
 
-    const playlistSel = document.getElementById('ac-playlist');
-    const target = playlists.find(p => p.id === playlistSel?.value) || service;
+    const target = chosenPlaylist();
     commitItem(target, item);
     closeAddConfirm();
 
@@ -7714,7 +7821,8 @@
       // Songs carry their author (EasyWorship); it goes into the Song Library with them.
       const firstItem = toBlocksItem(first.blocks, first.name || fallbackTitle);
       if (first.author) firstItem.author = first.author;
-      openAddConfirm(firstItem, { showDelimiter: true, isImportBlocks: true, rawBlocks: first.blocks, defaultKeepAsIs: keepAsIs, destination, note: d.note, warnings: d.warnings });
+      const ownPlaylist = rest.length && /^pro/.test(d.format || '') ? fallbackTitle || 'ProPresenter playlist' : '';
+      openAddConfirm(firstItem, { showDelimiter: true, isImportBlocks: true, rawBlocks: first.blocks, defaultKeepAsIs: keepAsIs, destination, note: d.note, warnings: d.warnings, newPlaylistName: ownPlaylist });
     } else {
       openAddConfirm(toBlocksItem(d.blocks, fallbackTitle), { showDelimiter: true, isImportBlocks: true, rawBlocks: d.blocks, defaultKeepAsIs: keepAsIs, destination, note: d.note, warnings: d.warnings, outline: d.outline });
     }
@@ -8114,6 +8222,7 @@
     initOutputTransitionPicker();
 
     loadAll();
+    syncPlaylistsFromDisk();
     loadInstalledMtLangs(); // fire-and-forget — warms effectiveTranslateTo's single-language fallback
 
     // Bible is the default landing view and nothing ever calls
@@ -8379,7 +8488,7 @@
       if (!acDraft || !acDraft.outline) return;
       const { item, outline, layout, kit, colors, style } = acDraft;
       const title = document.getElementById('ac-title')?.value.trim() || item.title || 'Sermon slides';
-      const target = playlists.find(p => p.id === document.getElementById('ac-playlist')?.value) || service;
+      const target = chosenPlaylist();
       closeAddConfirm();
       const { sermon, blocks } = window.KairoSermonSlides.newDeck(outline, { ...window.KairoSermonSlides.lastChoice(), layout, kit, colors, style });
       window.KairoSermonSlides.remember?.(sermon);

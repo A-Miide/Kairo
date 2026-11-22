@@ -105,13 +105,16 @@
   const CAPS = { all: 'uppercase', title: 'none', start: 'capitalize', small: 'none', none: 'none' };
   // ProPresenter's Title Case: every word capitalised except articles, short
   // conjunctions and prepositions of three letters or fewer — unless the word
-  // starts the text, or follows a sentence end, colon or opening quote.
+  // starts the text, or follows a sentence end, colon or opening quote. The rest
+  // of each word is lowered, so text typed in capitals reads the same as text
+  // typed in lower case: "WHAT A FELLOWSHIP" was "WHAT a FELLOWSHIP" beside
+  // "What a Fellowship" on the next slide (church PC, 22 Nov 2026).
   const MINOR = new Set(['a', 'an', 'the', 'and', 'but', 'or', 'nor', 'for', 'so', 'yet', 'as', 'at', 'by', 'in', 'of', 'off', 'on', 'per', 'to', 'via', 'vs']);
   function titleCase(t, state) {
     return t.replace(/[\p{L}\p{N}'’]+|[^\p{L}\p{N}'’]+/gu, (w) => {
       if (!/[\p{L}\p{N}]/u.test(w)) { if (/[.!?:;‘“"(\[]\s*$/.test(w) || /[\n\u2028]/.test(w)) state.start = true; return w; }
       const lower = w.toLowerCase();
-      const out = (!state.start && MINOR.has(lower)) ? lower : w.charAt(0).toUpperCase() + w.slice(1);
+      const out = (!state.start && MINOR.has(lower)) ? lower : lower.charAt(0).toUpperCase() + lower.slice(1);
       state.start = false;
       return out;
     });
@@ -535,5 +538,5 @@
     return ps.map(p => (p.runs || []).map(r => r.t || '').join('').replace(/\u2028/g, '\n')).join('\n');
   }
 
-  window.KairoPP = { render, plainText, rgba, cssGradient };
+  window.KairoPP = { render, plainText, rgba, cssGradient, titleCase };
 })();

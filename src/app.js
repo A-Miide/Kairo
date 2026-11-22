@@ -399,10 +399,6 @@ function handleServerMessage(msg) {
       handleCalled(msg);
       break;
 
-    case 'interpretation':
-      window.KairoInterpreter?.onMessage(msg);
-      break;
-
     case 'singing':
       handleSinging(msg);
       break;
