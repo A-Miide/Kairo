@@ -4301,6 +4301,23 @@ mark.help-hit.is-current { background: rgba(255,255,255,0.38); }
 /* Correction chip — shown on a live-queue card when auto-correct replaced a
    previous mis-cited reference. Sits next to the ref line, small + muted so
    it's noticeable but doesn't steal focus from the verse text. */
+/* A verse called with the one up, waiting for its reading (app.js handleCalled). */
+.locked-verse-card.called-waiting { border-style: dashed; border-color: var(--brand); }
+.called-chip {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 8px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-family: var(--font-head);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--notice);
+  background: var(--brand-dim);
+  border: 1px solid var(--brand);
+}
 .corrected-chip {
   display: inline-flex;
   align-items: center;

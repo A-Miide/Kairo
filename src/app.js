@@ -395,6 +395,10 @@ function handleServerMessage(msg) {
       handleTranscriptSettled(msg);
       break;
 
+    case 'called':
+      handleCalled(msg);
+      break;
+
     case 'interpretation':
       window.KairoInterpreter?.onMessage(msg);
       break;
@@ -1470,6 +1474,8 @@ function showInViewer(verses, method, topScore, correctedFrom = null, look = nul
 }
 function showInViewerNow(verses, method, topScore, correctedFrom = null, look = null) {
   const v = verses[0];
+  // A verse that was waiting as called goes up now: its called card gives way to the usual one.
+  if (v?.reference) currentDisplayCard?.querySelector(`.called-waiting[data-ref="${CSS.escape(v.reference)}"]`)?.remove();
   // Scripture's version after its reference, as on the output ("Ezekiel 12:21 (NLT)").
   previewIsBible = isBibleVerse(v);
   previewVersion = previewIsBible ? String(v.translation || '') : '';
@@ -2003,6 +2009,30 @@ function placeChapterCard(card, v) {
   delete card.dataset.handClosed;
   narrowChapterList(card.querySelector('.lvc-children'));
   toggleChapterChildren(card, true);
+}
+
+// ── Called with another verse, waiting for its reading ──────────────────────
+// "Jonah 2:8, and also 2 Corinthians 2:14": the first goes up, the others wait (kairo-detect called.rs).
+// Each shows in the Live Queue under the verse up, marked Called, so the operator sees it wasn't missed.
+// It goes up when its words are read, when it is called again, or on a click here, as any Live Queue card.
+function handleCalled(msg) {
+  const v = msg?.verses?.[0];
+  if (!v?.reference || !currentDisplayCard) return;
+  if (currentDisplayCard.querySelector(`[data-ref="${CSS.escape(v.reference)}"]`)) return;   // already in the queue
+  currentDisplayCard.querySelector('.display-empty, .cs-queue-empty')?.remove();
+  const card = buildQueueRow(v, 'direct');
+  card.classList.add('called-waiting');
+  card.title = 'Called with the verse on screen. It goes up when it is read, or click to send it now.';
+  const chip = document.createElement('span');
+  chip.className = 'called-chip';
+  chip.textContent = 'Called';
+  card.querySelector('.lvc-ref')?.appendChild(chip);
+  // Sent by hand: an ordinary card from now on.
+  card.addEventListener('click', () => { card.classList.remove('called-waiting'); chip.remove(); card.removeAttribute('title'); }, true);
+  // Under the verse up and any verse called before it, in the order called.
+  const after = [...currentDisplayCard.querySelectorAll(':scope > .called-waiting')].pop() || currentDisplayCard.firstElementChild;
+  currentDisplayCard.insertBefore(card, after ? after.nextSibling : null);
+  kairoLog('called-waiting', { ref: v.reference });
 }
 
 // Compact single-row card for the Live Queue section

@@ -92,7 +92,14 @@ number: alone, the second chapter is the one meant.
 - Interim: same decision path, plus: the same verse isn't re-entered from the
   same growing interim; a different chapter of a book already put up from this
   sentence waits for the final (re-hearing), unless the sentence still
-  contains the first citation (a genuine second citation goes up).
+  contains the first citation (a genuine second citation).
+- Called together (`engine/called.rs`): a single verse cited within 8 s of the
+  verse up being cited, in another chapter, with under a quarter of the verse
+  up's own words said since and no correction word ("sorry", "I mean") →
+  not sent. It waits (`Effect::Called`, shown in the Live Queue as Called) and
+  goes up the usual ways: its words read, called again on its own, or sent by
+  the operator. At most 6 wait, for 15 minutes ("Jonah 2:8, and also
+  2 Corinthians 2:14", live 22 Nov 2026).
 
 ## The bare "verse N" (context) path
 

@@ -157,6 +157,8 @@ pub struct Engine {
     pub(crate) chapter_pending: Option<ChapterPending>,
     /// A verse called out, and the digression away from it (detour.rs).
     pub(crate) called: Option<super::detour::Called>,
+    /// Verses called together with the one up, waiting for their reading, and when (called.rs).
+    pub(crate) called_waiting: Vec<(VerseId, u64)>,
     /// A verse cited in passing while a chapter waits for its verse (book, chapter, verse, when).
     pub(crate) passing: Option<(Book, u16, u16, u64)>,
     pub(crate) chapter_resolved_for: Option<(Book, u16)>,
@@ -215,6 +217,7 @@ impl Engine {
             person: None,
             chapter_pending: None,
             called: None,
+            called_waiting: Vec::new(),
             passing: None,
             chapter_resolved_for: None,
             awaiting: HashMap::new(),
@@ -788,6 +791,7 @@ impl Engine {
         }
         self.screen.shown_this_book.insert(v);
         self.screen.up = Some((v, now));
+        self.called_shown(v);
         if self.chapter_pending.as_ref().is_some_and(|p| p.book == r.book && p.chapter == r.chapter) {
             self.chapter_pending = None;
         }
