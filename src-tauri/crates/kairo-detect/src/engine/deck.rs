@@ -13,8 +13,8 @@ use super::core::Engine;
 use super::event::Effect;
 use super::evidence::plain_tokens;
 use super::ranges::{
-    opening_said, own_opening_said, read_run, read_to_end, shared_weight_meaningful_of, shared_weight_of, ADVANCE_COOLDOWN_MS,
-    CHAPTER_KEYWORD_MIN_IDF, CHAPTER_KEYWORD_MIN_MARGIN, CONTENT_LOOKAHEAD, CONTENT_MIN_WORDS, HEARD_MAX_WORDS, PAUSED_SKIP_MIN_IDF,
+    newest_words, opening_said, own_opening_said, read_run, read_to_end, shared_weight_meaningful_of, shared_weight_of, ADVANCE_COOLDOWN_MS,
+    CHAPTER_KEYWORD_MIN_IDF, CHAPTER_KEYWORD_MIN_MARGIN, CONTENT_LOOKAHEAD, CONTENT_MIN_WORDS, HEARD_MAX_WORDS, OPENING_SPAN, PAUSED_SKIP_MIN_IDF,
     RESUME_RUN_OWN, RESUME_RUN_WORDS, SHORT_VERSE_WORDS,
 };
 use crate::lexical::text::is_stop_word;
@@ -156,11 +156,15 @@ impl Engine {
         // a quote, the stricter setting of the same rule): a preacher says "faith" or "the church" all
         // through a sermon on faith. Measured on five sermons with their decks (slide-follow-eval.js
         // --mode engine): one word put a slide up early 26 times; two, 5.
-        if !fresh.is_empty() && opening_said([next.as_str()], fresh, if ended { 2 } else { 3 }) {
+        if fresh.is_empty() {
+            return self.deck_by_content(current, now);
+        }
+        let recent = newest_words(&heard, fresh, OPENING_SPAN);
+        if opening_said([next.as_str()], &recent, if ended { 2 } else { 3 }) {
             return self.advance_deck(current + 1, "the next slide's opening words", now);
         }
         let idf = |w: &str| self.deck_idf(w);
-        if !fresh.is_empty() && own_opening_said(&cur, &next, &heard.join(" "), fresh, 2, &idf) {
+        if own_opening_said(&cur, &next, &heard.join(" "), &recent, 2, &idf) {
             return self.advance_deck(current + 1, "the next slide's own words", now);
         }
         // As the words come in, not only at the pause: what it takes (below) is a stretch of the

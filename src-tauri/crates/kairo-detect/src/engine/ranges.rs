@@ -27,6 +27,10 @@ const PAUSED_READING_MS: u64 = 25_000;
 pub(crate) const PAUSED_SKIP_MIN_IDF: f32 = 9.0;
 /// The next verse's first words are looked for among this many of the newest words (plus their own).
 const OPENING_LOOKBACK: usize = 4;
+/// The next unit's opening is looked for in at least this many of the newest words since the last
+/// move, not only the newest chunk: an opening said across a pause ("Bible faith" | "unleashes its")
+/// is still one opening.
+pub(crate) const OPENING_SPAN: usize = 8;
 pub(crate) const HEARD_MAX_WORDS: usize = 160;
 const PREFIX_MIN_IDF: f32 = 3.5;
 /// "…go through chapter four verse five" counts this soon after the citation, for at most this many verses.
@@ -279,8 +283,13 @@ impl Engine {
         // Only once the verse up has been read to its end: a called range's next verse opening "And
         // the LORD" mustn't move it when the verse being read says "and the LORD" mid-way (review).
         let k = if self.range.soft_quoted { 4 } else if ended { 2 } else { 3 };
+        if fresh.is_empty() {
+            return;
+        }
+        let heard_words = self.range_heard_words();
+        let recent = newest_words(&heard_words, fresh, OPENING_SPAN);
         // In any wording: Ezekiel 12:25 read in the NLT opens "For I am the LORD! If I say it".
-        let opens = opening_said(self.verse_wordings(next), fresh, k);
+        let opens = opening_said(self.verse_wordings(next), &recent, k);
         if opens && (self.range.soft || ended) {
             self.request_range_advance("the next verse's opening words", now);
             return;
@@ -294,9 +303,9 @@ impl Engine {
         // Held verses too: "…God has put in your heart" put 2 Chronicles 26:16 ("his heart was lifted
         // up") up 20 s after 26:15 was read (live recording, 2026-10-28).
         let need = if self.range.soft { 2 } else { 1 };
-        let heard = self.range_heard_words().join(" ");
+        let heard = heard_words.join(" ");
         let idf = |w: &str| self.k.lexicon.idf_of(w);
-        if own_opening_said(self.verse_text(current), self.verse_text(next), &heard, fresh, need, &idf) {
+        if own_opening_said(self.verse_text(current), self.verse_text(next), &heard, &recent, need, &idf) {
             self.request_range_advance("the next verse's own words", now);
         }
     }
@@ -529,6 +538,13 @@ impl Engine {
 // ── The rules a reading moves on by, for any passage: a range's verses, or a slide deck's slides
 // (deck.rs). One set, so a deck follows the speaker exactly as a passage does.
 
+/// The newest words heard since the passage last moved (`heard`, ending with `fresh`): `fresh`, or the
+/// last `n` when it's shorter.
+pub(crate) fn newest_words(heard: &[String], fresh: &str, n: usize) -> String {
+    let take = n.max(fresh.split_whitespace().count()).min(heard.len());
+    heard[heard.len() - take..].join(" ")
+}
+
 /// The next unit's first `k` words, in order, among the newest words said (`fresh`), in any of its
 /// wordings. Two words once the unit up was read to its end, if they aren't both everyday ones.
 pub(crate) fn opening_said<'a>(next_wordings: impl IntoIterator<Item = &'a str>, fresh: &str, k: usize) -> bool {
@@ -554,7 +570,9 @@ pub(crate) fn own_opening_said(current: &str, next: &str, heard: &str, fresh: &s
         return false;
     }
     let current_words: HashSet<String> = meaningful_words(current).into_iter().collect();
-    let own: Vec<&String> = opening.iter().filter(|w| !current_words.contains(*w)).collect();
+    // By stem: "instructions" isn't the next slide's own word after a slide ending "…and instruction".
+    let current_stems: HashSet<String> = current_words.iter().map(|w| heal(w)).collect();
+    let own: Vec<&String> = opening.iter().filter(|w| !current_stems.contains(&heal(w))).collect();
     let identifying: Vec<&String> = own.iter().copied().filter(|w| idf(w) >= PREFIX_MIN_IDF).collect();
     if identifying.is_empty() && own.len() < 2 {
         return false;
@@ -662,6 +680,26 @@ mod tests {
 
     fn run(said: &str, verse: &str) -> (usize, usize) {
         read_run(&plain_tokens(said), &plain_tokens(verse))
+    }
+
+    #[test]
+    fn an_opening_said_across_a_pause_counts() {
+        // "Bible faith" | "unleashes its": the speech engine paused inside the slide's opening.
+        let heard: Vec<String> = "now what is unique about bible faith unleashes its".split(' ').map(str::to_string).collect();
+        let recent = newest_words(&heard, "unleashes its", OPENING_SPAN);
+        assert!(!opening_said(["Bible faith unleashes its power through the tongue"], "unleashes its", 3));
+        assert!(opening_said(["Bible faith unleashes its power through the tongue"], &recent, 3));
+    }
+
+    #[test]
+    fn a_word_of_the_same_stem_is_not_the_next_ones_own() {
+        // Romans 8:6 being read ("carnally minded"), 8:7 opens "the carnal mind": not 8:7 yet
+        // (church PC, 15 Nov 2026: 8:7 went up mid-8:6, then back, then forward again).
+        let idf = |_: &str| 6.0;
+        let v6 = "For to be carnally minded is death; but to be spiritually minded is life and peace.";
+        let v7 = "Because the carnal mind is enmity against God: for it is not subject to the law of God, neither indeed can be.";
+        assert!(!own_opening_said(v6, v7, "for to be", "carnally mind", 1, &idf));
+        assert!(own_opening_said(v6, v7, "for to be carnally minded is death", "because enmity", 1, &idf));
     }
 
     #[test]

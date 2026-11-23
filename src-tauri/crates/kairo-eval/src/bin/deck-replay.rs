@@ -23,6 +23,8 @@ fn main() {
     let mut e = Engine::new(Arc::new(knowledge()), Config { explain: true, ..Config::default() });
     e.handle(Event::DeckSet { deck: "eval".into(), slides, current: 0 }, 1);
     let mut moves = Vec::new();
+    // DECK_TRACE=1: the engine's notes for every segment on stderr, to see why a slide waited.
+    let trace = std::env::var_os("DECK_TRACE").is_some();
     // A segment with no time of its own (some transcripts have them) is heard when the last one was.
     let mut clock = 2u64;
     for d in speech.as_array().expect("deliveries") {
@@ -33,6 +35,11 @@ fn main() {
         let text = seg.text.clone();
         let out = e.handle(Event::Speech(seg), now);
         let why = out.notes.iter().find(|n| n.starts_with("deck moves")).cloned().unwrap_or_default();
+        if trace {
+            for n in &out.notes {
+                eprintln!("{:>6.1}s  {n}", now as f64 / 1000.0);
+            }
+        }
         for f in out.effects {
             if let Effect::DeckMoved { index, .. } = f {
                 moves.push(json!({ "to": index, "at": now, "why": why, "heard": text }));
