@@ -6,17 +6,20 @@
 //!   connected one in that language through API.Bible and its chapters are saved for offline use; else
 //!   the pack in that language (downloaded, or the one that ships in `databases/bibles/packs`).
 //!
-//! - English with the church's own Bible: a file it added (Settings → Bible), or one it connected through
-//!   API.Bible and saved for offline use, when that is its Translation setting. Real NIV and NLT read aloud
-//!   went from 36% and 9% on screen (KJV and BSB wordings only) to 96% and 95% (2026-11-10). Only that wording
-//!   is held beside the KJV (the BSB isn't built for it).
+//! - English: every English Bible the church has, so a preacher who asks for another version mid-sermon
+//!   is followed at once: the church's own (its Translation setting, matched first), the BSB, every file
+//!   it added (Settings → Bible) and every one it connected through API.Bible with its chapters saved.
+//!   Real NIV and NLT read aloud went from 36% and 9% on screen (KJV and BSB wordings only) to 96% and 95%
+//!   (2026-11-10). Each Bible adds about 30 MB; the owner chose every Bible ready over the memory
+//!   (23 Nov 2026).
 //!
-//! The KJV stays in every build: verse numbering, the book layout and the meaning models are its. Only
-//! one wording is held beside it, so a service in another language costs no more memory than an English
-//! one (the BSB isn't built for it: Spanish replays found the same with it as without).
+//! The KJV stays in every build: verse numbering, the book layout and the meaning models are its. In
+//! another language only that language's Bible is held beside it (the BSB isn't built for it: Spanish
+//! replays found the same with it as without).
 //!
-//! Built once at start, and again when the spoken language changes or the church's Bible in the service
-//! language finishes saving; the engine starts again on the new knowledge.
+//! Built once at start, in the background, and again when the spoken language or Translation changes, a
+//! Bible is added or removed, or a connected one finishes saving; the engine starts again on the new
+//! knowledge, and the old one serves until then.
 
 use std::path::Path;
 use std::sync::{Arc, Mutex};
@@ -72,9 +75,9 @@ fn church_source(app: &Shared, corpus_chapters: &Corpus, translation: &str) -> O
     (crate::api_bible::connected(data, &code).is_some() && crate::api_bible::saved_enough(data, &code, corpus_chapters)).then(|| format!("en:api:{code}"))
 }
 
-/// The wording matched beside the KJV, and where it came from.
-fn own_wording(app: &Shared, corpus: &Corpus, lang: Lang, translation: &str) -> Option<(Translation, String)> {
-    let Some(code) = pack_code(lang) else { return church_wording(app, corpus, translation) };
+/// The service language's Bible matched beside the KJV in another language than English, and where it came from.
+fn own_wording(app: &Shared, corpus: &Corpus, lang: Lang) -> Option<(Translation, String)> {
+    let code = pack_code(lang)?;
     let data = &app.cfg.app_data_dir;
     if let Some((t, c)) = crate::api_bible::in_language(data, code).and_then(|c| crate::api_bible::whole(data, &c, corpus).map(|t| (t, c))) {
         return Some((t, format!("{code}:api:{c}")));
@@ -96,9 +99,24 @@ pub fn build(app: &Shared, spoken: &str) -> anyhow::Result<(Knowledge, Lang, Str
     let lang = Lang::from_code(spoken);
     let corpus = Corpus::load(db)?;
     let translation = tokio::runtime::Handle::current().block_on(app.settings.str("translation")).unwrap_or_default();
-    let (wordings, from) = match own_wording(app, &corpus, lang, &translation) {
-        Some((own, from)) => (Wordings { own: Some(own), also: Vec::new() }, from),
-        None => (Wordings { own: None, also: english_modern(&corpus, db).into_iter().collect() }, "en".to_string()),
+    let (wordings, from) = if pack_code(lang).is_some() {
+        match own_wording(app, &corpus, lang) {
+            Some((own, from)) => (Wordings { own: Some(own), also: Vec::new() }, from),
+            None => (Wordings { own: None, also: english_modern(&corpus, db).into_iter().collect() }, "en".to_string()),
+        }
+    } else {
+        let own = church_wording(app, &corpus, &translation).map(|(t, _)| t);
+        let own_code = own.as_ref().map(|t| t.code.clone());
+        let mut also: Vec<Translation> = english_modern(&corpus, db).into_iter().collect();
+        for code in english_codes(app, &corpus) {
+            if Some(&code) == own_code.as_ref() || code == "BSB" {
+                continue;
+            }
+            if let Some(t) = english_bible(app, &corpus, &code) {
+                also.push(t);
+            }
+        }
+        (Wordings { own, also }, english_source(app, &corpus, &translation))
     };
     // Anchors from the language's own Bible only: its speech never says the KJV's English phrases.
     let anchors_in = if wordings.own.is_some() { lang } else { Lang::En };
@@ -111,7 +129,44 @@ pub fn english_modern(corpus: &Corpus, db: &Path) -> Option<Translation> {
     corpus.load_flat("BSB", &db.join("translations/BSB.json")).ok()
 }
 
-/// What the knowledge in use was built from ("en", "en:file:NIV", "es:pack").
+/// The codes of every English Bible the church has besides the KJV: the files it added, and the ones it
+/// connected through API.Bible with enough chapters saved. Sorted, each once.
+fn english_codes(app: &Shared, corpus: &Corpus) -> Vec<String> {
+    let data = &app.cfg.app_data_dir;
+    let stems = |dir: std::path::PathBuf| -> Vec<String> {
+        std::fs::read_dir(dir)
+            .map(|d| d.flatten().map(|e| e.path()).filter(|p| p.extension().is_some_and(|x| x == "json")).filter_map(|p| p.file_stem()?.to_str().map(str::to_string)).collect())
+            .unwrap_or_default()
+    };
+    let mut codes = stems(data.join("translations"));
+    codes.extend(stems(data.join("api-bibles")).into_iter().filter(|c| {
+        crate::api_bible::connected(data, c).is_some_and(|v| v["language"] == "eng") && crate::api_bible::saved_enough(data, c, corpus)
+    }));
+    codes.sort();
+    codes.dedup();
+    codes
+}
+
+/// One English Bible the church has, by code: its file, else its saved API.Bible chapters.
+fn english_bible(app: &Shared, corpus: &Corpus, code: &str) -> Option<Translation> {
+    let data = &app.cfg.app_data_dir;
+    let file = data.join("translations").join(format!("{code}.json"));
+    if file.is_file() {
+        return corpus.load_flat(code, &file).ok();
+    }
+    crate::api_bible::whole(data, code, corpus)
+}
+
+/// What an English build is made from: the church's own Bible first, then every other one
+/// ("en:NIV+BSB+NLT"), so a rebuild that would make the same is skipped.
+fn english_source(app: &Shared, corpus: &Corpus, translation: &str) -> String {
+    let own = church_source(app, corpus, translation).map(|_| translation.trim().to_uppercase());
+    let rest: Vec<String> = english_codes(app, corpus).into_iter().filter(|c| Some(c) != own.as_ref() && c != "BSB").collect();
+    let codes: Vec<String> = own.into_iter().chain(std::iter::once("BSB".to_string())).chain(rest).collect();
+    format!("en:{}", codes.join("+"))
+}
+
+/// What the knowledge in use was built from ("en:NIV+BSB+NLT", "es:pack").
 pub fn built_from() -> String {
     crate::util::lock(&BUILT_FROM).clone()
 }
@@ -134,7 +189,7 @@ pub fn rebuild(app: &Shared) {
             Some(api) if crate::api_bible::saved_enough(&app.cfg.app_data_dir, &api, &bible.k().corpus) => format!("{c}:api:{api}"),
             _ => format!("{c}:pack"),
         }),
-        None => church_source(app, &bible.k().corpus, &translation),
+        None => Some(english_source(app, &bible.k().corpus, &translation)),
     };
     if *crate::util::lock(&BUILT_FROM) == would_be.unwrap_or_else(|| "en".into()) {
         return;

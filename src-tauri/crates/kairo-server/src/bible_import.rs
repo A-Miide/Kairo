@@ -828,7 +828,11 @@ pub async fn import(State(app): State<Shared>, Query(q): Query<HashMap<String, S
     })
     .await;
     match built {
-        Ok(Ok((code, r))) => Json(json!({ "ok": true, "code": code, "name": r.name, "verses": r.verses, "books": r.books, "skipped": r.off_layout })),
+        Ok(Ok((code, r))) => {
+            // Detection reads every Bible the church has (service_bible.rs): this one too, from now.
+            crate::service_bible::rebuild_soon(&app);
+            Json(json!({ "ok": true, "code": code, "name": r.name, "verses": r.verses, "books": r.books, "skipped": r.off_layout }))
+        }
         Ok(Err(e)) => fail(e),
         Err(_) => fail("Kairo couldn't read this file."),
     }
@@ -863,6 +867,7 @@ pub async fn remove(State(app): State<Shared>, b: Option<Json<Value>>) -> Json<V
     let ok = path.is_file() && std::fs::remove_file(&path).is_ok();
     if ok {
         bible.forget_translation(&code);
+        crate::service_bible::rebuild_soon(&app);
     }
     Json(json!({ "ok": ok }))
 }

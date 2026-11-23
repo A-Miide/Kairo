@@ -19,6 +19,23 @@ use kairo_detect::knowledge::Knowledge;
 use kairo_detect::lexical::Wordings;
 use kairo_eval::root;
 
+/// Counts the bytes allocated and not yet freed, for `--mem`: what the Bible knowledge really holds,
+/// which resident memory can't tell from scratch space already freed.
+struct Counting;
+static LIVE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+unsafe impl std::alloc::GlobalAlloc for Counting {
+    unsafe fn alloc(&self, l: std::alloc::Layout) -> *mut u8 {
+        LIVE.fetch_add(l.size(), std::sync::atomic::Ordering::Relaxed);
+        unsafe { std::alloc::System.alloc(l) }
+    }
+    unsafe fn dealloc(&self, p: *mut u8, l: std::alloc::Layout) {
+        LIVE.fetch_sub(l.size(), std::sync::atomic::Ordering::Relaxed);
+        unsafe { std::alloc::System.dealloc(p, l) }
+    }
+}
+#[global_allocator]
+static ALLOC: Counting = Counting;
+
 const MS_PER_WORD: u64 = 380;
 const INTERIM_EVERY: usize = 3;
 /// The offline engine locks words in at a pause; a long verse is said in chunks this long.
@@ -211,6 +228,12 @@ fn main() {
     let known = Arc::new(Knowledge::build(Corpus::load(&dir).expect("kjv"), Wordings { own: None, also: load(&corpus, "") }));
     // The BSB with Kairo not given it: a version Kairo has never seen.
     let unseen = Arc::new(Knowledge::build(Corpus::load(&dir).expect("kjv"), Wordings { own: None, also: load(&corpus, "BSB") }));
+    // `--mem`: what the two builds hold once made (resident memory), not the peak while making them.
+    if args.iter().any(|a| a == "--mem") {
+        let rss = std::process::Command::new("ps").args(["-o", "rss=", "-p", &std::process::id().to_string()]).output().ok();
+        let kb: f64 = rss.and_then(|o| String::from_utf8(o.stdout).ok()).and_then(|s| s.trim().parse().ok()).unwrap_or(0.0);
+        println!("resident after building: {:.0} MB; in use: {:.0} MB", kb / 1024.0, LIVE.load(std::sync::atomic::Ordering::Relaxed) as f64 / 1048576.0);
+    }
     let ps = passages(&corpus, n, seed);
     let kjv = |v: VerseId| corpus.kjv().text(v).unwrap_or("").to_string();
     let mut runs: Vec<(String, &Arc<Knowledge>, Box<dyn Fn(VerseId) -> String + '_>)> = vec![("KJV".into(), &known, Box::new(kjv))];
