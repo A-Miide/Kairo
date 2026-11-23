@@ -158,6 +158,8 @@ pub enum Hold {
     NumberReadInPassage,
     /// A verse that looks like one of the passage being read (in some wording), the speech fitting it no better.
     LooksLikePassage,
+    /// A verse that looks like the one on screen (in some wording), the speech fitting it no better.
+    LooksLikeVerseUp,
     /// A citation made of a word of the passage being read ("Levites one" read as Leviticus 1).
     BookWordReadInPassage,
 }

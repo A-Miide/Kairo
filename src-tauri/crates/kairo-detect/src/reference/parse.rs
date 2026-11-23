@@ -427,6 +427,15 @@ impl Parser<'_> {
             }
             return Some(Citation::new(book, chapter, Verses::Chapter));
         };
+        // A book named like an everyday word, said as one: "the numbers three and four" is a count, not
+        // Numbers 3:4 (detector probe, 23 Nov 2026). "The book of Numbers", or "chapter" or "verse"
+        // said, is still the book.
+        // ("three and four" counts as a verse marker above, so "verse" itself is looked for.)
+        let before = [lead, &w[..i]].concat();
+        let said_verse = w[i..].iter().take(8).any(|x| matches!(*x, "verse" | "verses"));
+        if self.books.is_ambiguous(w[i]) && !chapter_kw && !said_verse && before.last().is_some_and(|x| DETERMINERS.contains(x)) {
+            return None;
+        }
 
         let start = n32(v.value);
         if !repositioned {
@@ -701,6 +710,9 @@ impl Parser<'_> {
 /// A book whose name is also an everyday word, with only a chapter, is still a citation when it is
 /// the whole of what was said ("Genesis twenty nine", on its own, live 2026-10-28) or comes right
 /// after "go to", "turn to", "open to", "read"…: "the genesis of it" or "in numbers" isn't.
+/// Words that make the next one a noun ("the numbers", "his acts", "these judges").
+const DETERMINERS: &[&str] = &["the", "these", "those", "his", "her", "their", "our", "my", "your", "its", "all", "many", "some", "two", "three"];
+
 fn called_out(before: &[&str], ends_there: bool) -> bool {
     const LEAD: &[&str] = &["go", "to", "turn", "open", "let's", "lets", "let", "us", "read", "in", "from", "with", "me", "now", "and", "so"];
     const POINTS: &[&str] = &["to", "read", "open", "turn"];

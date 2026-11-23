@@ -136,6 +136,10 @@ impl Engine {
         if c.method.is_text_match() && c.hold.is_none() && self.looks_like_passage(top) {
             c.hold = Some(Hold::LooksLikePassage);
         }
+        // …and a look-alike of the verse on screen, cited or not.
+        if c.method.is_text_match() && c.hold.is_none() && self.looks_like_verse_up(top, now) {
+            c.hold = Some(Hold::LooksLikeVerseUp);
+        }
 
         // 2. A verse continuing the chapter on screen is promoted.
         let continuity = !c.verbatim_disagreed && c.hold.is_none() && self.continues_chapter(&c, now);

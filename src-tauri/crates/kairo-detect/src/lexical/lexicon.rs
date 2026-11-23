@@ -331,7 +331,26 @@ impl Lexicon {
             }
         }
         let mut pairs: Vec<(VerseId, VerseId)> = windows_shared.into_iter().filter(|(_, n)| *n >= LOOKALIKE_MIN_WINDOWS).map(|(p, _)| p).collect();
+        // Verses worded identically in any wording, however many: a refrain is too common for the rare
+        // windows above. Numbers 7:14 and 7:38 are one sentence in the BSB ("one gold dish weighing ten
+        // shekels, filled with incense"), twelve times over, but not in the KJV (read-passage --no-cite).
+        for w in std::iter::once(&self.kjv).chain(self.others.iter()) {
+            let mut by_wording: HashMap<&[WordId], Vec<VerseId>> = HashMap::new();
+            for v in corpus.ids() {
+                if let Some(stems) = w.stems(v).filter(|s| s.len() >= 4) {
+                    by_wording.entry(stems).or_default().push(v);
+                }
+            }
+            for group in by_wording.into_values().filter(|g| g.len() > 1) {
+                for x in 0..group.len() {
+                    for y in x + 1..group.len() {
+                        pairs.push((group[x].min(group[y]), group[x].max(group[y])));
+                    }
+                }
+            }
+        }
         pairs.sort_unstable();
+        pairs.dedup();
         for (a, b) in pairs {
             // A verse and the next one repeating it is a passage's own parallelism, not a look-alike.
             if b.0 == a.0 + 1 {
@@ -460,15 +479,19 @@ impl Lexicon {
                 }
             }
         }
-        let mut per_verse: Vec<Vec<Gram>> = vec![Vec::new(); corpus.len()];
-        for (v, _, grams) in &slots {
-            per_verse[v.index()].extend_from_slice(grams);
+        // Each verse's slots by index, so its phrases are gathered one verse at a time, not copied whole.
+        let mut by_verse: Vec<Vec<u32>> = vec![Vec::new(); corpus.len()];
+        for (i, (v, _, _)) in slots.iter().enumerate() {
+            by_verse[v.index()].push(i as u32);
         }
         let mut df: HashMap<Gram, u16> = HashMap::new();
-        for mut grams in per_verse {
+        let mut grams: Vec<Gram> = Vec::new();
+        for list in by_verse {
+            grams.clear();
+            grams.extend(list.iter().flat_map(|&i| slots[i as usize].2.iter().copied()));
             grams.sort_unstable();
             grams.dedup();
-            for g in grams {
+            for &g in &grams {
                 *df.entry(g).or_default() += 1;
             }
         }
@@ -591,6 +614,11 @@ impl Lexicon {
 
     pub fn twins(&self, v: VerseId) -> &[Twin] {
         self.twins.get(&v).map_or(&[], Vec::as_slice)
+    }
+
+    /// How many look-alike pairs and twin pairs the Bible has, for the profile report.
+    pub fn alike_counts(&self) -> (usize, usize) {
+        (self.lookalikes.values().map(Vec::len).sum::<usize>() / 2, self.twins.values().map(Vec::len).sum::<usize>() / 2)
     }
 
     /// Verses that look like `v` in some wording Kairo matches, a word allowed to differ (`build_lookalikes`).

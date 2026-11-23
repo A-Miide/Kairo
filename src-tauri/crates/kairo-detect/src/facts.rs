@@ -1,8 +1,8 @@
 //! Facts about every verse that make live detection go wrong, worked out once when the Bible loads,
 //! from every wording Kairo matches (the KJV, the church's own Bible, and the ones matched for
-//! everyone). Each fact feeds one rule in the engine, and `bible-profile` reports the same table, so
-//! the analysis and the detector can't drift apart. Look-alike verses are the lexicon's
-//! (`Lexicon::lookalikes`), built with the twin table.
+//! everyone). Each fact feeds one rule in the engine, and the `bible-profile` report (kairo-eval)
+//! reads the same table, so the analysis and the detector can't drift apart. Look-alike verses are
+//! the lexicon's (`Lexicon::lookalikes`), built with the twin table.
 //!
 //! - `numbers`: number phrases in a verse's words ("two thousand fifty and six" in Ezra 2:14), so a
 //!   number read out of the passage isn't taken for "verse six" (engine/ranges.rs).

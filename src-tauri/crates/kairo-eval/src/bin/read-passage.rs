@@ -4,7 +4,7 @@
 //! from outside the passage that interrupted the reading. Many passages in each Bible version, so a
 //! rule is judged on the whole Bible, not one passage.
 //!
-//! `cargo run --release -p kairo-eval --bin read-passage -- [--passages 300] [--seed N] [--list] [--trace "Mark 14:49"] [--bibles <folder>]`
+//! `cargo run --release -p kairo-eval --bin read-passage -- [--passages 300] [--seed N] [--list] [--trace "Mark 14:49"] [--bibles <folder>] [--no-cite]`
 //! `--trace`: the engine's notes while the passage starting at that verse is read.
 //! Versions: the KJV, the BSB and every Bible installed in the Kairo app on this computer (`--bibles`,
 //! default its translations folder), each matched as the app matches them; and the BSB again with
@@ -44,6 +44,10 @@ const VERSE_GAP_MS: u64 = 700;
 const SETTLE_MS: u64 = 4_000;
 /// A verse up more than this after the verse before it ended is late.
 const LATE_MS: u64 = 3_000;
+
+fn no_cite() -> bool {
+    std::env::args().any(|a| a == "--no-cite")
+}
 
 struct Passage {
     book: Book,
@@ -156,7 +160,8 @@ fn read(k: &Arc<Knowledge>, p: &Passage, text: &dyn Fn(VerseId) -> String, tally
     let mut run = Run { e: Engine::new(k.clone(), Config { offline: true, explain: traced, ..Config::default() }), k, wakes: Vec::new(), sent: Vec::new(), traced };
     let first = k.verse_ref(p.verses[0]).verse;
     let last = k.verse_ref(*p.verses.last().unwrap()).verse;
-    let mut t = run.say(&format!("turn with me to {} chapter {} verses {} to {}", p.book.name(), p.chapter, first, last), 10_000);
+    // `--no-cite`: the passage read with no citation, its verses going up on their words alone.
+    let mut t = if no_cite() { 10_000 } else { run.say(&format!("turn with me to {} chapter {} verses {} to {}", p.book.name(), p.chapter, first, last), 10_000) };
     t += 1_500;
     let (mut starts, mut ends) = (Vec::new(), Vec::new());
     for v in &p.verses {

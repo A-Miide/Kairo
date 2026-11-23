@@ -53,6 +53,8 @@ const SOFT_AHEAD: usize = 2;
 /// A verse elsewhere is weighed against this many verses of the passage read together, the one up
 /// last: one verse can say two of another book's (1 Chronicles 1:42, Genesis 36:27-28).
 const PASSAGE_READ_TOGETHER: usize = 3;
+/// A look-alike of the verse on screen waits while that verse went up this recently.
+const LOOKALIKE_UP_MS: u64 = 60_000;
 /// A citation is checked for a word of the passage said this recently.
 const BOOK_WORD_LOOKBACK_MS: u64 = 8_000;
 /// A held continuation lets go when nothing has moved it for this long.
@@ -527,13 +529,16 @@ impl Engine {
         self.range.all.iter().any(|x| self.k.facts.book_words(*x).iter().any(|(w, b)| *b == book && said.contains(w)))
     }
 
-    /// A verse outside the passage being read that looks like one of its verses (lexicon
-    /// `lookalikes`), and what was said fits it no better than the passage, in any wording.
+    /// `a` and `b` look alike in some wording: a look-alike (a word may differ), or a twin, which
+    /// includes a refrain said word for word in many verses (Numbers 7's offerings, twelve times).
+    fn alike(&self, a: VerseId, b: VerseId) -> bool {
+        self.k.lexicon.lookalikes(a).contains(&b) || self.k.lexicon.twins(a).iter().any(|t| t.verse == b)
+    }
+
+    /// A verse outside the passage being read that looks like one of its verses, and what was said
+    /// fits it no better than the passage, in any wording.
     pub(crate) fn looks_like_passage(&self, v: VerseId) -> bool {
-        self.range.current.is_some()
-            && !self.range.all.contains(&v)
-            && self.range.all.iter().any(|r| self.k.lexicon.lookalikes(*r).contains(&v))
-            && !self.speech_favours_over_range(v)
+        self.range.current.is_some() && !self.range.all.contains(&v) && self.range.all.iter().any(|r| self.alike(*r, v)) && !self.speech_favours_over_range(v)
     }
 
     /// A verse outside the cited passage being read, whose words a verse of the passage fits as well.
@@ -549,15 +554,9 @@ impl Engine {
         if self.range.all.is_empty() {
             return false;
         }
-        let said: HashSet<String> = self.recent_speech_words(30).into_iter().map(|w| super::evidence::stem_lite(&w)).collect();
-        if said.is_empty() {
-            return false;
-        }
-        let hits = |text: &str| meaningful_words(text).into_iter().map(|w| super::evidence::stem_lite(&w)).collect::<HashSet<_>>().iter().filter(|w| said.contains(*w)).count();
-        // In every wording, each verse at its best: Exodus 34:6 read in the BSB ("compassionate and
-        // gracious, slow to anger, abounding") fits Psalm 103:8's BSB words better than its own KJV
-        // words, and the psalm went up mid-reading (read-passage).
-        let fit = |x: VerseId| self.verse_wordings(x).into_iter().chain(std::iter::once(self.verse_text(x))).map(hits).max().unwrap_or(0);
+        let Some(said) = self.said_stems() else { return false };
+        let fit = |x: VerseId| self.fit(&said, x);
+        let hits = |t: &str| hits(&said, t);
         let cand = fit(v);
         // The verses just read, together with the one up: 1 Chronicles 1:42 is Genesis 36:27 and 36:28
         // in one verse, and fit their reading better than either alone (read-passage).
@@ -568,6 +567,36 @@ impl Engine {
         });
         let best = self.range.all.iter().map(|r| fit(*r)).max().unwrap_or(0).max(together);
         cand > best
+    }
+
+    /// The stems of the last stretch of speech, for weighing verses against it; None when nothing was said.
+    fn said_stems(&self) -> Option<HashSet<String>> {
+        let said: HashSet<String> = self.recent_speech_words(30).into_iter().map(|w| super::evidence::stem_lite(&w)).collect();
+        (!said.is_empty()).then_some(said)
+    }
+
+    /// A verse's best fit to what was said, in any wording: Exodus 34:6 read in the BSB ("compassionate
+    /// and gracious, slow to anger, abounding") fits Psalm 103:8's BSB words better than its own KJV
+    /// words, and the psalm went up mid-reading (read-passage).
+    fn fit(&self, said: &HashSet<String>, v: VerseId) -> usize {
+        self.verse_wordings(v).into_iter().chain(std::iter::once(self.verse_text(v))).map(|t| hits(said, t)).max().unwrap_or(0)
+    }
+
+    /// A verse that looks like the one on screen (or the one after it, where a reading goes on), in some
+    /// wording, put up lately and with no passage cited: what was said fits it no better. Numbers 7's
+    /// twelve offerings, word for word but the names, put 7:14 up while 7:35 was read; Luke 3's
+    /// genealogy, 1 Kings 22 and 2 Chronicles 18 likewise (read-passage --no-cite).
+    pub(crate) fn looks_like_verse_up(&self, v: VerseId, now: u64) -> bool {
+        let Some((up, at)) = self.screen.up else { return false };
+        if v == up || now.saturating_sub(at) > LOOKALIKE_UP_MS {
+            return false;
+        }
+        let near: Vec<VerseId> = std::iter::once(up).chain(self.verses_after(up, 1)).collect();
+        if near.contains(&v) || !near.iter().any(|x| self.alike(*x, v)) {
+            return false;
+        }
+        let Some(said) = self.said_stems() else { return false };
+        self.fit(&said, v) <= near.iter().map(|x| self.fit(&said, *x)).max().unwrap_or(0)
     }
 
     /// The verse a range just left needs its own words, said since the move.
@@ -608,6 +637,11 @@ impl Engine {
 /// only count where they're expected next, so "and the" said before the reading can't carry it ahead.
 // ── The rules a reading moves on by, for any passage: a range's verses, or a slide deck's slides
 // (deck.rs). One set, so a deck follows the speaker exactly as a passage does.
+
+/// How many of a text's meaningful words (by stem) are in `said`.
+fn hits(said: &HashSet<String>, text: &str) -> usize {
+    meaningful_words(text).into_iter().map(|w| super::evidence::stem_lite(&w)).collect::<HashSet<_>>().iter().filter(|w| said.contains(*w)).count()
+}
 
 /// The newest words heard since the passage last moved (`heard`, ending with `fresh`): `fresh`, or the
 /// last `n` when it's shorter.
