@@ -6,9 +6,9 @@
 //!
 //! - `numbers`: number phrases in a verse's words ("two thousand fifty and six" in Ezra 2:14), so a
 //!   number read out of the passage isn't taken for "verse six" (engine/ranges.rs).
-//! - `opening_inside_before`: the verse's first words also come inside the verse before it, in the
-//!   same wording ("…the LORD spake unto Moses…"), so its opening alone can't move a passage on before
-//!   the verse up is read to its end.
+//! - `opening_inside_before`: the verse's first words also come in the verse before it, in any wording
+//!   ("…the LORD spake unto Moses…", or both opening "Blessed shall be"), so its opening alone can't move a passage on before the
+//!   verse up is read to its end. Every other verse moves on as its opening is heard.
 //! - `book_words`: words of the verse the citation reader takes for a book when a number follows
 //!   ("Levites" for Leviticus, "curtains" for Corinthians, "mark", "acts"), so reading them out of a
 //!   passage isn't a citation (engine/ranges.rs).
@@ -72,11 +72,9 @@ impl BibleFacts {
             };
             let mut all_short = true;
             let mut any = false;
+            let mut now: Vec<Option<Vec<String>>> = vec![None; wordings.len()];
             for (wi, w) in wordings.iter().enumerate() {
-                let Some(text) = w.text(v) else {
-                    before[wi] = None;
-                    continue;
-                };
+                let Some(text) = w.text(v) else { continue };
                 any = true;
                 let t = tokens(text);
                 if t.len() > SHORT_VERSE_WORDS {
@@ -108,19 +106,18 @@ impl BibleFacts {
                         }
                     }
                 }
-                // The verse before, same chapter, same wording: its middle says this one's opening.
-                if same_chapter && t.len() >= OPENING_WORDS {
-                    if let Some(p) = &before[wi] {
-                        if p.windows(OPENING_WORDS).skip(1).any(|x| x == &t[..OPENING_WORDS]) {
-                            f.opening_inside_before.insert(v);
-                        }
-                    }
+                // The verse before, same chapter, in any wording, says this one's opening: in its middle,
+                // or at its own start ("Blessed shall be…" opens Deuteronomy 28:3 to 28:6). A reader may be
+                // in one version while Kairo hears the words of another.
+                if same_chapter && t.len() >= OPENING_WORDS && before.iter().flatten().any(|p| p.windows(OPENING_WORDS).any(|x| x == &t[..OPENING_WORDS])) {
+                    f.opening_inside_before.insert(v);
                 }
-                before[wi] = Some(t);
+                now[wi] = Some(t);
             }
             if all_short && any {
                 f.short.insert(v);
             }
+            before = now;
         }
         f
     }

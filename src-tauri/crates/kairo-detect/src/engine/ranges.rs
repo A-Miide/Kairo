@@ -295,8 +295,12 @@ impl Engine {
         // In any wording: Ezekiel 12:25 read in the NLT opens "For I am the LORD! If I say it".
         // A next verse whose opening the verse up says too ("…saying, Speak unto the children of
         // Israel" inside the verse before) can't move on by its opening until the verse up has ended.
-        let opens = (ended || !self.k.facts.opening_inside_before(next)) && opening_said(self.verse_wordings(next), &recent, k);
-        if opens && (self.range.soft || ended) {
+        let unique_opening = !self.k.facts.opening_inside_before(next);
+        let opens = (ended || unique_opening) && opening_said(self.verse_wordings(next), &recent, k);
+        // A next verse whose opening the verse up doesn't say moves on as its opening is heard, without
+        // waiting for the verse up to be heard to its end: the offline engine garbles verse endings, and
+        // 25 of 55 moves on the church PC (22 Nov) waited for detection instead.
+        if opens && (self.range.soft || ended || unique_opening) {
             self.request_range_advance("the next verse's opening words", now);
             return;
         }
