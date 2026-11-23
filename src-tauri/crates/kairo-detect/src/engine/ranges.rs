@@ -380,7 +380,10 @@ impl Engine {
         if self.range.soft && self.shared_weight_meaningful(best, &text) < PAUSED_SKIP_MIN_IDF {
             return;
         }
-        let read = !paused || self.verse_wordings(best).into_iter().any(|t| {
+        // Verses only held after a quote aren't being read yet: skipping to one takes a stretch of it
+        // said nearly word for word, as after a pause. 1 John 4:18 quoted, then "…a perfect heart…
+        // a covenant of love for Christ tonight" put 4:20 up on "love" (held-out replay).
+        let read = !(paused || self.range.soft) || self.verse_wordings(best).into_iter().any(|t| {
             let (run, own) = read_run(&said, &plain_tokens(t));
             run >= RESUME_RUN_WORDS && own >= RESUME_RUN_OWN
         });

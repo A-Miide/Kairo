@@ -63,3 +63,11 @@ fn a_number_called_soon_after_still_reads_on() {
     let s = sends("The scripture says in the book of Revelation chapter nineteen verse ten\nand then it goes to twelve");
     assert!(s.contains(&"Revelation 19:12".to_string()), "{s:?}");
 }
+
+/// "2 Samuel chapter 5:18", a pause, then "to 20": where the passage ends, not a jump to verse 20.
+#[test]
+fn to_a_number_right_after_a_citation_ends_the_passage() {
+    let s = sends("David said second Samuel chapter five verse eighteen\nto twenty\nand David enquired of the LORD saying shall I go up to the Philistines");
+    assert_eq!(s.first().map(String::as_str), Some("2 Samuel 5:18"), "{s:?}");
+    assert!(!s.iter().take_while(|v| *v != "2 Samuel 5:19").any(|v| v == "2 Samuel 5:20"), "{s:?}");
+}
