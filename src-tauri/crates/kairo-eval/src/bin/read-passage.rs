@@ -171,8 +171,9 @@ fn read(k: &Arc<Knowledge>, p: &Passage, text: &dyn Fn(VerseId) -> String, tally
         tally.verses += 1;
         let before_ended = ends[i - 1];
         let end = starts.get(i + 1).copied().unwrap_or(u64::MAX);
-        // The send that put it up for its own reading: the last one before the next verse began.
-        match run.sent.iter().filter(|(x, at)| x == v && *at < end).last() {
+        // The send that put it up: the first one since the verse before it began (a send of the verse
+        // already up changes nothing on screen, so a repeat isn't when it went up).
+        match run.sent.iter().find(|(x, at)| x == v && *at >= starts[i - 1] && *at < end) {
             None => tally.never += 1,
             Some((_, at)) if *at + 500 < before_ended => tally.early += 1,
             Some((_, at)) => {

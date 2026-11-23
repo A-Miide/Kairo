@@ -34,8 +34,8 @@ pub type Gram = [WordId; 4];
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct GramEntry {
     pub verse: VerseId,
-    /// In the church's own wording rather than the KJV.
-    pub own: bool,
+    /// Which wording: 0 the KJV, then `others` in order (the church's own first).
+    pub slot: u8,
     pub pos: u16,
 }
 
@@ -342,26 +342,27 @@ impl Lexicon {
         }
     }
 
-    /// The anchor index and the twin table, from 4-grams of stems in the KJV
-    /// and the church's own wording. A verse's two wordings count once toward
-    /// how many verses share a phrase.
+    /// The twin table, from 4-grams of stems in the KJV and the church's own wording, and the anchor
+    /// index, from every wording Kairo matches: a quote in the BSB, NIV or NLT is anchored as it's said,
+    /// not found at the end of the sentence (read-aloud, 23 Nov 2026: modern versions went up at 88-96%
+    /// of the verse, the KJV at 38%). A verse's wordings count once toward how many verses share a phrase.
     fn build_grams(&mut self, corpus: &Corpus, kjv_anchors: bool) {
         let grams_of = |s: &[WordId]| -> Vec<Gram> { s.windows(4).map(|w| [w[0], w[1], w[2], w[3]]).collect() };
         // Every slot (a verse in the KJV, then in the church's own wording) and its phrases.
-        let mut slots: Vec<(VerseId, bool, Vec<Gram>)> =
-            if kjv_anchors { corpus.ids().map(|v| (v, false, grams_of(self.slot_stems(v, false)))).collect() } else { Vec::new() };
+        let mut slots: Vec<(VerseId, u8, Vec<Gram>)> =
+            if kjv_anchors { corpus.ids().map(|v| (v, 0, grams_of(self.slot_stems(v, 0)))).collect() } else { Vec::new() };
         let kjv_grams: Vec<Vec<Gram>> = if kjv_anchors { slots.iter().map(|(_, _, g)| g.clone()).collect() } else { vec![Vec::new(); corpus.len()] };
         if self.own().is_some() {
             for v in corpus.ids() {
                 if self.own().and_then(|o| o.stems(v)).is_some() {
-                    slots.push((v, true, grams_of(self.slot_stems(v, true))));
+                    slots.push((v, 1, grams_of(self.slot_stems(v, 1))));
                 }
             }
         }
 
         let mut df: HashMap<Gram, u16> = HashMap::new();
-        for (v, own, grams) in &slots {
-            let mut counted: Vec<Gram> = if *own { kjv_grams[v.index()].clone() } else { Vec::new() };
+        for (v, slot, grams) in &slots {
+            let mut counted: Vec<Gram> = if *slot == 1 { kjv_grams[v.index()].clone() } else { Vec::new() };
             for &g in grams {
                 if !counted.contains(&g) {
                     counted.push(g);
@@ -446,6 +447,32 @@ impl Lexicon {
         }
         self.build_lookalikes(corpus);
 
+        // Anchors from every other wording Kairo matches too (the BSB, the NIV…), in the slots after the
+        // church's own. How many verses share a phrase counts each verse once, whatever its wordings.
+        if kjv_anchors {
+            let first_also = if self.has_own { 1 } else { 0 };
+            for i in first_also..self.others.len() {
+                let slot = (i + 1) as u8;
+                for v in corpus.ids() {
+                    if self.others[i].stems(v).is_some() {
+                        slots.push((v, slot, grams_of(self.slot_stems(v, slot))));
+                    }
+                }
+            }
+        }
+        let mut per_verse: Vec<Vec<Gram>> = vec![Vec::new(); corpus.len()];
+        for (v, _, grams) in &slots {
+            per_verse[v.index()].extend_from_slice(grams);
+        }
+        let mut df: HashMap<Gram, u16> = HashMap::new();
+        for mut grams in per_verse {
+            grams.sort_unstable();
+            grams.dedup();
+            for g in grams {
+                *df.entry(g).or_default() += 1;
+            }
+        }
+
         // Anchors: kept 4-grams and their entries, in slot then position order.
         let mut counts: Vec<u32> = Vec::new();
         for (_, _, grams) in &slots {
@@ -470,12 +497,12 @@ impl Lexicon {
         }
         self.gram_start.push(acc);
         let mut fill = self.gram_start.clone();
-        self.gram_entries = vec![GramEntry { verse: VerseId(0), own: false, pos: 0 }; acc as usize];
-        for (v, own, grams) in &slots {
+        self.gram_entries = vec![GramEntry { verse: VerseId(0), slot: 0, pos: 0 }; acc as usize];
+        for (v, slot, grams) in &slots {
             for (pos, g) in grams.iter().enumerate() {
                 if let Some(&id) = self.grams.get(g) {
                     let at = &mut fill[id as usize];
-                    self.gram_entries[*at as usize] = GramEntry { verse: *v, own: *own, pos: pos as u16 };
+                    self.gram_entries[*at as usize] = GramEntry { verse: *v, slot: *slot, pos: pos as u16 };
                     *at += 1;
                 }
             }
@@ -506,12 +533,15 @@ impl Lexicon {
     }
 
     /// A verse's words in the KJV or the church's own wording.
-    pub fn slot_words(&self, v: VerseId, own: bool) -> &[WordId] {
-        if own { self.own().and_then(|o| o.words(v)).unwrap_or(&[]) } else { self.kjv.words(v).unwrap_or(&[]) }
+    /// A verse's words in a slot: 0 the KJV, then `others` in order.
+    pub fn slot_words(&self, v: VerseId, slot: u8) -> &[WordId] {
+        let w = if slot == 0 { Some(&self.kjv) } else { self.others.get(slot as usize - 1) };
+        w.and_then(|w| w.words(v)).unwrap_or(&[])
     }
 
-    pub fn slot_stems(&self, v: VerseId, own: bool) -> &[WordId] {
-        if own { self.own().and_then(|o| o.stems(v)).unwrap_or(&[]) } else { self.kjv.stems(v).unwrap_or(&[]) }
+    pub fn slot_stems(&self, v: VerseId, slot: u8) -> &[WordId] {
+        let w = if slot == 0 { Some(&self.kjv) } else { self.others.get(slot as usize - 1) };
+        w.and_then(|w| w.stems(v)).unwrap_or(&[])
     }
 
     pub fn idf(&self, w: WordId) -> f32 {

@@ -27,6 +27,8 @@ const ANCHOR_N: usize = 4;
 const HIT_DEDUP_MS: u64 = 12_000;
 /// Words aligned before a candidate can be confirmed.
 const ALIGN_CONFIRM_AT: u32 = 6;
+/// More words a quote in a wording other than the KJV and the church's own needs before it confirms.
+const EXTRA_WORDING_CONFIRM_MORE: u32 = 3;
 /// Identifying weight aligned before a candidate can be confirmed.
 pub const ANCHOR_CONFIRM_IDF: f32 = 12.0;
 /// Weight the words past the anchor must add themselves.
@@ -80,7 +82,7 @@ pub struct StreamTick {
 #[derive(Clone, Debug)]
 struct Candidate {
     verse: VerseId,
-    own: bool,
+    slot: u8,
     cursor: usize,
     matched: u32,
     matched_idf: f32,
@@ -103,7 +105,7 @@ struct Candidate {
 pub struct StreamMatcher {
     last_four: Vec<Option<WordId>>,
     candidates: Vec<Candidate>,
-    fired: HashMap<(VerseId, bool), u64>,
+    fired: HashMap<(VerseId, u8), u64>,
     history: Vec<Option<WordId>>,
 }
 
@@ -135,8 +137,8 @@ impl StreamMatcher {
             if now_ms.saturating_sub(c.fired_at) > ALIGN_AGE_MS {
                 continue;
             }
-            let stems = lex.slot_stems(c.verse, c.own);
-            let words = lex.slot_words(c.verse, c.own);
+            let stems = lex.slot_stems(c.verse, c.slot);
+            let words = lex.slot_words(c.verse, c.slot);
             if c.cursor >= stems.len() {
                 continue;
             }
@@ -163,7 +165,11 @@ impl StreamMatcher {
             // first confirmation, and Isaiah 40:31 ("they that wait upon the LORD…" — Psalm 37:9 too)
             // never went up however much of it was read (path audit).
             let grown = c.confirmed && c.matched >= c.reported + REPORT_AGAIN_AFTER;
-            if aligned && (grown || !c.confirmed && c.matched >= ALIGN_CONFIRM_AT && c.matched_idf >= ANCHOR_CONFIRM_IDF && c.matched_idf - c.seed_idf >= ALIGN_EXTENSION_MIN_IDF) {
+            // A modern wording beside the KJV and the church's own reads like everyday speech ("my
+            // thoughts are higher than your thoughts"): its quotes confirm on more of the verse.
+            let extra = c.slot >= 2 || (c.slot == 1 && lex.own().is_none());
+            let confirm_at = if extra { ALIGN_CONFIRM_AT + EXTRA_WORDING_CONFIRM_MORE } else { ALIGN_CONFIRM_AT };
+            if aligned && (grown || !c.confirmed && c.matched >= confirm_at && c.matched_idf >= ANCHOR_CONFIRM_IDF && c.matched_idf - c.seed_idf >= ALIGN_EXTENSION_MIN_IDF) {
                 c.confirmed = true;
                 c.reported = c.matched;
                 let without_back = c.matched - c.back_matched >= ALIGN_CONFIRM_AT && c.matched_idf - c.back_idf >= ANCHOR_CONFIRM_IDF;
@@ -177,7 +183,7 @@ impl StreamMatcher {
                     .anchor_entries(c.gram)
                     .iter()
                     .filter(|e| e.verse != c.verse)
-                    .flat_map(|e| lex.slot_words(e.verse, e.own).iter().copied())
+                    .flat_map(|e| lex.slot_words(e.verse, e.slot).iter().copied())
                     .collect();
                 let distinct_peak_idf = c.counted.iter().filter(|w| !siblings.contains(*w)).map(|w| lex.idf(*w)).fold(0.0, f32::max);
                 tick.confirmed.push(Confirmed {
@@ -214,22 +220,22 @@ impl StreamMatcher {
 
     fn fire(&mut self, lex: &Lexicon, gram: u32, now_ms: u64, tick: &mut StreamTick) {
         for e in lex.anchor_entries(gram) {
-            let key = (e.verse, e.own);
+            let key = (e.verse, e.slot);
             if self.fired.get(&key).is_some_and(|t| now_ms.saturating_sub(*t) < HIT_DEDUP_MS) {
                 continue;
             }
             self.fired.insert(key, now_ms);
-            let words = lex.slot_words(e.verse, e.own);
+            let words = lex.slot_words(e.verse, e.slot);
             let pos = e.pos as usize;
             let idf = lex.idf_span(words, pos, ANCHOR_N);
-            let back = self.extend_backward(lex, e.verse, e.own, pos);
+            let back = self.extend_backward(lex, e.verse, e.slot, pos);
             let total_idf = idf + back.idf;
             tick.anchors.push(AnchorHit { verse: e.verse, df: lex.anchor_df(gram), idf: total_idf });
             let mut counted: HashSet<WordId> = words.iter().skip(pos).take(ANCHOR_N).copied().collect();
             counted.extend(back.words);
             self.candidates.push(Candidate {
                 verse: e.verse,
-                own: e.own,
+                slot: e.slot,
                 cursor: pos + ANCHOR_N,
                 matched: ANCHOR_N as u32 + back.matched,
                 matched_idf: total_idf,
@@ -250,9 +256,9 @@ impl StreamMatcher {
     /// Credit for the verse's words just before the anchor, if the preacher
     /// said them just before it — tolerating one dropped or extra word, like
     /// the forward walk.
-    fn extend_backward(&self, lex: &Lexicon, verse: VerseId, own: bool, pos: usize) -> Back {
-        let stems = lex.slot_stems(verse, own);
-        let words = lex.slot_words(verse, own);
+    fn extend_backward(&self, lex: &Lexicon, verse: VerseId, slot: u8, pos: usize) -> Back {
+        let stems = lex.slot_stems(verse, slot);
+        let words = lex.slot_words(verse, slot);
         let mut back = Back::default();
         if pos == 0 || self.history.len() <= ANCHOR_N {
             return back;

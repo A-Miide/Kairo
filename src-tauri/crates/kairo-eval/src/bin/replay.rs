@@ -133,6 +133,8 @@ struct Score {
     outcomes: std::collections::BTreeMap<String, Outcomes>,
     /// Marked verses not sent but already up when said.
     on_screen_list: Vec<String>,
+    /// Kind → how long after it was said each found verse went up (ms).
+    delays: std::collections::BTreeMap<String, Vec<i64>>,
 }
 
 /// "1 John 5:4", "Psalms 23:1-3" → its first verse.
@@ -189,6 +191,7 @@ fn score(k: &Knowledge, gt: &[GroundTruth], decisions: &[Decision], last_ms: i64
             Some((i, d)) => {
                 used.insert(i);
                 s.found += 1;
+                s.delays.entry(g.kind.clone()).or_default().push(d.at_ms - g.at_ms);
                 s.by_method.entry(d.method.clone()).or_default().0 += 1;
             }
             None => missed.push(g),
@@ -642,6 +645,9 @@ fn main() {
                     for (kind, o) in s.outcomes {
                         t.outcomes.entry(kind).or_default().add(o);
                     }
+                    for (kind, d) in s.delays {
+                        t.delays.entry(kind).or_default().extend(d);
+                    }
                     for (m, (n, r)) in s.offered_by {
                         let e = t.offered_by.entry(m).or_default();
                         e.0 += n;
@@ -732,6 +738,15 @@ fn main() {
             s.suggestions as f64 / s.hours.max(1e-9)
         );
     }
+    // How soon found verses went up after they were said, by kind: the median and the slowest tenth.
+    let mut delays = String::new();
+    for (kind, d) in &rust_total.delays {
+        let mut d = d.clone();
+        d.sort_unstable();
+        let at = |q: f64| d.get(((d.len() as f64 - 1.0) * q) as usize).map_or(0.0, |x| *x as f64 / 1000.0);
+        delays.push_str(&format!("  {kind} {:.1}s (90th {:.1}s, {} found)", at(0.5), at(0.9), d.len()));
+    }
+    println!("Rust delay after said:{delays}");
     println!("Rust breakdown:");
     print_breakdown("  ", &rust_total);
     for (who, s) in [("Rust", &rust_total), ("Node", &node_total)] {

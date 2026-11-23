@@ -3,7 +3,7 @@
 //! missed it, or put the wrong verse up. A much larger test than six sermons, in any Bible version or
 //! language the packs hold, so a rule can be judged on thousands of verses.
 //!
-//! `cargo run --release -p kairo-eval --bin read-aloud -- [--verses 400] [--only KJV,BSB,es,...] [--dir <folder of flat <CODE>.json versions>] [--out lines.jsonl] [--seed N]`
+//! `cargo run --release -p kairo-eval --bin read-aloud -- [--verses 400] [--only KJV,BSB,es,...] [--dir <folder of flat <CODE>.json versions>] [--out lines.jsonl] [--seed N] [--also NIV,NLT [--all-known]]`
 //! Versions: the KJV and BSB (the wordings Kairo matches), the language packs (es fr de pt sw yo ig ha: the
 //! detector reads that pack as the service language's own Bible), and any flat `<CODE>.json` in `--dir`
 //! (English versions the detector has never seen, to measure how well it copes with another wording).
@@ -178,7 +178,14 @@ fn main() {
     }
     let corpus = Corpus::load(&dir).expect("kjv");
     let ids: Vec<VerseId> = corpus.ids().collect();
-    let k_en = Arc::new(kairo_eval::knowledge());
+    // `--all-known`: every version given with --also matched for every reading, the version read included,
+    // as the app builds English detection with every Bible the church has (service_bible.rs).
+    let k_en = if args.iter().any(|a| a == "--all-known") {
+        Arc::new(english_with(&also, "", extra_dir.as_deref().unwrap_or(&dir), &dir))
+    } else {
+        Arc::new(kairo_eval::knowledge())
+    };
+    let also: Vec<String> = if args.iter().any(|a| a == "--all-known") { Vec::new() } else { also };
 
     // (code, language, knowledge, text source)
     let mut jobs: Vec<(String, Lang, Arc<Knowledge>, Translation)> = Vec::new();
