@@ -15,8 +15,9 @@ use super::evidence::plain_tokens;
 use super::ranges::{
     newest_words, opening_said, own_opening_said, read_run, read_to_end, shared_weight_meaningful_of, shared_weight_of, ADVANCE_COOLDOWN_MS,
     CHAPTER_KEYWORD_MIN_IDF, CHAPTER_KEYWORD_MIN_MARGIN, CONTENT_LOOKAHEAD, CONTENT_MIN_WORDS, HEARD_MAX_WORDS, OPENING_SPAN, PAUSED_SKIP_MIN_IDF,
-    RESUME_RUN_OWN, RESUME_RUN_WORDS, SHORT_VERSE_WORDS,
+    RESUME_RUN_OWN, RESUME_RUN_WORDS,
 };
+use crate::facts::SHORT_VERSE_WORDS;
 use crate::lexical::text::is_stop_word;
 use crate::reference::{Active, Verses};
 use kairo_bible::{Book, VerseId};

@@ -99,8 +99,23 @@ impl Engine {
             }
         }
 
+        // 0c. A number read out of the passage ("…fifty and six") isn't the preacher calling a verse.
+        if matches!(c.method, Method::DirectPartial | Method::Continuation) && self.number_read_in_passage() {
+            c.hold = Some(Hold::NumberReadInPassage);
+        }
+        // …nor is a word of it that sounds like a book ("…and Levites: one" is not Leviticus 1).
+        if matches!(c.method, Method::Direct | Method::ContextCitation | Method::DirectPartial) && c.hold.is_none() && self.book_word_read_in_passage(top, now) {
+            c.hold = Some(Hold::BookWordReadInPassage);
+            // Nor does its chapter wait for a verse: retried after the words moved on, it went up.
+            let b = self.r(top).book;
+            if self.chapter_pending.as_ref().is_some_and(|p| p.book == b) {
+                self.chapter_pending = None;
+            }
+        }
+
         // 1. A cited range's next verse moves the range, from any method.
-        match self.try_range_advance_by_detection(&c, now) {
+        let advance = if matches!(c.hold, Some(Hold::NumberReadInPassage | Hold::BookWordReadInPassage)) { RangeAdvance::No } else { self.try_range_advance_by_detection(&c, now) };
+        match advance {
             RangeAdvance::Moved => return Target::Screen,
             RangeAdvance::Held => c.hold = Some(Hold::RangeNotReadOnYet),
             RangeAdvance::No => {}
@@ -113,6 +128,13 @@ impl Engine {
         // its rare word "hearken" taken for 28:2 said again (church PC, 22 Nov 2026).
         if c.method.is_text_match() && c.hold.is_none() && self.behind_in_passage(top, now) {
             c.hold = Some(Hold::QuoteBehindReading);
+        }
+
+        // 1c. While a passage is read, a verse elsewhere that looks like one of its verses waits in
+        // Possible Matches: Psalm 103:8 went up over Exodus 34:6 read in the BSB, 1 Chronicles 1
+        // over Genesis 36 (read-passage, 23 Nov 2026).
+        if c.method.is_text_match() && c.hold.is_none() && self.looks_like_passage(top) {
+            c.hold = Some(Hold::LooksLikePassage);
         }
 
         // 2. A verse continuing the chapter on screen is promoted.

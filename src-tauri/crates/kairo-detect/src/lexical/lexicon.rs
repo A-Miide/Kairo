@@ -52,6 +52,10 @@ pub const ANCHOR_DF_MAX: u8 = 5;
 /// that each occur in no more than `TWIN_GRAM_DF_MAX` verses.
 const TWIN_GRAM_DF_MAX: u16 = 6;
 const TWIN_MIN_SHARED: u32 = 2;
+/// Look-alikes (`build_lookalikes`): windows of this many stems, one left out, and how many rare
+/// ones two verses share. One or two are everyday phrasing (sampled by hand, 23 Nov 2026).
+const LOOKALIKE_RUN: usize = 5;
+const LOOKALIKE_MIN_WINDOWS: u32 = 3;
 /// Words a fingerprint holds, at most, and the least weight they need.
 const SIGNATURE_SIZE: usize = 10;
 const SIGNATURE_IDF_FLOOR: f32 = 1.5;
@@ -137,6 +141,7 @@ pub struct Lexicon {
     gram_start: Vec<u32>,
     gram_entries: Vec<GramEntry>,
     twins: HashMap<VerseId, Vec<Twin>>,
+    lookalikes: HashMap<VerseId, Vec<VerseId>>,
 }
 
 impl Lexicon {
@@ -270,9 +275,71 @@ impl Lexicon {
             gram_start: Vec::new(),
             gram_entries: Vec::new(),
             twins: HashMap::new(),
+            lookalikes: HashMap::new(),
         };
         lex.build_grams(corpus, kjv_anchors);
         lex
+    }
+
+    /// Look-alikes in every wording Kairo matches (the KJV, the church's own, and the Bibles matched
+    /// for everyone), with a word allowed to differ: verses sharing LOOKALIKE_MIN_WINDOWS rare windows
+    /// of LOOKALIKE_RUN stems, each with one stem left out (a stretch of about seven words). Exodus
+    /// 34:6 and Psalm 103:8 in the BSB ("compassionate and gracious, slow to anger, abounding in
+    /// loving devotion"); Genesis 36 and 1 Chronicles 1's lists with a name spelled differently.
+    /// Apart from the twin table on purpose: twins also correct a citation to its twin, and as twins
+    /// Psalm 1:3 "corrected" Jeremiah 17:8 being read (replay). Look-alikes only hold a verse back
+    /// while a passage it looks like is read (decide.rs). Measured with read-passage (23 Nov 2026).
+    fn build_lookalikes(&mut self, corpus: &Corpus) {
+        use std::hash::{Hash, Hasher};
+        const INDEX_BITS: u32 = 15;
+        debug_assert!(corpus.len() < 1 << INDEX_BITS);
+        let mut windows_shared: HashMap<(VerseId, VerseId), u32> = HashMap::new();
+        for w in std::iter::once(&self.kjv).chain(self.others.iter()) {
+            // One u64 a window: its hash with the hole, then the verse. Sorted, equal windows sit together.
+            let mut keys: Vec<u64> = Vec::new();
+            for v in corpus.ids() {
+                let Some(stems) = w.stems(v) else { continue };
+                for win in stems.windows(LOOKALIKE_RUN) {
+                    if win.iter().filter(|x| !is_stop_word(self.vocab.word(**x))).count() < 2 {
+                        continue;
+                    }
+                    for hole in 0..LOOKALIKE_RUN {
+                        let mut h = std::collections::hash_map::DefaultHasher::new();
+                        hole.hash(&mut h);
+                        win.iter().enumerate().filter(|(j, _)| *j != hole).for_each(|(_, x)| x.hash(&mut h));
+                        keys.push((h.finish() << INDEX_BITS) | v.0 as u64);
+                    }
+                }
+            }
+            keys.sort_unstable();
+            keys.dedup();
+            let mut here: HashMap<(VerseId, VerseId), u32> = HashMap::new();
+            for group in keys.chunk_by(|a, b| a >> INDEX_BITS == b >> INDEX_BITS) {
+                if group.len() < 2 || group.len() > TWIN_GRAM_DF_MAX as usize {
+                    continue;
+                }
+                let ids: Vec<VerseId> = group.iter().map(|k| VerseId((k & ((1 << INDEX_BITS) - 1)) as u32)).collect();
+                for x in 0..ids.len() {
+                    for y in x + 1..ids.len() {
+                        *here.entry((ids[x].min(ids[y]), ids[x].max(ids[y]))).or_default() += 1;
+                    }
+                }
+            }
+            for (pair, n) in here {
+                let e = windows_shared.entry(pair).or_default();
+                *e = (*e).max(n);
+            }
+        }
+        let mut pairs: Vec<(VerseId, VerseId)> = windows_shared.into_iter().filter(|(_, n)| *n >= LOOKALIKE_MIN_WINDOWS).map(|(p, _)| p).collect();
+        pairs.sort_unstable();
+        for (a, b) in pairs {
+            // A verse and the next one repeating it is a passage's own parallelism, not a look-alike.
+            if b.0 == a.0 + 1 {
+                continue;
+            }
+            self.lookalikes.entry(a).or_default().push(b);
+            self.lookalikes.entry(b).or_default().push(a);
+        }
     }
 
     /// The anchor index and the twin table, from 4-grams of stems in the KJV
@@ -377,6 +444,7 @@ impl Lexicon {
             self.twins.entry(key.0).or_default().push(Twin { verse: key.1, shared });
             self.twins.entry(key.1).or_default().push(Twin { verse: key.0, shared });
         }
+        self.build_lookalikes(corpus);
 
         // Anchors: kept 4-grams and their entries, in slot then position order.
         let mut counts: Vec<u32> = Vec::new();
@@ -493,6 +561,11 @@ impl Lexicon {
 
     pub fn twins(&self, v: VerseId) -> &[Twin] {
         self.twins.get(&v).map_or(&[], Vec::as_slice)
+    }
+
+    /// Verses that look like `v` in some wording Kairo matches, a word allowed to differ (`build_lookalikes`).
+    pub fn lookalikes(&self, v: VerseId) -> &[VerseId] {
+        self.lookalikes.get(&v).map_or(&[], Vec::as_slice)
     }
 
     pub fn verses_with_twins(&self) -> usize {

@@ -50,6 +50,11 @@ pub const CHAPTER_KEYWORD_MIN_MARGIN: f32 = 2.0;
 const LEFT_VERSE_HOLD_MS: u64 = 8_000;
 /// A single cited verse holds this many verses after it, topped up as each is read.
 const SOFT_AHEAD: usize = 2;
+/// A verse elsewhere is weighed against this many verses of the passage read together, the one up
+/// last: one verse can say two of another book's (1 Chronicles 1:42, Genesis 36:27-28).
+const PASSAGE_READ_TOGETHER: usize = 3;
+/// A citation is checked for a word of the passage said this recently.
+const BOOK_WORD_LOOKBACK_MS: u64 = 8_000;
 /// A held continuation lets go when nothing has moved it for this long.
 const SOFT_RANGE_TTL_MS: u64 = 120_000;
 
@@ -270,8 +275,7 @@ impl Engine {
         let next = *self.range.queue.front().unwrap();
         // A verse as short as its own opening ("Jesus wept") is read once it's up: the words that
         // put it there were all of it (11:36 came 4 s late after 11:35).
-        let short = self.verse_wordings(current).into_iter().all(|t| plain_tokens(t).len() <= SHORT_VERSE_WORDS);
-        let ended = short || self.current_ending_heard();
+        let ended = self.k.facts.short(current) || self.current_ending_heard();
         // A held continuation: the verse on screen read to its end first, then the next one's own opening.
         if self.range.soft && !ended {
             return;
@@ -289,7 +293,9 @@ impl Engine {
         let heard_words = self.range_heard_words();
         let recent = newest_words(&heard_words, fresh, OPENING_SPAN);
         // In any wording: Ezekiel 12:25 read in the NLT opens "For I am the LORD! If I say it".
-        let opens = opening_said(self.verse_wordings(next), &recent, k);
+        // A next verse whose opening the verse up says too ("…saying, Speak unto the children of
+        // Israel" inside the verse before) can't move on by its opening until the verse up has ended.
+        let opens = (ended || !self.k.facts.opening_inside_before(next)) && opening_said(self.verse_wordings(next), &recent, k);
         if opens && (self.range.soft || ended) {
             self.request_range_advance("the next verse's opening words", now);
             return;
@@ -305,7 +311,10 @@ impl Engine {
         let need = if self.range.soft { 2 } else { 1 };
         let heard = heard_words.join(" ");
         let idf = |w: &str| self.k.lexicon.idf_of(w);
-        if own_opening_said(self.verse_text(current), self.verse_text(next), &heard, &recent, need, &idf) {
+        // Own words only in the newest chunk: a passage moved on early still has the verse before's
+        // last words ("…and fled") since the move, and Mark 14:52's own "fled" put it up mid-14:51
+        // (read-passage). Across a pause only the opening, in order, counts.
+        if own_opening_said(self.verse_text(current), self.verse_text(next), &heard, fresh, need, &idf) {
             self.request_range_advance("the next verse's own words", now);
         }
     }
@@ -476,6 +485,50 @@ impl Engine {
         true
     }
 
+    /// The number just said is the passage's own words being read, not a verse called: "…two
+    /// thousand fifty and six" in Ezra 2:14 put Ezra 2:6 up when "six" came after a pause
+    /// (read-passage). It ends what was said, "verse" isn't before it, and it closes a number phrase
+    /// of the verse being read, or of the one before (a move can come a moment early), in any wording
+    /// (the Bible's facts, facts.rs).
+    pub(crate) fn number_read_in_passage(&self) -> bool {
+        let Some(current) = self.range.current else { return false };
+        let said = plain_tokens(&self.t.words.last(6));
+        let Some(last) = said.last() else { return false };
+        if crate::reference::numbers::consume_number(&[last.as_str()], 0, None).is_none() {
+            return false;
+        }
+        if said.len() >= 2 && matches!(said[said.len() - 2].as_str(), "verse" | "verses" | "chapter") {
+            return false;
+        }
+        let read_in = |v: VerseId| self.k.facts.number_read_in(v, &said);
+        read_in(current) || self.range.left.is_some_and(read_in)
+    }
+
+    /// A citation of `v`'s book made of a word of the passage being read, said lately: "…and
+    /// Levites: one principal household" read in 1 Chronicles 24:6 put Leviticus 1:1 up, "Curtains
+    /// fifteen cubits" in Exodus 27:14 1 Corinthians 15:1 (read-passage). The words that sound like a
+    /// book are the Bible's facts (facts.rs); a preacher citing says the book's own name, not them.
+    pub(crate) fn book_word_read_in_passage(&self, v: VerseId, now: u64) -> bool {
+        if self.range.current.is_none() || self.range.all.contains(&v) {
+            return false;
+        }
+        let book = self.r(v).book;
+        // The book can be named a while before the citation completes ("…Levites: one principal
+        // household…", its verse looked for after): what was said lately, not the last few words.
+        let said = plain_tokens(&self.t.words.recent(now, BOOK_WORD_LOOKBACK_MS));
+        // Any verse of the passage: the reading can move on twice before the citation completes.
+        self.range.all.iter().any(|x| self.k.facts.book_words(*x).iter().any(|(w, b)| *b == book && said.contains(w)))
+    }
+
+    /// A verse outside the passage being read that looks like one of its verses (lexicon
+    /// `lookalikes`), and what was said fits it no better than the passage, in any wording.
+    pub(crate) fn looks_like_passage(&self, v: VerseId) -> bool {
+        self.range.current.is_some()
+            && !self.range.all.contains(&v)
+            && self.range.all.iter().any(|r| self.k.lexicon.lookalikes(*r).contains(&v))
+            && !self.speech_favours_over_range(v)
+    }
+
     /// A verse outside the cited passage being read, whose words a verse of the passage fits as well.
     /// Another method finding the same words again there isn't a second opinion: Psalm 150:3 ("the
     /// sound of the trumpet") went up over Psalm 47:5 on a weak quote of the same words (church PC,
@@ -494,8 +547,19 @@ impl Engine {
             return false;
         }
         let hits = |text: &str| meaningful_words(text).into_iter().map(|w| super::evidence::stem_lite(&w)).collect::<HashSet<_>>().iter().filter(|w| said.contains(*w)).count();
-        let cand = hits(self.verse_text(v));
-        let best = self.range.all.iter().map(|r| hits(self.verse_text(*r))).max().unwrap_or(0);
+        // In every wording, each verse at its best: Exodus 34:6 read in the BSB ("compassionate and
+        // gracious, slow to anger, abounding") fits Psalm 103:8's BSB words better than its own KJV
+        // words, and the psalm went up mid-reading (read-passage).
+        let fit = |x: VerseId| self.verse_wordings(x).into_iter().chain(std::iter::once(self.verse_text(x))).map(hits).max().unwrap_or(0);
+        let cand = fit(v);
+        // The verses just read, together with the one up: 1 Chronicles 1:42 is Genesis 36:27 and 36:28
+        // in one verse, and fit their reading better than either alone (read-passage).
+        let together = self.range.current.and_then(|c| self.range.all.iter().position(|x| *x == c)).map_or(0, |at| {
+            let read = &self.range.all[at.saturating_sub(PASSAGE_READ_TOGETHER - 1)..=at];
+            let wordings: Vec<Vec<&str>> = read.iter().map(|v| self.verse_wordings(*v)).collect();
+            (0..wordings.iter().map(Vec::len).min().unwrap_or(0)).map(|i| hits(&wordings.iter().map(|w| w[i]).collect::<Vec<_>>().join(" "))).max().unwrap_or(0)
+        });
+        let best = self.range.all.iter().map(|r| fit(*r)).max().unwrap_or(0).max(together);
         cand > best
     }
 
@@ -670,8 +734,6 @@ const RUN_GAP: usize = 2;
 
 /// read_to_end: verse words that may be skipped between two heard ones, and the share that must be heard.
 const READ_SKIP: usize = 3;
-/// A verse this short is read by the time it's up.
-pub(crate) const SHORT_VERSE_WORDS: usize = 4;
 const READ_THROUGH: f32 = 0.6;
 
 #[cfg(test)]

@@ -154,4 +154,10 @@ pub enum Hold {
     BareNumbersDisagree,
     /// The range's next verse matched by its wording before any of its own words were heard.
     RangeNotReadOnYet,
+    /// A number that is the passage's own words being read ("…fifty and six"), not a verse called.
+    NumberReadInPassage,
+    /// A verse that looks like one of the passage being read (in some wording), the speech fitting it no better.
+    LooksLikePassage,
+    /// A citation made of a word of the passage being read ("Levites one" read as Leviticus 1).
+    BookWordReadInPassage,
 }
