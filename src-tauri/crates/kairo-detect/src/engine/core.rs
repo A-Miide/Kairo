@@ -596,7 +596,7 @@ impl Engine {
             let deck_fresh = self.note_deck_speech(&text, false, false);
             self.follow_deck(&deck_fresh, now);
             let refs = self.process_references(&text, false, now);
-            let found = (refs && !self.chapter_named_now(now)) || self.pending_chapter_numbers(now) || refs;
+            let found = self.citation_found(refs, now);
             self.check_citation_siblings(&text, false, false, now);
             if !found && self.verse_call_context(now).book.is_some() && !self.announces_different_book(&text, self.prev_words(), now) {
                 self.interim_partial(&text, now);
@@ -655,7 +655,7 @@ impl Engine {
         let through = self.read_through_chapter(&text, prev_before.as_ref(), now);
         let mut found = through || {
             let refs = self.process_references_final(&text, &sent_from_interim, now);
-            (refs && !self.chapter_named_now(now)) || self.pending_chapter_numbers(now) || refs
+            self.citation_found(refs, now)
         };
         self.check_citation_siblings(&text, true, false, now);
         if self.spoken_correction(&text, true, now) {
@@ -770,6 +770,15 @@ impl Engine {
         self.person.as_ref().is_some_and(|(name, at)| {
             now.saturating_sub(*at) < NAMED_PERSON_WINDOW_MS && self.k.name_chapters(name).is_some_and(|c| c.binary_search(&(v.book, v.chapter)).is_ok())
         })
+    }
+
+    /// Whether this segment held a citation (`refs`). A verse number said after a chapter named
+    /// earlier is looked for when nothing was cited, and also when the citation was only a chapter
+    /// named just now ("Psalm twenty two… twenty seven"): its verse may be in the same breath.
+    fn citation_found(&mut self, refs: bool, now: u64) -> bool {
+        let try_numbers = !refs || self.chapter_named_now(now);
+        let numbers = try_numbers && self.pending_chapter_numbers(now);
+        refs || numbers
     }
 
     /// The one way a verse leaves the engine, for the screen or Possible Matches (the server then
