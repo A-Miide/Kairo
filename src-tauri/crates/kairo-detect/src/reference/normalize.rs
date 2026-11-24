@@ -35,6 +35,7 @@ pub fn normalize(text: &str, books: &Books, lang: Lang) -> String {
     let t = if lang == Lang::En { text.to_lowercase() } else { localize(text, lang) };
     let t = drop_fillers(&t);
     let t = roman_after_keywords(&t);
+    let t = if lang == Lang::En { misheard_books(&t) } else { t };
     let t = if lang == Lang::En { spoken_variants(&t, books) } else { t };
     let t = drop_possessives(&t);
     let t = join_split_digits(&t);
@@ -44,6 +45,34 @@ pub fn normalize(text: &str, books: &Books, lang: Lang) -> String {
     let t = collapse_stutters(&t);
     let t = ordinal_forms(&t, books);
     self_corrections(&t)
+}
+
+/// What the offline recogniser hears instead of a book's name, read back as that book only where a
+/// citation follows: a chapter and "verse" and a number. Lined up against Deepgram's
+/// transcripts of the same sermons (Enough is Enough, Impartation; 23 Nov 2026): "Psalm thirty verse
+/// five" came through as "I'm thirty verse five", Joel as "drew", Luke as "look", Genesis as
+/// "genitrow is". Ordinary talk ("look four times", "I'm thirty years old") has no verse after it.
+const MISHEARD_BOOKS: &[(&str, &str)] = &[("i'm", "psalm"), ("im", "psalm"), ("some", "psalm"), ("drew", "joel"), ("look", "luke"), ("genitrow is", "genesis"), ("genitrow", "genesis")];
+
+fn misheard_books(t: &str) -> String {
+    static NUM: LazyLock<String> = LazyLock::new(|| {
+        let mut keys: Vec<&str> = WORD_TO_NUM_ORDERED.iter().map(|(w, _)| w.as_str()).collect();
+        keys.sort_by_key(|k| std::cmp::Reverse(k.len()));
+        format!("(?:{}|[0-9]{{1,3}})", keys.join("|"))
+    });
+    // A chapter (a number or two) then "verse(s)" and a number. Not "chapter" and a number: German
+    // "im Kapitel 12" ("in chapter 12") would be Psalm 12 (de-reger-roemer12).
+    static FOLLOWS: LazyLock<String> = LazyLock::new(|| format!(r"(?= {n}(?: {n})?,? (?:verse|verses|vs) {n}{WB})", n = *NUM));
+    static RULES: LazyLock<Vec<(fancy_regex::Regex, &'static str)>> = LazyLock::new(|| {
+        MISHEARD_BOOKS.iter().map(|(heard, book)| (fre(&format!(r"{WB}{}{WB}{}", fancy_regex::escape(heard), *FOLLOWS)), *book)).collect()
+    });
+    // "Psalm thirty plus five": "plus" between a book's chapter and a number is "verse".
+    static PLUS: LazyLock<fancy_regex::Regex> = LazyLock::new(|| fre(&format!(r"(?<= {n}) plus(?= {n}{WB})", n = *NUM)));
+    let mut t = t.to_string();
+    for (rule, book) in RULES.iter() {
+        t = rule.replace_all(&t, *book).into_owned();
+    }
+    PLUS.replace_all(&t, " verse").into_owned()
 }
 
 /// Ways a citation is said, or written by a recogniser, that the grammar never sees as such: Roman numerals

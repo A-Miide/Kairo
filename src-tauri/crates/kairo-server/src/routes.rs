@@ -25,6 +25,7 @@ pub fn router() -> Router<Shared> {
         .route("/api/learned", get(learned).delete(learned_forget))
         .route("/api/start-listening", post(start_listening))
         .route("/api/stop-listening", post(stop_listening))
+        .route("/api/service-report", get(service_report))
         .route("/api/audio-inputs", get(audio_inputs))
         .route("/api/audio-preview", post(audio_preview))
         .route("/api/capture", post(capture_open).get(capture_status))
@@ -329,7 +330,23 @@ async fn stop_listening(State(app): State<Shared>) -> Json<Value> {
         None => {}
     }
     crate::util::lock(&app.keep_awake).take();
+    // The service's one-page summary, from what was logged (service_report.rs). Written after the
+    // log thread has caught up with the last lines.
+    let data = app.cfg.app_data_dir.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        if let Ok(Some(path)) = tokio::task::spawn_blocking(move || crate::service_report::write(&data)).await {
+            eprintln!("[Server] Service summary: {}", path.display());
+        }
+    });
     Json(json!({ "ok": true }))
+}
+
+/// The newest service summary (service_report.rs), as text.
+async fn service_report(State(app): State<Shared>) -> Json<Value> {
+    let data = app.cfg.app_data_dir.clone();
+    let text = tokio::task::spawn_blocking(move || crate::service_report::latest(&data)).await.ok().flatten();
+    Json(json!({ "text": text }))
 }
 
 // ── Lookups and search ──────────────────────────────────────────────────────

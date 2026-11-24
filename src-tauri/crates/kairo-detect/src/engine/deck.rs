@@ -13,10 +13,11 @@ use super::core::Engine;
 use super::event::Effect;
 use super::evidence::plain_tokens;
 use super::ranges::{
-    opening_said, own_opening_said, read_run, read_to_end, shared_weight_meaningful_of, shared_weight_of, ADVANCE_COOLDOWN_MS,
-    CHAPTER_KEYWORD_MIN_IDF, CHAPTER_KEYWORD_MIN_MARGIN, CONTENT_LOOKAHEAD, CONTENT_MIN_WORDS, HEARD_MAX_WORDS, PAUSED_SKIP_MIN_IDF,
-    RESUME_RUN_OWN, RESUME_RUN_WORDS, SHORT_VERSE_WORDS,
+    newest_words, opening_said, own_opening_said, read_run, read_to_end, shared_weight_meaningful_of, shared_weight_of, ADVANCE_COOLDOWN_MS,
+    CHAPTER_KEYWORD_MIN_IDF, CHAPTER_KEYWORD_MIN_MARGIN, CONTENT_LOOKAHEAD, CONTENT_MIN_WORDS, HEARD_MAX_WORDS, OPENING_SPAN, PAUSED_SKIP_MIN_IDF,
+    RESUME_RUN_OWN, RESUME_RUN_WORDS,
 };
+use crate::facts::SHORT_VERSE_WORDS;
 use crate::lexical::text::is_stop_word;
 use crate::reference::{Active, Verses};
 use kairo_bible::{Book, VerseId};
@@ -38,6 +39,9 @@ pub struct Deck {
     pub slides: Vec<String>,
     /// The scripture each slide carries, when it's led by a written reference.
     pub refs: Vec<Option<SlideRef>>,
+    /// Per slide: its first words are also in the slide before it, so its opening alone can't move the
+    /// deck on before that slide was said to its end (the Bible's own fact, facts.rs).
+    pub opening_repeats: Vec<bool>,
     pub current: Option<usize>,
     pub moved_at: u64,
     pub last_advance_at: u64,
@@ -52,7 +56,8 @@ impl Engine {
     pub(crate) fn set_deck(&mut self, id: String, slides: Vec<String>, current: usize, now: u64) {
         let at = current.min(slides.len().saturating_sub(1));
         let refs = slides.iter().map(|t| self.slide_ref(t)).collect();
-        self.deck = Deck { id, slides, refs, ..Deck::default() };
+        let opening_repeats = opening_repeats(&slides);
+        self.deck = Deck { id, slides, refs, opening_repeats, ..Deck::default() };
         self.deck.current = (!self.deck.slides.is_empty()).then_some(at);
         self.deck_moved(now);
     }
@@ -156,11 +161,16 @@ impl Engine {
         // a quote, the stricter setting of the same rule): a preacher says "faith" or "the church" all
         // through a sermon on faith. Measured on five sermons with their decks (slide-follow-eval.js
         // --mode engine): one word put a slide up early 26 times; two, 5.
-        if !fresh.is_empty() && opening_said([next.as_str()], fresh, if ended { 2 } else { 3 }) {
+        if fresh.is_empty() {
+            return self.deck_by_content(current, now);
+        }
+        let recent = newest_words(&heard, fresh, OPENING_SPAN);
+        let repeats = self.deck.opening_repeats.get(current + 1).copied().unwrap_or(false);
+        if (ended || !repeats) && opening_said([next.as_str()], &recent, if ended { 2 } else { 3 }) {
             return self.advance_deck(current + 1, "the next slide's opening words", now);
         }
         let idf = |w: &str| self.deck_idf(w);
-        if !fresh.is_empty() && own_opening_said(&cur, &next, &heard.join(" "), fresh, 2, &idf) {
+        if own_opening_said(&cur, &next, &heard.join(" "), &recent, 2, &idf) {
             return self.advance_deck(current + 1, "the next slide's own words", now);
         }
         // As the words come in, not only at the pause: what it takes (below) is a stretch of the
@@ -199,8 +209,14 @@ impl Engine {
         }
         // Skipping slides takes a stretch of the slide said nearly word for word, always (a paused
         // reading's rule for a range): shared words alone are the sermon's theme.
-        let (run, own) = read_run(&plain_tokens(&text), &plain_tokens(&self.deck.slides[best]));
+        let said = plain_tokens(&text);
+        let (run, own) = read_run(&said, &plain_tokens(&self.deck.slides[best]));
         if run < RESUME_RUN_WORDS || own < RESUME_RUN_OWN {
+            return;
+        }
+        // A slide that repeats the one up ("Faith is…" twice) needs more of its own run than the one up
+        // has: the words said may be the slide up's.
+        if read_run(&said, &plain_tokens(&self.deck.slides[current])).0 >= run {
             return;
         }
         self.advance_deck(best, "a slide further on said", now);
@@ -213,4 +229,13 @@ impl Engine {
         self.note(|_| format!("deck moves to slide {}: {why}", to + 1));
         self.effect(Effect::DeckMoved { deck: self.deck.id.clone(), index: to });
     }
+}
+
+/// Per slide: its first OPENING_WORDS words come in the slide before it, anywhere.
+fn opening_repeats(slides: &[String]) -> Vec<bool> {
+    const OPENING_WORDS: usize = 3;
+    let tokens: Vec<Vec<String>> = slides.iter().map(|s| plain_tokens(s)).collect();
+    (0..slides.len())
+        .map(|i| i > 0 && tokens[i].len() >= OPENING_WORDS && tokens[i - 1].windows(OPENING_WORDS).any(|w| w == &tokens[i][..OPENING_WORDS]))
+        .collect()
 }

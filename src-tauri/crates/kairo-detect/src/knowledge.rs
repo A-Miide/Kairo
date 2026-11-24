@@ -1,12 +1,13 @@
 //! What the engine knows about the Bible, built once and shared read-only:
 //! the corpus and its shape, the reference parser's tables, the word
-//! matchers' lexicon, which chapters are confusable, and where each proper
-//! name occurs.
+//! matchers' lexicon, which chapters are confusable, where each proper
+//! name occurs, and the facts about each verse that make detection go wrong (facts.rs).
 
 use std::collections::{HashMap, HashSet};
 
 use kairo_bible::{Book, Corpus, VerseId, VerseRef};
 
+use crate::facts::BibleFacts;
 use crate::lexical::{Lexicon, Wordings};
 use crate::reference::{Books, Lang, Parser, PartialResolver, Shape};
 
@@ -26,6 +27,7 @@ pub struct Knowledge {
     pub shape: Shape,
     pub books: &'static Books,
     pub lexicon: Lexicon,
+    pub facts: BibleFacts,
     confusable: HashSet<(Chapter, Chapter)>,
     /// lowercase proper name → chapters it occurs in, and its number of occurrences
     names: HashMap<String, (Vec<Chapter>, u32)>,
@@ -43,7 +45,8 @@ impl Knowledge {
         let lexicon = Lexicon::build_with(&corpus, wordings, lang == Lang::En);
         let confusable = confusable_chapters(&corpus, &lexicon);
         let names = proper_names(&corpus);
-        Knowledge { corpus, shape, books: Books::get(), lexicon, confusable, names }
+        let facts = BibleFacts::build(&corpus, &lexicon, &Parser { books: Books::get(), shape: &shape, lang });
+        Knowledge { corpus, shape, books: Books::get(), lexicon, facts, confusable, names }
     }
 
     pub fn parser(&self, lang: Lang) -> Parser<'_> {

@@ -74,6 +74,8 @@ fn filler(w: &str) -> bool {
 const PASSING_READS_ON: u32 = 3;
 /// Words that make a number after them a verse called ("goes to twenty three").
 const LEAD_IN: &[&str] = &["to", "at", "from"];
+/// "…5:18" then "to 20" this soon after the citation is the passage's end.
+const CITED_RANGE_END_MS: u64 = 6_000;
 /// …as far as this from the verse being read.
 const LED_NUMBER_REACH: i64 = 5;
 
@@ -153,6 +155,20 @@ impl Engine {
             return false;
         }
         self.throttle.bare_number_at = now;
+        // "2 Samuel chapter 5:18" then "to 20" after a pause: the passage's end, not a jump to verse 20
+        // (Oyedepo, held-out replay). The verse cited stays up; the passage reads on from it.
+        let just_cited = self.screen.last_detected.is_some_and(|(v, at, m)| v == base && matches!(m, Method::Direct | Method::ContextCitation) && now.saturating_sub(at) < CITED_RANGE_END_MS);
+        // Only "to 20" said on its own: "…and then it goes to twelve" still reads on to verse 12.
+        let to_alone = before == Some("to") && words[..at - 1].iter().all(|w| filler(w));
+        if to_alone && just_cited && step > 0 {
+            let first = self.r(base).verse as i64;
+            let verses: Vec<VerseId> = (first..=num.value).filter_map(|n| self.verse_in_chapter(base, n)).collect();
+            if verses.len() > 1 {
+                self.set_range(verses.clone(), now);
+                self.decide(Candidate::new(verses, Method::Direct, 1.0, Target::Screen), now);
+            }
+            return true;
+        }
         if !self.range.queue.is_empty() && self.range_is_up() && step == 1 {
             self.request_range_advance("the next verse number", now);
             return true;
