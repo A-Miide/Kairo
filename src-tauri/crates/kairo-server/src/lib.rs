@@ -55,6 +55,7 @@ mod routes;
 mod routes_library;
 mod routes_misc;
 mod service_bible;
+mod service_report;
 mod translate;
 mod util;
 pub mod settings;
