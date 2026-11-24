@@ -137,7 +137,10 @@ impl Engine {
             c.hold = Some(Hold::LooksLikePassage);
         }
         // …and a look-alike of the verse on screen, cited or not.
-        if c.method.is_text_match() && c.hold.is_none() && self.looks_like_verse_up(top, now) {
+        // Not a correction: the verse read next telling which of a refrain's verses it was ("then shall the
+        // earth yield her increase" makes Psalm 67:3 up the refrain at 67:5) is exactly a look-alike
+        // replacing the one up.
+        if c.method.is_text_match() && c.hold.is_none() && c.corrected_from.is_none() && self.looks_like_verse_up(top, now) {
             c.hold = Some(Hold::LooksLikeVerseUp);
         }
 
