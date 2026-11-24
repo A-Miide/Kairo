@@ -383,13 +383,14 @@ impl Engine {
         // Verses only held after one cited (a soft range) take their own telling words, as a paused
         // reading does: Matthew 8:26 cited, then talk of Peter sinking ("why are you fearful… he
         // started to sink") put 8:28 up on everyday words (church PC, 22 Nov 2026).
-        if self.range.soft && self.shared_weight_meaningful(best, &text) < PAUSED_SKIP_MIN_IDF {
+        // …and of them, words the verse on screen doesn't have: 1 John 4:18 cited, then "…a perfect
+        // heart… a covenant of love for Christ tonight" put 4:20 up on "love", which 4:18 says too
+        // (held-out replay). A reading in another Bible than Kairo's has the verse's own words still
+        // (Spanish, Romans 5:16: "Tampoco sucede con el don…").
+        if self.range.soft && self.own_weight_said(best, current, &text) < PAUSED_SKIP_MIN_IDF {
             return;
         }
-        // Verses only held after a quote aren't being read yet: skipping to one takes a stretch of it
-        // said nearly word for word, as after a pause. 1 John 4:18 quoted, then "…a perfect heart…
-        // a covenant of love for Christ tonight" put 4:20 up on "love" (held-out replay).
-        let read = !(paused || self.range.soft) || self.verse_wordings(best).into_iter().any(|t| {
+        let read = !paused || self.verse_wordings(best).into_iter().any(|t| {
             let (run, own) = read_run(&said, &plain_tokens(t));
             run >= RESUME_RUN_WORDS && own >= RESUME_RUN_OWN
         });
@@ -410,6 +411,23 @@ impl Engine {
     }
 
     /// `shared_weight` without the everyday words ("the", "that", "say").
+    /// Identifying weight of `v`'s words, in any wording, that `than` doesn't have (in any wording), said in `text`.
+    fn own_weight_said(&self, v: VerseId, than: VerseId, text: &str) -> f32 {
+        let stems = |x: VerseId| -> HashSet<String> { self.verse_wordings(x).into_iter().flat_map(meaningful_words).map(|w| super::evidence::stem_lite(&w)).collect() };
+        let theirs = stems(than);
+        let said: HashSet<String> = meaningful_words(text).into_iter().map(|w| super::evidence::stem_lite(&w)).collect();
+        let mut seen: HashSet<String> = HashSet::new();
+        self.verse_wordings(v)
+            .into_iter()
+            .flat_map(meaningful_words)
+            .filter(|w| {
+                let s = super::evidence::stem_lite(w);
+                !theirs.contains(&s) && said.contains(&s) && seen.insert(s)
+            })
+            .map(|w| self.k.lexicon.idf_of(&w))
+            .sum()
+    }
+
     fn shared_weight_meaningful(&self, v: VerseId, text: &str) -> f32 {
         shared_weight_meaningful_of(self.verse_text(v), text, &|w| self.k.lexicon.idf_of(w))
     }
@@ -588,7 +606,9 @@ impl Engine {
     /// genealogy, 1 Kings 22 and 2 Chronicles 18 likewise (read-passage --no-cite).
     pub(crate) fn looks_like_verse_up(&self, v: VerseId, now: u64) -> bool {
         let Some((up, at)) = self.screen.up else { return false };
-        if v == up || now.saturating_sub(at) > LOOKALIKE_UP_MS {
+        // A verse the preacher called and is now reading isn't intruding: "Galates 3 verset 11", then
+        // "le juste vivra par la foi" with Habakkuk 2:4 up (fr-espoir-romains1).
+        if v == up || now.saturating_sub(at) > LOOKALIKE_UP_MS || self.called_waiting.iter().any(|(w, _)| *w == v) {
             return false;
         }
         let near: Vec<VerseId> = std::iter::once(up).chain(self.verses_after(up, 1)).collect();
